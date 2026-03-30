@@ -12,7 +12,8 @@ class JobCard extends StatelessWidget {
 
     if (t.contains("electric")) return Icons.flash_on;
     if (t.contains("plumb")) return Icons.plumbing;
-    if (t.contains("builder") || t.contains("construction")) return Icons.construction;
+    if (t.contains("builder") || t.contains("construction"))
+      return Icons.construction;
     if (t.contains("carpent")) return Icons.handyman;
 
     return Icons.work;
@@ -67,7 +68,6 @@ class JobCard extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-
                 /// JOB ICON
                 Container(
                   width: 52,
@@ -90,7 +90,6 @@ class JobCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-
                       Text(
                         job.title,
                         style: const TextStyle(
@@ -98,9 +97,23 @@ class JobCard extends StatelessWidget {
                           fontSize: 17,
                         ),
                       ),
-
-                      const SizedBox(height: 4),
-
+                      if (job.positions > 1) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(Icons.group,
+                                size: 14, color: Colors.grey),
+                            const SizedBox(width: 4),
+                            Text(
+                              "${job.remainingPositions}/${job.positions} spots",
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       Row(
                         children: [
                           const Icon(
@@ -117,7 +130,6 @@ class JobCard extends StatelessWidget {
                           ),
                         ],
                       ),
-
                     ],
                   ),
                 ),
@@ -140,7 +152,6 @@ class JobCard extends StatelessWidget {
                     ),
                   ),
                 ),
-
               ],
             ),
           ),

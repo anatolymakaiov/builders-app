@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'employer_profile_screen.dart';
+import 'post_job_screen.dart';
+import 'applicants_screen.dart';
 
 import '../models/job.dart';
 
@@ -30,28 +33,23 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     init();
   }
 
-  /// 🔥 INIT
   Future<void> init() async {
     await loadRole();
     await checkIfApplied();
   }
 
-  /// 🔥 LOAD ROLE
   Future<void> loadRole() async {
     final uid = userId;
     if (uid == null) return;
 
-    final doc = await FirebaseFirestore.instance
-        .collection("users")
-        .doc(uid)
-        .get();
+    final doc =
+        await FirebaseFirestore.instance.collection("users").doc(uid).get();
 
     if (doc.exists) {
       role = doc.data()?["role"] ?? "worker";
     }
   }
 
-  /// 🔥 CHECK APPLICATION
   Future<void> checkIfApplied() async {
     final uid = userId;
     if (uid == null) return;
@@ -70,67 +68,211 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
   }
 
-  /// 🔥 APPLY (ФИНАЛЬНАЯ ВЕРСИЯ)
+  /// 🔥 LOAD MY TEAMS
+  Future<List<QueryDocumentSnapshot>> loadMyTeams() async {
+    final uid = userId;
+    if (uid == null) return [];
+
+    final snap = await FirebaseFirestore.instance
+        .collection("teams")
+        .where("members", arrayContains: uid)
+        .get();
+
+    return snap.docs;
+  }
+
+  /// 🔥 PICK TEAM
+  Future<Map<String, dynamic>?> pickTeam(BuildContext context) async {
+    final teams = await loadMyTeams();
+
+    if (teams.isEmpty) return null;
+
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      builder: (_) {
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: teams.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final members = (data["members"] as List?) ?? [];
+
+            return ListTile(
+              leading: const Icon(Icons.group),
+              title: Text(data["name"] ?? "Team"),
+              subtitle: Text("${members.length} members"),
+              onTap: () {
+                Navigator.pop(context, {
+                  "teamId": doc.id,
+                  "members": members,
+                });
+              },
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  /// 🔥 PICK APPLY TYPE
+  Future<String?> pickApplyType(BuildContext context) async {
+    return showModalBottomSheet<String>(
+      context: context,
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.person),
+                title: const Text("Apply as worker"),
+                onTap: () => Navigator.pop(context, "single"),
+              ),
+              ListTile(
+                leading: const Icon(Icons.group),
+                title: const Text("Apply as team"),
+                onTap: () => Navigator.pop(context, "team"),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> apply() async {
     final uid = userId;
-
     if (uid == null) return;
+
+    /// 🔥 CHECK AVAILABLE POSITIONS
+    if (widget.job.remainingPositions <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("No positions left")),
+      );
+      return;
+    }
 
     try {
       setState(() => isApplying = true);
 
-      /// 🔥 получаем имя worker
-      final userDoc = await FirebaseFirestore.instance
-          .collection("users")
-          .doc(uid)
-          .get();
+      final userDoc =
+          await FirebaseFirestore.instance.collection("users").doc(uid).get();
 
       final workerName = userDoc.data()?["name"] ?? "Worker";
 
-      /// 🔥 защита от дублей
-      final existing = await FirebaseFirestore.instance
-          .collection("applications")
-          .where("jobId", isEqualTo: widget.job.id)
-          .where("workerId", isEqualTo: uid)
-          .limit(1)
-          .get();
+      /// 🔥 ШАГ 1 — ВЫБОР ТИПА
+      final type = await pickApplyType(context);
 
-      if (existing.docs.isNotEmpty) {
-        setState(() {
-          isApplying = false;
-          isApplied = true;
-        });
+      /// ❌ пользователь закрыл выбор
+      if (type == null) {
+        setState(() => isApplying = false);
         return;
       }
 
-      /// 🔥 создаем application (ВАЖНО — все поля)
-      await FirebaseFirestore.instance.collection("applications").add({
-        "jobId": widget.job.id,
-        "jobTitle": widget.job.title,
-        "workerId": uid,
-        "workerName": workerName,
-        "employerId": widget.job.ownerId,
-        "status": "pending",
-        "createdAt": FieldValue.serverTimestamp(),
-      });
+      /// =====================================================
+      /// 👥 TEAM APPLY
+      /// =====================================================
+      if (type == "team") {
+        final team = await pickTeam(context);
 
-      if (mounted) {
-        setState(() {
-          isApplying = false;
-          isApplied = true;
+        /// ❌ закрыл выбор команды
+        if (team == null) {
+          setState(() => isApplying = false);
+          return;
+        }
+
+        final members = List<String>.from(team["members"]);
+
+        /// ❗ проверка мест
+        if (members.length > widget.job.remainingPositions) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Not enough spots")),
+            );
+          }
+          setState(() => isApplying = false);
+          return;
+        }
+
+        await FirebaseFirestore.instance.collection("applications").add({
+          "jobId": widget.job.id,
+          "jobTitle": widget.job.title,
+          "type": "team",
+          "teamId": team["teamId"],
+          "members": members,
+
+          /// 🔥 НОВОЕ
+          "membersStatus": {for (var id in members) id: "pending"},
+
+          "employerId": widget.job.ownerId,
+          "status": "pending",
+          "createdAt": FieldValue.serverTimestamp(),
         });
+
+        if (mounted) {
+          setState(() {
+            isApplying = false;
+            isApplied = true;
+          });
+        }
+
+        return;
+
+        /// 🔥 КРИТИЧНО: НЕ ПРОВАЛИВАЕМСЯ ДАЛЬШЕ
       }
 
+      /// =====================================================
+      /// 👤 SINGLE APPLY
+      /// =====================================================
+      if (type == "single") {
+        /// 🔥 защита от дублей
+        final existing = await FirebaseFirestore.instance
+            .collection("applications")
+            .where("jobId", isEqualTo: widget.job.id)
+            .where("workerId", isEqualTo: uid)
+            .limit(1)
+            .get();
+
+        if (existing.docs.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              isApplying = false;
+              isApplied = true;
+            });
+          }
+          return;
+        }
+
+        await FirebaseFirestore.instance.collection("applications").add({
+          "jobId": widget.job.id,
+          "jobTitle": widget.job.title,
+          "workerId": uid,
+          "workerName": workerName,
+          "type": "single",
+
+          /// 🔥 ДЕЛАЕМ ЕДИНУЮ ЛОГИКУ
+          "members": [uid],
+          "membersStatus": {uid: "pending"},
+
+          "employerId": widget.job.ownerId,
+          "status": "pending",
+          "createdAt": FieldValue.serverTimestamp(),
+        });
+
+        if (mounted) {
+          setState(() {
+            isApplying = false;
+            isApplied = true;
+          });
+        }
+
+        return;
+      }
     } catch (e) {
-      debugPrint("❌ APPLY ERROR: $e");
-
-      if (mounted) {
-        setState(() => isApplying = false);
-      }
+      debugPrint("APPLY ERROR: $e");
+      if (mounted) setState(() => isApplying = false);
     }
   }
 
-  /// MAP
   Future<void> openMaps() async {
     final url =
         "https://www.google.com/maps/search/?api=1&query=${widget.job.lat},${widget.job.lng}";
@@ -142,12 +284,54 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
   }
 
-  /// 🔥 APPLY BUTTON
+  Future<void> deleteJob() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Delete job"),
+        content: const Text("Are you sure you want to delete this job?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              "Delete",
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection("jobs")
+          .doc(widget.job.id)
+          .delete();
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Job deleted")),
+        );
+      }
+    } catch (e) {
+      debugPrint("DELETE ERROR: $e");
+    }
+  }
+
   Widget buildApplyButton() {
-    /// ❌ employer не видит кнопку
     if (role == "employer") return const SizedBox();
 
     String text = "Apply for this job";
+    if (widget.job.remainingPositions <= 0) {
+      text = "No spots left";
+    }
 
     if (isApplied) text = "Applied";
     if (isApplying) text = "Applying...";
@@ -156,19 +340,173 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       width: double.infinity,
       height: 50,
       child: ElevatedButton(
-        onPressed: isApplied || isApplying ? null : apply,
-        child: Text(
-          text,
-          style: const TextStyle(fontSize: 18),
+        onPressed:
+            (isApplied || isApplying || widget.job.remainingPositions <= 0)
+                ? null
+                : apply,
+        child: Text(text, style: const TextStyle(fontSize: 18)),
+      ),
+    );
+  }
+
+  Widget buildEditButton() {
+    final uid = userId;
+
+    if (uid == null || uid != widget.job.ownerId) {
+      return const SizedBox();
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: OutlinedButton.icon(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PostJobScreen(
+                existingJob: widget.job,
+                onJobCreated: (_) {},
+              ),
+            ),
+          );
+        },
+        icon: const Icon(Icons.edit),
+        label: const Text("Edit job"),
+      ),
+    );
+  }
+
+  Widget buildDeleteButton() {
+    final uid = userId;
+
+    if (uid == null || uid != widget.job.ownerId) {
+      return const SizedBox();
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: OutlinedButton.icon(
+        onPressed: deleteJob,
+        icon: const Icon(Icons.delete, color: Colors.red),
+        label: const Text(
+          "Delete job",
+          style: TextStyle(color: Colors.red),
+        ),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: Colors.red),
         ),
       ),
     );
   }
 
-  /// ---------- UI ----------
+  /// 🔥 EMPLOYER BLOCK (FULL FIX)
+  Widget buildCompany() {
+    final ownerId = widget.job.ownerId;
+
+    /// ❌ защита от битых данных
+    if (ownerId.isEmpty || ownerId == "unknown") {
+      return const SizedBox();
+    }
+
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection("users").doc(ownerId).get(),
+      builder: (context, snapshot) {
+        /// ⏳ LOADING
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              children: [
+                CircleAvatar(radius: 28),
+                SizedBox(width: 12),
+                Text("Loading..."),
+              ],
+            ),
+          );
+        }
+
+        /// ❌ нет данных
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const SizedBox();
+        }
+
+        final data = snapshot.data!.data() as Map<String, dynamic>;
+
+        final name = data["companyName"] ?? data["name"] ?? "Company";
+
+        final photo = data["photo"];
+
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => EmployerProfileScreen(
+                  userId: ownerId,
+                ),
+              ),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: Colors.grey.shade300,
+                  backgroundImage: photo != null ? NetworkImage(photo) : null,
+                  child: photo == null
+                      ? const Icon(Icons.business, size: 28)
+                      : null,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Employer",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        "Tap to view profile",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios, size: 16)
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   Widget buildPhotos() {
-    if (widget.job.photos == null || widget.job.photos!.isEmpty) {
+    if (widget.job.ownerId.isEmpty || widget.job.ownerId == "unknown") {
       return const SizedBox();
     }
 
@@ -184,9 +522,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           height: 180,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            itemCount: widget.job.photos!.length,
+            itemCount: widget.job.photos.length,
             itemBuilder: (context, index) {
-              final photo = widget.job.photos![index];
+              final photo = widget.job.photos[index];
 
               return GestureDetector(
                 onTap: () {
@@ -213,43 +551,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           ),
         ),
         const SizedBox(height: 24),
-      ],
-    );
-  }
-
-  Widget buildCompany() {
-    ImageProvider? logo;
-
-    if (widget.job.companyLogo != null &&
-        widget.job.companyLogo!.isNotEmpty) {
-      logo = NetworkImage(widget.job.companyLogo!);
-    }
-
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 28,
-          backgroundColor: Colors.grey.shade300,
-          backgroundImage: logo,
-          child: logo == null ? const Icon(Icons.business) : null,
-        ),
-        const SizedBox(width: 14),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Employer",
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            Text(
-              widget.job.companyName ?? "Company",
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        )
       ],
     );
   }
@@ -296,11 +597,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       children: [
         const Text(
           "Job description",
-          style:
-              TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
-        Text(widget.job.description ?? "No description"),
+        Text(widget.job.description.isNotEmpty
+            ? widget.job.description
+            : "No description"),
       ],
     );
   }
@@ -327,7 +629,44 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               ),
             ),
             const SizedBox(height: 20),
+
             buildRateCard(),
+
+            /// 👇 ВОТ СЮДА ВСТАВЛЯЙ
+            if (widget.job.positions > 1)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.group, size: 18),
+                    const SizedBox(width: 6),
+                    Text(
+                      "${widget.job.remainingPositions}/${widget.job.positions} spots available",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            /// 🔥 DURATION (НОВОЕ)
+            if (widget.job.duration.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.timer_outlined, size: 18),
+                    const SizedBox(width: 6),
+                    Text(
+                      widget.job.duration,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 24),
             buildLocation(),
             const SizedBox(height: 24),
@@ -339,7 +678,33 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               label: const Text("Show location on map"),
             ),
             const SizedBox(height: 20),
+
+            buildEditButton(),
+            const SizedBox(height: 10),
+            buildDeleteButton(),
+            const SizedBox(height: 10),
             buildApplyButton(),
+            if (userId == widget.job.ownerId)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ApplicantsScreen(
+                            jobId: widget.job.id,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text("View applicants"),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

@@ -8,13 +8,18 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
 
-class PostJobScreen extends StatefulWidget {
+import '../models/job.dart';
 
+class PostJobScreen extends StatefulWidget {
   final Function(dynamic) onJobCreated;
+
+  /// 🔥 NEW: edit mode
+  final Job? existingJob;
 
   const PostJobScreen({
     super.key,
     required this.onJobCreated,
+    this.existingJob,
   });
 
   @override
@@ -22,8 +27,9 @@ class PostJobScreen extends StatefulWidget {
 }
 
 class _PostJobScreenState extends State<PostJobScreen> {
-
   final titleController = TextEditingController();
+  final positionsController = TextEditingController();
+  final durationController = TextEditingController();
   final streetController = TextEditingController();
   final cityController = TextEditingController();
   final postcodeController = TextEditingController();
@@ -39,182 +45,171 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   File? companyLogo;
   List<File> jobPhotos = [];
+  List<String> existingPhotos = [];
 
-  final ImagePicker picker = ImagePicker();
+  final picker = ImagePicker();
 
   final trades = [
-    "Bricklayer","Dryliner","Carpenter","Joiner","Painter","Decorator",
-    "Plasterer","Tiler","Floor layer","Groundworker","Steel fixer",
-    "Concrete finisher","Scaffolder","Roofer","Window fitter",
-    "Door installer","Electrician","Electrical mate","Plumber",
-    "Pipe fitter","Gas engineer","HVAC engineer","Fire alarm engineer",
-    "Security engineer","Data engineer","Kitchen fitter",
-    "Bathroom fitter","Handyman","Snagger","Cleaner","Labourer"
+    "Bricklayer",
+    "Dryliner",
+    "Carpenter",
+    "Joiner",
+    "Painter",
+    "Decorator",
+    "Plasterer",
+    "Tiler",
+    "Floor layer",
+    "Groundworker",
+    "Steel fixer",
+    "Concrete finisher",
+    "Scaffolder",
+    "Roofer",
+    "Window fitter",
+    "Door installer",
+    "Electrician",
+    "Electrical mate",
+    "Plumber",
+    "Pipe fitter",
+    "Gas engineer",
+    "HVAC engineer",
+    "Fire alarm engineer",
+    "Security engineer",
+    "Data engineer",
+    "Kitchen fitter",
+    "Bathroom fitter",
+    "Handyman",
+    "Snagger",
+    "Cleaner",
+    "Labourer"
   ];
 
-  /// PICK LOGO
+  @override
+  void initState() {
+    super.initState();
+
+    /// 🔥 ЕСЛИ EDIT MODE
+    if (widget.existingJob != null) {
+      final job = widget.existingJob!;
+
+      titleController.text = job.title;
+      positionsController.text = job.positions.toString();
+      durationController.text = job.duration;
+      streetController.text = job.street;
+      cityController.text = job.city;
+      postcodeController.text = job.postcode;
+      rateController.text = job.rate.toString();
+
+      companyController.text = job.companyName;
+      descriptionController.text = job.description;
+
+      selectedTrade = job.trade;
+      jobType = job.jobType;
+
+      existingPhotos = job.photos;
+    }
+  }
+
+  /// IMAGE PICKERS
 
   Future<void> pickCompanyLogo() async {
-
     final picked = await picker.pickImage(source: ImageSource.gallery);
-
-    if (picked == null) return;
-
-    setState(() {
-      companyLogo = File(picked.path);
-    });
-
+    if (picked != null) {
+      setState(() => companyLogo = File(picked.path));
+    }
   }
-
-  /// PICK JOB PHOTOS
 
   Future<void> pickJobPhotos() async {
-
     final picked = await picker.pickMultiImage();
-
-    if (picked.isEmpty) return;
-
-    setState(() {
-
-      for (var img in picked) {
-        jobPhotos.add(File(img.path));
-      }
-
-    });
-
+    if (picked.isNotEmpty) {
+      setState(() {
+        jobPhotos.addAll(picked.map((e) => File(e.path)));
+      });
+    }
   }
 
-  /// UPLOAD FILE
-
   Future<String?> uploadFile(File file, String folder) async {
-
     try {
-
-      final fileName =
+      final name =
           "${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}";
 
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child("$folder/$fileName");
+      final ref = FirebaseStorage.instance.ref("$folder/$name");
 
       await ref.putFile(file);
 
       return await ref.getDownloadURL();
-
     } catch (e) {
-
-      debugPrint("Upload error $e");
+      debugPrint("Upload error: $e");
       return null;
-
     }
-
   }
 
-  bool isValidUKPostcode(String postcode) {
+  /// POSTCODE
 
+  bool isValidUKPostcode(String postcode) {
     final regex = RegExp(
       r'^[A-Z]{1,2}[0-9][0-9A-Z]?\s?[0-9][A-Z]{2}$',
       caseSensitive: false,
     );
-
     return regex.hasMatch(postcode.trim());
   }
 
   Future<Map<String, dynamic>?> lookupPostcode(String postcode) async {
-
     try {
+      final clean = postcode.replaceAll(" ", "").toUpperCase();
+      final res = await http
+          .get(Uri.parse("https://api.postcodes.io/postcodes/$clean"));
 
-      final cleanPostcode = postcode.replaceAll(" ", "").toUpperCase();
-      final url = "https://api.postcodes.io/postcodes/$cleanPostcode";
+      if (res.statusCode != 200) return null;
 
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode != 200) return null;
-
-      final data = json.decode(response.body);
-
-      if (data["status"] == 200) {
-        return data["result"];
-      }
-
+      final data = json.decode(res.body);
+      return data["status"] == 200 ? data["result"] : null;
+    } catch (_) {
       return null;
-
-    } catch (e) {
-
-      debugPrint("Postcode lookup error: $e");
-      return null;
-
     }
   }
 
   void checkPostcode() async {
-
     final postcode = postcodeController.text.trim();
 
     if (!isValidUKPostcode(postcode)) {
-
-      setState(() {
-        postcodeStatus = "Invalid postcode";
-      });
-
+      setState(() => postcodeStatus = "Invalid postcode");
       return;
     }
 
-    setState(() {
-      postcodeStatus = "Checking postcode...";
-    });
+    setState(() => postcodeStatus = "Checking...");
 
     final result = await lookupPostcode(postcode);
 
     if (!mounted) return;
 
     if (result == null) {
-
-      setState(() {
-        postcodeStatus = "Postcode not found";
-      });
-
+      setState(() => postcodeStatus = "Not found");
       return;
     }
 
     setState(() {
-
       cityController.text = result["admin_district"] ?? "";
-      postcodeStatus = "Location found";
-
+      postcodeStatus = "OK";
     });
   }
 
-  /// CREATE JOB
+  /// 🔥 CREATE / UPDATE JOB
 
-  Future<void> createJob() async {
-
+  Future<void> saveJob() async {
     final user = FirebaseAuth.instance.currentUser;
-
     if (user == null) return;
 
-    final ownerId = user.uid;
-
     final title = titleController.text.trim();
-    final street = streetController.text.trim();
-    final city = cityController.text.trim();
     final postcode = postcodeController.text.trim();
-    final rate = double.tryParse(rateController.text) ?? 0;
-    final companyName = companyController.text.trim();
-    final description = descriptionController.text.trim();
 
     if (title.isEmpty || !isValidUKPostcode(postcode)) {
-
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Enter job title and valid postcode")),
+        const SnackBar(content: Text("Invalid data")),
       );
-
       return;
     }
 
-    setState(() {
-      loading = true;
-    });
+    setState(() => loading = true);
 
     final result = await lookupPostcode(postcode);
 
@@ -222,338 +217,169 @@ class _PostJobScreenState extends State<PostJobScreen> {
     double lng = 0;
 
     if (result != null) {
-
       lat = (result["latitude"] as num?)?.toDouble() ?? 0;
       lng = (result["longitude"] as num?)?.toDouble() ?? 0;
-
     }
 
-    final location = "$street, $city $postcode";
+    /// upload photos
+    List<String> photoUrls = [...existingPhotos];
 
-    /// UPLOAD LOGO
-
-    String? logoUrl;
-
-    if (companyLogo != null) {
-
-      logoUrl = await uploadFile(
-        companyLogo!,
-        "company_logos",
-      );
-
-    }
-
-    /// UPLOAD PHOTOS
-
-    List<String> photoUrls = [];
-
-    for (var photo in jobPhotos) {
-
-      final url = await uploadFile(
-        photo,
-        "job_photos",
-      );
-
+    for (var file in jobPhotos) {
+      final url = await uploadFile(file, "job_photos");
       if (url != null) photoUrls.add(url);
-
     }
+
+    final data = {
+      "ownerId": user.uid,
+      "title": title,
+      "trade": selectedTrade,
+      "duration": durationController.text.trim(),
+      "positions": int.tryParse(positionsController.text) ?? 1,
+      "filledPositions": widget.existingJob?.filledPositions ?? 0,
+      "street": streetController.text.trim(),
+      "city": cityController.text.trim(),
+      "postcode": postcode,
+      "location": "${streetController.text}, ${cityController.text} $postcode",
+      "rate": jobType == "negotiable"
+          ? 0
+          : double.tryParse(rateController.text) ?? 0,
+      "jobType": jobType,
+      "companyName": companyController.text.trim(),
+      "description": descriptionController.text.trim(),
+      "photos": photoUrls,
+      "lat": lat,
+      "lng": lng,
+      "updatedAt": FieldValue.serverTimestamp(),
+    };
 
     try {
+      /// 🔥 EDIT
+      if (widget.existingJob != null) {
+        await FirebaseFirestore.instance
+            .collection('jobs')
+            .doc(widget.existingJob!.id)
+            .update(data);
+      }
 
-      await FirebaseFirestore.instance.collection('jobs').add({
-
-        "ownerId": ownerId,
-
-        "title": title,
-        "trade": selectedTrade,
-
-        "street": street,
-        "city": city,
-        "postcode": postcode,
-        "location": location,
-
-        "rate": jobType == "negotiable" ? 0 : rate,
-        "jobType": jobType,
-
-        "companyName": companyName,
-        "companyLogo": logoUrl,
-
-        "description": description,
-
-        "photos": photoUrls,
-
-        "lat": lat,
-        "lng": lng,
-
-        "createdAt": FieldValue.serverTimestamp()
-
-      });
+      /// 🔥 CREATE
+      else {
+        await FirebaseFirestore.instance.collection('jobs').add({
+          ...data,
+          "createdAt": FieldValue.serverTimestamp(),
+        });
+      }
 
       widget.onJobCreated(true);
 
       if (mounted) Navigator.pop(context);
-
     } catch (e) {
-
-      debugPrint("Firestore error: $e");
-
-      setState(() {
-        loading = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error creating job")),
-      );
-
+      debugPrint("Save error: $e");
+      setState(() => loading = false);
     }
-
   }
 
   @override
   Widget build(BuildContext context) {
-
-    final postcodeValid = isValidUKPostcode(postcodeController.text);
-
     return Scaffold(
-
       appBar: AppBar(
-        title: const Text("Post Job"),
+        title: Text(widget.existingJob != null ? "Edit Job" : "Post Job"),
       ),
-
       body: SingleChildScrollView(
-
         padding: const EdgeInsets.all(20),
-
         child: Column(
           children: [
-
             TextField(
               controller: companyController,
-              decoration: const InputDecoration(
-                labelText: "Company name",
-              ),
+              decoration: const InputDecoration(labelText: "Company name"),
             ),
-
             const SizedBox(height: 12),
-
-            Row(
-              children: [
-
-                companyLogo != null
-                    ? CircleAvatar(
-                        radius: 28,
-                        backgroundImage: FileImage(companyLogo!),
-                      )
-                    : const CircleAvatar(
-                        radius: 28,
-                        child: Icon(Icons.business),
-                      ),
-
-                const SizedBox(width: 12),
-
-                TextButton(
-                  onPressed: pickCompanyLogo,
-                  child: const Text("Upload company logo"),
-                )
-
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
             DropdownButtonFormField<String>(
-
               value: selectedTrade,
-
-              items: trades.map((trade) {
-
-                return DropdownMenuItem(
-                  value: trade,
-                  child: Text(trade),
-                );
-
-              }).toList(),
-
-              onChanged: (value) {
-
-                setState(() {
-                  selectedTrade = value!;
-                });
-
-              },
-
-              decoration: const InputDecoration(
-                labelText: "Trade",
-              ),
-
+              items: trades
+                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                  .toList(),
+              onChanged: (v) => setState(() => selectedTrade = v!),
+              decoration: const InputDecoration(labelText: "Trade"),
             ),
-
             const SizedBox(height: 12),
-
             TextField(
               controller: titleController,
+              decoration: const InputDecoration(labelText: "Job title"),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: durationController,
               decoration: const InputDecoration(
-                labelText: "Job title",
+                labelText: "Duration (e.g. 2 weeks)",
               ),
             ),
-
             const SizedBox(height: 12),
-
+            TextField(
+              controller: positionsController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "Workers needed",
+              ),
+            ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-
               value: jobType,
-
               items: const [
-
+                DropdownMenuItem(value: "hourly", child: Text("Hourly")),
+                DropdownMenuItem(value: "price", child: Text("Price")),
                 DropdownMenuItem(
-                  value: "hourly",
-                  child: Text("Hourly rate"),
-                ),
-
-                DropdownMenuItem(
-                  value: "price",
-                  child: Text("Price work"),
-                ),
-
-                DropdownMenuItem(
-                  value: "negotiable",
-                  child: Text("Price negotiable"),
-                ),
-
+                    value: "negotiable", child: Text("Negotiable")),
               ],
-
-              onChanged: (value) {
-
-                setState(() {
-                  jobType = value!;
-                });
-
-              },
-
-              decoration: const InputDecoration(
-                labelText: "Job type",
-              ),
-
+              onChanged: (v) => setState(() => jobType = v!),
+              decoration: const InputDecoration(labelText: "Job type"),
             ),
-
-            const SizedBox(height: 12),
-
             if (jobType != "negotiable")
               TextField(
                 controller: rateController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: "Rate (£)",
-                ),
+                decoration: const InputDecoration(labelText: "Rate (£)"),
               ),
-
             const SizedBox(height: 12),
-
             TextField(
               controller: postcodeController,
-              decoration: const InputDecoration(
-                labelText: "Postcode",
-              ),
-              onChanged: (_) {
-
-                if (postcodeController.text.length > 4) {
-                  checkPostcode();
-                }
-
-              },
+              decoration: const InputDecoration(labelText: "Postcode"),
+              onChanged: (_) => checkPostcode(),
             ),
-
             const SizedBox(height: 6),
-
-            Text(
-              postcodeStatus,
-              style: const TextStyle(fontSize: 12),
-            ),
-
+            Text(postcodeStatus),
             const SizedBox(height: 12),
-
             TextField(
               controller: streetController,
-              decoration: const InputDecoration(
-                labelText: "Street",
-              ),
+              decoration: const InputDecoration(labelText: "Street"),
             ),
-
             const SizedBox(height: 12),
-
             TextField(
               controller: cityController,
-              decoration: const InputDecoration(
-                labelText: "City",
-              ),
+              decoration: const InputDecoration(labelText: "City"),
             ),
-
             const SizedBox(height: 12),
-
             TextField(
               controller: descriptionController,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: "Job description",
-                alignLabelWithHint: true,
-              ),
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: "Description"),
             ),
-
             const SizedBox(height: 20),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-
-                const Text(
-                  "Job photos",
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-
-                TextButton(
-                  onPressed: pickJobPhotos,
-                  child: const Text("Add photos"),
-                )
-
-              ],
+            ElevatedButton(
+              onPressed: pickJobPhotos,
+              child: const Text("Add photos"),
             ),
-
-            if (jobPhotos.isNotEmpty)
-              SizedBox(
-                height: 90,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: jobPhotos.length,
-                  itemBuilder: (context, index) {
-
-                    return Container(
-                      margin: const EdgeInsets.only(right: 10),
-                      width: 90,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        image: DecorationImage(
-                          image: FileImage(jobPhotos[index]),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    );
-
-                  },
-                ),
-              ),
-
-            const SizedBox(height: 30),
-
+            const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: loading || !postcodeValid ? null : createJob,
+                onPressed: loading ? null : saveJob,
                 child: loading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Create Job"),
+                    ? const CircularProgressIndicator()
+                    : Text(widget.existingJob != null
+                        ? "Update Job"
+                        : "Create Job"),
               ),
-            )
-
+            ),
           ],
         ),
       ),

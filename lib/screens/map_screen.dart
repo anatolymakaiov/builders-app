@@ -484,7 +484,7 @@ class _MapScreenState extends State<MapScreen> {
           children: [
             Text(job.trade, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             Text(job.title),
-            if (job.companyName != null) Text(job.companyName!),
+            if (job.companyName.isNotEmpty) Text(job.companyName),
             Text("${job.city} ${job.postcode}"),
             const SizedBox(height: 6),
             Wrap(

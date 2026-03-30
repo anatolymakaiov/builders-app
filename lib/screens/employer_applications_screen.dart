@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'application_details_screen.dart';
+import 'employer_profile_screen.dart';
+import 'team_details_screen.dart';
 
 class EmployerApplicationsScreen extends StatelessWidget {
   const EmployerApplicationsScreen({super.key});
@@ -17,6 +18,13 @@ class EmployerApplicationsScreen extends StatelessWidget {
     }
   }
 
+  Future<void> updateStatus(String id, String status) async {
+    await FirebaseFirestore.instance
+        .collection("applications")
+        .doc(id)
+        .update({"status": status});
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -30,96 +38,208 @@ class EmployerApplicationsScreen extends StatelessWidget {
     final employerId = user.uid;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Applications"),
-      ),
-
+      appBar: AppBar(title: const Text("Applications")),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection("applications")
             .where("employerId", isEqualTo: employerId)
-            .orderBy("createdAt", descending: true) // ✅ вернули сортировку
+            .orderBy("createdAt", descending: true)
             .snapshots(),
-
         builder: (context, snapshot) {
-
-          /// 🔄 LOADING
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          /// ❌ ERROR
-          if (snapshot.hasError) {
-            return Center(
-              child: Text("Error: ${snapshot.error}"),
-            );
-          }
+          final apps = snapshot.data!.docs;
 
-          final apps = snapshot.data?.docs ?? [];
-
-          /// 📭 EMPTY
           if (apps.isEmpty) {
-            return const Center(
-              child: Text("No applications yet"),
-            );
+            return const Center(child: Text("No applications yet"));
           }
 
           return ListView.builder(
             itemCount: apps.length,
             itemBuilder: (context, index) {
-
               final doc = apps[index];
               final data = doc.data() as Map<String, dynamic>;
 
+              final workerId = data["workerId"];
+              final type = data["type"] ?? "single";
+              final teamId = data["teamId"];
+              final workerName = data["workerName"] ?? "Worker";
+              final members = List<String>.from(data["members"] ?? []);
+              final jobTitle = data["jobTitle"] ?? "Job";
               final status = data["status"] ?? "pending";
-              final color = getStatusColor(status);
+              final Timestamp? createdAt = data["createdAt"];
+              final dateText = createdAt != null
+                  ? DateTime.fromMillisecondsSinceEpoch(
+                          createdAt.millisecondsSinceEpoch)
+                      .toString()
+                      .substring(0, 16)
+                  : "";
 
-              /// ✅ НОРМАЛЬНЫЕ ДАННЫЕ (если есть)
-              final workerName = data["workerName"];
-              final jobTitle = data["jobTitle"];
-
-              /// fallback (если старые данные)
-              final workerId = data["workerId"] ?? "Unknown";
-              final jobId = data["jobId"] ?? "";
-
-              return Card(
-                margin: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
-                child: ListTile(
-
-                  /// 🔥 ИМЯ
-                  title: Text(
-                    workerName ?? "Worker: $workerId",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  /// 🔥 JOB
-                  subtitle: Text(
-                    jobTitle ?? "Job ID: $jobId",
-                  ),
-
-                  /// 🔥 STATUS
-                  trailing: Text(
-                    status.toUpperCase(),
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ApplicationDetailsScreen(
-                          applicationId: doc.id,
-                          data: data,
+              return Container(
+                margin:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    /// 👤 WORKER
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          child: Icon(
+                            type == "team" ? Icons.groups : Icons.person,
+                          ),
                         ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                type == "team"
+                                    ? "Team application"
+                                    : "$workerName",
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              if (type == "team")
+                                Text(
+                                  "${members.length} members",
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                            ],
+                          ),
+                        ),
+
+                        /// STATUS
+                        Text(
+                          status.toUpperCase(),
+                          style: TextStyle(
+                            color: getStatusColor(status),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      ],
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    /// JOB
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(jobTitle),
+                        if (dateText.isNotEmpty)
+                          Text(
+                            dateText,
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.grey),
+                          ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    /// BUTTONS
+                    if (status == "pending")
+                      Row(
+                        children: [
+                          /// ACCEPT
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () => updateStatus(doc.id, "accepted"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                              ),
+                              child: const Text("Accept"),
+                            ),
+                          ),
+
+                          const SizedBox(width: 10),
+
+                          /// REJECT
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => updateStatus(doc.id, "rejected"),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red),
+                              ),
+                              child: const Text("Reject"),
+                            ),
+                          ),
+                        ],
                       ),
-                    );
-                  },
+
+                    const SizedBox(height: 10),
+
+                    /// VIEW PROFILE
+                    TextButton(
+                      onPressed: () async {
+                        if (type == "team") {
+                          if (teamId == null) return;
+
+                          final teamSnap = await FirebaseFirestore.instance
+                              .collection("teams")
+                              .doc(teamId)
+                              .get();
+
+                          if (!teamSnap.exists) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Team not found")),
+                            );
+                            return;
+                          }
+
+                          final teamData =
+                              teamSnap.data() as Map<String, dynamic>;
+
+                          if (!context.mounted) return;
+
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => TeamDetailsScreen(
+                                teamId: teamId,
+                                teamData: teamData,
+                              ),
+                            ),
+                          );
+                        } else {
+                          if (workerId == null) return;
+
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => EmployerProfileScreen(
+                                userId: workerId,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      child: Text(
+                        type == "team"
+                            ? "View team profile"
+                            : "View worker profile",
+                      ),
+                    )
+                  ],
                 ),
               );
             },

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'employer_profile_screen.dart';
+import 'team_details_screen.dart';
 
 class ApplicationDetailsScreen extends StatelessWidget {
   final String applicationId;
@@ -20,73 +22,52 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
     if (workerId == null || employerId == null || jobId == null) return;
 
-    /// ✅ обновляем статус
-    await db.collection("applications").doc(applicationId).update({
-      "status": status,
-    });
+    try {
+      /// 🔥 получаем вакансию
+      final jobRef = db.collection("jobs").doc(jobId);
 
-    /// 🔥 СОЗДАЕМ ЧАТ
-    if (status == "accepted") {
+      await db.runTransaction((transaction) async {
+        final jobSnap = await transaction.get(jobRef);
 
-      final existing = await db
-          .collection("chats")
-          .where("jobId", isEqualTo: jobId)
-          .where("workerId", isEqualTo: workerId)
-          .where("employerId", isEqualTo: employerId)
-          .limit(1)
-          .get();
+        if (!jobSnap.exists) throw Exception("Job not found");
 
-      if (existing.docs.isEmpty) {
+        final jobData = jobSnap.data() as Map<String, dynamic>;
 
-        /// 🔥 получаем имена
-        final workerDoc =
-            await db.collection("users").doc(workerId).get();
-        final employerDoc =
-            await db.collection("users").doc(employerId).get();
+        final positions = jobData["positions"] ?? 1;
+        final filled = jobData["filledPositions"] ?? 0;
 
-        final workerName =
-            workerDoc.data()?["name"] ?? "Worker";
-        final employerName =
-            employerDoc.data()?["name"] ?? "Employer";
+        /// 🔥 сколько людей в заявке
+        final workersCount = data["workersCount"] ?? 1;
 
-        await db.collection("chats").add({
-          "jobId": jobId,
-          "workerId": workerId,
-          "employerId": employerId,
+        /// ❌ если не хватает мест — стоп
+        if (status == "accepted" && (filled + workersCount) > positions) {
+          throw Exception("Not enough positions");
+        }
 
-          /// 🔥 ОБЯЗАТЕЛЬНО
-          "participants": [workerId, employerId],
+        /// ✅ обновляем статус заявки
+        transaction.update(
+          db.collection("applications").doc(applicationId),
+          {"status": status},
+        );
 
-          "workerName": workerName,
-          "employerName": employerName,
+        /// 🔥 если приняли — увеличиваем занятые места
+        if (status == "accepted") {
+          transaction.update(jobRef, {
+            "filledPositions": filled + workersCount,
+          });
+        }
+      });
 
-          "createdAt": FieldValue.serverTimestamp(),
-          "updatedAt": FieldValue.serverTimestamp(),
+      if (!context.mounted) return;
 
-          "lastMessage": "",
-          "unreadCount_worker": 0,
-          "unreadCount_employer": 0,
-        });
-      }
+      Navigator.pop(context);
+    } catch (e) {
+      debugPrint("UPDATE STATUS ERROR: $e");
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Not enough positions")),
+      );
     }
-
-    /// 🔔 УВЕДОМЛЕНИЕ
-    await db
-        .collection("users")
-        .doc(workerId)
-        .collection("notifications")
-        .add({
-      "type": "application_update",
-      "status": status, // accepted / rejected
-      "jobId": jobId,
-      "applicationId": applicationId,
-      "fromUserId": employerId,
-      "createdAt": FieldValue.serverTimestamp(),
-      "read": false,
-    });
-
-    if (!context.mounted) return;
-    Navigator.pop(context);
   }
 
   @override
@@ -95,95 +76,171 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
     if (workerId == null) {
       return const Scaffold(
-        body: Center(child: Text("Invalid application data")),
+        body: Center(child: Text("Invalid application")),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Application"),
-      ),
+      appBar: AppBar(title: const Text("Application")),
       body: FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance
-            .collection("users")
-            .doc(workerId)
-            .get(),
+        future:
+            FirebaseFirestore.instance.collection("users").doc(workerId).get(),
         builder: (context, snapshot) {
-
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Text("Error: ${snapshot.error}"),
-            );
-          }
-
-          if (!snapshot.hasData || !snapshot.data!.exists) {
+          if (!snapshot.data!.exists) {
             return const Center(child: Text("User not found"));
           }
 
-          final userData =
-              snapshot.data!.data() as Map<String, dynamic>;
+          final user = snapshot.data!.data() as Map<String, dynamic>;
 
-          final name = userData["name"] ?? "Worker";
-          final trade = userData["trade"] ?? "";
-          final rate = userData["rate"] != null
-              ? "£${userData["rate"]}/h"
-              : "";
+          final name = user["name"] ?? "Worker";
+          final trade = user["trade"] ?? "";
+          final rate = user["rate"] != null ? "£${user["rate"]}/h" : "";
+          final bio = user["bio"] ?? "";
+          final location = user["location"] ?? "";
+          final photo = user["photo"];
 
-          return Padding(
+          return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                /// 👤 HEADER
+                Center(
+                  child: Column(
+                    children: [
+                      CircleAvatar(
+                        radius: 45,
+                        backgroundColor: Colors.grey.shade300,
+                        backgroundImage:
+                            photo != null ? NetworkImage(photo) : null,
+                        child: photo == null
+                            ? const Icon(Icons.person, size: 40)
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (trade.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(trade),
+                      ],
+                      if (rate.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          rate,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
 
-                const SizedBox(height: 10),
+                const SizedBox(height: 30),
 
-                if (trade.isNotEmpty) Text(trade),
-                if (rate.isNotEmpty) Text(rate),
+                /// 📍 LOCATION
+                if (location.isNotEmpty) ...[
+                  const Text(
+                    "Location",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(location),
+                  const SizedBox(height: 20),
+                ],
 
-                const Spacer(),
+                /// 📝 BIO
+                if (bio.isNotEmpty) ...[
+                  const Text(
+                    "About worker",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(bio),
+                  const SizedBox(height: 20),
+                ],
 
+                /// 🔍 VIEW PROFILE
+                TextButton(
+                  onPressed: () {
+                    final type = data["type"] ?? "single";
+
+                    if (type == "team") {
+                      final teamId = data["teamId"];
+
+                      if (teamId == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Team not found")),
+                        );
+                        return;
+                      }
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TeamDetailsScreen(
+                            teamId: teamId,
+                            teamData: data,
+                          ),
+                        ),
+                      );
+                    } else {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              EmployerProfileScreen(userId: workerId),
+                        ),
+                      );
+                    }
+                  },
+                  child: Text(
+                    (data["type"] ?? "single") == "team"
+                        ? "View team"
+                        : "View full profile",
+                  ),
+                ),
+
+                const SizedBox(height: 40),
+
+                /// 🔥 BUTTONS
                 Row(
                   children: [
-
-                    /// ✅ ACCEPT
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () =>
-                            updateStatus(context, "accepted"),
+                        onPressed: () => updateStatus(context, "accepted"),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                         child: const Text("Accept"),
                       ),
                     ),
-
                     const SizedBox(width: 10),
-
-                    /// ❌ REJECT
                     Expanded(
-                      child: ElevatedButton(
-                        onPressed: () =>
-                            updateStatus(context, "rejected"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
+                      child: OutlinedButton(
+                        onPressed: () => updateStatus(context, "rejected"),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                         child: const Text("Reject"),
                       ),
                     ),
                   ],
-                )
+                ),
               ],
             ),
           );

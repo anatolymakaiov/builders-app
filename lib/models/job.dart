@@ -16,67 +16,59 @@ class Job {
   final double lat;
   final double lng;
 
-  final String? description;
+  final String description;
 
-  final String? companyName;
+  final String companyName;
   final String? companyLogo;
 
-  final List<String>? photos;
+  final List<String> photos;
 
   /// hourly / price / negotiable
-  final String? jobType;
+  final String jobType;
 
-  /// NEW: duration (e.g. "2 weeks", "3 months")
-  final String? duration;
-
-  /// NEW: start date
+  final String duration;
   final DateTime? startDate;
+  final String employmentType;
 
-  /// NEW: CIS / self-employed
-  final String? employmentType;
-
-  final String? ownerId;
+  /// 🔥 FIX: теперь НЕ nullable
+  final String ownerId;
 
   final int applicantsCount;
-
   final DateTime? createdAt;
+
+  /// 🔥 NEW (КРИТИЧНО ДЛЯ БРИГАД)
+  final int positions;
+  final int filledPositions;
 
   Job({
     required this.id,
     required this.title,
     required this.trade,
-
     required this.location,
     required this.street,
     required this.city,
     required this.postcode,
-
     required this.rate,
-
     required this.lat,
     required this.lng,
-
-    this.description,
-
-    this.companyName,
+    required this.description,
+    required this.companyName,
     this.companyLogo,
-
-    this.photos,
-
-    this.jobType,
-
-    this.duration,
+    required this.photos,
+    required this.jobType,
+    required this.duration,
     this.startDate,
-    this.employmentType,
-
-    this.ownerId,
-
+    required this.employmentType,
+    required this.ownerId,
     this.applicantsCount = 0,
-
     this.createdAt,
+
+    /// 🔥 NEW
+    this.positions = 1,
+    this.filledPositions = 0,
   });
 
-  /// PAYMENT TEXT
+  /// 🔥 PAYMENT TEXT
   String get rateText {
     if (jobType == "negotiable") {
       return "Price negotiable";
@@ -89,43 +81,46 @@ class Job {
     return "£${rate.toInt()}/hour";
   }
 
-  /// IS PRICE WORK
-  bool get isPriceWork {
-    return jobType == "price" || jobType == "negotiable";
-  }
-
-  /// FULL ADDRESS
-  String get fullAddress {
-    return "$street, $city $postcode";
-  }
-
-  /// NEW: SHORT META (для карточек)
+  /// 🔥 SHORT META
   String get shortMeta {
     final parts = <String>[];
 
     parts.add(rateText);
 
-    if (duration != null && duration!.isNotEmpty) {
-      parts.add(duration!);
+    if (duration.isNotEmpty) {
+      parts.add(duration);
     }
 
     if (startDate != null) {
       parts.add("Start ${_formatDate(startDate!)}");
     }
 
+    /// 🔥 показываем если больше 1
+    if (positions > 1) {
+      parts.add("$positions workers needed");
+    }
+
     return parts.join(" • ");
+  }
+
+  /// 🔥 СКОЛЬКО ОСТАЛОСЬ МЕСТ
+  int get remainingPositions => positions - filledPositions;
+
+  /// 🔥 ADDRESS
+  String get fullAddress {
+    return "$street, $city $postcode";
   }
 
   String _formatDate(DateTime date) {
     return "${date.day}/${date.month}";
   }
 
+  /// 🔥 FACTORY
   factory Job.fromFirestore(String id, Map<String, dynamic> data) {
     double safeDouble(dynamic value) {
       if (value == null) return 0;
 
       if (value is int) return value.toDouble();
-
       if (value is double) return value;
 
       if (value is String) {
@@ -135,23 +130,17 @@ class Job {
       return 0;
     }
 
-    List<String>? safePhotos(dynamic value) {
-      if (value == null) return null;
-
+    List<String> safePhotos(dynamic value) {
       if (value is List) {
         return value.map((e) => e.toString()).toList();
       }
-
-      return null;
+      return [];
     }
 
     DateTime? safeDate(dynamic value) {
-      if (value == null) return null;
-
       if (value is Timestamp) {
         return value.toDate();
       }
-
       return null;
     }
 
@@ -159,25 +148,23 @@ class Job {
       if (value == null) return 0;
 
       if (value is int) return value;
-
       if (value is double) return value.toInt();
 
       return 0;
     }
 
+    /// 🔥 ВАЖНО: вычисляем ДО return
+    final positionsRaw = safeInt(data["positions"]);
+
     return Job(
       id: id,
 
       title: data["title"] ?? "",
-
-      trade: data["trade"] ?? data["title"] ?? "",
+      trade: data["trade"] ?? "",
 
       location: data["location"] ?? "",
-
       street: data["street"] ?? "",
-
       city: data["city"] ?? "",
-
       postcode: data["postcode"] ?? "",
 
       rate: safeDouble(data["rate"]),
@@ -185,25 +172,27 @@ class Job {
       lat: safeDouble(data["lat"]),
       lng: safeDouble(data["lng"]),
 
-      description: data["description"],
+      description: data["description"] ?? "",
 
-      companyName: data["companyName"],
+      companyName: data["companyName"] ?? "",
       companyLogo: data["companyLogo"],
 
       photos: safePhotos(data["photos"]),
 
-      jobType: data["jobType"],
+      jobType: data["jobType"] ?? "hourly",
 
-      /// NEW FIELDS
-      duration: data["duration"],
+      duration: data["duration"] ?? "",
       startDate: safeDate(data["startDate"]),
-      employmentType: data["employmentType"],
+      employmentType: data["employmentType"] ?? "",
 
-      ownerId: data["ownerId"],
+      ownerId: data["ownerId"] ?? "unknown",
 
       applicantsCount: safeInt(data["applicantsCount"]),
-
       createdAt: safeDate(data["createdAt"]),
+
+      /// 🔥 FIX
+      positions: positionsRaw == 0 ? 1 : positionsRaw,
+      filledPositions: safeInt(data["filledPositions"]),
     );
   }
 }

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
+import 'worker_profile_screen.dart';
 import 'job_list_screen.dart';
 import 'map_screen.dart';
-import 'profile_screen.dart';
+import 'edit_profile_screen.dart';
 import 'employer_dashboard_screen.dart';
 import 'my_applications_screen.dart';
 import 'my_chats_screen.dart';
@@ -50,10 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
           .get();
 
       if (!doc.exists) {
-        await FirebaseFirestore.instance
-            .collection("users")
-            .doc(userId)
-            .set({
+        await FirebaseFirestore.instance.collection("users").doc(userId).set({
           "role": "worker",
           "createdAt": FieldValue.serverTimestamp(),
         });
@@ -92,16 +89,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Stream<int> getUnreadChats() {
     if (userId == null) return const Stream.empty();
 
-    final field = role == "worker"
-        ? "workerId"
-        : "employerId";
+    final field = role == "worker" ? "workerId" : "employerId";
 
     return FirebaseFirestore.instance
         .collection("chats")
         .where(field, isEqualTo: userId)
         .snapshots()
         .map((snapshot) {
-
       int total = 0;
 
       for (var doc in snapshot.docs) {
@@ -121,13 +115,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 📱 SCREENS
   List<Widget> getScreens() {
     if (role == "employer") {
-      return const [
-        EmployerDashboardScreen(),
-        MapScreen(),
-        EmployerApplicationsScreen(),
-        NotificationsScreen(),
-        MyChatsScreen(),
-        ProfileScreen(),
+      return [
+        const EmployerDashboardScreen(),
+        const MapScreen(),
+        const EmployerApplicationsScreen(),
+        const NotificationsScreen(),
+        const MyChatsScreen(),
+        WorkerProfileScreen(
+          userId: userId!,
+        ),
       ];
     }
 
@@ -138,7 +134,9 @@ class _HomeScreenState extends State<HomeScreen> {
       const MyApplicationsScreen(),
       const NotificationsScreen(),
       const MyChatsScreen(),
-      const ProfileScreen(),
+      WorkerProfileScreen(
+        userId: userId!,
+      ),
     ];
   }
 
@@ -253,13 +251,11 @@ class _HomeScreenState extends State<HomeScreen> {
     return StreamBuilder<int>(
       stream: getUnreadNotifications(),
       builder: (context, notifSnap) {
-
         final notifCount = notifSnap.data ?? 0;
 
         return StreamBuilder<int>(
           stream: getUnreadChats(),
           builder: (context, chatSnap) {
-
             final chatCount = chatSnap.data ?? 0;
 
             final screens = getScreens();
@@ -274,24 +270,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 index: currentIndex,
                 children: screens,
               ),
-
-              floatingActionButton:
-                  role == "employer" && currentIndex == 0
-                      ? FloatingActionButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => PostJobScreen(
-                                  onJobCreated: (_) {},
-                                ),
-                              ),
-                            );
-                          },
-                          child: const Icon(Icons.add),
-                        )
-                      : null,
-
+              floatingActionButton: role == "employer" && currentIndex == 0
+                  ? FloatingActionButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PostJobScreen(
+                              onJobCreated: (_) {},
+                            ),
+                          ),
+                        );
+                      },
+                      child: const Icon(Icons.add),
+                    )
+                  : null,
               bottomNavigationBar: BottomNavigationBar(
                 currentIndex: currentIndex,
                 items: items,

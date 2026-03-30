@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:test_app/services/job_repository.dart';
 import '../models/job.dart';
 import 'map_screen.dart';
@@ -21,7 +23,6 @@ class JobListScreen extends StatefulWidget {
 }
 
 class _JobListScreenState extends State<JobListScreen> {
-
   final jobRepository = JobRepository();
 
   double? userLat;
@@ -45,7 +46,6 @@ class _JobListScreenState extends State<JobListScreen> {
   }
 
   Future<void> getUserLocation() async {
-
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return;
 
@@ -68,7 +68,6 @@ class _JobListScreenState extends State<JobListScreen> {
   }
 
   double calculateDistance(double lat, double lng) {
-
     if (userLat == null || userLng == null) {
       return double.infinity;
     }
@@ -84,7 +83,6 @@ class _JobListScreenState extends State<JobListScreen> {
   }
 
   Future<void> openPostJob() async {
-
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -98,7 +96,6 @@ class _JobListScreenState extends State<JobListScreen> {
   }
 
   Future<void> openFilters() async {
-
     final result = await showModalBottomSheet<FilterResult>(
       context: context,
       isScrollControlled: true,
@@ -113,7 +110,6 @@ class _JobListScreenState extends State<JobListScreen> {
   }
 
   String sortLabel() {
-
     switch (sortType) {
       case SortType.nearest:
         return "Nearest";
@@ -125,7 +121,6 @@ class _JobListScreenState extends State<JobListScreen> {
   }
 
   Widget buildJobCard(Job job) {
-
     final distance = calculateDistance(job.lat, job.lng);
 
     return Card(
@@ -147,14 +142,14 @@ class _JobListScreenState extends State<JobListScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            if (job.photos != null && job.photos!.isNotEmpty)
+            /// 📷 IMAGE
+            if (job.photos.isNotEmpty)
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(14),
                 ),
                 child: Image.network(
-                  job.photos!.first,
+                  job.photos.first,
                   height: 160,
                   width: double.infinity,
                   fit: BoxFit.cover,
@@ -166,59 +161,89 @@ class _JobListScreenState extends State<JobListScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  /// 🔥 TRADE (только если есть)
+                  if (job.trade.isNotEmpty)
+                    Text(
+                      job.trade,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey,
+                      ),
+                    ),
 
+                  if (job.trade.isNotEmpty) const SizedBox(height: 4),
+
+                  /// 🔥 TITLE (главный)
                   Text(
-                    job.trade,
+                    job.title,
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
 
-                  const SizedBox(height: 6),
-
-                  Text(job.title),
-
                   const SizedBox(height: 10),
 
-                  Row(
-                    children: [
+                  /// 🔥 EMPLOYER
+                  if (job.ownerId.isNotEmpty && job.ownerId != "unknown")
+                    FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection("users")
+                          .doc(job.ownerId)
+                          .get(),
+                      builder: (context, snapshot) {
+                        String name = "Company";
+                        String? photo;
 
-                      if (job.companyLogo != null)
-                        CircleAvatar(
-                          radius: 12,
-                          backgroundImage: NetworkImage(job.companyLogo!),
-                        )
-                      else
-                        const CircleAvatar(
-                          radius: 12,
-                          child: Icon(Icons.business, size: 14),
-                        ),
+                        if (snapshot.hasData && snapshot.data!.exists) {
+                          final data =
+                              snapshot.data!.data() as Map<String, dynamic>;
 
-                      const SizedBox(width: 8),
+                          name =
+                              data["companyName"] ?? data["name"] ?? "Company";
 
-                      Expanded(
-                        child: Text(
-                          job.companyName ?? "Construction company",
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      )
+                          photo = data["photo"];
+                        }
 
-                    ],
+                        return Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 14,
+                              backgroundColor: Colors.grey.shade300,
+                              backgroundImage:
+                                  photo != null ? NetworkImage(photo) : null,
+                              child: photo == null
+                                  ? const Icon(Icons.business, size: 16)
+                                  : null,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            )
+                          ],
+                        );
+                      },
+                    ),
+
+                  const SizedBox(height: 8),
+
+                  /// 📍 LOCATION
+                  Text(
+                    "${job.city} ${job.postcode}",
+                    style: const TextStyle(color: Colors.grey),
                   ),
 
-                  const SizedBox(height: 6),
-
-                  Text("${job.city} ${job.postcode}"),
-
                   const SizedBox(height: 10),
 
+                  /// 💰 RATE + 📏 DISTANCE
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
@@ -234,7 +259,6 @@ class _JobListScreenState extends State<JobListScreen> {
                           ),
                         ),
                       ),
-
                       if (distance != double.infinity)
                         Text(
                           "${distance.toStringAsFixed(1)} mi",
@@ -243,14 +267,11 @@ class _JobListScreenState extends State<JobListScreen> {
                             color: Colors.grey,
                           ),
                         ),
-
                     ],
                   ),
-
                 ],
               ),
             )
-
           ],
         ),
       ),
@@ -259,18 +280,14 @@ class _JobListScreenState extends State<JobListScreen> {
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
-
       appBar: AppBar(
         title: const Text("Jobs"),
         actions: [
-
           IconButton(
             icon: const Icon(Icons.filter_alt),
             onPressed: openFilters,
           ),
-
           IconButton(
             icon: const Icon(Icons.map),
             onPressed: () {
@@ -282,23 +299,19 @@ class _JobListScreenState extends State<JobListScreen> {
               );
             },
           ),
-
           IconButton(
             icon: const Icon(Icons.my_location),
             onPressed: getUserLocation,
           )
-
         ],
       ),
-
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
         onPressed: openPostJob,
       ),
-
       body: Column(
         children: [
-
+          /// SEARCH
           Padding(
             padding: const EdgeInsets.all(12),
             child: TextField(
@@ -322,7 +335,6 @@ class _JobListScreenState extends State<JobListScreen> {
             child: StreamBuilder<List<Job>>(
               stream: jobRepository.getJobs(),
               builder: (context, snapshot) {
-
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
@@ -330,7 +342,6 @@ class _JobListScreenState extends State<JobListScreen> {
                 final jobs = snapshot.data!;
 
                 final filteredJobs = jobs.where((job) {
-
                   if (searchQuery.isNotEmpty &&
                       !job.title.toLowerCase().contains(searchQuery) &&
                       !job.trade.toLowerCase().contains(searchQuery)) {
@@ -354,15 +365,12 @@ class _JobListScreenState extends State<JobListScreen> {
                   }
 
                   return true;
-
                 }).toList();
 
+                /// SORT
                 if (sortType == SortType.nearest) {
-                  filteredJobs.sort((a, b) {
-                    final distA = calculateDistance(a.lat, a.lng);
-                    final distB = calculateDistance(b.lat, b.lng);
-                    return distA.compareTo(distB);
-                  });
+                  filteredJobs.sort((a, b) => calculateDistance(a.lat, a.lng)
+                      .compareTo(calculateDistance(b.lat, b.lng)));
                 }
 
                 if (sortType == SortType.highestPay) {
@@ -370,76 +378,19 @@ class _JobListScreenState extends State<JobListScreen> {
                 }
 
                 if (sortType == SortType.newest) {
-                  filteredJobs.sort((a, b) =>
-                      (b.createdAt ?? DateTime.now())
-                          .compareTo(a.createdAt ?? DateTime.now()));
+                  filteredJobs.sort((a, b) => (b.createdAt ?? DateTime.now())
+                      .compareTo(a.createdAt ?? DateTime.now()));
                 }
 
-                return Column(
-                  children: [
-
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-
-                          Text(
-                            "${filteredJobs.length} jobs found",
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-
-                          PopupMenuButton<SortType>(
-                            onSelected: (value) {
-                              setState(() {
-                                sortType = value;
-                              });
-                            },
-                            itemBuilder: (context) => [
-                              const PopupMenuItem(
-                                value: SortType.nearest,
-                                child: Text("Nearest"),
-                              ),
-                              const PopupMenuItem(
-                                value: SortType.highestPay,
-                                child: Text("Highest pay"),
-                              ),
-                              const PopupMenuItem(
-                                value: SortType.newest,
-                                child: Text("Newest"),
-                              ),
-                            ],
-                            child: Row(
-                              children: [
-                                const Icon(Icons.sort),
-                                const SizedBox(width: 4),
-                                Text(sortLabel()),
-                              ],
-                            ),
-                          )
-
-                        ],
-                      ),
-                    ),
-
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: filteredJobs.length,
-                        itemBuilder: (context, index) {
-                          final job = filteredJobs[index];
-                          return buildJobCard(job);
-                        },
-                      ),
-                    )
-
-                  ],
+                return ListView.builder(
+                  itemCount: filteredJobs.length,
+                  itemBuilder: (context, index) {
+                    return buildJobCard(filteredJobs[index]);
+                  },
                 );
               },
             ),
           ),
-
         ],
       ),
     );

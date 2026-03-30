@@ -34,9 +34,6 @@ class EmployerDashboardScreen extends StatelessWidget {
           )
         ],
       ),
-
-      /// ❌ УБРАЛИ FAB ОТСЮДА
-
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection("jobs")
@@ -67,17 +64,37 @@ class EmployerDashboardScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final job = jobs[index];
 
-              return Card(
-                margin: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                child: Padding(
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => JobDetailScreen(job: job),
+                    ),
+                  );
+                },
+                child: Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      )
+                    ],
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
 
+                      /// TITLE
                       Text(
                         job.title,
                         style: const TextStyle(
@@ -88,13 +105,18 @@ class EmployerDashboardScreen extends StatelessWidget {
 
                       const SizedBox(height: 6),
 
+                      /// TRADE
                       Text(
                         job.trade,
-                        style: const TextStyle(color: Colors.grey),
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
 
                       const SizedBox(height: 6),
 
+                      /// LOCATION
                       Text("${job.city} ${job.postcode}"),
 
                       const SizedBox(height: 12),
@@ -122,52 +144,58 @@ class EmployerDashboardScreen extends StatelessWidget {
                         },
                       ),
 
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 16),
 
-                      /// 🔥 FIX OVERFLOW
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        alignment: WrapAlignment.end,
+                      /// BUTTONS
+                      Row(
                         children: [
 
-                          TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      ApplicantsScreen(jobId: job.id),
+                          /// APPLICANTS
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        ApplicantsScreen(jobId: job.id),
+                                  ),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
-                              );
-                            },
-                            child: const Text("Applicants"),
+                              ),
+                              child: const Text("Applicants"),
+                            ),
                           ),
 
-                          ElevatedButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      JobDetailScreen(job: job),
-                                ),
-                              );
-                            },
-                            child: const Text("View job"),
-                          ),
+                          const SizedBox(width: 10),
 
-                          OutlinedButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      ReviewWorkerScreen(job: job),
+                          /// COMPLETE
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        ReviewWorkerScreen(job: job),
+                                  ),
+                                );
+                              },
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                side: const BorderSide(color: Colors.red),
+                                foregroundColor: Colors.red,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
-                              );
-                            },
-                            child: const Text("Complete"),
+                              ),
+                              child: const Text("Complete"),
+                            ),
                           ),
                         ],
                       )
