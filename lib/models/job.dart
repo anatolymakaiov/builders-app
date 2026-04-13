@@ -5,6 +5,7 @@ class Job {
 
   final String title;
   final String trade;
+  final String site;
 
   final String location;
   final String street;
@@ -44,6 +45,7 @@ class Job {
     required this.id,
     required this.title,
     required this.trade,
+    required this.site,
     required this.location,
     required this.street,
     required this.city,
@@ -161,6 +163,7 @@ class Job {
 
       title: data["title"] ?? "",
       trade: data["trade"] ?? "",
+      site: data["site"] ?? "",
 
       location: data["location"] ?? "",
       street: data["street"] ?? "",

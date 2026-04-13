@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'employer_profile_screen.dart';
 import 'post_job_screen.dart';
-import 'applicants_screen.dart';
+import 'chat_screen.dart';
 
 import '../models/job.dart';
 
@@ -328,23 +328,35 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Widget buildApplyButton() {
     if (role == "employer") return const SizedBox();
 
-    String text = "Apply for this job";
-    if (widget.job.remainingPositions <= 0) {
-      text = "No spots left";
-    }
-
-    if (isApplied) text = "Applied";
-    if (isApplying) text = "Applying...";
-
     return SizedBox(
       width: double.infinity,
       height: 50,
       child: ElevatedButton(
-        onPressed:
-            (isApplied || isApplying || widget.job.remainingPositions <= 0)
-                ? null
-                : apply,
-        child: Text(text, style: const TextStyle(fontSize: 18)),
+        onPressed: isApplying
+            ? null
+            : () async {
+                if (isApplied) {
+                  final snap = await FirebaseFirestore.instance
+                      .collection("applications")
+                      .where("jobId", isEqualTo: widget.job.id)
+                      .where("workerId", isEqualTo: userId)
+                      .get();
+
+                  for (var doc in snap.docs) {
+                    await doc.reference.delete();
+                  }
+
+                  if (mounted) {
+                    setState(() => isApplied = false);
+                  }
+                } else {
+                  apply();
+                }
+              },
+        child: Text(
+          isApplied ? "Withdraw application" : "Apply for this job",
+          style: const TextStyle(fontSize: 18),
+        ),
       ),
     );
   }
@@ -681,30 +693,171 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
             buildEditButton(),
             const SizedBox(height: 10),
-            buildDeleteButton(),
-            const SizedBox(height: 10),
-            buildApplyButton(),
-            if (userId == widget.job.ownerId)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ApplicantsScreen(
-                            jobId: widget.job.id,
-                          ),
-                        ),
+
+            if (userId == widget.job.ownerId) ...[
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    await FirebaseFirestore.instance
+                        .collection("jobs")
+                        .doc(widget.job.id)
+                        .update({
+                      "status": "completed",
+                    });
+
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Job completed")),
                       );
-                    },
-                    child: const Text("View applicants"),
+                    }
+                  },
+                  icon: const Icon(Icons.check_circle, color: Colors.green),
+                  label: const Text(
+                    "Complete job",
+                    style: TextStyle(color: Colors.green),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.green),
                   ),
                 ),
               ),
+              const SizedBox(height: 10),
+            ],
+            if (userId == widget.job.ownerId)
+              FutureBuilder<QuerySnapshot>(
+                future: FirebaseFirestore.instance
+                    .collection("applications")
+                    .where("jobId", isEqualTo: widget.job.id)
+                    .get(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return const SizedBox();
+
+                  final docs = snapshot.data!.docs;
+
+                  int pending = 0;
+                  int negotiation = 0;
+                  int offer = 0;
+                  int hired = 0;
+                  int rejected = 0;
+
+                  for (var doc in docs) {
+                    final status =
+                        (doc.data() as Map<String, dynamic>)["status"] ??
+                            "pending";
+
+                    if (status == "pending") pending++;
+                    if (status == "negotiation") negotiation++;
+                    if (status == "offer_sent") offer++;
+                    if (status == "offer_accepted") hired++;
+                    if (status == "rejected") rejected++;
+                  }
+
+                  return Container(
+                    margin: const EdgeInsets.only(top: 20),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Applications",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text("Total: ${docs.length}"),
+                        Text("New: $pending"),
+                        Text("Negotiation: $negotiation"),
+                        Text("Offer sent: $offer"),
+                        Text("Hired: $hired"),
+                        Text("Rejected: $rejected"),
+                      ],
+                    ),
+                  );
+                },
+              ),
+
+            /// 👇 APPLY (только для worker)
+            if (userId != widget.job.ownerId) ...[
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final uid = userId;
+                    if (uid == null) return;
+
+                    final employerId = widget.job.ownerId;
+
+                    /// 🔥 ищем существующий чат
+                    final existing = await FirebaseFirestore.instance
+                        .collection("chats")
+                        .where("jobId", isEqualTo: widget.job.id)
+                        .where("participants", arrayContains: uid)
+                        .get();
+
+                    String chatId;
+
+                    if (existing.docs.isNotEmpty) {
+                      chatId = existing.docs.first.id;
+                    } else {
+                      /// 🔥 создаём новый чат
+                      final doc = await FirebaseFirestore.instance
+                          .collection("chats")
+                          .add({
+                        /// 🔥 ОСНОВА
+                        "jobId": widget.job.id,
+                        "participants": [uid, employerId],
+
+                        /// 🔥 ДЛЯ ТВОЕГО ЧАТА (старого UI)
+                        "workerId": uid,
+                        "employerId": employerId,
+
+                        "workerName": "Worker",
+                        "employerName": "Employer",
+
+                        /// 🔥 СЧЁТЧИКИ
+                        "unreadCount_worker": 0,
+                        "unreadCount_employer": 0,
+
+                        /// 🔥 TYPING
+                        "typing_worker": false,
+                        "typing_employer": false,
+
+                        /// 🔥 СООБЩЕНИЯ
+                        "lastMessage": "",
+                        "lastMessageType": "text",
+
+                        /// 🔥 ДАТЫ
+                        "createdAt": FieldValue.serverTimestamp(),
+                        "updatedAt": FieldValue.serverTimestamp(),
+                      });
+
+                      chatId = doc.id;
+                    }
+
+                    /// 🔥 переход в чат (если экран есть)
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ChatScreen(chatId: chatId),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.chat),
+                  label: const Text("Message employer"),
+                ),
+              ),
+              const SizedBox(height: 10),
+              buildApplyButton(),
+            ],
           ],
         ),
       ),

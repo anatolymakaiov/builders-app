@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'employer_profile_screen.dart';
 import 'team_details_screen.dart';
+import 'applicants_screen.dart';
+import 'application_details_screen.dart';
 
 class EmployerApplicationsScreen extends StatelessWidget {
   const EmployerApplicationsScreen({super.key});
@@ -77,169 +79,93 @@ class EmployerApplicationsScreen extends StatelessWidget {
                       .substring(0, 16)
                   : "";
 
-              return Container(
-                margin:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    )
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    /// 👤 WORKER
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          child: Icon(
-                            type == "team" ? Icons.groups : Icons.person,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                type == "team"
-                                    ? "Team application"
-                                    : "$workerName",
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              if (type == "team")
-                                Text(
-                                  "${members.length} members",
-                                  style: const TextStyle(color: Colors.grey),
-                                ),
-                            ],
-                          ),
-                        ),
-
-                        /// STATUS
-                        Text(
-                          status.toUpperCase(),
-                          style: TextStyle(
-                            color: getStatusColor(status),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        )
-                      ],
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ApplicationDetailsScreen(
+                        applicationId: doc.id,
+                        data: data,
+                      ),
                     ),
-
-                    const SizedBox(height: 8),
-
-                    /// JOB
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(jobTitle),
-                        if (dateText.isNotEmpty)
-                          Text(
-                            dateText,
-                            style: const TextStyle(
-                                fontSize: 12, color: Colors.grey),
-                          ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    /// BUTTONS
-                    if (status == "pending")
+                  );
+                },
+                child: Container(
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      )
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      /// 👤 WORKER
                       Row(
                         children: [
-                          /// ACCEPT
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () => updateStatus(doc.id, "accepted"),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                              ),
-                              child: const Text("Accept"),
+                          CircleAvatar(
+                            child: Icon(
+                              type == "team" ? Icons.groups : Icons.person,
                             ),
                           ),
-
                           const SizedBox(width: 10),
-
-                          /// REJECT
                           Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => updateStatus(doc.id, "rejected"),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red),
-                              ),
-                              child: const Text("Reject"),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  type == "team"
+                                      ? "Team application"
+                                      : workerName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                if (type == "team")
+                                  Text(
+                                    "${members.length} members",
+                                    style: const TextStyle(color: Colors.grey),
+                                  ),
+                              ],
                             ),
                           ),
+                          Text(
+                            status.toUpperCase(),
+                            style: TextStyle(
+                              color: getStatusColor(status),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
                         ],
                       ),
 
-                    const SizedBox(height: 10),
+                      const SizedBox(height: 8),
 
-                    /// VIEW PROFILE
-                    TextButton(
-                      onPressed: () async {
-                        if (type == "team") {
-                          if (teamId == null) return;
-
-                          final teamSnap = await FirebaseFirestore.instance
-                              .collection("teams")
-                              .doc(teamId)
-                              .get();
-
-                          if (!teamSnap.exists) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Team not found")),
-                            );
-                            return;
-                          }
-
-                          final teamData =
-                              teamSnap.data() as Map<String, dynamic>;
-
-                          if (!context.mounted) return;
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => TeamDetailsScreen(
-                                teamId: teamId,
-                                teamData: teamData,
-                              ),
+                      /// JOB
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(jobTitle),
+                          if (dateText.isNotEmpty)
+                            Text(
+                              dateText,
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.grey),
                             ),
-                          );
-                        } else {
-                          if (workerId == null) return;
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => EmployerProfileScreen(
-                                userId: workerId,
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                      child: Text(
-                        type == "team"
-                            ? "View team profile"
-                            : "View worker profile",
+                        ],
                       ),
-                    )
-                  ],
+                    ],
+                  ),
                 ),
               );
             },

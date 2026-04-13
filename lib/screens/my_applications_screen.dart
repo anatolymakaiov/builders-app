@@ -27,27 +27,41 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   }
 
   /// 🔥 ПРАВИЛЬНЫЙ STREAM
-  Stream<QuerySnapshot> getApplicationsStream(String userId) {
-    Query base = FirebaseFirestore.instance
+  Stream<List<QueryDocumentSnapshot>> getApplicationsStream(String userId) {
+    final singleStream = FirebaseFirestore.instance
         .collection("applications")
-        .where("workerId", isEqualTo: userId) // ✅ FIX
-        .orderBy("createdAt", descending: true);
+        .where("workerId", isEqualTo: userId)
+        .snapshots();
 
-    switch (filter) {
-      case "accepted":
-        base = base.where("status", isEqualTo: "accepted");
-        break;
+    final teamStream = FirebaseFirestore.instance
+        .collection("applications")
+        .where("members", arrayContains: userId)
+        .snapshots();
 
-      case "rejected":
-        base = base.where("status", isEqualTo: "rejected");
-        break;
+    return singleStream.asyncMap((singleSnap) async {
+      final teamSnap = await teamStream.first;
 
-      case "pending":
-        base = base.where("status", isEqualTo: "pending");
-        break;
-    }
+      final allDocs = [
+        ...singleSnap.docs,
+        ...teamSnap.docs,
+      ];
 
-    return base.snapshots();
+      /// 🔥 убираем дубликаты (на всякий случай)
+      final unique = {
+        for (var doc in allDocs) doc.id: doc,
+      }.values.toList();
+
+      /// 🔥 сортировка
+      unique.sort((a, b) {
+        final aTime = (a.data() as Map)["createdAt"] as Timestamp?;
+        final bTime = (b.data() as Map)["createdAt"] as Timestamp?;
+
+        if (aTime == null || bTime == null) return 0;
+        return bTime.compareTo(aTime);
+      });
+
+      return unique;
+    });
   }
 
   @override
@@ -80,20 +94,18 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
 
           /// 🔥 LIST
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
+            child: StreamBuilder<List<QueryDocumentSnapshot>>(
               stream: getApplicationsStream(user.uid),
               builder: (context, snapshot) {
-                if (snapshot.connectionState ==
-                    ConnectionState.waiting) {
-                  return const Center(
-                      child: CircularProgressIndicator());
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
                 }
 
                 if (!snapshot.hasData) {
                   return const Center(child: Text("Error loading"));
                 }
 
-                final apps = snapshot.data!.docs;
+                final apps = snapshot.data!;
 
                 if (apps.isEmpty) {
                   return const Center(child: Text("No applications"));
@@ -102,14 +114,14 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                 return ListView.builder(
                   itemCount: apps.length,
                   itemBuilder: (context, index) {
-                    final data =
-                        apps[index].data() as Map<String, dynamic>;
+                    final data = apps[index].data() as Map<String, dynamic>;
+
+                    final offer = data["offer"] as Map<String, dynamic>?;
 
                     final status = data["status"] ?? "pending";
 
                     /// ✅ БЕРЕМ ИЗ APPLICATION (быстро)
-                    final jobTitle =
-                        data["jobTitle"] ?? "Job";
+                    final jobTitle = data["jobTitle"] ?? "Job";
 
                     final jobId = data["jobId"];
 
@@ -125,8 +137,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                             return const Padding(
                               padding: EdgeInsets.all(16),
                               child: Center(
-                                child:
-                                    CircularProgressIndicator(),
+                                child: CircularProgressIndicator(),
                               ),
                             );
                           }
@@ -138,8 +149,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                           }
 
                           final jobData =
-                              jobSnapshot.data!.data()
-                                  as Map<String, dynamic>;
+                              jobSnapshot.data!.data() as Map<String, dynamic>;
 
                           final job = Job.fromFirestore(
                             jobSnapshot.data!.id,
@@ -152,48 +162,146 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                     }
 
                     /// ✅ если есть jobTitle — просто показываем
-                    return Card(
+                    return Container(
                       margin: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),
-                      child: ListTile(
-                        title: Text(
-                          jobTitle,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          )
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          /// TITLE
+                          Text(
+                            jobTitle,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
-                        ),
-                        subtitle: const Text("Tap to view"),
-                        trailing: Text(
-                          status.toUpperCase(),
-                          style: TextStyle(
-                            color: getStatusColor(status),
-                            fontWeight: FontWeight.bold,
+
+                          const SizedBox(height: 6),
+
+                          /// STATUS
+                          Text(
+                            status.toUpperCase(),
+                            style: TextStyle(
+                              color: getStatusColor(status),
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        onTap: () async {
-                          final jobDoc =
-                              await FirebaseFirestore.instance
+
+                          const SizedBox(height: 10),
+
+                          /// 🔥 OFFER UI
+                          if (status == "offer_sent" &&
+                              data["offer"] != null) ...[
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text("Offer details",
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 6),
+                                  Text("Rate: £${data["offer"]["rate"]}/h"),
+                                  Text("Start: ${data["offer"]["startDate"]}"),
+                                  if (data["offer"]["message"] != null)
+                                    Text(
+                                        "Message: ${data["offer"]["message"]}"),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 10),
+
+                            /// ACCEPT OFFER
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: () async {
+                                  await FirebaseFirestore.instance
+                                      .collection("applications")
+                                      .doc(apps[index].id)
+                                      .update({"status": "accepted"});
+
+                                  await FirebaseFirestore.instance
+                                      .collection("jobs")
+                                      .doc(jobId)
+                                      .update({
+                                    "filledPositions": FieldValue.increment(1)
+                                  });
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                ),
+                                child: const Text("Accept offer"),
+                              ),
+                            ),
+
+                            const SizedBox(height: 8),
+
+                            /// DECLINE
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: () async {
+                                  await FirebaseFirestore.instance
+                                      .collection("applications")
+                                      .doc(apps[index].id)
+                                      .update({"status": "rejected"});
+                                },
+                                child: const Text("Decline"),
+                              ),
+                            ),
+                          ],
+
+                          const SizedBox(height: 10),
+
+                          /// OPEN JOB
+                          GestureDetector(
+                            onTap: () async {
+                              final jobDoc = await FirebaseFirestore.instance
                                   .collection("jobs")
                                   .doc(jobId)
                                   .get();
 
-                          if (!jobDoc.exists) return;
+                              if (!jobDoc.exists) return;
 
-                          final job = Job.fromFirestore(
-                            jobDoc.id,
-                            jobDoc.data()!,
-                          );
+                              final job = Job.fromFirestore(
+                                jobDoc.id,
+                                jobDoc.data()!,
+                              );
 
-                          if (context.mounted) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    JobDetailScreen(job: job),
-                              ),
-                            );
-                          }
-                        },
+                              if (context.mounted) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => JobDetailScreen(job: job),
+                                  ),
+                                );
+                              }
+                            },
+                            child: const Text(
+                              "Tap to view",
+                              style: TextStyle(color: Colors.blue),
+                            ),
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -209,8 +317,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   /// 🔥 reusable card
   Widget buildCard(Job job, String status) {
     return Card(
-      margin: const EdgeInsets.symmetric(
-          horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: ListTile(
         title: Text(
           job.title,
@@ -230,6 +337,18 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     );
   }
 
+  Future<void> updateApplicationStatus(
+    String applicationId,
+    String status,
+  ) async {
+    await FirebaseFirestore.instance
+        .collection("applications")
+        .doc(applicationId)
+        .update({
+      "status": status,
+    });
+  }
+
   Widget filterButton(String value, String label) {
     final selected = filter == value;
 
@@ -240,8 +359,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         });
       },
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: selected ? Colors.orange : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(10),

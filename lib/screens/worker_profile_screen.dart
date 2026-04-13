@@ -52,20 +52,50 @@ class WorkerProfileScreen extends StatelessWidget {
           ],
         ],
       ),
-      body: FutureBuilder<DocumentSnapshot>(
-        future:
-            FirebaseFirestore.instance.collection("users").doc(userId).get(),
+      body: FutureBuilder<Map<String, dynamic>>(
+        future: () async {
+          final userSnap = await FirebaseFirestore.instance
+              .collection("users")
+              .doc(userId)
+              .get();
+
+          final userData = userSnap.data() as Map<String, dynamic>;
+
+          String? applicationId;
+          String status = "pending";
+
+          if (jobId != null && employerId != null) {
+            final appQuery = await FirebaseFirestore.instance
+                .collection("applications")
+                .where("jobId", isEqualTo: jobId)
+                .where("workerId", isEqualTo: userId)
+                .limit(1)
+                .get();
+
+            if (appQuery.docs.isNotEmpty) {
+              final appDoc = appQuery.docs.first;
+              applicationId = appDoc.id;
+              status = appDoc["status"] ?? "pending";
+            }
+          }
+
+          return {
+            "user": userData,
+            "applicationId": applicationId,
+            "status": status,
+          };
+        }(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (!snapshot.data!.exists) {
-            return const Center(child: Text("User not found"));
-          }
-
-          final data = snapshot.data!.data() as Map<String, dynamic>;
-
+          final result = snapshot.data!;
+          final data = result["user"] as Map<String, dynamic>;
+          final String? applicationId = result["applicationId"];
+          final String status = result["status"];
+          final offerRate = result["offerRate"];
+          final offerNote = result["offerNote"];
           final name = data["name"] ?? "Worker";
           final trade = data["trade"] ?? "";
           final rate = data["rate"];
@@ -209,6 +239,59 @@ class WorkerProfileScreen extends StatelessWidget {
                     );
                   },
                 ),
+                if (status == "offer_sent") ...[
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: Colors.green.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Offer",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.green,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (offerRate != null) Text("Rate: £$offerRate/hour"),
+                        if (offerNote != null &&
+                            offerNote.toString().isNotEmpty)
+                          Text("Note: $offerNote"),
+                        const SizedBox(height: 12),
+                        if (!isMyProfile)
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                await FirebaseFirestore.instance
+                                    .collection("applications")
+                                    .doc(applicationId)
+                                    .update({
+                                  "status": "offer_accepted",
+                                });
+
+                                if (!context.mounted) return;
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text("Offer accepted")),
+                                );
+                              },
+                              child: const Text("Accept offer"),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
 
                 /// 💬 MESSAGE
                 if (employerId != null && jobId != null)
@@ -238,6 +321,125 @@ class WorkerProfileScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                if (applicationId != null) ...[
+                  const SizedBox(height: 12),
+
+                  /// ACTIONS
+                  Row(
+                    children: [
+                      /// ❌ REJECT (всегда кроме accepted)
+                      if (status != "offer_accepted")
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              await FirebaseFirestore.instance
+                                  .collection("applications")
+                                  .doc(applicationId)
+                                  .update({"status": "rejected"});
+                            },
+                            child: const Text("Reject"),
+                          ),
+                        ),
+
+                      if (status != "offer_accepted") const SizedBox(width: 10),
+
+                      /// 💬 NEGOTIATION (только из pending)
+                      if (status == "pending")
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              await FirebaseFirestore.instance
+                                  .collection("applications")
+                                  .doc(applicationId)
+                                  .update({"status": "negotiation"});
+                            },
+                            child: const Text("Negotiation"),
+                          ),
+                        ),
+
+                      if (status == "pending") const SizedBox(width: 10),
+
+                      /// 💰 OFFER (pending + negotiation)
+                      if (status == "pending" || status == "negotiation")
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              final rateController = TextEditingController();
+                              final noteController = TextEditingController();
+
+                              final result = await showDialog<bool>(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: const Text("Send Offer"),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      TextField(
+                                        controller: rateController,
+                                        keyboardType: TextInputType.number,
+                                        decoration: const InputDecoration(
+                                          labelText: "Rate (£/hour)",
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      TextField(
+                                        controller: noteController,
+                                        decoration: const InputDecoration(
+                                          labelText: "Message (optional)",
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: const Text("Cancel"),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      child: const Text("Send"),
+                                    ),
+                                  ],
+                                ),
+                              );
+
+                              if (result != true) return;
+
+                              final rate =
+                                  double.tryParse(rateController.text.trim());
+
+                              await FirebaseFirestore.instance
+                                  .collection("applications")
+                                  .doc(applicationId)
+                                  .update({
+                                "status": "offer_sent",
+                                "offerRate": rate,
+                                "offerNote": noteController.text.trim(),
+                                "offerCreatedAt": FieldValue.serverTimestamp(),
+                              });
+                            },
+                            child: const Text("Offer"),
+                          ),
+                        ),
+
+                      /// ✅ HIRED (только после оффера)
+                      if (status == "offer_sent")
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              await FirebaseFirestore.instance
+                                  .collection("applications")
+                                  .doc(applicationId)
+                                  .update({"status": "offer_accepted"});
+                            },
+                            child: const Text("Hire"),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
 
                 /// 🔥 CREATE TEAM
                 if (isMyProfile) ...[

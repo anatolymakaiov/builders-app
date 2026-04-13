@@ -40,14 +40,12 @@ class MyChatsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text("My Chats"),
       ),
-
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection("chats")
-            .where("participants", arrayContains: uid)
+            .where("members", arrayContains: uid)
             .snapshots(),
         builder: (context, snapshot) {
-
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -76,7 +74,6 @@ class MyChatsScreen extends StatelessWidget {
           return ListView.builder(
             itemCount: chats.length,
             itemBuilder: (context, index) {
-
               final chat = chats[index];
               final data = chat.data() as Map<String, dynamic>;
 
@@ -93,16 +90,14 @@ class MyChatsScreen extends StatelessWidget {
                   ? (data["employerName"] ?? "Employer")
                   : (data["workerName"] ?? "Worker");
 
-              final otherUserId =
-                  isWorker ? employerId : workerId;
+              final otherUserId = isWorker ? employerId : workerId;
 
               final updatedAt = data["updatedAt"] as Timestamp?;
 
               final typingWorker = data["typing_worker"] ?? false;
               final typingEmployer = data["typing_employer"] ?? false;
 
-              final isTyping =
-                  isWorker ? typingEmployer : typingWorker;
+              final isTyping = isWorker ? typingEmployer : typingWorker;
 
               final lastMessage = data["lastMessage"] ?? "";
               final lastMessageType = data["lastMessageType"] ?? "text";
@@ -113,7 +108,6 @@ class MyChatsScreen extends StatelessWidget {
                     .doc(otherUserId)
                     .snapshots(),
                 builder: (context, userSnap) {
-
                   final userData =
                       userSnap.data?.data() as Map<String, dynamic>?;
 
@@ -125,18 +119,15 @@ class MyChatsScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              ChatScreen(chatId: chat.id),
+                          builder: (_) => ChatScreen(chatId: chat.id),
                         ),
                       );
                     },
-
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 10),
                       child: Row(
                         children: [
-
                           /// 👤 AVATAR (🔥 CACHE)
                           Stack(
                             children: [
@@ -150,17 +141,15 @@ class MyChatsScreen extends StatelessWidget {
                                           width: 52,
                                           height: 52,
                                           fit: BoxFit.cover,
-
                                           placeholder: (context, url) =>
-                                              const CircularProgressIndicator(strokeWidth: 2),
-
+                                              const CircularProgressIndicator(
+                                                  strokeWidth: 2),
                                           errorWidget: (context, url, error) =>
                                               const Icon(Icons.person),
                                         )
                                       : const Icon(Icons.person),
                                 ),
                               ),
-
                               if (isOnline)
                                 Positioned(
                                   right: 0,
@@ -182,10 +171,8 @@ class MyChatsScreen extends StatelessWidget {
                           /// 💬 TEXT
                           Expanded(
                             child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-
                                 /// NAME + TIME
                                 Row(
                                   mainAxisAlignment:
@@ -200,11 +187,9 @@ class MyChatsScreen extends StatelessWidget {
                                               : FontWeight.w500,
                                           fontSize: 16,
                                         ),
-                                        overflow:
-                                            TextOverflow.ellipsis,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-
                                     Text(
                                       formatTime(updatedAt),
                                       style: const TextStyle(
@@ -220,7 +205,6 @@ class MyChatsScreen extends StatelessWidget {
                                 /// MESSAGE
                                 Row(
                                   children: [
-
                                     if (!isTyping && lastMessageType == "image")
                                       const Padding(
                                         padding: EdgeInsets.only(right: 4),
@@ -230,7 +214,6 @@ class MyChatsScreen extends StatelessWidget {
                                           color: Colors.grey,
                                         ),
                                       ),
-
                                     Expanded(
                                       child: Text(
                                         isTyping
@@ -241,8 +224,7 @@ class MyChatsScreen extends StatelessWidget {
                                                     ? "Open chat"
                                                     : lastMessage)),
                                         maxLines: 1,
-                                        overflow:
-                                            TextOverflow.ellipsis,
+                                        overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           fontSize: 14,
                                           color: isTyping
@@ -257,22 +239,16 @@ class MyChatsScreen extends StatelessWidget {
                                         ),
                                       ),
                                     ),
-
                                     if (unread > 0)
                                       Container(
-                                        margin:
-                                            const EdgeInsets.only(left: 8),
-                                        padding:
-                                            const EdgeInsets.all(6),
-                                        decoration:
-                                            const BoxDecoration(
+                                        margin: const EdgeInsets.only(left: 8),
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: const BoxDecoration(
                                           color: Colors.orange,
                                           shape: BoxShape.circle,
                                         ),
                                         child: Text(
-                                          unread > 9
-                                              ? "9+"
-                                              : unread.toString(),
+                                          unread > 9 ? "9+" : unread.toString(),
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 10,

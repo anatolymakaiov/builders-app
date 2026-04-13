@@ -36,6 +36,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
   final rateController = TextEditingController();
   final companyController = TextEditingController();
   final descriptionController = TextEditingController();
+  final siteController = TextEditingController();
 
   bool loading = false;
   String postcodeStatus = "";
@@ -93,6 +94,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
       titleController.text = job.title;
       positionsController.text = job.positions.toString();
+      siteController.text = job.site;
       durationController.text = job.duration;
       streetController.text = job.street;
       cityController.text = job.city;
@@ -232,6 +234,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
     final data = {
       "ownerId": user.uid,
       "title": title,
+      "site": siteController.text.trim(),
       "trade": selectedTrade,
       "duration": durationController.text.trim(),
       "positions": int.tryParse(positionsController.text) ?? 1,
@@ -305,6 +308,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
             TextField(
               controller: titleController,
               decoration: const InputDecoration(labelText: "Job title"),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: siteController,
+              decoration: const InputDecoration(labelText: "Site"),
             ),
             const SizedBox(height: 12),
             TextField(

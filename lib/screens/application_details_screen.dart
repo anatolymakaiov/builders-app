@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'employer_profile_screen.dart';
 import 'team_details_screen.dart';
+import 'chat_screen.dart';
 
 class ApplicationDetailsScreen extends StatelessWidget {
   final String applicationId;
@@ -16,7 +17,9 @@ class ApplicationDetailsScreen extends StatelessWidget {
   Future<void> updateStatus(BuildContext context, String status) async {
     final db = FirebaseFirestore.instance;
 
-    final workerId = data["workerId"] ?? data["userId"];
+    final isTeam = (data["type"] ?? "single") == "team";
+
+    final workerId = isTeam ? null : (data["workerId"] ?? data["userId"]);
     final employerId = data["employerId"];
     final jobId = data["jobId"];
 
@@ -51,7 +54,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
         );
 
         /// 🔥 если приняли — увеличиваем занятые места
-        if (status == "accepted") {
+        if (status == "offer_accepted") {
           transaction.update(jobRef, {
             "filledPositions": filled + workersCount,
           });
@@ -59,8 +62,6 @@ class ApplicationDetailsScreen extends StatelessWidget {
       });
 
       if (!context.mounted) return;
-
-      Navigator.pop(context);
     } catch (e) {
       debugPrint("UPDATE STATUS ERROR: $e");
 
@@ -70,13 +71,141 @@ class ApplicationDetailsScreen extends StatelessWidget {
     }
   }
 
+  Future<void> openChat(BuildContext context) async {
+    final workerId = data["workerId"] ??
+        data["userId"] ??
+        (data["members"] != null && data["members"].isNotEmpty
+            ? data["members"][0]
+            : null);
+    final employerId = data["employerId"];
+
+    if (workerId == null || employerId == null) return;
+
+    final existing = await FirebaseFirestore.instance
+        .collection("chats")
+        .where("workerId", isEqualTo: workerId)
+        .where("employerId", isEqualTo: employerId)
+        .limit(1)
+        .get();
+
+    String chatId;
+
+    if (existing.docs.isNotEmpty) {
+      chatId = existing.docs.first.id;
+    } else {
+      final doc = await FirebaseFirestore.instance.collection("chats").add({
+        "workerId": workerId,
+        "employerId": employerId,
+        "participants": [workerId, employerId],
+        "lastMessage": "",
+        "lastMessageType": "text",
+        "updatedAt": FieldValue.serverTimestamp(),
+        "unreadCount_worker": 0,
+        "unreadCount_employer": 0,
+        "typing_worker": false,
+        "typing_employer": false,
+      });
+
+      chatId = doc.id;
+    }
+
+    if (!context.mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(chatId: chatId),
+      ),
+    );
+  }
+
+  Future<void> openOfferDialog(BuildContext context) async {
+    final rateController = TextEditingController();
+    final dateController = TextEditingController();
+    final messageController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Send Offer"),
+          content: SingleChildScrollView(
+            child: Column(
+              children: [
+                TextField(
+                  controller: rateController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: "Rate (£/h)",
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: dateController,
+                  decoration: const InputDecoration(
+                    labelText: "Start date",
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: messageController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: "Message",
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (rateController.text.isEmpty ||
+                    dateController.text.isEmpty) {
+                  return;
+                }
+                Navigator.pop(context, true);
+              },
+              child: const Text("Send"),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != true) return;
+
+    /// 🔥 СОХРАНЕНИЕ OFFER
+    await FirebaseFirestore.instance
+        .collection("applications")
+        .doc(applicationId)
+        .update({
+      "status": "offer_sent",
+      "offer": {
+        "rate": rateController.text.trim(),
+        "startDate": dateController.text.trim(),
+        "message": messageController.text.trim(),
+        "createdAt": FieldValue.serverTimestamp(),
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final workerId = data["workerId"] ?? data["userId"];
+    final Set<String> selectedMembers = {};
+    final workerId = data["workerId"] ??
+        data["userId"] ??
+        (data["members"] != null && data["members"].isNotEmpty
+            ? data["members"][0]
+            : null);
 
     if (workerId == null) {
       return const Scaffold(
-        body: Center(child: Text("Invalid application")),
+        body: Center(child: Text("No worker data")),
       );
     }
 
@@ -211,36 +340,256 @@ class ApplicationDetailsScreen extends StatelessWidget {
                         : "View full profile",
                   ),
                 ),
+                if ((data["type"] ?? "single") == "team" &&
+                    data["members"] != null) ...[
+                  const Text(
+                    "Team members",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  ...List<String>.from(data["members"]).map((memberId) {
+                    return FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection("users")
+                          .doc(memberId)
+                          .get(),
+                      builder: (context, snap) {
+                        if (!snap.hasData) return const SizedBox();
 
+                        final user = snap.data!.data() as Map<String, dynamic>;
+
+                        return StatefulBuilder(
+                          builder: (context, setLocalState) {
+                            final isSelected =
+                                selectedMembers.contains(memberId);
+
+                            return ListTile(
+                              leading: Checkbox(
+                                value: isSelected,
+                                onChanged: (v) {
+                                  setLocalState(() {
+                                    if (v == true) {
+                                      selectedMembers.add(memberId);
+                                    } else {
+                                      selectedMembers.remove(memberId);
+                                    }
+                                  });
+                                },
+                              ),
+                              title: Text(user["name"] ?? "Worker"),
+                              subtitle: Text(user["trade"] ?? ""),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  }).toList(),
+                  const SizedBox(height: 20),
+                ],
                 const SizedBox(height: 40),
 
                 /// 🔥 BUTTONS
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => updateStatus(context, "accepted"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                /// 🔥 ACTIONS (НОВАЯ ЛОГИКА)
+                StreamBuilder<DocumentSnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection("applications")
+                      .doc(applicationId)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const SizedBox();
+
+                    final liveData =
+                        snapshot.data!.data() as Map<String, dynamic>;
+                    final status = liveData["status"] ?? "pending";
+
+                    final members =
+                        List<String>.from(liveData["members"] ?? []);
+
+                    return Column(
+                      children: [
+                        /// MESSAGE
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () => openChat(context),
+                            child: const Text("Message worker"),
+                          ),
                         ),
-                        child: const Text("Accept"),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => updateStatus(context, "rejected"),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: const Text("Reject"),
-                      ),
-                    ),
-                  ],
-                ),
+
+                        const SizedBox(height: 12),
+
+                        /// =========================
+                        /// PENDING
+                        /// =========================
+                        if (status == "pending") ...[
+                          /// NEGOTIATION
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                if ((liveData["type"] ?? "single") == "team") {
+                                  for (var memberId in selectedMembers) {
+                                    await FirebaseFirestore.instance
+                                        .collection("applications")
+                                        .doc(applicationId)
+                                        .update({
+                                      "membersStatus.$memberId": "negotiation",
+                                    });
+                                  }
+                                } else {
+                                  await updateStatus(context, "negotiation");
+                                }
+
+                                final workerId = liveData["workerId"] ??
+                                    (liveData["members"] != null
+                                        ? liveData["members"][0]
+                                        : null);
+
+                                final employerId = liveData["employerId"];
+                                final jobId = liveData["jobId"];
+
+                                if (workerId == null ||
+                                    employerId == null ||
+                                    jobId == null) return;
+
+                                final existing = await FirebaseFirestore
+                                    .instance
+                                    .collection("chats")
+                                    .where("jobId", isEqualTo: jobId)
+                                    .where("members", arrayContains: workerId)
+                                    .get();
+
+                                String chatId;
+
+                                if (existing.docs.isNotEmpty) {
+                                  chatId = existing.docs.first.id;
+                                } else {
+                                  final doc = await FirebaseFirestore.instance
+                                      .collection("chats")
+                                      .add({
+                                    "jobId": jobId,
+                                    "members": [workerId, employerId],
+                                    "workerId": workerId,
+                                    "employerId": employerId,
+                                    "workerName": "Worker",
+                                    "employerName": "Employer",
+                                    "unreadCount_worker": 0,
+                                    "unreadCount_employer": 0,
+                                    "typing_worker": false,
+                                    "typing_employer": false,
+                                    "lastMessage": "",
+                                    "lastMessageType": "text",
+                                    "createdAt": FieldValue.serverTimestamp(),
+                                    "updatedAt": FieldValue.serverTimestamp(),
+                                  });
+
+                                  chatId = doc.id;
+                                }
+
+                                if (context.mounted) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          ChatScreen(chatId: chatId),
+                                    ),
+                                  );
+                                }
+                              },
+                              child: const Text("Start negotiation"),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          /// MAKE OFFER
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: () => openOfferDialog(context),
+                              child: const Text("Make offer"),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          /// REJECT
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                await updateStatus(context, "rejected");
+                              },
+                              child: const Text("Reject"),
+                            ),
+                          ),
+                        ],
+
+                        /// =========================
+                        /// NEGOTIATION
+                        /// =========================
+                        if (status == "negotiation") ...[
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: () => openOfferDialog(context),
+                              child: const Text("Make offer"),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                await updateStatus(context, "rejected");
+                              },
+                              child: const Text("Reject"),
+                            ),
+                          ),
+                        ],
+
+                        /// =========================
+                        /// OFFER SENT
+                        /// =========================
+                        if (status == "offer_sent") ...[
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                await updateStatus(context, "negotiation");
+                              },
+                              child: const Text("Withdraw offer"),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                await updateStatus(context, "rejected");
+                              },
+                              child: const Text("Reject"),
+                            ),
+                          ),
+                        ],
+
+                        /// =========================
+                        /// HIRED
+                        /// =========================
+                        if (status == "offer_accepted") ...[
+                          const SizedBox(height: 10),
+                          const Text(
+                            "Worker hired",
+                            style: TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
+                )
               ],
             ),
           );
