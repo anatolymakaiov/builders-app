@@ -12,6 +12,7 @@ import 'saved_jobs_screen.dart';
 import 'notifications_screen.dart';
 import 'employer_applications_screen.dart';
 import 'post_job_screen.dart';
+import 'employer_profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -121,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
         const EmployerApplicationsScreen(),
         const NotificationsScreen(),
         const MyChatsScreen(),
-        WorkerProfileScreen(
+        EmployerProfileScreen(
           userId: userId!,
         ),
       ];

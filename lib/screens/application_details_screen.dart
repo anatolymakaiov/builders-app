@@ -23,7 +23,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
     final employerId = data["employerId"];
     final jobId = data["jobId"];
 
-    if (workerId == null || employerId == null || jobId == null) return;
+    if (employerId == null || jobId == null) return;
 
     try {
       /// 🔥 получаем вакансию
@@ -436,6 +436,12 @@ class ApplicationDetailsScreen extends StatelessWidget {
                                       "membersStatus.$memberId": "negotiation",
                                     });
                                   }
+                                  await FirebaseFirestore.instance
+                                      .collection("applications")
+                                      .doc(applicationId)
+                                      .update({
+                                    "status": "negotiation",
+                                  });
                                 } else {
                                   await updateStatus(context, "negotiation");
                                 }
@@ -518,7 +524,16 @@ class ApplicationDetailsScreen extends StatelessWidget {
                             width: double.infinity,
                             child: OutlinedButton(
                               onPressed: () async {
-                                await updateStatus(context, "rejected");
+                                if ((liveData["type"] ?? "single") == "team") {
+                                  await FirebaseFirestore.instance
+                                      .collection("applications")
+                                      .doc(applicationId)
+                                      .update({
+                                    "status": "rejected",
+                                  });
+                                } else {
+                                  await updateStatus(context, "rejected");
+                                }
                               },
                               child: const Text("Reject"),
                             ),
@@ -541,7 +556,16 @@ class ApplicationDetailsScreen extends StatelessWidget {
                             width: double.infinity,
                             child: OutlinedButton(
                               onPressed: () async {
-                                await updateStatus(context, "rejected");
+                                if ((liveData["type"] ?? "single") == "team") {
+                                  await FirebaseFirestore.instance
+                                      .collection("applications")
+                                      .doc(applicationId)
+                                      .update({
+                                    "status": "rejected",
+                                  });
+                                } else {
+                                  await updateStatus(context, "rejected");
+                                }
                               },
                               child: const Text("Reject"),
                             ),
@@ -566,7 +590,13 @@ class ApplicationDetailsScreen extends StatelessWidget {
                             width: double.infinity,
                             child: OutlinedButton(
                               onPressed: () async {
-                                await updateStatus(context, "rejected");
+                                await FirebaseFirestore.instance
+                                    .collection("applications")
+                                    .doc(applicationId)
+                                    .update({
+                                  "status": "negotiation",
+                                  "offer": FieldValue.delete(),
+                                });
                               },
                               child: const Text("Reject"),
                             ),

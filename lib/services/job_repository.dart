@@ -85,6 +85,12 @@ class JobRepository {
       "workerId": userId,
       "employerId": employerId,
       "status": "pending",
+
+      // 🔥 ВАЖНО
+      "jobTitle": jobData["title"] ?? "",
+      "jobTrade": jobData["trade"] ?? "",
+      "jobSite": jobData["site"] ?? "",
+
       "createdAt": FieldValue.serverTimestamp(),
     });
 

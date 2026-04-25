@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/job.dart';
 import 'job_details_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'edit_profile_screen.dart';
 
 class EmployerProfileScreen extends StatelessWidget {
   final String userId;
@@ -28,14 +30,32 @@ class EmployerProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Company Profile")),
+      appBar: AppBar(
+        title: const Text("Company Profile"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfileScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+            },
+          ),
+        ],
+      ),
       body: FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance
-            .collection("users")
-            .doc(userId)
-            .get(),
+        future:
+            FirebaseFirestore.instance.collection("users").doc(userId).get(),
         builder: (context, snapshot) {
-
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -46,18 +66,27 @@ class EmployerProfileScreen extends StatelessWidget {
 
           final data = snapshot.data!.data() as Map<String, dynamic>;
 
-          final name = data["companyName"] ?? data["name"] ?? "Company";
+          final name = data["companyName"] ?? "Company";
+          final description = data["bio"] ?? "";
+          final address = data["location"] ?? "";
           final phone = data["phone"] ?? "";
-          final bio = data["bio"] ?? "";
-          final location = data["location"] ?? "";
-          final photo = data["photo"];
+          final contactPerson = data["contactPerson"] ?? "";
+          final extraPhones = List<String>.from(data["phones"] ?? []);
+          final website = data["website"] ?? "";
+          final email = data["email"] ?? "";
+
+          final contacts = (data["contacts"] as List<dynamic>? ?? [])
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+
+          final logo = data["photo"];
+          final photos = List<String>.from(data["companyPhotos"] ?? []);
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
                 /// 🔥 HEADER
                 Center(
                   child: Column(
@@ -66,8 +95,8 @@ class EmployerProfileScreen extends StatelessWidget {
                         radius: 50,
                         backgroundColor: Colors.grey.shade300,
                         backgroundImage:
-                            photo != null ? NetworkImage(photo) : null,
-                        child: photo == null
+                            logo is String ? NetworkImage(logo) : null,
+                        child: logo == null
                             ? const Icon(Icons.business, size: 40)
                             : null,
                       ),
@@ -85,38 +114,134 @@ class EmployerProfileScreen extends StatelessWidget {
 
                 const SizedBox(height: 20),
 
-                /// 📞 PHONE
-                if (phone.isNotEmpty) ...[
-                  Row(
-                    children: [
-                      const Icon(Icons.phone),
-                      const SizedBox(width: 10),
-                      Text(phone),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                ],
-
-                /// 📍 LOCATION
-                if (location.isNotEmpty) ...[
-                  const Text(
-                    "Location",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(location),
-                  const SizedBox(height: 16),
-                ],
-
-                /// 📝 ABOUT
-                if (bio.isNotEmpty) ...[
+                /// 📝 DESCRIPTION
+                if (description.isNotEmpty) ...[
                   const Text(
                     "About company",
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 4),
-                  Text(bio),
+                  Text(description),
                   const SizedBox(height: 16),
+                ],
+
+                /// 📍 ADDRESS
+                if (address.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(address)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                /// 📞 PHONE
+                if (phone.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.phone),
+                      const SizedBox(width: 8),
+                      Text(phone),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (phone.isNotEmpty)
+
+                  /// 👤 CONTACT PERSON
+                  if (contactPerson.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        const Icon(Icons.person),
+                        const SizedBox(width: 8),
+                        Text(contactPerson),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                /// 📞 EXTRA PHONES
+                if (extraPhones.isNotEmpty) ...[
+                  ...extraPhones.map((p) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.phone, size: 16),
+                            const SizedBox(width: 6),
+                            Text(p),
+                          ],
+                        ),
+                      )),
+                  const SizedBox(height: 16),
+                ],
+
+                /// ✉️ EMAIL
+                if (email.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.email),
+                      const SizedBox(width: 8),
+                      Text(email),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                /// 🌐 WEBSITE
+                if (website.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.language),
+                      const SizedBox(width: 8),
+                      Text(website),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                /// 👥 CONTACTS
+                if (contacts.isNotEmpty) ...[
+                  const Text(
+                    "Contacts",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  ...contacts.map((c) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(c["name"] ?? ""),
+                        subtitle: Text(c["phone"] ?? ""),
+                      )),
+                  const SizedBox(height: 16),
+                ],
+
+                /// 🖼 PHOTOS
+                if (photos.isNotEmpty) ...[
+                  const Text(
+                    "Gallery",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 120,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: photos.length,
+                      itemBuilder: (_, i) => Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        width: 120,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          image: DecorationImage(
+                            image: NetworkImage(photos[i]),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                 ],
 
                 const SizedBox(height: 30),
@@ -135,7 +260,6 @@ class EmployerProfileScreen extends StatelessWidget {
                 StreamBuilder<List<Job>>(
                   stream: getJobs(),
                   builder: (context, snapshot) {
-
                     if (!snapshot.hasData) {
                       return const Center(
                         child: CircularProgressIndicator(),
@@ -150,14 +274,12 @@ class EmployerProfileScreen extends StatelessWidget {
 
                     return Column(
                       children: jobs.map((job) {
-
                         return GestureDetector(
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    JobDetailScreen(job: job),
+                                builder: (_) => JobDetailScreen(job: job),
                               ),
                             );
                           },
@@ -171,7 +293,6 @@ class EmployerProfileScreen extends StatelessWidget {
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-
                                 /// 📸 PHOTO
                                 if (job.photos.isNotEmpty)
                                   ClipRRect(
@@ -202,7 +323,6 @@ class EmployerProfileScreen extends StatelessWidget {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-
                                       /// TITLE
                                       Text(
                                         job.title,
@@ -264,7 +384,6 @@ class EmployerProfileScreen extends StatelessWidget {
                             ),
                           ),
                         );
-
                       }).toList(),
                     );
                   },

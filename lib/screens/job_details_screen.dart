@@ -196,6 +196,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         await FirebaseFirestore.instance.collection("applications").add({
           "jobId": widget.job.id,
           "jobTitle": widget.job.title,
+
+          /// 🔥 ДОБАВЛЯЕМ (НЕ ЛОМАЕТ НИЧЕГО)
+          "jobTrade": widget.job.trade,
+          "jobSite": widget.job.site,
+
           "type": "team",
           "teamId": team["teamId"],
           "members": members,
@@ -245,6 +250,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         await FirebaseFirestore.instance.collection("applications").add({
           "jobId": widget.job.id,
           "jobTitle": widget.job.title,
+
+          /// 🔥 ДОБАВЛЯЕМ
+          "jobTrade": widget.job.trade,
+          "jobSite": widget.job.site,
+
           "workerId": uid,
           "workerName": workerName,
           "type": "single",

@@ -15,7 +15,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-
   final nameController = TextEditingController();
   final phoneController = TextEditingController();
 
@@ -29,7 +28,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// 🔥 NEW
   final websiteController = TextEditingController();
-
+  final contactPersonController = TextEditingController();
+  List<String> extraPhones = [];
   final picker = ImagePicker();
 
   String role = "worker";
@@ -51,11 +51,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// LOAD PROFILE
   Future<void> loadProfile() async {
-
-    final userDoc = await FirebaseFirestore.instance
-        .collection("users")
-        .doc(userId)
-        .get();
+    final userDoc =
+        await FirebaseFirestore.instance.collection("users").doc(userId).get();
 
     if (!userDoc.exists) return;
 
@@ -67,12 +64,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         .collection("portfolio")
         .get();
 
-    final portfolioUrls = portfolioSnapshot.docs
-        .map((doc) => doc["imageUrl"] as String)
-        .toList();
+    final portfolioUrls =
+        portfolioSnapshot.docs.map((doc) => doc["imageUrl"] as String).toList();
 
     setState(() {
-
       role = data["role"] ?? "worker";
 
       nameController.text = data["name"] ?? "";
@@ -87,7 +82,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       locationController.text = data["location"] ?? "";
 
       websiteController.text = data["website"] ?? "";
-
+      contactPersonController.text = data["contactPerson"] ?? "";
+      extraPhones = List<String>.from(data["phones"] ?? []);
       rating = (data["rating"] ?? 0).toDouble();
       reviewsCount = data["reviewsCount"] ?? 0;
 
@@ -98,15 +94,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// AVATAR
   Future<void> pickAndUploadAvatar() async {
-
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
 
     final file = File(picked.path);
 
-    final ref = FirebaseStorage.instance
-        .ref()
-        .child("profile_photos/$userId.jpg");
+    final ref =
+        FirebaseStorage.instance.ref().child("profile_photos/$userId.jpg");
 
     await ref.putFile(file);
     final url = await ref.getDownloadURL();
@@ -121,7 +115,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// SAVE PROFILE
   Future<void> saveProfile() async {
-
     final name = nameController.text.trim();
     final phone = phoneController.text.trim();
 
@@ -129,36 +122,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     setState(() => loading = true);
 
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .set({
-
+    await FirebaseFirestore.instance.collection('users').doc(userId).set({
       "role": role,
-      "name": name,
+      "name": role == "worker" ? name : null,
       "phone": phone,
 
       /// 🔥 WORKER
       "trade": role == "worker" ? tradeController.text.trim() : null,
       "experience": role == "worker" ? experienceController.text.trim() : null,
-      "rate": role == "worker"
-          ? double.tryParse(rateController.text.trim())
-          : null,
+      "rate":
+          role == "worker" ? double.tryParse(rateController.text.trim()) : null,
 
       /// 🔥 EMPLOYER
-      "companyName": role == "employer"
-          ? companyController.text.trim()
-          : null,
-      "website": role == "employer"
-          ? websiteController.text.trim()
-          : null,
+      "companyName": role == "employer" ? companyController.text.trim() : null,
+      "website": role == "employer" ? websiteController.text.trim() : null,
+      "contactPerson":
+          role == "employer" ? contactPersonController.text.trim() : null,
+
+      "phones": role == "employer" ? extraPhones : [],
 
       /// 🔥 COMMON
       "bio": bioController.text.trim(),
       "location": locationController.text.trim(),
 
       "updatedAt": FieldValue.serverTimestamp(),
-
     }, SetOptions(merge: true));
 
     setState(() => loading = false);
@@ -180,35 +167,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: CircleAvatar(
         radius: 50,
         backgroundColor: Colors.grey.shade300,
-        backgroundImage:
-            photoUrl != null ? NetworkImage(photoUrl!) : null,
-        child: photoUrl == null
-            ? const Icon(Icons.camera_alt, size: 30)
-            : null,
+        backgroundImage: photoUrl != null ? NetworkImage(photoUrl!) : null,
+        child: photoUrl == null ? const Icon(Icons.camera_alt, size: 30) : null,
       ),
     );
   }
 
   /// PORTFOLIO
   Widget buildPortfolioPreview() {
-
     if (role != "worker") return const SizedBox();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-
         const SizedBox(height: 20),
-
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-
             const Text(
               "Portfolio",
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
-
             TextButton(
               onPressed: () async {
                 await Navigator.push(
@@ -223,12 +202,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ],
         ),
-
         const SizedBox(height: 10),
-
-        if (portfolio.isEmpty)
-          const Text("No portfolio yet"),
-
+        if (portfolio.isEmpty) const Text("No portfolio yet"),
         if (portfolio.isNotEmpty)
           SizedBox(
             height: 90,
@@ -257,7 +232,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-
         buildAvatar(),
         const SizedBox(height: 20),
 
@@ -276,12 +250,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         const SizedBox(height: 20),
 
-        TextField(
-          controller: nameController,
-          decoration: const InputDecoration(labelText: "Name"),
-        ),
-
-        const SizedBox(height: 12),
+        if (role == "worker") ...[
+          TextField(
+            controller: nameController,
+            decoration: const InputDecoration(labelText: "Name"),
+          ),
+          const SizedBox(height: 12),
+        ],
 
         TextField(
           controller: phoneController,
@@ -292,23 +267,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         /// 🔥 WORKER
         if (role == "worker") ...[
-          TextField(controller: tradeController, decoration: const InputDecoration(labelText: "Trade")),
+          TextField(
+              controller: tradeController,
+              decoration: const InputDecoration(labelText: "Trade")),
           const SizedBox(height: 12),
-          TextField(controller: rateController, decoration: const InputDecoration(labelText: "Rate (£/hour)")),
+          TextField(
+              controller: rateController,
+              decoration: const InputDecoration(labelText: "Rate (£/hour)")),
           const SizedBox(height: 12),
-          TextField(controller: experienceController, decoration: const InputDecoration(labelText: "Experience")),
+          TextField(
+              controller: experienceController,
+              decoration: const InputDecoration(labelText: "Experience")),
         ],
 
         /// 🔥 EMPLOYER
         if (role == "employer") ...[
-          TextField(controller: companyController, decoration: const InputDecoration(labelText: "Company name")),
+          TextField(
+            controller: companyController,
+            decoration: const InputDecoration(labelText: "Company name"),
+          ),
           const SizedBox(height: 12),
-          TextField(controller: websiteController, decoration: const InputDecoration(labelText: "Website")),
+          TextField(
+            controller: websiteController,
+            decoration: const InputDecoration(labelText: "Website"),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: contactPersonController,
+            decoration: const InputDecoration(labelText: "Contact person"),
+          ),
+          const SizedBox(height: 12),
+          const Text("Additional phones"),
+          const SizedBox(height: 8),
+          ...extraPhones.asMap().entries.map((entry) {
+            final index = entry.key;
+
+            return Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: const InputDecoration(labelText: "Phone"),
+                    onChanged: (value) => extraPhones[index] = value,
+                    controller: TextEditingController(text: extraPhones[index]),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete),
+                  onPressed: () {
+                    extraPhones.removeAt(index);
+                    setState(() {});
+                  },
+                )
+              ],
+            );
+          }),
+          TextButton(
+            onPressed: () {
+              extraPhones.add("");
+              setState(() {});
+            },
+            child: const Text("Add phone"),
+          ),
         ],
 
         const SizedBox(height: 12),
 
-        TextField(controller: locationController, decoration: const InputDecoration(labelText: "Location")),
+        TextField(
+            controller: locationController,
+            decoration: const InputDecoration(labelText: "Location")),
         const SizedBox(height: 12),
 
         TextField(
@@ -326,7 +352,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       appBar: AppBar(
         title: const Text("Profile"),
