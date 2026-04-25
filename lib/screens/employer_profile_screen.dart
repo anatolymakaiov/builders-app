@@ -248,7 +248,7 @@ class EmployerProfileScreen extends StatelessWidget {
 
                 /// 🔥 JOBS
                 const Text(
-                  "Jobs from this company",
+                  "Current Vacancies",
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,

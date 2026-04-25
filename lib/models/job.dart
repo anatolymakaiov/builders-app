@@ -18,6 +18,8 @@ class Job {
   final double lng;
 
   final String description;
+  final String candidateRequirements;
+  final String requiredDocuments;
 
   final String companyName;
   final String? companyLogo;
@@ -28,6 +30,7 @@ class Job {
   final String jobType;
 
   final String duration;
+  final String weeklyHours;
   final DateTime? startDate;
   final String employmentType;
 
@@ -36,6 +39,7 @@ class Job {
 
   final int applicantsCount;
   final DateTime? createdAt;
+  final String status;
 
   /// 🔥 NEW (КРИТИЧНО ДЛЯ БРИГАД)
   final int positions;
@@ -54,16 +58,20 @@ class Job {
     required this.lat,
     required this.lng,
     required this.description,
+    this.candidateRequirements = "",
+    this.requiredDocuments = "",
     required this.companyName,
     this.companyLogo,
     required this.photos,
     required this.jobType,
     required this.duration,
+    this.weeklyHours = "",
     this.startDate,
     required this.employmentType,
     required this.ownerId,
     this.applicantsCount = 0,
     this.createdAt,
+    this.status = "active",
 
     /// 🔥 NEW
     this.positions = 1,
@@ -81,6 +89,12 @@ class Job {
     }
 
     return "£${rate.toInt()}/hour";
+  }
+
+  String get workFormatText {
+    if (jobType == "price") return "Price";
+    if (jobType == "negotiable") return "Negotiable";
+    return "Daywork";
   }
 
   /// 🔥 SHORT META
@@ -106,7 +120,10 @@ class Job {
   }
 
   /// 🔥 СКОЛЬКО ОСТАЛОСЬ МЕСТ
-  int get remainingPositions => positions - filledPositions;
+  int get remainingPositions =>
+      (positions - filledPositions).clamp(0, positions);
+
+  bool get isClosed => status == "completed" || status == "closed";
 
   /// 🔥 ADDRESS
   String get fullAddress {
@@ -176,6 +193,8 @@ class Job {
       lng: safeDouble(data["lng"]),
 
       description: data["description"] ?? "",
+      candidateRequirements: data["candidateRequirements"]?.toString() ?? "",
+      requiredDocuments: data["requiredDocuments"]?.toString() ?? "",
 
       companyName: data["companyName"] ?? "",
       companyLogo: data["companyLogo"],
@@ -185,6 +204,7 @@ class Job {
       jobType: data["jobType"] ?? "hourly",
 
       duration: data["duration"] ?? "",
+      weeklyHours: data["weeklyHours"]?.toString() ?? "",
       startDate: safeDate(data["startDate"]),
       employmentType: data["employmentType"] ?? "",
 
@@ -192,6 +212,7 @@ class Job {
 
       applicantsCount: safeInt(data["applicantsCount"]),
       createdAt: safeDate(data["createdAt"]),
+      status: data["status"]?.toString() ?? "active",
 
       /// 🔥 FIX
       positions: positionsRaw == 0 ? 1 : positionsRaw,

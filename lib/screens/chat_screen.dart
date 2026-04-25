@@ -478,6 +478,101 @@ class _ChatScreenState extends State<ChatScreen> {
     return "${date.day}.${date.month}.${date.year}";
   }
 
+  List<Map<String, String>> contactPhones(Map<String, dynamic>? userData) {
+    if (userData == null) return [];
+
+    final contacts = <Map<String, String>>[];
+
+    void addPhone(String label, dynamic value) {
+      final phone = value?.toString().trim() ?? "";
+      if (phone.isEmpty) return;
+      if (contacts.any((item) => item["phone"] == phone)) return;
+
+      contacts.add({
+        "label": label,
+        "phone": phone,
+      });
+    }
+
+    addPhone("Main phone", userData["phone"]);
+
+    final extraPhones = userData["phones"];
+    if (extraPhones is List) {
+      for (var i = 0; i < extraPhones.length; i++) {
+        addPhone("Phone ${i + 2}", extraPhones[i]);
+      }
+    }
+
+    final contactPeople = userData["contacts"];
+    if (contactPeople is List) {
+      for (final contact in contactPeople) {
+        if (contact is! Map) continue;
+        final name = contact["name"]?.toString().trim();
+        addPhone(
+          name == null || name.isEmpty ? "Contact" : name,
+          contact["phone"],
+        );
+      }
+    }
+
+    return contacts;
+  }
+
+  Future<void> callPhone(String phone) async {
+    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9+]'), "");
+    if (cleanPhone.isEmpty) return;
+
+    final uri = Uri(scheme: "tel", path: cleanPhone);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not start phone call")),
+      );
+    }
+  }
+
+  Future<void> showCallOptions(
+    BuildContext context,
+    Map<String, dynamic>? userData,
+  ) async {
+    final phones = contactPhones(userData);
+
+    if (phones.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("No phone number available")),
+      );
+      return;
+    }
+
+    if (phones.length == 1) {
+      await callPhone(phones.first["phone"]!);
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: phones.map((item) {
+              return ListTile(
+                leading: const Icon(Icons.call),
+                title: Text(item["label"]!),
+                subtitle: Text(item["phone"]!),
+                onTap: () {
+                  Navigator.pop(context);
+                  callPhone(item["phone"]!);
+                },
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -540,6 +635,13 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ],
                 ),
+                actions: [
+                  IconButton(
+                    tooltip: "Call",
+                    icon: const Icon(Icons.call),
+                    onPressed: () => showCallOptions(context, userData),
+                  ),
+                ],
               ),
               body: Column(
                 children: [

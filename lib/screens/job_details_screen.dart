@@ -148,7 +148,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     if (uid == null) return;
 
     /// 🔥 CHECK AVAILABLE POSITIONS
-    if (widget.job.remainingPositions <= 0) {
+    final remainingPositions = await loadRemainingPositions();
+    if (!mounted) return;
+
+    if (remainingPositions <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("No positions left")),
       );
@@ -187,7 +190,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         final members = List<String>.from(team["members"]);
 
         /// ❗ проверка мест
-        if (members.length > widget.job.remainingPositions) {
+        if (members.length > remainingPositions) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text("Not enough spots")),
@@ -288,14 +291,52 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Future<void> openMaps() async {
+    final query = widget.job.lat != 0 || widget.job.lng != 0
+        ? "${widget.job.lat},${widget.job.lng}"
+        : widget.job.fullAddress;
     final url =
-        "https://www.google.com/maps/search/?api=1&query=${widget.job.lat},${widget.job.lng}";
+        "https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}";
 
     final uri = Uri.parse(url);
 
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     }
+  }
+
+  int applicationSlotCount(Map<String, dynamic> data) {
+    final workersCount = data["workersCount"];
+    if (workersCount is num && workersCount > 0) return workersCount.toInt();
+
+    final members = data["members"];
+    if (members is List && members.isNotEmpty) return members.length;
+
+    return 1;
+  }
+
+  int acceptedSlotsFromDocs(List<QueryDocumentSnapshot> docs) {
+    int accepted = 0;
+
+    for (final doc in docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final status = data["status"] ?? "";
+
+      if (status == "offer_accepted" || status == "accepted") {
+        accepted += applicationSlotCount(data);
+      }
+    }
+
+    return accepted;
+  }
+
+  Future<int> loadRemainingPositions() async {
+    final snap = await FirebaseFirestore.instance
+        .collection("applications")
+        .where("jobId", isEqualTo: widget.job.id)
+        .get();
+
+    final accepted = acceptedSlotsFromDocs(snap.docs);
+    return (widget.job.positions - accepted).clamp(0, widget.job.positions);
   }
 
   Future<void> deleteJob() async {
@@ -461,8 +502,63 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         final data = snapshot.data!.data() as Map<String, dynamic>;
 
         final name = data["companyName"] ?? data["name"] ?? "Company";
+        final photo = data["companyLogo"] ?? data["photo"] ?? data["avatarUrl"];
+        final isOwner = userId == ownerId;
 
-        final photo = data["photo"];
+        final companyCard = Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: Colors.grey.shade300,
+                backgroundImage: photo != null ? NetworkImage(photo) : null,
+                child:
+                    photo == null ? const Icon(Icons.business, size: 28) : null,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isOwner ? "Your company" : "Employer",
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (!isOwner) ...[
+                      const SizedBox(height: 4),
+                      const Text(
+                        "Tap to view profile",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (!isOwner) const Icon(Icons.arrow_forward_ios, size: 16),
+            ],
+          ),
+        );
+
+        if (isOwner) return companyCard;
 
         return GestureDetector(
           onTap: () {
@@ -475,57 +571,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               ),
             );
           },
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Colors.grey.shade300,
-                  backgroundImage: photo != null ? NetworkImage(photo) : null,
-                  child: photo == null
-                      ? const Icon(Icons.business, size: 28)
-                      : null,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Employer",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        "Tap to view profile",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.arrow_forward_ios, size: 16)
-              ],
-            ),
-          ),
+          child: companyCard,
         );
       },
     );
@@ -606,14 +652,28 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Widget buildLocation() {
-    return Row(
-      children: [
-        const Icon(Icons.location_on),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(widget.job.fullAddress),
+    return InkWell(
+      onTap: openMaps,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            const Icon(Icons.location_on, color: Colors.blue),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                widget.job.fullAddress,
+                style: const TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -630,6 +690,58 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             ? widget.job.description
             : "No description"),
       ],
+    );
+  }
+
+  Widget buildJobInfoSection(String title, String body) {
+    final text = body.trim();
+    if (text.isEmpty) return const SizedBox();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          Text(text),
+        ],
+      ),
+    );
+  }
+
+  Widget buildPositionsInfo() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("applications")
+          .where("jobId", isEqualTo: widget.job.id)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final accepted = snapshot.hasData
+            ? acceptedSlotsFromDocs(snapshot.data!.docs)
+            : widget.job.filledPositions;
+        final remaining =
+            (widget.job.positions - accepted).clamp(0, widget.job.positions);
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Row(
+            children: [
+              const Icon(Icons.group, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                "$remaining/${widget.job.positions} spots available",
+                style: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -862,23 +974,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
             buildRateCard(),
 
-            /// 👇 ВОТ СЮДА ВСТАВЛЯЙ
-            if (widget.job.positions > 1)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Row(
-                  children: [
-                    const Icon(Icons.group, size: 18),
-                    const SizedBox(width: 6),
-                    Text(
-                      "${widget.job.remainingPositions}/${widget.job.positions} spots available",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            buildPositionsInfo(),
 
             /// 🔥 DURATION (НОВОЕ)
             if (widget.job.duration.isNotEmpty)
@@ -897,18 +993,44 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                   ],
                 ),
               ),
+            if (widget.job.weeklyHours.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.schedule, size: 18),
+                    const SizedBox(width: 6),
+                    Text(
+                      "${widget.job.weeklyHours} hours per week",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 24),
             buildLocation(),
             const SizedBox(height: 24),
             buildDescription(),
+            buildJobInfoSection(
+              "Candidate requirements",
+              widget.job.candidateRequirements,
+            ),
+            buildJobInfoSection(
+              "Required documents / certifications",
+              widget.job.requiredDocuments,
+            ),
             buildYourOffer(),
             const SizedBox(height: 30),
-            OutlinedButton.icon(
-              onPressed: openMaps,
-              icon: const Icon(Icons.map),
-              label: const Text("Show location on map"),
-            ),
-            const SizedBox(height: 20),
+            if (userId != widget.job.ownerId) ...[
+              OutlinedButton.icon(
+                onPressed: openMaps,
+                icon: const Icon(Icons.map),
+                label: const Text("Show location on map"),
+              ),
+              const SizedBox(height: 20),
+            ],
 
             buildEditButton(),
             const SizedBox(height: 10),

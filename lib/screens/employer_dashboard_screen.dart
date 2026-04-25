@@ -17,8 +17,421 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   String selectedTrade = "All";
   String selectedSite = "All";
 
-  List<String> trades = ["All"];
-  List<String> sites = ["All"];
+  Widget buildCompanyAvatar(Job job, Map<String, dynamic>? employerData) {
+    final avatarUrl = job.companyLogo ??
+        employerData?["companyLogo"] ??
+        employerData?["photo"] ??
+        employerData?["avatarUrl"];
+    final name = job.companyName.isNotEmpty
+        ? job.companyName
+        : (employerData?["companyName"] ?? employerData?["name"] ?? "Company")
+            .toString();
+
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: Colors.green.shade100,
+      backgroundImage: avatarUrl == null || avatarUrl.toString().isEmpty
+          ? null
+          : NetworkImage(avatarUrl.toString()),
+      child: avatarUrl == null || avatarUrl.toString().isEmpty
+          ? Text(
+              name.characters.first.toUpperCase(),
+              style: TextStyle(
+                color: Colors.green.shade900,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget buildMetaChip({
+    required IconData icon,
+    required String label,
+    Color? color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: (color ?? Colors.grey).withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color ?? Colors.grey.shade700),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: color ?? Colors.grey.shade800,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> buildJobChips(Job job) {
+    final chips = <Widget>[
+      buildMetaChip(
+        icon: Icons.work_outline,
+        label: job.workFormatText,
+        color: Colors.blueGrey,
+      ),
+      buildMetaChip(
+        icon: Icons.payments_outlined,
+        label: job.rateText,
+        color: Colors.green,
+      ),
+    ];
+
+    if (job.weeklyHours.isNotEmpty) {
+      chips.add(
+        buildMetaChip(
+          icon: Icons.schedule,
+          label: "${job.weeklyHours} hrs/week",
+          color: Colors.deepPurple,
+        ),
+      );
+    }
+
+    if (job.duration.isNotEmpty) {
+      chips.add(
+        buildMetaChip(
+          icon: Icons.timelapse,
+          label: job.duration,
+          color: Colors.orange,
+        ),
+      );
+    }
+
+    return chips;
+  }
+
+  int applicationSlotCount(Map<String, dynamic> data) {
+    final workersCount = data["workersCount"];
+    if (workersCount is num && workersCount > 0) return workersCount.toInt();
+
+    final members = data["members"];
+    if (members is List && members.isNotEmpty) return members.length;
+
+    return 1;
+  }
+
+  Widget buildStatTile({
+    required String label,
+    required int value,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.20)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value.toString(),
+              style: TextStyle(
+                color: color,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.grey.shade800,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildApplicationStats(Job job) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("applications")
+          .where("jobId", isEqualTo: job.id)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Text("Applications: ...");
+        }
+
+        final docs = snapshot.data!.docs;
+
+        int inReview = 0;
+        int negotiation = 0;
+        int offer = 0;
+        int acceptedSlots = 0;
+        int rejected = 0;
+
+        for (var doc in docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          final status = data["status"] ?? "pending";
+
+          if (status == "pending" ||
+              status == "applied" ||
+              status == "review") {
+            inReview++;
+          }
+          if (status == "negotiation") negotiation++;
+          if (status == "offer_sent") offer++;
+          if (status == "offer_accepted" || status == "accepted") {
+            acceptedSlots += applicationSlotCount(data);
+          }
+          if (status == "rejected" || status == "withdrawn") rejected++;
+        }
+
+        final spotsLeft =
+            (job.positions - acceptedSlots).clamp(0, job.positions);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                buildStatTile(
+                  label: "Applied",
+                  value: docs.length,
+                  color: Colors.blueGrey,
+                ),
+                const SizedBox(width: 8),
+                buildStatTile(
+                  label: "In review",
+                  value: inReview,
+                  color: Colors.orange,
+                ),
+                const SizedBox(width: 8),
+                buildStatTile(
+                  label: "Offers",
+                  value: offer,
+                  color: Colors.blue,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                buildStatTile(
+                  label: "Accepted",
+                  value: acceptedSlots,
+                  color: Colors.green,
+                ),
+                const SizedBox(width: 8),
+                buildStatTile(
+                  label: "Rejected",
+                  value: rejected,
+                  color: Colors.red,
+                ),
+                const SizedBox(width: 8),
+                buildStatTile(
+                  label: "Spots left",
+                  value: spotsLeft,
+                  color: Colors.deepPurple,
+                ),
+              ],
+            ),
+            if (negotiation > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  "Negotiation: $negotiation",
+                  style: TextStyle(
+                    color: Colors.purple.shade700,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> deleteJob(BuildContext context, Job job) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Delete vacancy"),
+        content: Text("Delete \"${job.title}\"?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              "Delete",
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    await FirebaseFirestore.instance.collection("jobs").doc(job.id).delete();
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Vacancy deleted")),
+    );
+  }
+
+  Widget buildJobCard(
+    BuildContext context,
+    Job job,
+    Map<String, dynamic>? employerData,
+  ) {
+    final isClosed = job.isClosed;
+
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => JobDetailScreen(job: job),
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isClosed ? Colors.grey.shade100 : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isClosed ? Colors.grey.shade400 : Colors.grey.shade200,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                buildCompanyAvatar(job, employerData),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (isClosed) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade700,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            "CLOSED",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                      ],
+                      Text(
+                        job.title,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        "${job.trade} • ${job.city} ${job.postcode}",
+                        style: TextStyle(
+                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == "delete") {
+                      deleteJob(context, job);
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: "delete",
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline, color: Colors.red),
+                          SizedBox(width: 8),
+                          Text("Delete vacancy"),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: buildJobChips(job),
+            ),
+            const SizedBox(height: 12),
+            buildApplicationStats(job),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => deleteJob(context, job),
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                label: const Text(
+                  "Delete vacancy",
+                  style: TextStyle(color: Colors.red),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.red),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -40,223 +453,130 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
             onPressed: () async {
               await FirebaseAuth.instance.signOut();
             },
-          )
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection("jobs")
-                  .where("ownerId", isEqualTo: ownerId)
-                  .orderBy("createdAt", descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (!snapshot.hasData) {
-                  return const Center(child: Text("Error loading jobs"));
-                }
-
-                final jobs = snapshot.data!.docs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return Job.fromFirestore(doc.id, data);
-                }).toList();
-
-                final tradeSet = <String>{};
-                final siteSet = <String>{};
-
-                for (var job in jobs) {
-                  if (job.trade.isNotEmpty) tradeSet.add(job.trade);
-                  if (job.site.isNotEmpty) siteSet.add(job.site);
-                }
-
-                final tradeList = ["All", ...tradeSet];
-                final siteList = ["All", ...siteSet];
-
-                final filteredJobs = jobs.where((job) {
-                  if (selectedTrade != "All" &&
-                      job.trade.toLowerCase().trim() !=
-                          selectedTrade.toLowerCase().trim()) {
-                    return false;
-                  }
-
-                  if (selectedSite != "All" &&
-                      job.site.toLowerCase().trim() !=
-                          selectedSite.toLowerCase().trim()) {
-                    return false;
-                  }
-
-                  return true;
-                }).toList();
-
-                return Column(
-                  children: [
-                    /// FILTERS
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButton<String>(
-                              value: tradeList.contains(selectedTrade)
-                                  ? selectedTrade
-                                  : "All",
-                              isExpanded: true,
-                              items: tradeList.map((trade) {
-                                return DropdownMenuItem(
-                                  value: trade,
-                                  child: Text(trade),
-                                );
-                              }).toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  selectedTrade = value!;
-                                });
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: DropdownButton<String>(
-                              value: siteList.contains(selectedSite)
-                                  ? selectedSite
-                                  : "All",
-                              isExpanded: true,
-                              items: siteList.map((site) {
-                                return DropdownMenuItem(
-                                  value: site,
-                                  child: Text(site),
-                                );
-                              }).toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  selectedSite = value!;
-                                });
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    /// LIST
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: filteredJobs.length,
-                        itemBuilder: (context, index) {
-                          final job = filteredJobs[index];
-
-                          return GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => JobDetailScreen(job: job),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  )
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    job.title,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    job.trade,
-                                    style: const TextStyle(
-                                      color: Colors.grey,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text("${job.city} ${job.postcode}"),
-                                  const SizedBox(height: 12),
-                                  StreamBuilder<QuerySnapshot>(
-                                    stream: FirebaseFirestore.instance
-                                        .collection("applications")
-                                        .where("jobId", isEqualTo: job.id)
-                                        .snapshots(),
-                                    builder: (context, snapshot) {
-                                      if (!snapshot.hasData) {
-                                        return const Text("Applications: ...");
-                                      }
-
-                                      final docs = snapshot.data!.docs;
-
-                                      int pending = 0;
-                                      int negotiation = 0;
-                                      int offer = 0;
-                                      int hired = 0;
-
-                                      for (var doc in docs) {
-                                        final status = (doc.data() as Map<
-                                                String, dynamic>)["status"] ??
-                                            "pending";
-
-                                        if (status == "pending") pending++;
-                                        if (status == "negotiation")
-                                          negotiation++;
-                                        if (status == "offer_sent") offer++;
-                                        if (status == "offer_accepted") hired++;
-                                      }
-
-                                      return Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            "Applications: ${docs.length}",
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.bold),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text("New: $pending"),
-                                          Text("Negotiation: $negotiation"),
-                                          Text("Offer: $offer"),
-                                          Text("Hired: $hired"),
-                                        ],
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
           ),
         ],
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection("jobs")
+            .where("ownerId", isEqualTo: ownerId)
+            .orderBy("createdAt", descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (!snapshot.hasData) {
+            return const Center(child: Text("Error loading jobs"));
+          }
+
+          final jobs = snapshot.data!.docs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return Job.fromFirestore(doc.id, data);
+          }).toList();
+
+          final tradeSet = <String>{};
+          final siteSet = <String>{};
+
+          for (var job in jobs) {
+            if (job.trade.isNotEmpty) tradeSet.add(job.trade);
+            if (job.site.isNotEmpty) siteSet.add(job.site);
+          }
+
+          final tradeList = ["All", ...tradeSet];
+          final siteList = ["All", ...siteSet];
+
+          final filteredJobs = jobs.where((job) {
+            if (selectedTrade != "All" &&
+                job.trade.toLowerCase().trim() !=
+                    selectedTrade.toLowerCase().trim()) {
+              return false;
+            }
+
+            if (selectedSite != "All" &&
+                job.site.toLowerCase().trim() !=
+                    selectedSite.toLowerCase().trim()) {
+              return false;
+            }
+
+            return true;
+          }).toList();
+
+          return FutureBuilder<DocumentSnapshot>(
+            future: FirebaseFirestore.instance
+                .collection("users")
+                .doc(ownerId)
+                .get(),
+            builder: (context, employerSnapshot) {
+              final employerData =
+                  employerSnapshot.data?.data() as Map<String, dynamic>?;
+
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButton<String>(
+                            value: tradeList.contains(selectedTrade)
+                                ? selectedTrade
+                                : "All",
+                            isExpanded: true,
+                            items: tradeList.map((trade) {
+                              return DropdownMenuItem(
+                                value: trade,
+                                child: Text(trade),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                selectedTrade = value!;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: DropdownButton<String>(
+                            value: siteList.contains(selectedSite)
+                                ? selectedSite
+                                : "All",
+                            isExpanded: true,
+                            items: siteList.map((site) {
+                              return DropdownMenuItem(
+                                value: site,
+                                child: Text(site),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                selectedSite = value!;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filteredJobs.length,
+                      itemBuilder: (context, index) {
+                        return buildJobCard(
+                          context,
+                          filteredJobs[index],
+                          employerData,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
       ),
     );
   }

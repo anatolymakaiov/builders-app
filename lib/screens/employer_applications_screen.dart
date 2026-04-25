@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'employer_profile_screen.dart';
-import 'team_details_screen.dart';
-import 'applicants_screen.dart';
 import 'application_details_screen.dart';
 
 class EmployerApplicationsScreen extends StatefulWidget {
@@ -30,6 +27,71 @@ class _EmployerApplicationsScreenState
       default:
         return Colors.orange;
     }
+  }
+
+  String statusLabel(String status) {
+    switch (status) {
+      case "pending":
+      case "applied":
+        return "IN REVIEW";
+      case "negotiation":
+        return "NEGOTIATION";
+      case "offer_sent":
+        return "OFFER";
+      case "offer_accepted":
+      case "accepted":
+        return "ACCEPTED";
+      case "rejected":
+        return "REJECTED";
+      default:
+        return status.toUpperCase();
+    }
+  }
+
+  Widget buildApplicantAvatar(Map<String, dynamic> data) {
+    final type = data["type"] ?? "single";
+
+    if (type == "team") {
+      final teamId = data["teamId"];
+      if (teamId == null) {
+        return const CircleAvatar(child: Icon(Icons.groups));
+      }
+
+      return FutureBuilder<DocumentSnapshot>(
+        future:
+            FirebaseFirestore.instance.collection("teams").doc(teamId).get(),
+        builder: (context, snapshot) {
+          final team = snapshot.data?.data() as Map<String, dynamic>?;
+          final avatar = team?["avatarUrl"] ?? team?["photo"] ?? team?["logo"];
+
+          return CircleAvatar(
+            backgroundImage:
+                avatar == null ? null : NetworkImage(avatar.toString()),
+            child: avatar == null ? const Icon(Icons.groups) : null,
+          );
+        },
+      );
+    }
+
+    final workerId = data["workerId"] ?? data["userId"];
+    if (workerId == null) {
+      return const CircleAvatar(child: Icon(Icons.person));
+    }
+
+    return FutureBuilder<DocumentSnapshot>(
+      future:
+          FirebaseFirestore.instance.collection("users").doc(workerId).get(),
+      builder: (context, snapshot) {
+        final user = snapshot.data?.data() as Map<String, dynamic>?;
+        final photo = user?["photo"] ?? user?["avatarUrl"];
+
+        return CircleAvatar(
+          backgroundImage:
+              photo == null ? null : NetworkImage(photo.toString()),
+          child: photo == null ? const Icon(Icons.person) : null,
+        );
+      },
+    );
   }
 
   Future<void> updateStatus(String id, String status) async {
@@ -61,9 +123,14 @@ class _EmployerApplicationsScreenState
               children: [
                 /// STATUS
                 Expanded(
-                  child: DropdownButton<String>(
-                    value: selectedStatus,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: selectedStatus,
                     isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: "Status",
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
                     items: [
                       "all",
                       "pending",
@@ -74,7 +141,7 @@ class _EmployerApplicationsScreenState
                     ]
                         .map((e) => DropdownMenuItem(
                               value: e,
-                              child: Text(e.toUpperCase()),
+                              child: Text(e == "all" ? "All" : statusLabel(e)),
                             ))
                         .toList(),
                     onChanged: (value) {
@@ -89,13 +156,18 @@ class _EmployerApplicationsScreenState
 
                 /// TRADE
                 Expanded(
-                  child: DropdownButton<String>(
-                    value: selectedTrade,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: selectedTrade,
                     isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: "Trade",
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
                     items: trades
                         .map((e) => DropdownMenuItem(
                               value: e,
-                              child: Text(e),
+                              child: Text(e == "all" ? "All" : e),
                             ))
                         .toList(),
                     onChanged: (value) {
@@ -110,13 +182,18 @@ class _EmployerApplicationsScreenState
 
                 /// SITE
                 Expanded(
-                  child: DropdownButton<String>(
-                    value: selectedSite,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: selectedSite,
                     isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: "Site",
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
                     items: sites
                         .map((e) => DropdownMenuItem(
                               value: e,
-                              child: Text(e),
+                              child: Text(e == "all" ? "All" : e),
                             ))
                         .toList(),
                     onChanged: (value) {
@@ -226,7 +303,7 @@ class _EmployerApplicationsScreenState
                           borderRadius: BorderRadius.circular(14),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
+                              color: Colors.black.withValues(alpha: 0.05),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             )
@@ -237,13 +314,7 @@ class _EmployerApplicationsScreenState
                           children: [
                             Row(
                               children: [
-                                CircleAvatar(
-                                  child: Icon(
-                                    type == "team"
-                                        ? Icons.groups
-                                        : Icons.person,
-                                  ),
-                                ),
+                                buildApplicantAvatar(data),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
@@ -269,7 +340,7 @@ class _EmployerApplicationsScreenState
                                   ),
                                 ),
                                 Text(
-                                  status.toUpperCase(),
+                                  statusLabel(status),
                                   style: TextStyle(
                                     color: getStatusColor(status),
                                     fontWeight: FontWeight.bold,

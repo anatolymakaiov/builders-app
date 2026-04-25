@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'employer_profile_screen.dart';
-import 'team_details_screen.dart';
 import 'chat_screen.dart';
+import 'worker_profile_screen.dart';
 import '../services/notification_service.dart';
 
 class ApplicationDetailsScreen extends StatelessWidget {
@@ -343,6 +342,196 @@ class ApplicationDetailsScreen extends StatelessWidget {
     }
   }
 
+  Widget buildPortfolioGallery(String userId) {
+    return FutureBuilder<QuerySnapshot>(
+      future: FirebaseFirestore.instance
+          .collection("users")
+          .doc(userId)
+          .collection("portfolio")
+          .get(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const SizedBox();
+        }
+
+        final items = snapshot.data!.docs;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Candidate gallery",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 110,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final item = items[index].data() as Map<String, dynamic>;
+                  final image = item["imageUrl"]?.toString();
+                  if (image == null || image.isEmpty) {
+                    return const SizedBox();
+                  }
+
+                  return GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (_) => Dialog(
+                          child: Image.network(image, fit: BoxFit.contain),
+                        ),
+                      );
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        image,
+                        width: 110,
+                        height: 110,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget buildTeamProfile(
+    BuildContext context,
+    Set<String> selectedMembers,
+  ) {
+    final teamId = data["teamId"];
+    final memberIds = List<String>.from(data["members"] ?? []);
+
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance
+          .collection("teams")
+          .doc(teamId ?? "__missing_team__")
+          .get(),
+      builder: (context, snapshot) {
+        final team = snapshot.data?.data() as Map<String, dynamic>?;
+        final teamName = team?["name"] ?? data["teamName"] ?? "Team";
+        final description =
+            team?["description"] ?? team?["bio"] ?? data["teamDescription"];
+        final avatar = team?["avatarUrl"] ?? team?["photo"] ?? team?["logo"];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 45,
+                    backgroundColor: Colors.grey.shade300,
+                    backgroundImage:
+                        avatar == null ? null : NetworkImage(avatar.toString()),
+                    child: avatar == null
+                        ? const Icon(Icons.groups, size: 40)
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    teamName.toString(),
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text("${memberIds.length} members"),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            if (description != null &&
+                description.toString().trim().isNotEmpty) ...[
+              const Text(
+                "Team description",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(description.toString()),
+              const SizedBox(height: 20),
+            ],
+            const Text(
+              "Team members",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            ...memberIds.map((memberId) {
+              return FutureBuilder<DocumentSnapshot>(
+                future: FirebaseFirestore.instance
+                    .collection("users")
+                    .doc(memberId)
+                    .get(),
+                builder: (context, snap) {
+                  if (!snap.hasData || !snap.data!.exists) {
+                    return const SizedBox();
+                  }
+
+                  final user = snap.data!.data() as Map<String, dynamic>;
+                  final photo = user["photo"] ?? user["avatarUrl"];
+                  return StatefulBuilder(
+                    builder: (context, setLocalState) {
+                      final isSelected = selectedMembers.contains(memberId);
+
+                      return Card(
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundImage: photo == null
+                                ? null
+                                : NetworkImage(photo.toString()),
+                            child:
+                                photo == null ? const Icon(Icons.person) : null,
+                          ),
+                          title: Text(user["name"] ?? "Worker"),
+                          subtitle: Text(user["trade"] ?? ""),
+                          trailing: Checkbox(
+                            value: isSelected,
+                            onChanged: (value) {
+                              setLocalState(() {
+                                if (value == true) {
+                                  selectedMembers.add(memberId);
+                                } else {
+                                  selectedMembers.remove(memberId);
+                                }
+                              });
+                            },
+                          ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    WorkerProfileScreen(userId: memberId),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  );
+                },
+              );
+            }),
+            const SizedBox(height: 20),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final Set<String> selectedMembers = {};
@@ -380,160 +569,93 @@ class ApplicationDetailsScreen extends StatelessWidget {
           final bio = user["bio"] ?? "";
           final location = user["location"] ?? "";
           final photo = user["photo"];
+          final isTeam = (data["type"] ?? "single") == "team";
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                /// 👤 HEADER
-                Center(
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 45,
-                        backgroundColor: Colors.grey.shade300,
-                        backgroundImage:
-                            photo != null ? NetworkImage(photo) : null,
-                        child: photo == null
-                            ? const Icon(Icons.person, size: 40)
-                            : null,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
+                if (!isTeam) ...[
+                  /// 👤 HEADER
+                  Center(
+                    child: Column(
+                      children: [
+                        CircleAvatar(
+                          radius: 45,
+                          backgroundColor: Colors.grey.shade300,
+                          backgroundImage:
+                              photo != null ? NetworkImage(photo) : null,
+                          child: photo == null
+                              ? const Icon(Icons.person, size: 40)
+                              : null,
                         ),
-                      ),
-                      if (trade.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(trade),
-                      ],
-                      if (rate.isNotEmpty) ...[
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 12),
                         Text(
-                          rate,
+                          name,
                           style: const TextStyle(
+                            fontSize: 22,
                             fontWeight: FontWeight.bold,
-                            color: Colors.green,
                           ),
                         ),
+                        if (trade.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(trade),
+                        ],
+                        if (rate.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            rate,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-
-                const SizedBox(height: 30),
-
-                /// 📍 LOCATION
-                if (location.isNotEmpty) ...[
-                  const Text(
-                    "Location",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(location),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 30),
+                  if (location.isNotEmpty) ...[
+                    const Text(
+                      "Location",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(location),
+                    const SizedBox(height: 20),
+                  ],
+                  if (bio.isNotEmpty) ...[
+                    const Text(
+                      "About worker",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(bio),
+                    const SizedBox(height: 20),
+                  ],
                 ],
 
-                /// 📝 BIO
-                if (bio.isNotEmpty) ...[
-                  const Text(
-                    "About worker",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(bio),
-                  const SizedBox(height: 20),
-                ],
-
-                /// 🔍 VIEW PROFILE
-                TextButton(
-                  onPressed: () {
-                    final type = data["type"] ?? "single";
-
-                    if (type == "team") {
-                      final teamId = data["teamId"];
-
-                      if (teamId == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Team not found")),
-                        );
-                        return;
-                      }
-
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => TeamDetailsScreen(
-                            teamId: teamId,
-                            teamData: data,
+                if (isTeam)
+                  buildTeamProfile(context, selectedMembers)
+                else ...[
+                  buildPortfolioGallery(workerId),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                WorkerProfileScreen(userId: workerId),
                           ),
-                        ),
-                      );
-                    } else {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              EmployerProfileScreen(userId: workerId),
-                        ),
-                      );
-                    }
-                  },
-                  child: Text(
-                    (data["type"] ?? "single") == "team"
-                        ? "View team"
-                        : "View full profile",
-                  ),
-                ),
-                if ((data["type"] ?? "single") == "team" &&
-                    data["members"] != null) ...[
-                  const Text(
-                    "Team members",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 10),
-                  ...List<String>.from(data["members"]).map((memberId) {
-                    return FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance
-                          .collection("users")
-                          .doc(memberId)
-                          .get(),
-                      builder: (context, snap) {
-                        if (!snap.hasData) return const SizedBox();
-
-                        final user = snap.data!.data() as Map<String, dynamic>;
-
-                        return StatefulBuilder(
-                          builder: (context, setLocalState) {
-                            final isSelected =
-                                selectedMembers.contains(memberId);
-
-                            return ListTile(
-                              leading: Checkbox(
-                                value: isSelected,
-                                onChanged: (v) {
-                                  setLocalState(() {
-                                    if (v == true) {
-                                      selectedMembers.add(memberId);
-                                    } else {
-                                      selectedMembers.remove(memberId);
-                                    }
-                                  });
-                                },
-                              ),
-                              title: Text(user["name"] ?? "Worker"),
-                              subtitle: Text(user["trade"] ?? ""),
-                            );
-                          },
                         );
                       },
-                    );
-                  }).toList(),
-                  const SizedBox(height: 20),
+                      icon: const Icon(Icons.person),
+                      label: const Text("Open full profile"),
+                    ),
+                  ),
                 ],
                 const SizedBox(height: 40),
 
@@ -551,22 +673,8 @@ class ApplicationDetailsScreen extends StatelessWidget {
                         snapshot.data!.data() as Map<String, dynamic>;
                     final status = liveData["status"] ?? "pending";
 
-                    final members =
-                        List<String>.from(liveData["members"] ?? []);
-
                     return Column(
                       children: [
-                        /// MESSAGE
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: () => openChat(context),
-                            child: const Text("Message worker"),
-                          ),
-                        ),
-
-                        const SizedBox(height: 12),
-
                         /// =========================
                         /// PENDING
                         /// =========================
@@ -605,7 +713,9 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
                                 if (workerId == null ||
                                     employerId == null ||
-                                    jobId == null) return;
+                                    jobId == null) {
+                                  return;
+                                }
 
                                 final existing = await FirebaseFirestore
                                     .instance
@@ -651,7 +761,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                                   );
                                 }
                               },
-                              child: const Text("Start negotiation"),
+                              child: const Text("Start negotiation / Message"),
                             ),
                           ),
 
@@ -696,6 +806,14 @@ class ApplicationDetailsScreen extends StatelessWidget {
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
+                              onPressed: () => openChat(context),
+                              child: const Text("Negotiation / Message"),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
                               onPressed: () => openOfferDialog(context),
                               child: const Text("Make offer"),
                             ),

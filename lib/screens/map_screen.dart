@@ -4,6 +4,7 @@ import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/job.dart';
 import 'job_details_screen.dart';
 import '../services/job_repository.dart';
@@ -29,6 +30,7 @@ class _MapScreenState extends State<MapScreen> {
 
   double? userLat;
   double? userLng;
+  String role = "worker";
 
   String? selectedJobId;
   Job? selectedJob;
@@ -49,6 +51,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    loadRole();
     requestLocation();
     loadSavedJobs();
 
@@ -74,10 +77,27 @@ class _MapScreenState extends State<MapScreen> {
     });
   }
 
+  bool get isEmployer => role == "employer";
+
+  Future<void> loadRole() async {
+    final userId = currentUserId;
+    if (userId == null) return;
+
+    final doc =
+        await FirebaseFirestore.instance.collection("users").doc(userId).get();
+    if (!doc.exists) return;
+
+    if (!mounted) return;
+
+    setState(() {
+      role = doc.data()?["role"] == "employer" ? "employer" : "worker";
+    });
+  }
+
   // ✅ FIX: теперь берём реального пользователя
   Future<void> loadSavedJobs() async {
     final userId = currentUserId;
-    if (userId == null) return;
+    if (userId == null || isEmployer) return;
 
     final ids = await jobRepository.getSavedJobs(userId);
 
@@ -88,7 +108,7 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> toggleSaveJob(String jobId) async {
     final userId = currentUserId;
-    if (userId == null) return;
+    if (userId == null || isEmployer) return;
 
     final isSaved = savedJobIds.contains(jobId);
 
@@ -106,7 +126,7 @@ class _MapScreenState extends State<MapScreen> {
   // ✅ FIX: apply теперь тоже на реального юзера
   Future<void> applyToJob(Job job) async {
     final userId = currentUserId;
-    if (userId == null) return;
+    if (userId == null || isEmployer) return;
 
     await jobRepository.applyToJob(job.id, userId);
     if (!mounted) return;
@@ -154,19 +174,6 @@ class _MapScreenState extends State<MapScreen> {
     if (job.jobType == "price") return "£${job.rate.toInt()}";
 
     return "£${job.rate.toInt()}/h";
-  }
-
-  String jobTypeLabel(String jobType) {
-    switch (jobType) {
-      case "hourly":
-        return "Daywork";
-      case "price":
-        return "Price";
-      case "negotiable":
-        return "Negotiable";
-      default:
-        return "Job";
-    }
   }
 
   void scrollToJob(int index) {
@@ -229,12 +236,21 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Marker buildUserMarker() {
-    if (userLat == null || userLng == null) {
-      return Marker(
-        point: const LatLng(0, 0),
+    if (isEmployer) {
+      return const Marker(
+        point: LatLng(0, 0),
         width: 0,
         height: 0,
-        child: const SizedBox(),
+        child: SizedBox(),
+      );
+    }
+
+    if (userLat == null || userLng == null) {
+      return const Marker(
+        point: LatLng(0, 0),
+        width: 0,
+        height: 0,
+        child: SizedBox(),
       );
     }
 
@@ -469,7 +485,7 @@ class _MapScreenState extends State<MapScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    jobTypeLabel(job.jobType),
+                    job.workFormatText,
                     style: TextStyle(
                       color: Colors.grey.shade800,
                       fontWeight: FontWeight.bold,
@@ -607,26 +623,27 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                 ),
               buildBottomSheet(visibleJobs),
-              Positioned(
-                top: 10,
-                right: 0,
-                child: Row(
-                  children: [
-                    FloatingActionButton(
-                      heroTag: "location",
-                      mini: true,
-                      onPressed: () {
-                        if (userLat == null || userLng == null) return;
-                        mapController.move(
-                          LatLng(userLat!, userLng!),
-                          15,
-                        );
-                      },
-                      child: const Icon(Icons.my_location),
-                    ),
-                  ],
+              if (!isEmployer)
+                Positioned(
+                  top: 10,
+                  right: 0,
+                  child: Row(
+                    children: [
+                      FloatingActionButton(
+                        heroTag: "location",
+                        mini: true,
+                        onPressed: () {
+                          if (userLat == null || userLng == null) return;
+                          mapController.move(
+                            LatLng(userLat!, userLng!),
+                            15,
+                          );
+                        },
+                        child: const Icon(Icons.my_location),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
             ],
           );
         },

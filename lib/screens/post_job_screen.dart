@@ -33,12 +33,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
   final titleController = TextEditingController();
   final positionsController = TextEditingController();
   final durationController = TextEditingController();
+  final weeklyHoursController = TextEditingController();
   final streetController = TextEditingController();
   final cityController = TextEditingController();
   final postcodeController = TextEditingController();
   final rateController = TextEditingController();
   final companyController = TextEditingController();
   final descriptionController = TextEditingController();
+  final candidateRequirementsController = TextEditingController();
+  final requiredDocumentsController = TextEditingController();
   final siteController = TextEditingController();
 
   bool loading = false;
@@ -99,6 +102,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
       positionsController.text = job.positions.toString();
       siteController.text = job.site;
       durationController.text = job.duration;
+      weeklyHoursController.text = job.weeklyHours;
       streetController.text = job.street;
       cityController.text = job.city;
       postcodeController.text = job.postcode;
@@ -106,6 +110,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
       companyController.text = job.companyName;
       descriptionController.text = job.description;
+      candidateRequirementsController.text = job.candidateRequirements;
+      requiredDocumentsController.text = job.requiredDocuments;
 
       selectedTrade = job.trade;
       jobType = job.jobType;
@@ -240,6 +246,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
       "site": siteController.text.trim(),
       "trade": selectedTrade,
       "duration": durationController.text.trim(),
+      "weeklyHours": weeklyHoursController.text.trim(),
       "positions": int.tryParse(positionsController.text) ?? 1,
       "filledPositions": widget.existingJob?.filledPositions ?? 0,
       "street": streetController.text.trim(),
@@ -252,6 +259,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
       "jobType": jobType,
       "companyName": companyController.text.trim(),
       "description": descriptionController.text.trim(),
+      "candidateRequirements": candidateRequirementsController.text.trim(),
+      "requiredDocuments": requiredDocumentsController.text.trim(),
       "photos": photoUrls,
       "lat": lat,
       "lng": lng,
@@ -305,7 +314,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: selectedTrade,
+              initialValue: selectedTrade,
               items: trades
                   .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                   .toList(),
@@ -331,6 +340,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
             ),
             const SizedBox(height: 12),
             TextField(
+              controller: weeklyHoursController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "Hours per week",
+                hintText: "40",
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
               controller: positionsController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
@@ -339,15 +357,18 @@ class _PostJobScreenState extends State<PostJobScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: jobType,
+              initialValue: jobType,
               items: const [
-                DropdownMenuItem(value: "hourly", child: Text("Hourly")),
+                DropdownMenuItem(value: "hourly", child: Text("Daywork")),
                 DropdownMenuItem(value: "price", child: Text("Price")),
                 DropdownMenuItem(
                     value: "negotiable", child: Text("Negotiable")),
               ],
               onChanged: (v) => setState(() => jobType = v!),
-              decoration: const InputDecoration(labelText: "Job type"),
+              decoration: const InputDecoration(
+                labelText: "Work format",
+                hintText: "Daywork, price, negotiable",
+              ),
             ),
             if (jobType != "negotiable")
               TextField(
@@ -378,6 +399,24 @@ class _PostJobScreenState extends State<PostJobScreen> {
               controller: descriptionController,
               maxLines: 4,
               decoration: const InputDecoration(labelText: "Description"),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: candidateRequirementsController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: "Candidate requirements",
+                hintText: "Experience, skills, right to work, references",
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: requiredDocumentsController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: "Required documents / certifications",
+                hintText: "CSCS, PPE, certifications, tools, documents",
+              ),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
