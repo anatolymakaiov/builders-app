@@ -8,11 +8,96 @@ import 'applicants_screen.dart';
 import 'job_details_screen.dart';
 import 'worker_profile_screen.dart';
 import '../models/job.dart';
+import '../services/calendar_service.dart';
 
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
 
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
+
+  String notificationTitle(Map<String, dynamic> data) {
+    final type = data["type"] ?? "";
+    final title = data["title"]?.toString();
+    if (title != null && title.isNotEmpty) return title;
+
+    switch (type) {
+      case "application":
+        return "New application received";
+      case "accepted":
+        return "You got accepted";
+      case "rejected":
+        return "Application rejected";
+      case "message":
+        return "New message";
+      case "job_alert":
+        return "New matching job";
+      case "application_status":
+        return "Application status updated";
+      case "offer":
+        return "New offer received";
+      case "offer_expiry":
+        return "Offer expiry reminder";
+      case "work_start":
+        return "Work start reminder";
+      default:
+        return "Notification";
+    }
+  }
+
+  Future<void> openJobNotification(
+    BuildContext context, {
+    required String jobId,
+    String? applicationId,
+  }) async {
+    final jobDoc =
+        await FirebaseFirestore.instance.collection("jobs").doc(jobId).get();
+
+    if (!jobDoc.exists) return;
+
+    final job = Job.fromFirestore(jobDoc.id, jobDoc.data()!);
+
+    if (!context.mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JobDetailScreen(
+          job: job,
+          applicationId: applicationId,
+        ),
+      ),
+    );
+  }
+
+  Future<void> addNotificationOfferToCalendar(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) async {
+    final offerRaw = data["offer"];
+    if (offerRaw is! Map) return;
+
+    final offer = Map<String, dynamic>.from(offerRaw);
+    final title = data["jobTitle"]?.toString() ??
+        data["title"]?.toString() ??
+        "Construction job";
+
+    final added = await CalendarService.addOfferToCalendar(
+      title: title,
+      offer: offer,
+    );
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          added
+              ? "Offer added to calendar"
+              : "Enter the start date in a calendar-readable format",
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,36 +143,37 @@ class NotificationsScreen extends StatelessWidget {
               final String? workerId = data["workerId"];
               final String? body = data["body"];
 
-              /// 🔥 TITLE
-              String titleText;
-
-              switch (type) {
-                case "application":
-                  titleText = "New application received";
-                  break;
-                case "accepted":
-                  titleText = "You got accepted";
-                  break;
-                case "rejected":
-                  titleText = "Application rejected";
-                  break;
-                case "message":
-                  titleText = "New message";
-                  break;
-                case "job_alert":
-                  titleText = data["title"] ?? "New matching job";
-                  break;
-                default:
-                  titleText = "Notification";
-              }
+              final titleText = notificationTitle(data);
+              final canAddCalendar =
+                  (type == "work_start" || type == "offer") &&
+                      data["offer"] is Map;
 
               return ListTile(
                 tileColor: read ? null : Colors.orange.shade50,
                 title: Text(titleText),
                 subtitle: Text(body ?? "Tap to open"),
-                trailing: read
-                    ? null
-                    : const Icon(Icons.circle, color: Colors.red, size: 10),
+                trailing: canAddCalendar || !read
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (canAddCalendar)
+                            IconButton(
+                              tooltip: "Add to calendar",
+                              icon: const Icon(Icons.calendar_month),
+                              onPressed: () => addNotificationOfferToCalendar(
+                                context,
+                                data,
+                              ),
+                            ),
+                          if (!read)
+                            const Icon(
+                              Icons.circle,
+                              color: Colors.red,
+                              size: 10,
+                            ),
+                        ],
+                      )
+                    : null,
                 onTap: () async {
                   /// ✅ mark as read
                   await FirebaseFirestore.instance
@@ -96,6 +182,8 @@ class NotificationsScreen extends StatelessWidget {
                       .collection("notifications")
                       .doc(doc.id)
                       .update({"read": true});
+
+                  if (!context.mounted) return;
 
                   /// 🔥 1. APPLICATION → APPLICANTS LIST
                   if (type == "application" && jobId != null) {
@@ -160,28 +248,23 @@ class NotificationsScreen extends StatelessWidget {
                     return;
                   }
 
+                  if ((type == "application_status" ||
+                          type == "offer" ||
+                          type == "offer_expiry" ||
+                          type == "work_start") &&
+                      jobId != null) {
+                    await openJobNotification(
+                      context,
+                      jobId: jobId,
+                      applicationId: applicationId,
+                    );
+
+                    return;
+                  }
+
                   /// 🔥 4. JOB ALERT → JOB DETAILS
                   if (type == "job_alert" && jobId != null) {
-                    final jobDoc = await FirebaseFirestore.instance
-                        .collection("jobs")
-                        .doc(jobId)
-                        .get();
-
-                    if (!jobDoc.exists) return;
-
-                    final job = Job.fromFirestore(
-                      jobDoc.id,
-                      jobDoc.data()!,
-                    );
-
-                    if (!context.mounted) return;
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => JobDetailScreen(job: job),
-                      ),
-                    );
+                    await openJobNotification(context, jobId: jobId);
 
                     return;
                   }

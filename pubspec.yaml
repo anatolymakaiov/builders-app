@@ -46,6 +46,7 @@ dependencies:
 
   # NOTIFICATIONS
   flutter_local_notifications: ^17.0.0
+  add_2_calendar: ^3.0.1
 
 dev_dependencies:
   flutter_test:

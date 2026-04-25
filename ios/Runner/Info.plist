@@ -28,6 +28,10 @@
 	<string>This app needs location to show nearby jobs</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs microphone access to record voice messages</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>This app needs calendar access to add accepted job offers.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>This app may use contacts access when opening the calendar event editor.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app needs photo library access to send photos and videos in chat</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

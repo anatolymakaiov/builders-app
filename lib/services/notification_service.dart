@@ -99,12 +99,9 @@ class NotificationService {
     required String type,
     String? applicationId,
     String? jobId,
+    Map<String, dynamic>? extra,
   }) async {
-    await _db
-        .collection('users')
-        .doc(userId)
-        .collection('notifications')
-        .add({
+    final payload = {
       "title": title,
       "body": body,
       "type": type,
@@ -112,6 +109,159 @@ class NotificationService {
       "jobId": jobId,
       "createdAt": FieldValue.serverTimestamp(),
       "read": false,
-    });
+      ...?extra,
+    };
+
+    await _db
+        .collection('users')
+        .doc(userId)
+        .collection('notifications')
+        .add(payload);
+  }
+
+  List<String> applicationRecipients(Map<String, dynamic> applicationData) {
+    final members = applicationData["members"];
+    if (members is List && members.isNotEmpty) {
+      return members.map((id) => id.toString()).toSet().toList();
+    }
+
+    final workerId = applicationData["workerId"] ?? applicationData["userId"];
+    if (workerId == null) return [];
+
+    return [workerId.toString()];
+  }
+
+  Future<void> notifyApplicationStatus({
+    required String applicationId,
+    required Map<String, dynamic> applicationData,
+    required String status,
+  }) async {
+    final recipients = applicationRecipients(applicationData);
+    if (recipients.isEmpty) return;
+
+    final jobId = applicationData["jobId"]?.toString();
+    final jobTitle = applicationData["jobTitle"]?.toString() ?? "your job";
+    final title = _statusTitle(status);
+
+    for (final userId in recipients) {
+      await sendNotification(
+        userId: userId,
+        title: title,
+        body: "$jobTitle: ${_statusBody(status)}",
+        type: "application_status",
+        applicationId: applicationId,
+        jobId: jobId,
+        extra: {"status": status},
+      );
+    }
+  }
+
+  Future<void> notifyOfferCreated({
+    required String applicationId,
+    required Map<String, dynamic> applicationData,
+    required Map<String, dynamic> offer,
+  }) async {
+    final recipients = applicationRecipients(applicationData);
+    if (recipients.isEmpty) return;
+
+    final jobId = applicationData["jobId"]?.toString();
+    final jobTitle = applicationData["jobTitle"]?.toString() ?? "Job";
+    final validUntil = offer["validUntil"]?.toString().trim() ?? "";
+
+    for (final userId in recipients) {
+      await sendNotification(
+        userId: userId,
+        title: "New offer received",
+        body: "$jobTitle: review the offer details",
+        type: "offer",
+        applicationId: applicationId,
+        jobId: jobId,
+        extra: {
+          "offer": offer,
+          "jobTitle": jobTitle,
+          "startDateTime": offer["startDateTime"] ?? offer["startDate"],
+          "validUntil": offer["validUntil"],
+        },
+      );
+
+      if (validUntil.isNotEmpty) {
+        await sendNotification(
+          userId: userId,
+          title: "Offer expiry reminder",
+          body: "$jobTitle offer is valid until $validUntil",
+          type: "offer_expiry",
+          applicationId: applicationId,
+          jobId: jobId,
+          extra: {
+            "offer": offer,
+            "jobTitle": jobTitle,
+            "validUntil": offer["validUntil"],
+          },
+        );
+      }
+    }
+  }
+
+  Future<void> notifyWorkStartReminder({
+    required String applicationId,
+    required Map<String, dynamic> applicationData,
+    required Map<String, dynamic> offer,
+  }) async {
+    final recipients = applicationRecipients(applicationData);
+    if (recipients.isEmpty) return;
+
+    final jobId = applicationData["jobId"]?.toString();
+    final jobTitle = applicationData["jobTitle"]?.toString() ?? "Job";
+    final start = (offer["startDateTime"] ?? offer["startDate"])?.toString();
+
+    for (final userId in recipients) {
+      await sendNotification(
+        userId: userId,
+        title: "Work start reminder",
+        body: start == null || start.trim().isEmpty
+            ? "$jobTitle start date is in your offer"
+            : "$jobTitle starts $start",
+        type: "work_start",
+        applicationId: applicationId,
+        jobId: jobId,
+        extra: {
+          "offer": offer,
+          "jobTitle": jobTitle,
+          "startDateTime": start,
+        },
+      );
+    }
+  }
+
+  String _statusTitle(String status) {
+    switch (status) {
+      case "negotiation":
+        return "Application moved to negotiation";
+      case "review":
+        return "Application is in review";
+      case "rejected":
+        return "Application rejected";
+      case "offer_accepted":
+      case "accepted":
+        return "Offer accepted";
+      default:
+        return "Application status updated";
+    }
+  }
+
+  String _statusBody(String status) {
+    switch (status) {
+      case "negotiation":
+        return "the employer wants to negotiate";
+      case "review":
+        return "your application is being reviewed";
+      case "rejected":
+        return "your application was rejected";
+      case "offer_accepted":
+      case "accepted":
+        return "your offer was accepted";
+      default:
+        return "status changed to $status";
+    }
   }
 }

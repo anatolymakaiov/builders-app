@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'employer_profile_screen.dart';
 import 'team_details_screen.dart';
 import 'chat_screen.dart';
+import '../services/notification_service.dart';
 
 class ApplicationDetailsScreen extends StatelessWidget {
   final String applicationId;
@@ -17,9 +18,6 @@ class ApplicationDetailsScreen extends StatelessWidget {
   Future<void> updateStatus(BuildContext context, String status) async {
     final db = FirebaseFirestore.instance;
 
-    final isTeam = (data["type"] ?? "single") == "team";
-
-    final workerId = isTeam ? null : (data["workerId"] ?? data["userId"]);
     final employerId = data["employerId"];
     final jobId = data["jobId"];
 
@@ -60,6 +58,12 @@ class ApplicationDetailsScreen extends StatelessWidget {
           });
         }
       });
+
+      await NotificationService().notifyApplicationStatus(
+        applicationId: applicationId,
+        applicationData: data,
+        status: status,
+      );
 
       if (!context.mounted) return;
     } catch (e) {
@@ -282,30 +286,37 @@ class ApplicationDetailsScreen extends StatelessWidget {
     if (result != true) return;
 
     try {
+      final offer = {
+        "jobType": jobType,
+        "workFormat": _jobTypeLabel(jobType),
+        "rate": rateController.text.trim(),
+        "workPeriod": workPeriodController.text.trim(),
+        "weeklyHours": weeklyHoursController.text.trim(),
+        "schedule": scheduleController.text.trim(),
+        "startDateTime": startDateTimeController.text.trim(),
+        "siteAddress": siteAddressController.text.trim(),
+        "firstDayRequirements": firstDayRequirementsController.text.trim(),
+        "description": descriptionController.text.trim(),
+        "validUntil": validUntilController.text.trim(),
+        // Backward-compatible fields used by the worker screens.
+        "startDate": startDateTimeController.text.trim(),
+        "message": descriptionController.text.trim(),
+        "createdAt": FieldValue.serverTimestamp(),
+      };
+      final notificationOffer = Map<String, dynamic>.from(offer)
+        ..remove("createdAt");
+
       /// 🔥 СОХРАНЕНИЕ OFFER
       await FirebaseFirestore.instance
           .collection("applications")
           .doc(applicationId)
-          .update({
-        "status": "offer_sent",
-        "offer": {
-          "jobType": jobType,
-          "workFormat": _jobTypeLabel(jobType),
-          "rate": rateController.text.trim(),
-          "workPeriod": workPeriodController.text.trim(),
-          "weeklyHours": weeklyHoursController.text.trim(),
-          "schedule": scheduleController.text.trim(),
-          "startDateTime": startDateTimeController.text.trim(),
-          "siteAddress": siteAddressController.text.trim(),
-          "firstDayRequirements": firstDayRequirementsController.text.trim(),
-          "description": descriptionController.text.trim(),
-          "validUntil": validUntilController.text.trim(),
-          // Backward-compatible fields used by the worker screens.
-          "startDate": startDateTimeController.text.trim(),
-          "message": descriptionController.text.trim(),
-          "createdAt": FieldValue.serverTimestamp(),
-        }
-      });
+          .update({"status": "offer_sent", "offer": offer});
+
+      await NotificationService().notifyOfferCreated(
+        applicationId: applicationId,
+        applicationData: data,
+        offer: notificationOffer,
+      );
     } finally {
       rateController.dispose();
       workPeriodController.dispose();

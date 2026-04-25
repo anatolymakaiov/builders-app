@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/job.dart';
 import '../screens/job_details_screen.dart';
+import '../services/notification_service.dart';
 
 class MyApplicationsScreen extends StatefulWidget {
   const MyApplicationsScreen({super.key});
@@ -311,6 +312,16 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                                         .update({
                                       "filledPositions": FieldValue.increment(1)
                                     });
+
+                                    final offer = data["offer"];
+                                    if (offer is Map<String, dynamic>) {
+                                      await NotificationService()
+                                          .notifyWorkStartReminder(
+                                        applicationId: apps[index].id,
+                                        applicationData: data,
+                                        offer: offer,
+                                      );
+                                    }
                                   },
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green,

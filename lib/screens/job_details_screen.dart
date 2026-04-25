@@ -7,6 +7,8 @@ import 'post_job_screen.dart';
 import 'chat_screen.dart';
 
 import '../models/job.dart';
+import '../services/calendar_service.dart';
+import '../services/notification_service.dart';
 
 class JobDetailScreen extends StatefulWidget {
   final Job job;
@@ -693,6 +695,21 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         "filledPositions": filled + workersCount,
       });
     });
+
+    final appSnap = await FirebaseFirestore.instance
+        .collection("applications")
+        .doc(applicationId)
+        .get();
+    final appData = appSnap.data();
+    final offer = appData?["offer"];
+
+    if (appData != null && offer is Map<String, dynamic>) {
+      await NotificationService().notifyWorkStartReminder(
+        applicationId: applicationId,
+        applicationData: appData,
+        offer: offer,
+      );
+    }
   }
 
   Future<void> withdrawOfferAcceptance(String applicationId) async {
@@ -725,6 +742,26 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         "filledPositions": nextFilled,
       });
     });
+  }
+
+  Future<void> addOfferToCalendar(Map<String, dynamic> offer) async {
+    final added = await CalendarService.addOfferToCalendar(
+      title: widget.job.title,
+      offer: offer,
+      fallbackLocation: widget.job.fullAddress,
+    );
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          added
+              ? "Offer added to calendar"
+              : "Enter the start date in a calendar-readable format",
+        ),
+      ),
+    );
   }
 
   Widget buildYourOffer() {
@@ -768,6 +805,15 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               const SizedBox(height: 10),
               ...buildOfferDetails(offer),
               const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => addOfferToCalendar(offer),
+                  icon: const Icon(Icons.calendar_month),
+                  label: const Text("Add to phone calendar"),
+                ),
+              ),
+              const SizedBox(height: 8),
               if (canAccept)
                 SizedBox(
                   width: double.infinity,
