@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import 'team_details_screen.dart';
 
 import 'edit_profile_screen.dart';
@@ -492,6 +495,7 @@ class WorkerProfileScreen extends StatelessWidget {
 
                           final name = data["name"] ?? "Team";
                           final members = (data["members"] as List?) ?? [];
+                          final avatarUrl = data["avatarUrl"] ?? data["photo"];
 
                           return GestureDetector(
                             onTap: () {
@@ -515,7 +519,16 @@ class WorkerProfileScreen extends StatelessWidget {
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.group),
+                                  CircleAvatar(
+                                    radius: 20,
+                                    backgroundColor: Colors.grey.shade300,
+                                    backgroundImage: avatarUrl is String
+                                        ? NetworkImage(avatarUrl)
+                                        : null,
+                                    child: avatarUrl is String
+                                        ? null
+                                        : const Icon(Icons.group),
+                                  ),
                                   const SizedBox(width: 10),
 
                                   /// NAME
@@ -557,43 +570,92 @@ Future<void> showCreateTeamDialog(
   String userId,
 ) async {
   final controller = TextEditingController();
+  final picker = ImagePicker();
+  XFile? pickedAvatar;
+  String? previewPath;
 
   await showDialog(
     context: context,
-    builder: (_) => AlertDialog(
-      title: const Text("Create team"),
-      content: TextField(
-        controller: controller,
-        decoration: const InputDecoration(
-          labelText: "Team name",
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text("Cancel"),
-        ),
-        ElevatedButton(
-          onPressed: () async {
-            final name = controller.text.trim();
-            if (name.isEmpty) return;
+    builder: (_) => StatefulBuilder(
+      builder: (context, setDialogState) {
+        return AlertDialog(
+          title: const Text("Create team"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () async {
+                  final picked =
+                      await picker.pickImage(source: ImageSource.gallery);
+                  if (picked == null) return;
 
-            await FirebaseFirestore.instance.collection("teams").add({
-              "name": name,
-              "ownerId": userId,
-              "members": [userId],
-              "createdAt": FieldValue.serverTimestamp(),
-            });
+                  setDialogState(() {
+                    pickedAvatar = picked;
+                    previewPath = picked.path;
+                  });
+                },
+                child: CircleAvatar(
+                  radius: 38,
+                  backgroundColor: Colors.grey.shade300,
+                  backgroundImage: previewPath != null
+                      ? FileImage(File(previewPath!))
+                      : null,
+                  child: previewPath == null
+                      ? const Icon(Icons.add_a_photo, size: 28)
+                      : null,
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  labelText: "Team name",
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final name = controller.text.trim();
+                if (name.isEmpty) return;
 
-            Navigator.pop(context);
+                String? avatarUrl;
 
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Team created")),
-            );
-          },
-          child: const Text("Create"),
-        ),
-      ],
+                if (pickedAvatar != null) {
+                  final ref = FirebaseStorage.instance.ref().child(
+                      "team_avatars/${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg");
+
+                  await ref.putFile(File(pickedAvatar!.path));
+                  avatarUrl = await ref.getDownloadURL();
+                }
+
+                await FirebaseFirestore.instance.collection("teams").add({
+                  "name": name,
+                  "ownerId": userId,
+                  "members": [userId],
+                  if (avatarUrl != null) "avatarUrl": avatarUrl,
+                  if (avatarUrl != null) "photo": avatarUrl,
+                  "createdAt": FieldValue.serverTimestamp(),
+                });
+
+                if (!context.mounted) return;
+
+                Navigator.pop(context);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Team created")),
+                );
+              },
+              child: const Text("Create"),
+            ),
+          ],
+        );
+      },
     ),
   );
 }

@@ -10,10 +10,12 @@ import '../models/job.dart';
 
 class JobDetailScreen extends StatefulWidget {
   final Job job;
+  final String? applicationId;
 
   const JobDetailScreen({
     super.key,
     required this.job,
+    this.applicationId,
   });
 
   @override
@@ -629,6 +631,166 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
+  List<Widget> buildOfferDetails(Map<String, dynamic> offer) {
+    final rows = <Widget>[];
+
+    void addRow(String label, dynamic value) {
+      final text = value?.toString().trim() ?? "";
+      if (text.isEmpty) return;
+
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Text("$label: $text"),
+        ),
+      );
+    }
+
+    addRow("Work format", offer["workFormat"]);
+    addRow("Rate / price", offer["rate"] == null ? null : "£${offer["rate"]}");
+    addRow("Work period", offer["workPeriod"]);
+    addRow("Hours per week", offer["weeklyHours"]);
+    addRow("Schedule", offer["schedule"]);
+    addRow("Start", offer["startDateTime"] ?? offer["startDate"]);
+    addRow("Site address", offer["siteAddress"]);
+    addRow("Required on first day", offer["firstDayRequirements"]);
+    addRow("Description", offer["description"] ?? offer["message"]);
+    addRow("Valid until", offer["validUntil"]);
+
+    if (rows.isEmpty) {
+      rows.add(const Text("Offer details not provided"));
+    }
+
+    return rows;
+  }
+
+  Future<void> acceptOffer(String applicationId) async {
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final appRef = FirebaseFirestore.instance
+          .collection("applications")
+          .doc(applicationId);
+      final jobRef =
+          FirebaseFirestore.instance.collection("jobs").doc(widget.job.id);
+
+      final appSnap = await transaction.get(appRef);
+      final jobSnap = await transaction.get(jobRef);
+
+      if (!appSnap.exists || !jobSnap.exists) return;
+
+      final appData = appSnap.data() as Map<String, dynamic>;
+      final jobData = jobSnap.data() as Map<String, dynamic>;
+
+      final currentStatus = appData["status"] ?? "";
+      if (currentStatus == "accepted" || currentStatus == "offer_accepted") {
+        return;
+      }
+
+      final workersCount = (appData["workersCount"] as num?)?.toInt() ?? 1;
+      final filled = (jobData["filledPositions"] as num?)?.toInt() ?? 0;
+
+      transaction.update(appRef, {"status": "offer_accepted"});
+      transaction.update(jobRef, {
+        "filledPositions": filled + workersCount,
+      });
+    });
+  }
+
+  Future<void> withdrawOfferAcceptance(String applicationId) async {
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final appRef = FirebaseFirestore.instance
+          .collection("applications")
+          .doc(applicationId);
+      final jobRef =
+          FirebaseFirestore.instance.collection("jobs").doc(widget.job.id);
+
+      final appSnap = await transaction.get(appRef);
+      final jobSnap = await transaction.get(jobRef);
+
+      if (!appSnap.exists || !jobSnap.exists) return;
+
+      final appData = appSnap.data() as Map<String, dynamic>;
+      final jobData = jobSnap.data() as Map<String, dynamic>;
+
+      final currentStatus = appData["status"] ?? "";
+      if (currentStatus != "accepted" && currentStatus != "offer_accepted") {
+        return;
+      }
+
+      final workersCount = (appData["workersCount"] as num?)?.toInt() ?? 1;
+      final filled = (jobData["filledPositions"] as num?)?.toInt() ?? 0;
+      final nextFilled = (filled - workersCount).clamp(0, filled).toInt();
+
+      transaction.update(appRef, {"status": "offer_sent"});
+      transaction.update(jobRef, {
+        "filledPositions": nextFilled,
+      });
+    });
+  }
+
+  Widget buildYourOffer() {
+    final applicationId = widget.applicationId;
+    if (applicationId == null) return const SizedBox();
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("applications")
+          .doc(applicationId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const SizedBox();
+        }
+
+        final appData = snapshot.data!.data() as Map<String, dynamic>;
+        final offer = appData["offer"] as Map<String, dynamic>?;
+        final status = appData["status"] ?? "";
+
+        if (offer == null) return const SizedBox();
+
+        final accepted = status == "accepted" || status == "offer_accepted";
+        final canAccept = status == "offer_sent";
+
+        return Container(
+          margin: const EdgeInsets.only(top: 24),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.orange.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.orange.shade100),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Your offer",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              ...buildOfferDetails(offer),
+              const SizedBox(height: 12),
+              if (canAccept)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => acceptOffer(applicationId),
+                    child: const Text("Accept offer"),
+                  ),
+                ),
+              if (accepted)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => withdrawOfferAcceptance(applicationId),
+                    child: const Text("Withdraw acceptance"),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -693,6 +855,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             buildLocation(),
             const SizedBox(height: 24),
             buildDescription(),
+            buildYourOffer(),
             const SizedBox(height: 30),
             OutlinedButton.icon(
               onPressed: openMaps,

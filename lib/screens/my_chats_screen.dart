@@ -24,6 +24,67 @@ class MyChatsScreen extends StatelessWidget {
     return "${dt.day}/${dt.month}";
   }
 
+  String lastMessagePreview(String type, String text) {
+    switch (type) {
+      case "image":
+        return "Photo";
+      case "video":
+        return "Video";
+      case "audio":
+        return "Voice message";
+      case "link":
+        return text.isEmpty ? "Link" : text;
+      default:
+        return text.isEmpty ? "Open chat" : text;
+    }
+  }
+
+  String? avatarFrom(Map<String, dynamic>? data) {
+    final value = data?["avatarUrl"] ?? data?["photo"] ?? data?["companyLogo"];
+    return value is String && value.isNotEmpty ? value : null;
+  }
+
+  Widget chatAvatar({
+    required String? avatarUrl,
+    required bool isOnline,
+    required IconData fallbackIcon,
+  }) {
+    return Stack(
+      children: [
+        CircleAvatar(
+          radius: 26,
+          backgroundColor: Colors.grey.shade200,
+          child: ClipOval(
+            child: avatarUrl != null
+                ? CachedNetworkImage(
+                    imageUrl: avatarUrl,
+                    width: 52,
+                    height: 52,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) =>
+                        const CircularProgressIndicator(strokeWidth: 2),
+                    errorWidget: (context, url, error) => Icon(fallbackIcon),
+                  )
+                : Icon(fallbackIcon),
+          ),
+        ),
+        if (isOnline)
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: const BoxDecoration(
+                color: Colors.green,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -79,6 +140,9 @@ class MyChatsScreen extends StatelessWidget {
 
               final workerId = data["workerId"];
               final employerId = data["employerId"];
+              final isTeamChat =
+                  data["type"] == "team" || data["teamId"] != null;
+              final showTeamAvatar = isTeamChat && uid == employerId;
 
               final isWorker = uid == workerId;
 
@@ -86,33 +150,49 @@ class MyChatsScreen extends StatelessWidget {
                   ? (data["unreadCount_worker"] ?? 0)
                   : (data["unreadCount_employer"] ?? 0);
 
-              final chatName = isWorker
-                  ? (data["employerName"] ?? "Employer")
-                  : (data["workerName"] ?? "Worker");
+              final otherUserId =
+                  isTeamChat ? employerId : (isWorker ? employerId : workerId);
+              final displayCollection = showTeamAvatar ? "teams" : "users";
+              final displayId = showTeamAvatar ? data["teamId"] : otherUserId;
 
-              final otherUserId = isWorker ? employerId : workerId;
+              if (displayId == null) {
+                return const SizedBox();
+              }
 
               final updatedAt = data["updatedAt"] as Timestamp?;
 
               final typingWorker = data["typing_worker"] ?? false;
               final typingEmployer = data["typing_employer"] ?? false;
 
-              final isTyping = isWorker ? typingEmployer : typingWorker;
+              final otherTyping = isWorker ? typingEmployer : typingWorker;
 
               final lastMessage = data["lastMessage"] ?? "";
               final lastMessageType = data["lastMessageType"] ?? "text";
 
               return StreamBuilder<DocumentSnapshot>(
                 stream: FirebaseFirestore.instance
-                    .collection("users")
-                    .doc(otherUserId)
+                    .collection(displayCollection)
+                    .doc(displayId)
                     .snapshots(),
-                builder: (context, userSnap) {
-                  final userData =
-                      userSnap.data?.data() as Map<String, dynamic>?;
+                builder: (context, displaySnap) {
+                  final displayData =
+                      displaySnap.data?.data() as Map<String, dynamic>?;
 
-                  final isOnline = userData?["isOnline"] ?? false;
-                  final avatarUrl = userData?["avatarUrl"];
+                  final isOnline = showTeamAvatar
+                      ? false
+                      : displayData?["isOnline"] ?? false;
+                  final avatarUrl = avatarFrom(displayData);
+                  final chatName = showTeamAvatar
+                      ? (displayData?["name"] ?? data["teamName"] ?? "Team")
+                      : isWorker
+                          ? (displayData?["companyName"] ??
+                              displayData?["name"] ??
+                              data["employerName"] ??
+                              "Employer")
+                          : (displayData?["name"] ??
+                              data["workerName"] ??
+                              "Worker");
+                  final isTyping = otherTyping && isOnline;
 
                   return InkWell(
                     onTap: () {
@@ -128,42 +208,11 @@ class MyChatsScreen extends StatelessWidget {
                           horizontal: 12, vertical: 10),
                       child: Row(
                         children: [
-                          /// 👤 AVATAR (🔥 CACHE)
-                          Stack(
-                            children: [
-                              CircleAvatar(
-                                radius: 26,
-                                backgroundColor: Colors.grey.shade200,
-                                child: ClipOval(
-                                  child: avatarUrl != null
-                                      ? CachedNetworkImage(
-                                          imageUrl: avatarUrl,
-                                          width: 52,
-                                          height: 52,
-                                          fit: BoxFit.cover,
-                                          placeholder: (context, url) =>
-                                              const CircularProgressIndicator(
-                                                  strokeWidth: 2),
-                                          errorWidget: (context, url, error) =>
-                                              const Icon(Icons.person),
-                                        )
-                                      : const Icon(Icons.person),
-                                ),
-                              ),
-                              if (isOnline)
-                                Positioned(
-                                  right: 0,
-                                  bottom: 0,
-                                  child: Container(
-                                    width: 12,
-                                    height: 12,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.green,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                ),
-                            ],
+                          chatAvatar(
+                            avatarUrl: avatarUrl,
+                            isOnline: isOnline,
+                            fallbackIcon:
+                                showTeamAvatar ? Icons.group : Icons.person,
                           ),
 
                           const SizedBox(width: 12),
@@ -205,11 +254,11 @@ class MyChatsScreen extends StatelessWidget {
                                 /// MESSAGE
                                 Row(
                                   children: [
-                                    if (!isTyping && lastMessageType == "image")
+                                    if (!isTyping && lastMessageType != "text")
                                       const Padding(
                                         padding: EdgeInsets.only(right: 4),
                                         child: Icon(
-                                          Icons.photo,
+                                          Icons.attach_file,
                                           size: 16,
                                           color: Colors.grey,
                                         ),
@@ -218,11 +267,10 @@ class MyChatsScreen extends StatelessWidget {
                                       child: Text(
                                         isTyping
                                             ? "typing..."
-                                            : (lastMessageType == "image"
-                                                ? "Photo"
-                                                : (lastMessage.isEmpty
-                                                    ? "Open chat"
-                                                    : lastMessage)),
+                                            : lastMessagePreview(
+                                                lastMessageType,
+                                                lastMessage,
+                                              ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(

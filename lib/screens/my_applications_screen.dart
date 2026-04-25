@@ -13,16 +13,83 @@ class MyApplicationsScreen extends StatefulWidget {
 }
 
 class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
-  String filter = "all";
+  String statusFilter = "all";
+  String jobFilter = "all";
+  String offerFilter = "all";
 
   Color getStatusColor(String status) {
     switch (status) {
       case "accepted":
+      case "offer_accepted":
         return Colors.green;
+      case "offer_sent":
+        return Colors.blue;
+      case "negotiation":
+        return Colors.purple;
       case "rejected":
         return Colors.red;
       default:
         return Colors.orange;
+    }
+  }
+
+  bool matchesStatusFilter(String status) {
+    switch (statusFilter) {
+      case "sent":
+        return status == "pending" || status == "applied";
+      case "review":
+        return status == "pending" || status == "review";
+      case "negotiation":
+        return status == "negotiation";
+      case "offer":
+        return status == "offer_sent";
+      case "rejected":
+        return status == "rejected";
+      default:
+        return true;
+    }
+  }
+
+  bool matchesJobFilter(String status) {
+    switch (jobFilter) {
+      case "new":
+        return status != "accepted" && status != "offer_accepted";
+      case "current":
+        return status == "accepted" || status == "offer_accepted";
+      default:
+        return true;
+    }
+  }
+
+  bool matchesOfferFilter(String status) {
+    switch (offerFilter) {
+      case "review":
+        return status == "offer_sent";
+      case "accepted":
+        return status == "accepted" || status == "offer_accepted";
+      default:
+        return true;
+    }
+  }
+
+  String statusLabel(String status) {
+    switch (status) {
+      case "pending":
+      case "applied":
+        return "SENT";
+      case "review":
+        return "IN REVIEW";
+      case "negotiation":
+        return "NEGOTIATION";
+      case "offer_sent":
+        return "OFFER";
+      case "accepted":
+      case "offer_accepted":
+        return "ACCEPTED";
+      case "rejected":
+        return "REJECTED";
+      default:
+        return status.toUpperCase();
     }
   }
 
@@ -78,19 +145,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       appBar: AppBar(title: const Text("My Applications")),
       body: Column(
         children: [
-          /// 🔥 FILTERS
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                filterButton("all", "All"),
-                filterButton("pending", "In review"),
-                filterButton("accepted", "Accepted"),
-                filterButton("rejected", "Rejected"),
-              ],
-            ),
-          ),
+          buildFilters(),
 
           /// 🔥 LIST
           Expanded(
@@ -105,7 +160,14 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                   return const Center(child: Text("Error loading"));
                 }
 
-                final apps = snapshot.data!;
+                final apps = snapshot.data!.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final status = (data["status"] ?? "pending").toString();
+
+                  return matchesStatusFilter(status) &&
+                      matchesJobFilter(status) &&
+                      matchesOfferFilter(status);
+                }).toList();
 
                 if (apps.isEmpty) {
                   return const Center(child: Text("No applications"));
@@ -156,152 +218,125 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                             jobData,
                           );
 
-                          return buildCard(job, status);
+                          return buildCard(job, status, apps[index].id);
                         },
                       );
                     }
 
                     /// ✅ если есть jobTitle — просто показываем
-                    return Container(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          )
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          /// TITLE
-                          Text(
-                            jobTitle,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-
-                          const SizedBox(height: 6),
-
-                          /// STATUS
-                          Text(
-                            status.toUpperCase(),
-                            style: TextStyle(
-                              color: getStatusColor(status),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-
-                          const SizedBox(height: 10),
-
-                          /// 🔥 OFFER UI
-                          if (status == "offer_sent" &&
-                              data["offer"] != null) ...[
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(10),
+                    return InkWell(
+                      onTap: () async {
+                        await openJobDetails(
+                          context,
+                          jobId,
+                          apps[index].id,
+                        );
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            )
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            /// TITLE
+                            Text(
+                              jobTitle,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text("Offer details",
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 6),
-                                  Text("Rate: £${data["offer"]["rate"]}/h"),
-                                  Text("Start: ${data["offer"]["startDate"]}"),
-                                  if (data["offer"]["message"] != null)
-                                    Text(
-                                        "Message: ${data["offer"]["message"]}"),
-                                ],
+                            ),
+
+                            const SizedBox(height: 6),
+
+                            /// STATUS
+                            Text(
+                              statusLabel(status),
+                              style: TextStyle(
+                                color: getStatusColor(status),
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
 
                             const SizedBox(height: 10),
 
-                            /// ACCEPT OFFER
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: () async {
-                                  await FirebaseFirestore.instance
-                                      .collection("applications")
-                                      .doc(apps[index].id)
-                                      .update({"status": "accepted"});
-
-                                  await FirebaseFirestore.instance
-                                      .collection("jobs")
-                                      .doc(jobId)
-                                      .update({
-                                    "filledPositions": FieldValue.increment(1)
-                                  });
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
+                            /// 🔥 OFFER UI
+                            if (status == "offer_sent" &&
+                                data["offer"] != null) ...[
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
-                                child: const Text("Accept offer"),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text("Offer details",
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 6),
+                                    ...buildOfferDetails(offer!),
+                                  ],
+                                ),
                               ),
-                            ),
 
-                            const SizedBox(height: 8),
+                              const SizedBox(height: 10),
 
-                            /// DECLINE
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                onPressed: () async {
-                                  await FirebaseFirestore.instance
-                                      .collection("applications")
-                                      .doc(apps[index].id)
-                                      .update({"status": "rejected"});
-                                },
-                                child: const Text("Decline"),
-                              ),
-                            ),
-                          ],
+                              /// ACCEPT OFFER
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: () async {
+                                    await FirebaseFirestore.instance
+                                        .collection("applications")
+                                        .doc(apps[index].id)
+                                        .update({"status": "offer_accepted"});
 
-                          const SizedBox(height: 10),
-
-                          /// OPEN JOB
-                          GestureDetector(
-                            onTap: () async {
-                              final jobDoc = await FirebaseFirestore.instance
-                                  .collection("jobs")
-                                  .doc(jobId)
-                                  .get();
-
-                              if (!jobDoc.exists) return;
-
-                              final job = Job.fromFirestore(
-                                jobDoc.id,
-                                jobDoc.data()!,
-                              );
-
-                              if (context.mounted) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => JobDetailScreen(job: job),
+                                    await FirebaseFirestore.instance
+                                        .collection("jobs")
+                                        .doc(jobId)
+                                        .update({
+                                      "filledPositions": FieldValue.increment(1)
+                                    });
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
                                   ),
-                                );
-                              }
-                            },
-                            child: const Text(
-                              "Tap to view",
-                              style: TextStyle(color: Colors.blue),
-                            ),
-                          ),
-                        ],
+                                  child: const Text("Accept offer"),
+                                ),
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              /// DECLINE
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton(
+                                  onPressed: () async {
+                                    await FirebaseFirestore.instance
+                                        .collection("applications")
+                                        .doc(apps[index].id)
+                                        .update({"status": "rejected"});
+                                  },
+                                  child: const Text("Decline"),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -315,7 +350,41 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   }
 
   /// 🔥 reusable card
-  Widget buildCard(Job job, String status) {
+  List<Widget> buildOfferDetails(Map<String, dynamic> offer) {
+    final rows = <Widget>[];
+
+    void addRow(String label, dynamic value) {
+      final text = value?.toString().trim() ?? "";
+      if (text.isEmpty) return;
+
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text("$label: $text"),
+        ),
+      );
+    }
+
+    addRow("Work format", offer["workFormat"]);
+    addRow("Rate / price", offer["rate"] == null ? null : "£${offer["rate"]}");
+    addRow("Work period", offer["workPeriod"]);
+    addRow("Hours per week", offer["weeklyHours"]);
+    addRow("Schedule", offer["schedule"]);
+    addRow("Start", offer["startDateTime"] ?? offer["startDate"]);
+    addRow("Site address", offer["siteAddress"]);
+    addRow("Required on first day", offer["firstDayRequirements"]);
+    addRow("Description", offer["description"] ?? offer["message"]);
+    addRow("Valid until", offer["validUntil"]);
+
+    if (rows.isEmpty) {
+      rows.add(const Text("Offer details not provided"));
+    }
+
+    return rows;
+  }
+
+  /// 🔥 reusable card
+  Widget buildCard(Job job, String status, String applicationId) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: ListTile(
@@ -327,11 +396,42 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         ),
         subtitle: Text("${job.city} • £${job.rate.toInt()}"),
         trailing: Text(
-          status.toUpperCase(),
+          statusLabel(status),
           style: TextStyle(
             color: getStatusColor(status),
             fontWeight: FontWeight.bold,
           ),
+        ),
+        onTap: () => openJobDetails(context, job.id, applicationId),
+      ),
+    );
+  }
+
+  Future<void> openJobDetails(
+    BuildContext context,
+    String? jobId,
+    String applicationId,
+  ) async {
+    if (jobId == null) return;
+
+    final jobDoc =
+        await FirebaseFirestore.instance.collection("jobs").doc(jobId).get();
+
+    if (!jobDoc.exists) return;
+
+    final job = Job.fromFirestore(
+      jobDoc.id,
+      jobDoc.data()!,
+    );
+
+    if (!context.mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JobDetailScreen(
+          job: job,
+          applicationId: applicationId,
         ),
       ),
     );
@@ -349,29 +449,91 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     });
   }
 
-  Widget filterButton(String value, String label) {
-    final selected = filter == value;
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          filter = value;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? Colors.orange : Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : Colors.black,
-            fontWeight: FontWeight.w500,
+  Widget buildFilters() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      child: Column(
+        children: [
+          filterDropdown(
+            label: "Status",
+            value: statusFilter,
+            items: const [
+              DropdownMenuItem(value: "all", child: Text("All statuses")),
+              DropdownMenuItem(value: "sent", child: Text("Sent")),
+              DropdownMenuItem(value: "review", child: Text("In review")),
+              DropdownMenuItem(
+                  value: "negotiation", child: Text("Negotiation")),
+              DropdownMenuItem(value: "offer", child: Text("Offer")),
+              DropdownMenuItem(value: "rejected", child: Text("Rejected")),
+            ],
+            onChanged: (value) => setState(() => statusFilter = value),
           ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: filterDropdown(
+                  label: "Your job",
+                  value: jobFilter,
+                  items: const [
+                    DropdownMenuItem(value: "all", child: Text("All jobs")),
+                    DropdownMenuItem(value: "new", child: Text("Your new job")),
+                    DropdownMenuItem(
+                      value: "current",
+                      child: Text("Current job"),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() => jobFilter = value),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: filterDropdown(
+                  label: "Your offers",
+                  value: offerFilter,
+                  items: const [
+                    DropdownMenuItem(value: "all", child: Text("All offers")),
+                    DropdownMenuItem(
+                      value: "review",
+                      child: Text("Offers in review"),
+                    ),
+                    DropdownMenuItem(
+                      value: "accepted",
+                      child: Text("Accepted offers"),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() => offerFilter = value),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget filterDropdown({
+    required String label,
+    required String value,
+    required List<DropdownMenuItem<String>> items,
+    required ValueChanged<String> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      initialValue: value,
+      items: items,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 8,
         ),
       ),
+      onChanged: (value) {
+        if (value == null) return;
+        onChanged(value);
+      },
     );
   }
 }

@@ -26,6 +26,10 @@
 	<string>This app needs location to show nearby jobs</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app needs location to show nearby jobs</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs microphone access to record voice messages</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs photo library access to send photos and videos in chat</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -35,8 +35,12 @@ dependencies:
   # EXTERNAL LINKS
   url_launcher: ^6.3.0
 
-  # IMAGE PICKER
+  # CHAT MEDIA
   image_picker: ^1.1.2
+  record: ^5.2.1
+  audioplayers: ^6.1.0
+  video_player: ^2.9.2
+  path_provider: ^2.1.4
   
   cached_network_image: ^3.3.1
 
