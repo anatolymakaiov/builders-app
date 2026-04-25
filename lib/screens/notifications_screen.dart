@@ -5,7 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'application_details_screen.dart';
 import 'chat_screen.dart';
 import 'applicants_screen.dart';
+import 'job_details_screen.dart';
 import 'worker_profile_screen.dart';
+import '../models/job.dart';
 
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
@@ -32,7 +34,6 @@ class NotificationsScreen extends StatelessWidget {
             .orderBy("createdAt", descending: true)
             .snapshots(),
         builder: (context, snapshot) {
-
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -46,7 +47,6 @@ class NotificationsScreen extends StatelessWidget {
           return ListView.builder(
             itemCount: docs.length,
             itemBuilder: (context, index) {
-
               final doc = docs[index];
               final data = doc.data() as Map<String, dynamic>;
 
@@ -56,6 +56,7 @@ class NotificationsScreen extends StatelessWidget {
               final String? jobId = data["jobId"];
               final String? applicationId = data["applicationId"];
               final String? workerId = data["workerId"];
+              final String? body = data["body"];
 
               /// 🔥 TITLE
               String titleText;
@@ -73,6 +74,9 @@ class NotificationsScreen extends StatelessWidget {
                 case "message":
                   titleText = "New message";
                   break;
+                case "job_alert":
+                  titleText = data["title"] ?? "New matching job";
+                  break;
                 default:
                   titleText = "Notification";
               }
@@ -80,13 +84,11 @@ class NotificationsScreen extends StatelessWidget {
               return ListTile(
                 tileColor: read ? null : Colors.orange.shade50,
                 title: Text(titleText),
-                subtitle: const Text("Tap to open"),
+                subtitle: Text(body ?? "Tap to open"),
                 trailing: read
                     ? null
                     : const Icon(Icons.circle, color: Colors.red, size: 10),
-
                 onTap: () async {
-
                   /// ✅ mark as read
                   await FirebaseFirestore.instance
                       .collection("users")
@@ -97,7 +99,6 @@ class NotificationsScreen extends StatelessWidget {
 
                   /// 🔥 1. APPLICATION → APPLICANTS LIST
                   if (type == "application" && jobId != null) {
-
                     if (!context.mounted) return;
 
                     Navigator.push(
@@ -112,7 +113,6 @@ class NotificationsScreen extends StatelessWidget {
 
                   /// 🔥 2. ACCEPTED → CHAT
                   if (type == "accepted" && jobId != null) {
-
                     final chatQuery = await FirebaseFirestore.instance
                         .collection("chats")
                         .where("jobId", isEqualTo: jobId)
@@ -121,7 +121,6 @@ class NotificationsScreen extends StatelessWidget {
                         .get();
 
                     if (chatQuery.docs.isNotEmpty) {
-
                       final chatId = chatQuery.docs.first.id;
 
                       if (!context.mounted) return;
@@ -139,7 +138,6 @@ class NotificationsScreen extends StatelessWidget {
 
                   /// 🔥 3. MESSAGE → CHAT
                   if (type == "message" && jobId != null) {
-
                     final chatQuery = await FirebaseFirestore.instance
                         .collection("chats")
                         .where("jobId", isEqualTo: jobId)
@@ -147,7 +145,6 @@ class NotificationsScreen extends StatelessWidget {
                         .get();
 
                     if (chatQuery.docs.isNotEmpty) {
-
                       final chatId = chatQuery.docs.first.id;
 
                       if (!context.mounted) return;
@@ -163,16 +160,40 @@ class NotificationsScreen extends StatelessWidget {
                     return;
                   }
 
-                  /// 🔥 4. OPEN WORKER PROFILE (если есть)
-                  if (workerId != null) {
+                  /// 🔥 4. JOB ALERT → JOB DETAILS
+                  if (type == "job_alert" && jobId != null) {
+                    final jobDoc = await FirebaseFirestore.instance
+                        .collection("jobs")
+                        .doc(jobId)
+                        .get();
+
+                    if (!jobDoc.exists) return;
+
+                    final job = Job.fromFirestore(
+                      jobDoc.id,
+                      jobDoc.data()!,
+                    );
 
                     if (!context.mounted) return;
 
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            WorkerProfileScreen(userId: workerId),
+                        builder: (_) => JobDetailScreen(job: job),
+                      ),
+                    );
+
+                    return;
+                  }
+
+                  /// 🔥 5. OPEN WORKER PROFILE (если есть)
+                  if (workerId != null) {
+                    if (!context.mounted) return;
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => WorkerProfileScreen(userId: workerId),
                       ),
                     );
 
@@ -181,7 +202,6 @@ class NotificationsScreen extends StatelessWidget {
 
                   /// 🔁 fallback → application details
                   if (applicationId != null) {
-
                     final appDoc = await FirebaseFirestore.instance
                         .collection("applications")
                         .doc(applicationId)

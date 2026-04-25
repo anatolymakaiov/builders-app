@@ -9,6 +9,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
 
 import '../models/job.dart';
+import '../services/job_alert_service.dart';
 
 class PostJobScreen extends StatefulWidget {
   final Function(dynamic) onJobCreated;
@@ -27,6 +28,8 @@ class PostJobScreen extends StatefulWidget {
 }
 
 class _PostJobScreenState extends State<PostJobScreen> {
+  final jobAlertService = JobAlertService();
+
   final titleController = TextEditingController();
   final positionsController = TextEditingController();
   final durationController = TextEditingController();
@@ -266,10 +269,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
       /// 🔥 CREATE
       else {
-        await FirebaseFirestore.instance.collection('jobs').add({
+        final doc = await FirebaseFirestore.instance.collection('jobs').add({
           ...data,
           "createdAt": FieldValue.serverTimestamp(),
         });
+
+        await jobAlertService.notifyMatchingWorkers(
+          jobId: doc.id,
+          jobData: data,
+        );
       }
 
       widget.onJobCreated(true);

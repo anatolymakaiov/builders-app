@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
+import 'package:test_app/services/job_alert_service.dart';
 import 'package:test_app/services/job_repository.dart';
 import '../models/job.dart';
-import 'map_screen.dart';
 import 'job_details_screen.dart';
 import 'post_job_screen.dart';
 import 'filter_sheet.dart';
@@ -24,6 +25,7 @@ class JobListScreen extends StatefulWidget {
 
 class _JobListScreenState extends State<JobListScreen> {
   final jobRepository = JobRepository();
+  final jobAlertService = JobAlertService();
 
   double? userLat;
   double? userLng;
@@ -109,6 +111,60 @@ class _JobListScreenState extends State<JobListScreen> {
     }
   }
 
+  Future<void> saveJobAlert() async {
+    final alertFilters = await showModalBottomSheet<FilterResult>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => FilterSheet(current: filters),
+    );
+
+    if (alertFilters == null) return;
+    if (!mounted) return;
+
+    setState(() {
+      filters = alertFilters;
+    });
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please log in first")),
+      );
+      return;
+    }
+
+    if (userLat == null || userLng == null) {
+      await getUserLocation();
+    }
+
+    if (userLat == null || userLng == null) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Turn on location to subscribe to nearby jobs"),
+        ),
+      );
+      return;
+    }
+
+    await jobAlertService.saveWorkerAlert(
+      userId: user.uid,
+      trade: alertFilters.trade,
+      jobType: alertFilters.jobType,
+      distance: alertFilters.distance,
+      lat: userLat!,
+      lng: userLng!,
+    );
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Job alert saved")),
+    );
+  }
+
   String sortLabel() {
     switch (sortType) {
       case SortType.nearest:
@@ -120,8 +176,58 @@ class _JobListScreenState extends State<JobListScreen> {
     }
   }
 
-  Widget buildJobCard(Job job) {
+  String jobTypeLabel(String jobType) {
+    switch (jobType) {
+      case "hourly":
+        return "Daywork";
+      case "price":
+        return "Price";
+      case "negotiable":
+        return "Negotiable";
+      default:
+        return "Job";
+    }
+  }
+
+  Future<void> toggleSavedJob(Job job, bool isSaved) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    await jobRepository.toggleSaveJob(user.uid, job.id, isSaved);
+  }
+
+  Widget metaChip({
+    required IconData icon,
+    required String label,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.grey.shade700),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.grey.shade800,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildJobCard(Job job, bool isSaved) {
     final distance = calculateDistance(job.lat, job.lng);
+    final duration =
+        job.duration.trim().isEmpty ? "Duration not set" : job.duration.trim();
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -161,25 +267,45 @@ class _JobListScreenState extends State<JobListScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  /// 🔥 TRADE (только если есть)
-                  if (job.trade.isNotEmpty)
-                    Text(
-                      job.trade,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            /// 🔥 TRADE (только если есть)
+                            if (job.trade.isNotEmpty)
+                              Text(
+                                job.trade,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                ),
+                              ),
+
+                            if (job.trade.isNotEmpty) const SizedBox(height: 4),
+
+                            /// 🔥 TITLE (главный)
+                            Text(
+                              job.title,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-
-                  if (job.trade.isNotEmpty) const SizedBox(height: 4),
-
-                  /// 🔥 TITLE (главный)
-                  Text(
-                    job.title,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                      IconButton(
+                        tooltip: isSaved ? "Remove from saved" : "Save job",
+                        icon: Icon(
+                          isSaved ? Icons.favorite : Icons.favorite_border,
+                          color: isSaved ? Colors.red : Colors.grey,
+                        ),
+                        onPressed: () => toggleSavedJob(job, isSaved),
+                      ),
+                    ],
                   ),
 
                   const SizedBox(height: 10),
@@ -240,6 +366,23 @@ class _JobListScreenState extends State<JobListScreen> {
 
                   const SizedBox(height: 10),
 
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      metaChip(
+                        icon: Icons.work_outline,
+                        label: jobTypeLabel(job.jobType),
+                      ),
+                      metaChip(
+                        icon: Icons.schedule,
+                        label: duration,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 10),
+
                   /// 💰 RATE + 📏 DISTANCE
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -280,29 +423,21 @@ class _JobListScreenState extends State<JobListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Jobs"),
         actions: [
           IconButton(
+            tooltip: "Subscribe to jobs",
+            icon: const Icon(Icons.notifications_active),
+            onPressed: saveJobAlert,
+          ),
+          IconButton(
             icon: const Icon(Icons.filter_alt),
             onPressed: openFilters,
           ),
-          IconButton(
-            icon: const Icon(Icons.map),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const MapScreen(),
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.my_location),
-            onPressed: getUserLocation,
-          )
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -332,62 +467,79 @@ class _JobListScreenState extends State<JobListScreen> {
           ),
 
           Expanded(
-            child: StreamBuilder<List<Job>>(
-              stream: jobRepository.getJobs(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+            child: StreamBuilder<Set<String>>(
+              stream: userId == null
+                  ? Stream.value(<String>{})
+                  : jobRepository.getSavedJobsStream(userId),
+              builder: (context, savedSnapshot) {
+                final savedJobIds = savedSnapshot.data ?? <String>{};
 
-                final jobs = snapshot.data!;
+                return StreamBuilder<List<Job>>(
+                  stream: jobRepository.getJobs(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
 
-                final filteredJobs = jobs.where((job) {
-                  if (searchQuery.isNotEmpty &&
-                      !job.title.toLowerCase().contains(searchQuery) &&
-                      !job.trade.toLowerCase().contains(searchQuery)) {
-                    return false;
-                  }
+                    final jobs = snapshot.data!;
 
-                  if (filters.trade != "All" &&
-                      job.trade.toLowerCase() != filters.trade.toLowerCase()) {
-                    return false;
-                  }
+                    final filteredJobs = jobs.where((job) {
+                      if (searchQuery.isNotEmpty &&
+                          !job.title.toLowerCase().contains(searchQuery) &&
+                          !job.trade.toLowerCase().contains(searchQuery)) {
+                        return false;
+                      }
 
-                  if (filters.jobType != "All" &&
-                      job.jobType.toLowerCase() !=
-                          filters.jobType.toLowerCase()) {
-                    return false;
-                  }
+                      if (filters.trade != "All" &&
+                          job.trade.toLowerCase() !=
+                              filters.trade.toLowerCase()) {
+                        return false;
+                      }
 
-                  final distance = calculateDistance(job.lat, job.lng);
+                      if (filters.jobType != "All" &&
+                          job.jobType.toLowerCase() !=
+                              filters.jobType.toLowerCase()) {
+                        return false;
+                      }
 
-                  if (distance != double.infinity &&
-                      distance > filters.distance) {
-                    return false;
-                  }
+                      final distance = calculateDistance(job.lat, job.lng);
 
-                  return true;
-                }).toList();
+                      if (distance != double.infinity &&
+                          distance > filters.distance) {
+                        return false;
+                      }
 
-                /// SORT
-                if (sortType == SortType.nearest) {
-                  filteredJobs.sort((a, b) => calculateDistance(a.lat, a.lng)
-                      .compareTo(calculateDistance(b.lat, b.lng)));
-                }
+                      return true;
+                    }).toList();
 
-                if (sortType == SortType.highestPay) {
-                  filteredJobs.sort((a, b) => b.rate.compareTo(a.rate));
-                }
+                    /// SORT
+                    if (sortType == SortType.nearest) {
+                      filteredJobs.sort((a, b) =>
+                          calculateDistance(a.lat, a.lng)
+                              .compareTo(calculateDistance(b.lat, b.lng)));
+                    }
 
-                if (sortType == SortType.newest) {
-                  filteredJobs.sort((a, b) => (b.createdAt ?? DateTime.now())
-                      .compareTo(a.createdAt ?? DateTime.now()));
-                }
+                    if (sortType == SortType.highestPay) {
+                      filteredJobs.sort((a, b) => b.rate.compareTo(a.rate));
+                    }
 
-                return ListView.builder(
-                  itemCount: filteredJobs.length,
-                  itemBuilder: (context, index) {
-                    return buildJobCard(filteredJobs[index]);
+                    if (sortType == SortType.newest) {
+                      filteredJobs.sort((a, b) =>
+                          (b.createdAt ?? DateTime.now())
+                              .compareTo(a.createdAt ?? DateTime.now()));
+                    }
+
+                    return ListView.builder(
+                      itemCount: filteredJobs.length,
+                      itemBuilder: (context, index) {
+                        final job = filteredJobs[index];
+
+                        return buildJobCard(
+                          job,
+                          savedJobIds.contains(job.id),
+                        );
+                      },
+                    );
                   },
                 );
               },
