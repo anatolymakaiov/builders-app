@@ -14,10 +14,14 @@ class FilterResult {
 
 class FilterSheet extends StatefulWidget {
   final FilterResult current;
+  final String title;
+  final String actionLabel;
 
   const FilterSheet({
     super.key,
     required this.current,
+    this.title = "Filters",
+    this.actionLabel = "Apply filters",
   });
 
   @override
@@ -95,9 +99,9 @@ class _FilterSheetState extends State<FilterSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  "Filters",
-                  style: TextStyle(
+                Text(
+                  widget.title,
+                  style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
@@ -223,7 +227,7 @@ class _FilterSheetState extends State<FilterSheet> {
                     ),
                   );
                 },
-                child: const Text("Apply filters"),
+                child: Text(widget.actionLabel),
               ),
             )
           ],

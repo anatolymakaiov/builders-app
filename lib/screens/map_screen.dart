@@ -16,7 +16,6 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-
   // ✅ FIX: убрали test_user_123
   String? get currentUserId => FirebaseAuth.instance.currentUser?.uid;
 
@@ -45,13 +44,7 @@ class _MapScreenState extends State<MapScreen> {
   String tradeFilter = "All";
   String sortBy = "distance";
 
-  final trades = [
-    "All",
-    "Bricklayer",
-    "Dryliner",
-    "Painter",
-    "Labourer"
-  ];
+  final trades = ["All", "Bricklayer", "Dryliner", "Painter", "Labourer"];
 
   @override
   void initState() {
@@ -60,7 +53,6 @@ class _MapScreenState extends State<MapScreen> {
     loadSavedJobs();
 
     listController.addListener(() {
-
       if (!listController.hasClients) return;
 
       final offset = listController.offset;
@@ -73,21 +65,17 @@ class _MapScreenState extends State<MapScreen> {
 
       mapController.move(
         LatLng(job.lat, job.lng),
-        mapController.camera.zoom < 14
-            ? 14
-            : mapController.camera.zoom,
+        mapController.camera.zoom < 14 ? 14 : mapController.camera.zoom,
       );
 
       setState(() {
         selectedJobId = job.id;
       });
-
     });
   }
 
   // ✅ FIX: теперь берём реального пользователя
   Future<void> loadSavedJobs() async {
-
     final userId = currentUserId;
     if (userId == null) return;
 
@@ -99,7 +87,6 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> toggleSaveJob(String jobId) async {
-
     final userId = currentUserId;
     if (userId == null) return;
 
@@ -115,9 +102,9 @@ class _MapScreenState extends State<MapScreen> {
       }
     });
   }
+
   // ✅ FIX: apply теперь тоже на реального юзера
   Future<void> applyToJob(Job job) async {
-
     final userId = currentUserId;
     if (userId == null) return;
 
@@ -130,7 +117,6 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> requestLocation() async {
-
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return;
 
@@ -148,11 +134,9 @@ class _MapScreenState extends State<MapScreen> {
       userLat = position.latitude;
       userLng = position.longitude;
     });
-
   }
 
   double calculateDistance(double lat, double lng) {
-
     if (userLat == null || userLng == null) return double.infinity;
 
     final meters = Geolocator.distanceBetween(
@@ -166,62 +150,58 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   String rateText(Job job) {
-
     if (job.jobType == "negotiable") return "PRICE";
     if (job.jobType == "price") return "£${job.rate.toInt()}";
 
     return "£${job.rate.toInt()}/h";
   }
 
-  void scrollToJob(int index) {
+  String jobTypeLabel(String jobType) {
+    switch (jobType) {
+      case "hourly":
+        return "Daywork";
+      case "price":
+        return "Price";
+      case "negotiable":
+        return "Negotiable";
+      default:
+        return "Job";
+    }
+  }
 
+  void scrollToJob(int index) {
     listController.animateTo(
       index * 170,
       duration: const Duration(milliseconds: 400),
       curve: Curves.easeInOut,
     );
-
   }
 
   List<Job> getVisibleJobs() {
-
     if (searchBounds == null) return allJobs;
 
     return allJobs.where((job) {
-
       final point = LatLng(job.lat, job.lng);
       return searchBounds!.contains(point);
-
     }).toList();
-
   }
 
   List<Job> applyFilters(List<Job> jobs) {
-
     List<Job> result = jobs;
 
     if (tradeFilter != "All") {
-
       result = result.where((job) {
-
-        return job.trade.toLowerCase() ==
-            tradeFilter.toLowerCase();
-
+        return job.trade.toLowerCase() == tradeFilter.toLowerCase();
       }).toList();
-
     }
 
     if (sortBy == "distance") {
-
       result.sort((a, b) {
-
         final d1 = calculateDistance(a.lat, a.lng);
         final d2 = calculateDistance(b.lat, b.lng);
 
         return d1.compareTo(d2);
-
       });
-
     }
 
     if (sortBy == "rate") {
@@ -230,42 +210,32 @@ class _MapScreenState extends State<MapScreen> {
 
     if (sortBy == "newest") {
       result.sort((a, b) {
-
         final aDate = a.createdAt ?? DateTime(2000);
         final bDate = b.createdAt ?? DateTime(2000);
 
         return bDate.compareTo(aDate);
-
       });
     }
 
     if (selectedJobId != null) {
-
       result.sort((a, b) {
-
         if (a.id == selectedJobId) return -1;
         if (b.id == selectedJobId) return 1;
         return 0;
-
       });
-
     }
 
     return result;
-
   }
 
   Marker buildUserMarker() {
-
     if (userLat == null || userLng == null) {
-
       return Marker(
         point: const LatLng(0, 0),
         width: 0,
         height: 0,
         child: const SizedBox(),
       );
-
     }
 
     return Marker(
@@ -278,11 +248,9 @@ class _MapScreenState extends State<MapScreen> {
         color: Colors.blue,
       ),
     );
-
   }
 
   Widget buildMarker(Job job) {
-
     final selected = job.id == selectedJobId;
 
     return Container(
@@ -291,9 +259,7 @@ class _MapScreenState extends State<MapScreen> {
         color: selected ? Colors.orange : Colors.white,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: Colors.black12),
-        boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 4)
-        ],
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
       ),
       child: Text(
         rateText(job),
@@ -307,7 +273,6 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Widget buildMap(LatLng center, List<Marker> markers) {
-
     return FlutterMap(
       mapController: mapController,
       options: MapOptions(
@@ -316,12 +281,10 @@ class _MapScreenState extends State<MapScreen> {
         minZoom: 3,
         maxZoom: 18,
         interactionOptions: const InteractionOptions(
-          flags: InteractiveFlag.all,
+          flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
         ),
         onPositionChanged: (position, hasGesture) {
-
           if (hasGesture && position.bounds != null) {
-
             mapBounds = position.bounds;
 
             if (!showSearchButton) {
@@ -329,38 +292,28 @@ class _MapScreenState extends State<MapScreen> {
                 showSearchButton = true;
               });
             }
-
           }
-
         },
       ),
       children: [
-
         TileLayer(
-          urlTemplate:
-          "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+          urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
           userAgentPackageName: "builder.jobs.app",
         ),
-
         MarkerClusterLayerWidget(
           options: MarkerClusterLayerOptions(
             markers: markers,
             maxClusterRadius: 120,
             size: const Size(40, 40),
-
             onClusterTap: (cluster) {
-
               final zoom = mapController.camera.zoom;
 
               mapController.move(
                 cluster.bounds.center,
                 zoom + 2,
               );
-
             },
-
             builder: (context, cluster) {
-
               return Container(
                 alignment: Alignment.center,
                 decoration: const BoxDecoration(
@@ -375,12 +328,9 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                 ),
               );
-
             },
-
           ),
         ),
-
       ],
     );
   }
@@ -430,9 +380,11 @@ class _MapScreenState extends State<MapScreen> {
                     DropdownButton<String>(
                       value: sortBy,
                       items: const [
-                        DropdownMenuItem(value: "distance", child: Text("Distance")),
+                        DropdownMenuItem(
+                            value: "distance", child: Text("Distance")),
                         DropdownMenuItem(value: "rate", child: Text("Pay")),
-                        DropdownMenuItem(value: "newest", child: Text("Newest")),
+                        DropdownMenuItem(
+                            value: "newest", child: Text("Newest")),
                       ],
                       onChanged: (value) {
                         setState(() {
@@ -482,7 +434,9 @@ class _MapScreenState extends State<MapScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(job.trade, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Text(job.trade,
+                style:
+                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             Text(job.title),
             if (job.companyName.isNotEmpty) Text(job.companyName),
             Text("${job.city} ${job.postcode}"),
@@ -493,7 +447,8 @@ class _MapScreenState extends State<MapScreen> {
               runSpacing: 4,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.green.shade50,
                     borderRadius: BorderRadius.circular(6),
@@ -506,6 +461,21 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
                 ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    jobTypeLabel(job.jobType),
+                    style: TextStyle(
+                      color: Colors.grey.shade800,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
                 if (distance != double.infinity)
                   Text("${distance.toStringAsFixed(1)} mi")
               ],
@@ -514,17 +484,6 @@ class _MapScreenState extends State<MapScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                IconButton(
-                  onPressed: () {
-                    toggleSaveJob(job.id);
-                  },
-                  icon: Icon(
-                    savedJobIds.contains(job.id)
-                        ? Icons.favorite
-                        : Icons.favorite_border,
-                    color: Colors.red,
-                  ),
-                ),
                 OutlinedButton(
                   onPressed: () {
                     mapController.move(LatLng(job.lat, job.lng), 17);
@@ -537,19 +496,8 @@ class _MapScreenState extends State<MapScreen> {
                 const SizedBox(width: 8),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: () {
-                    applyToJob(job);
-                  },
-                  child: const Text("Apply", style: TextStyle(fontSize: 12)),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -573,13 +521,11 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       appBar: AppBar(title: const Text("Jobs Map")),
       body: StreamBuilder<List<Job>>(
-              stream: jobRepository.getJobs(),
+        stream: jobRepository.getJobs(),
         builder: (context, snapshot) {
-
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -597,7 +543,6 @@ class _MapScreenState extends State<MapScreen> {
           final markers = <Marker>[];
 
           for (int i = 0; i < visibleJobs.length; i++) {
-
             final job = visibleJobs[i];
 
             markers.add(
@@ -644,7 +589,6 @@ class _MapScreenState extends State<MapScreen> {
           return Stack(
             children: [
               buildMap(center, markers),
-
               if (showSearchButton)
                 Positioned(
                   top: 10,
@@ -662,9 +606,7 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
                 ),
-
               buildBottomSheet(visibleJobs),
-
               Positioned(
                 top: 10,
                 right: 0,
@@ -681,23 +623,6 @@ class _MapScreenState extends State<MapScreen> {
                         );
                       },
                       child: const Icon(Icons.my_location),
-                    ),
-                    const SizedBox(width: 10),
-                    FloatingActionButton(
-                      heroTag: "nearby",
-                      mini: true,
-                      backgroundColor: Colors.orange,
-                      onPressed: () {
-                        if (userLat == null || userLng == null) return;
-                        mapController.move(
-                          LatLng(userLat!, userLng!),
-                          12,
-                        );
-                        setState(() {
-                          sortBy = "distance";
-                        });
-                      },
-                      child: const Icon(Icons.work),
                     ),
                   ],
                 ),

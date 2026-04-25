@@ -7,7 +7,6 @@ import 'package:test_app/services/job_alert_service.dart';
 import 'package:test_app/services/job_repository.dart';
 import '../models/job.dart';
 import 'job_details_screen.dart';
-import 'post_job_screen.dart';
 import 'filter_sheet.dart';
 
 enum SortType {
@@ -84,19 +83,6 @@ class _JobListScreenState extends State<JobListScreen> {
     return meters / 1609.34;
   }
 
-  Future<void> openPostJob() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PostJobScreen(
-          onJobCreated: (_) {},
-        ),
-      ),
-    );
-
-    if (mounted) setState(() {});
-  }
-
   Future<void> openFilters() async {
     final result = await showModalBottomSheet<FilterResult>(
       context: context,
@@ -115,15 +101,15 @@ class _JobListScreenState extends State<JobListScreen> {
     final alertFilters = await showModalBottomSheet<FilterResult>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => FilterSheet(current: filters),
+      builder: (_) => FilterSheet(
+        current: filters,
+        title: "Job subscription",
+        actionLabel: "Subscribe",
+      ),
     );
 
     if (alertFilters == null) return;
     if (!mounted) return;
-
-    setState(() {
-      filters = alertFilters;
-    });
 
     final user = FirebaseAuth.instance.currentUser;
 
@@ -439,10 +425,6 @@ class _JobListScreenState extends State<JobListScreen> {
             onPressed: openFilters,
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        child: const Icon(Icons.add),
-        onPressed: openPostJob,
       ),
       body: Column(
         children: [
