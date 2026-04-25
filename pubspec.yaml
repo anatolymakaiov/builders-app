@@ -37,7 +37,7 @@ dependencies:
 
   # CHAT MEDIA
   image_picker: ^1.1.2
-  record: ^5.2.1
+  record: ^6.2.0
   audioplayers: ^6.1.0
   video_player: ^2.9.2
   path_provider: ^2.1.4
