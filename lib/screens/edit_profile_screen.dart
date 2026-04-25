@@ -23,6 +23,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   final bioController = TextEditingController();
   final experienceController = TextEditingController();
+  final permitsController = TextEditingController();
+  final qualificationsController = TextEditingController();
+  final educationController = TextEditingController();
+  final previousWorkController = TextEditingController();
   final rateController = TextEditingController();
   final locationController = TextEditingController();
 
@@ -58,14 +62,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final data = userDoc.data()!;
 
-    final portfolioSnapshot = await FirebaseFirestore.instance
-        .collection("users")
-        .doc(userId)
-        .collection("portfolio")
-        .get();
-
-    final portfolioUrls =
-        portfolioSnapshot.docs.map((doc) => doc["imageUrl"] as String).toList();
+    final portfolioUrls = await loadPortfolioUrls(userId);
 
     setState(() {
       role = data["role"] ?? "worker";
@@ -78,6 +75,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       bioController.text = data["bio"] ?? "";
       experienceController.text = data["experience"] ?? "";
+      permitsController.text = data["permits"] ?? "";
+      qualificationsController.text = data["qualifications"] ?? "";
+      educationController.text = data["education"] ?? "";
+      previousWorkController.text = data["previousWork"] ?? "";
       rateController.text = data["rate"]?.toString() ?? "";
       locationController.text = data["location"] ?? "";
 
@@ -90,6 +91,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
       photoUrl = data["photo"];
       portfolio = portfolioUrls;
     });
+  }
+
+  Future<List<String>> loadPortfolioUrls(String userId) async {
+    final urls = <String>[];
+
+    final nestedSnapshot = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(userId)
+        .collection("portfolio")
+        .get();
+
+    for (final doc in nestedSnapshot.docs) {
+      final data = doc.data();
+      final url = data["imageUrl"] ?? data["image"];
+      if (url != null) urls.add(url.toString());
+    }
+
+    final flatSnapshot = await FirebaseFirestore.instance
+        .collection("portfolio")
+        .where("userId", isEqualTo: userId)
+        .get();
+
+    for (final doc in flatSnapshot.docs) {
+      final data = doc.data();
+      final url = data["imageUrl"] ?? data["image"];
+      if (url != null && !urls.contains(url.toString())) {
+        urls.add(url.toString());
+      }
+    }
+
+    return urls;
   }
 
   /// AVATAR
@@ -130,6 +162,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       /// 🔥 WORKER
       "trade": role == "worker" ? tradeController.text.trim() : null,
       "experience": role == "worker" ? experienceController.text.trim() : null,
+      "permits": role == "worker" ? permitsController.text.trim() : null,
+      "qualifications":
+          role == "worker" ? qualificationsController.text.trim() : null,
+      "education": role == "worker" ? educationController.text.trim() : null,
+      "previousWork":
+          role == "worker" ? previousWorkController.text.trim() : null,
       "rate":
           role == "worker" ? double.tryParse(rateController.text.trim()) : null,
 
@@ -277,7 +315,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 12),
           TextField(
               controller: experienceController,
+              maxLines: 2,
               decoration: const InputDecoration(labelText: "Experience")),
+          const SizedBox(height: 12),
+          TextField(
+            controller: permitsController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: "Permits / licences",
+              hintText: "CSCS, right to work, driving licence, permits",
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: qualificationsController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: "Qualifications",
+              hintText: "NVQ, trade qualifications, certificates",
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: educationController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: "Education",
+              hintText: "Courses, college, training",
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: previousWorkController,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: "Previous work",
+              hintText: "Previous projects, employers, responsibilities",
+            ),
+          ),
         ],
 
         /// 🔥 EMPLOYER

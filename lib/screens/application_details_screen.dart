@@ -342,19 +342,63 @@ class ApplicationDetailsScreen extends StatelessWidget {
     }
   }
 
-  Widget buildPortfolioGallery(String userId) {
-    return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
-          .collection("users")
-          .doc(userId)
-          .collection("portfolio")
-          .get(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const SizedBox();
-        }
+  Widget buildWorkerInfoSection(String title, dynamic value) {
+    final text = value?.toString().trim() ?? "";
+    if (text.isEmpty) return const SizedBox();
 
-        final items = snapshot.data!.docs;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          Text(text),
+        ],
+      ),
+    );
+  }
+
+  Future<List<String>> loadPortfolioUrls(String userId) async {
+    final urls = <String>[];
+
+    final nestedSnapshot = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(userId)
+        .collection("portfolio")
+        .get();
+
+    for (final doc in nestedSnapshot.docs) {
+      final data = doc.data();
+      final url = data["imageUrl"] ?? data["image"];
+      if (url != null) urls.add(url.toString());
+    }
+
+    final flatSnapshot = await FirebaseFirestore.instance
+        .collection("portfolio")
+        .where("userId", isEqualTo: userId)
+        .get();
+
+    for (final doc in flatSnapshot.docs) {
+      final data = doc.data();
+      final url = data["imageUrl"] ?? data["image"];
+      if (url != null && !urls.contains(url.toString())) {
+        urls.add(url.toString());
+      }
+    }
+
+    return urls;
+  }
+
+  Widget buildPortfolioGallery(String userId) {
+    return FutureBuilder<List<String>>(
+      future: loadPortfolioUrls(userId),
+      builder: (context, snapshot) {
+        final items = snapshot.data ?? [];
+        if (items.isEmpty) return const SizedBox();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -371,11 +415,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 itemCount: items.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 10),
                 itemBuilder: (context, index) {
-                  final item = items[index].data() as Map<String, dynamic>;
-                  final image = item["imageUrl"]?.toString();
-                  if (image == null || image.isEmpty) {
-                    return const SizedBox();
-                  }
+                  final image = items[index];
 
                   return GestureDetector(
                     onTap: () {
@@ -570,6 +610,12 @@ class ApplicationDetailsScreen extends StatelessWidget {
           final location = user["location"] ?? "";
           final photo = user["photo"];
           final isTeam = (data["type"] ?? "single") == "team";
+          final phone = user["phone"];
+          final experience = user["experience"];
+          final permits = user["permits"];
+          final qualifications = user["qualifications"];
+          final education = user["education"];
+          final previousWork = user["previousWork"];
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -616,24 +662,14 @@ class ApplicationDetailsScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 30),
-                  if (location.isNotEmpty) ...[
-                    const Text(
-                      "Location",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(location),
-                    const SizedBox(height: 20),
-                  ],
-                  if (bio.isNotEmpty) ...[
-                    const Text(
-                      "About worker",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(bio),
-                    const SizedBox(height: 20),
-                  ],
+                  buildWorkerInfoSection("Phone", phone),
+                  buildWorkerInfoSection("Location", location),
+                  buildWorkerInfoSection("About worker", bio),
+                  buildWorkerInfoSection("Experience", experience),
+                  buildWorkerInfoSection("Permits / licences", permits),
+                  buildWorkerInfoSection("Qualifications", qualifications),
+                  buildWorkerInfoSection("Education", education),
+                  buildWorkerInfoSection("Previous work", previousWork),
                 ],
 
                 if (isTeam)

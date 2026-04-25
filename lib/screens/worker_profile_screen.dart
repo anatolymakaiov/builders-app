@@ -22,6 +22,110 @@ class WorkerProfileScreen extends StatelessWidget {
     this.employerId,
   });
 
+  Widget buildInfoSection(String title, dynamic value) {
+    final text = value?.toString().trim() ?? "";
+    if (text.isEmpty) return const SizedBox();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          Text(text),
+        ],
+      ),
+    );
+  }
+
+  Future<List<String>> loadPortfolioUrls() async {
+    final urls = <String>[];
+
+    final nestedSnapshot = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(userId)
+        .collection("portfolio")
+        .get();
+
+    for (final doc in nestedSnapshot.docs) {
+      final data = doc.data();
+      final url = data["imageUrl"] ?? data["image"];
+      if (url != null) urls.add(url.toString());
+    }
+
+    final flatSnapshot = await FirebaseFirestore.instance
+        .collection("portfolio")
+        .where("userId", isEqualTo: userId)
+        .get();
+
+    for (final doc in flatSnapshot.docs) {
+      final data = doc.data();
+      final url = data["imageUrl"] ?? data["image"];
+      if (url != null && !urls.contains(url.toString())) {
+        urls.add(url.toString());
+      }
+    }
+
+    return urls;
+  }
+
+  Widget buildPortfolioGallery() {
+    return FutureBuilder<List<String>>(
+      future: loadPortfolioUrls(),
+      builder: (context, snapshot) {
+        final items = snapshot.data ?? [];
+        if (items.isEmpty) return const SizedBox();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Portfolio",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 110,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final img = items[index];
+
+                  return GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (_) => Dialog(
+                          child: Image.network(img, fit: BoxFit.contain),
+                        ),
+                      );
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        img,
+                        width: 110,
+                        height: 110,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 30),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -39,7 +143,7 @@ class WorkerProfileScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => ProfileScreen(),
+                    builder: (_) => const ProfileScreen(),
                   ),
                 );
               },
@@ -105,6 +209,12 @@ class WorkerProfileScreen extends StatelessWidget {
           final bio = data["bio"] ?? "";
           final location = data["location"] ?? "";
           final photo = data["photo"];
+          final phone = data["phone"];
+          final experience = data["experience"];
+          final permits = data["permits"];
+          final qualifications = data["qualifications"];
+          final education = data["education"];
+          final previousWork = data["previousWork"];
 
           final rating = (data["rating"] ?? 0).toDouble();
           final reviews = data["reviewsCount"] ?? 0;
@@ -171,77 +281,15 @@ class WorkerProfileScreen extends StatelessWidget {
 
                 const SizedBox(height: 30),
 
-                /// 📍 LOCATION
-                if (location.isNotEmpty) ...[
-                  const Text(
-                    "Location",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(location),
-                  const SizedBox(height: 20),
-                ],
-
-                /// 📝 ABOUT
-                if (bio.isNotEmpty) ...[
-                  const Text(
-                    "About",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(bio),
-                  const SizedBox(height: 20),
-                ],
-
-                /// 🔥 PORTFOLIO
-                FutureBuilder<QuerySnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection("users")
-                      .doc(userId)
-                      .collection("portfolio")
-                      .get(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return const SizedBox();
-                    }
-
-                    final items = snapshot.data!.docs;
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "Portfolio",
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          height: 110,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: items.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(width: 10),
-                            itemBuilder: (_, index) {
-                              final img = items[index]["imageUrl"];
-
-                              return ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: Image.network(
-                                  img,
-                                  width: 110,
-                                  height: 110,
-                                  fit: BoxFit.cover,
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 30),
-                      ],
-                    );
-                  },
-                ),
+                buildInfoSection("Phone", phone),
+                buildInfoSection("Location", location),
+                buildInfoSection("About", bio),
+                buildInfoSection("Experience", experience),
+                buildInfoSection("Permits / licences", permits),
+                buildInfoSection("Qualifications", qualifications),
+                buildInfoSection("Education", education),
+                buildInfoSection("Previous work", previousWork),
+                buildPortfolioGallery(),
                 if (status == "offer_sent") ...[
                   const SizedBox(height: 20),
                   Container(
