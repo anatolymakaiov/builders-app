@@ -2,18 +2,17 @@ import 'package:flutter/material.dart';
 
 class FilterResult {
   final String trade;
-  final double minRate;
+  final String jobType;
   final double distance;
 
   FilterResult({
     required this.trade,
-    required this.minRate,
+    required this.jobType,
     required this.distance,
   });
 }
 
 class FilterSheet extends StatefulWidget {
-
   final FilterResult current;
 
   const FilterSheet({
@@ -26,104 +25,76 @@ class FilterSheet extends StatefulWidget {
 }
 
 class _FilterSheetState extends State<FilterSheet> {
-
   late String trade;
-  late double minRate;
+  late String jobType;
   late double distance;
 
-  final searchController = TextEditingController();
-
-  final List<String> allTrades = [
-
+  final List<String> trades = [
     "All",
-
     "Bricklayer",
     "Dryliner",
-    "Fixer",
     "Carpenter",
     "Joiner",
     "Painter",
     "Decorator",
-    "Plumber",
-    "Electrician",
-    "Groundworker",
-    "Labourer",
-    "Scaffolder",
-    "Tiler",
     "Plasterer",
+    "Tiler",
+    "Floor layer",
+    "Groundworker",
+    "Steel fixer",
+    "Concrete finisher",
+    "Scaffolder",
     "Roofer",
-    "Steel Fixer",
-    "Welder",
-
+    "Window fitter",
+    "Door installer",
+    "Electrician",
+    "Electrical mate",
+    "Plumber",
+    "Pipe fitter",
+    "Gas engineer",
+    "HVAC engineer",
+    "Fire alarm engineer",
+    "Security engineer",
+    "Data engineer",
+    "Kitchen fitter",
+    "Bathroom fitter",
+    "Handyman",
+    "Snagger",
+    "Cleaner",
+    "Labourer",
   ];
-
-  List<String> filteredTrades = [];
 
   @override
   void initState() {
     super.initState();
 
     trade = widget.current.trade;
-    minRate = widget.current.minRate;
+    jobType = widget.current.jobType;
     distance = widget.current.distance;
-
-    filteredTrades = allTrades;
-  }
-
-  void searchTrade(String text) {
-
-    setState(() {
-
-      if (text.isEmpty) {
-        filteredTrades = allTrades;
-      } else {
-
-        filteredTrades = allTrades.where((t) {
-
-          return t.toLowerCase().contains(
-                text.toLowerCase(),
-              );
-
-        }).toList();
-
-      }
-
-    });
-
   }
 
   void resetFilters() {
-
     setState(() {
-
       trade = "All";
-      minRate = 0;
+      jobType = "All";
       distance = 50;
-      searchController.clear();
-      filteredTrades = allTrades;
-
     });
-
   }
 
   @override
   Widget build(BuildContext context) {
-
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.all(20),
         height: 520,
-
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             /// HEADER
 
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-
                 const Text(
                   "Filters",
                   style: TextStyle(
@@ -131,112 +102,79 @@ class _FilterSheetState extends State<FilterSheet> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 TextButton(
                   onPressed: resetFilters,
                   child: const Text("Reset"),
                 )
-
               ],
             ),
 
             const SizedBox(height: 20),
 
-            /// TRADE SEARCH
+            /// TRADE
 
             const Text(
               "Trade",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 8),
 
-            TextField(
-              controller: searchController,
-              decoration: InputDecoration(
+            DropdownButtonFormField<String>(
+              initialValue: trades.contains(trade) ? trade : "All",
+              items: trades
+                  .map((item) => DropdownMenuItem(
+                        value: item,
+                        child: Text(item),
+                      ))
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) return;
 
-                hintText: "Search trade",
-
-                prefixIcon: const Icon(Icons.search),
-
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-
-              ),
-              onChanged: searchTrade,
-            ),
-
-            const SizedBox(height: 12),
-
-            /// TRADE CHIPS
-
-            SizedBox(
-              height: 90,
-              child: SingleChildScrollView(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: filteredTrades.map((t) {
-
-                    final selected = trade == t;
-
-                    return ChoiceChip(
-
-                      label: Text(t),
-
-                      selected: selected,
-
-                      onSelected: (_) {
-
-                        setState(() {
-                          trade = t;
-                        });
-
-                      },
-
-                    );
-
-                  }).toList(),
-                ),
+                setState(() {
+                  trade = value;
+                });
+              },
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
               ),
             ),
 
             const SizedBox(height: 16),
 
-            /// RATE
+            /// JOB TYPE
 
             const Text(
-              "Minimum hourly rate",
+              "Job type",
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
 
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
 
-            Text(
-              "£${minRate.toInt()} / hour",
-              style: const TextStyle(
-                color: Colors.grey,
+            DropdownButtonFormField<String>(
+              initialValue: jobType,
+              items: const [
+                DropdownMenuItem(value: "All", child: Text("All")),
+                DropdownMenuItem(value: "hourly", child: Text("Daywork")),
+                DropdownMenuItem(value: "price", child: Text("Price")),
+                DropdownMenuItem(
+                  value: "negotiable",
+                  child: Text("Negotiable"),
+                ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+
+                setState(() {
+                  jobType = value;
+                });
+              },
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
               ),
             ),
 
-            Slider(
-              min: 0,
-              max: 50,
-              divisions: 25,
-              value: minRate,
-              onChanged: (v) {
-
-                setState(() {
-                  minRate = v;
-                });
-
-              },
-            ),
-
-            const SizedBox(height: 10),
+            const SizedBox(height: 16),
 
             /// DISTANCE
 
@@ -262,11 +200,9 @@ class _FilterSheetState extends State<FilterSheet> {
               divisions: 9,
               value: distance,
               onChanged: (v) {
-
                 setState(() {
                   distance = v;
                 });
-
               },
             ),
 
@@ -276,26 +212,20 @@ class _FilterSheetState extends State<FilterSheet> {
 
             SizedBox(
               width: double.infinity,
-
               child: ElevatedButton(
-
                 onPressed: () {
-
                   Navigator.pop(
                     context,
                     FilterResult(
                       trade: trade,
-                      minRate: minRate,
+                      jobType: jobType,
                       distance: distance,
                     ),
                   );
-
                 },
-
                 child: const Text("Apply filters"),
               ),
             )
-
           ],
         ),
       ),

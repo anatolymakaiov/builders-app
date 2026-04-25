@@ -32,7 +32,7 @@ class _JobListScreenState extends State<JobListScreen> {
 
   FilterResult filters = FilterResult(
     trade: "All",
-    minRate: 0,
+    jobType: "All",
     distance: 50,
   );
 
@@ -353,7 +353,9 @@ class _JobListScreenState extends State<JobListScreen> {
                     return false;
                   }
 
-                  if (job.rate < filters.minRate) {
+                  if (filters.jobType != "All" &&
+                      job.jobType.toLowerCase() !=
+                          filters.jobType.toLowerCase()) {
                     return false;
                   }
 
