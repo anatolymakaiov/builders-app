@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'worker_profile_screen.dart';
+import '../widgets/phone_link.dart';
 
 class TeamDetailsScreen extends StatelessWidget {
   final String teamId;
@@ -82,6 +83,7 @@ class TeamDetailsScreen extends StatelessWidget {
 
                       final userName = user?["name"] ?? "User";
                       final photo = user?["photo"];
+                      final phone = user?["phone"]?.toString();
 
                       return Container(
                         decoration: BoxDecoration(
@@ -113,6 +115,11 @@ class TeamDetailsScreen extends StatelessWidget {
                                   color: Colors.grey,
                                 ),
                               ),
+                              if (phone != null && phone.isNotEmpty)
+                                PhoneLink(
+                                  phone: phone,
+                                  compact: true,
+                                ),
                             ],
                           ),
 

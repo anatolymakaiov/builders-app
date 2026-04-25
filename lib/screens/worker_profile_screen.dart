@@ -9,6 +9,7 @@ import 'team_details_screen.dart';
 import 'edit_profile_screen.dart';
 import '../services/chat_service.dart';
 import 'chat_screen.dart';
+import '../widgets/phone_link.dart';
 
 class WorkerProfileScreen extends StatelessWidget {
   final String userId;
@@ -37,6 +38,26 @@ class WorkerProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(text),
+        ],
+      ),
+    );
+  }
+
+  Widget buildPhoneSection(dynamic value) {
+    final phone = value?.toString().trim() ?? "";
+    if (phone.isEmpty) return const SizedBox();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Phone",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          PhoneLink(phone: phone),
         ],
       ),
     );
@@ -281,7 +302,7 @@ class WorkerProfileScreen extends StatelessWidget {
 
                 const SizedBox(height: 30),
 
-                buildInfoSection("Phone", phone),
+                buildPhoneSection(phone),
                 buildInfoSection("Location", location),
                 buildInfoSection("About", bio),
                 buildInfoSection("Experience", experience),

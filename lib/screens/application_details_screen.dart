@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'chat_screen.dart';
 import 'worker_profile_screen.dart';
 import '../services/notification_service.dart';
+import '../widgets/phone_link.dart';
 
 class ApplicationDetailsScreen extends StatelessWidget {
   final String applicationId;
@@ -362,6 +363,26 @@ class ApplicationDetailsScreen extends StatelessWidget {
     );
   }
 
+  Widget buildWorkerPhoneSection(dynamic value) {
+    final phone = value?.toString().trim() ?? "";
+    if (phone.isEmpty) return const SizedBox();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Phone",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          PhoneLink(phone: phone),
+        ],
+      ),
+    );
+  }
+
   Future<List<String>> loadPortfolioUrls(String userId) async {
     final urls = <String>[];
 
@@ -662,7 +683,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 30),
-                  buildWorkerInfoSection("Phone", phone),
+                  buildWorkerPhoneSection(phone),
                   buildWorkerInfoSection("Location", location),
                   buildWorkerInfoSection("About worker", bio),
                   buildWorkerInfoSection("Experience", experience),

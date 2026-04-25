@@ -5,6 +5,7 @@ import '../models/job.dart';
 import 'job_details_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'edit_profile_screen.dart';
+import '../widgets/phone_link.dart';
 
 class EmployerProfileScreen extends StatelessWidget {
   final String userId;
@@ -139,13 +140,7 @@ class EmployerProfileScreen extends StatelessWidget {
 
                 /// 📞 PHONE
                 if (phone.isNotEmpty) ...[
-                  Row(
-                    children: [
-                      const Icon(Icons.phone),
-                      const SizedBox(width: 8),
-                      Text(phone),
-                    ],
-                  ),
+                  PhoneLink(phone: phone),
                   const SizedBox(height: 16),
                 ],
                 if (phone.isNotEmpty)
@@ -166,13 +161,7 @@ class EmployerProfileScreen extends StatelessWidget {
                 if (extraPhones.isNotEmpty) ...[
                   ...extraPhones.map((p) => Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.phone, size: 16),
-                            const SizedBox(width: 6),
-                            Text(p),
-                          ],
-                        ),
+                        child: PhoneLink(phone: p, compact: true),
                       )),
                   const SizedBox(height: 16),
                 ],
@@ -211,7 +200,10 @@ class EmployerProfileScreen extends StatelessWidget {
                   ...contacts.map((c) => ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(c["name"] ?? ""),
-                        subtitle: Text(c["phone"] ?? ""),
+                        subtitle: PhoneLink(
+                          phone: c["phone"]?.toString(),
+                          compact: true,
+                        ),
                       )),
                   const SizedBox(height: 16),
                 ],
