@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/job.dart';
 import 'job_details_screen.dart';
+import '../theme/app_theme.dart';
 
 class EmployerDashboardScreen extends StatefulWidget {
   const EmployerDashboardScreen({super.key});
@@ -79,7 +80,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
       buildMetaChip(
         icon: Icons.work_outline,
         label: job.workFormatText,
-        color: Colors.blueGrey,
+        color: AppColors.ink,
       ),
       buildMetaChip(
         icon: Icons.payments_outlined,
@@ -103,7 +104,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
         buildMetaChip(
           icon: Icons.timelapse,
           label: job.duration,
-          color: Colors.orange,
+          color: AppColors.greenDark,
         ),
       );
     }
@@ -209,19 +210,19 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                 buildStatTile(
                   label: "Applied",
                   value: docs.length,
-                  color: Colors.blueGrey,
+                  color: AppColors.ink,
                 ),
                 const SizedBox(width: 8),
                 buildStatTile(
                   label: "In review",
                   value: inReview,
-                  color: Colors.orange,
+                  color: AppColors.greenDark,
                 ),
                 const SizedBox(width: 8),
                 buildStatTile(
                   label: "Offers",
                   value: offer,
-                  color: Colors.blue,
+                  color: AppColors.green,
                 ),
               ],
             ),
@@ -318,10 +319,10 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isClosed ? Colors.grey.shade100 : Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          color: isClosed ? Colors.grey.shade100 : AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isClosed ? Colors.grey.shade400 : Colors.grey.shade200,
+            color: isClosed ? Colors.grey.shade400 : AppColors.surface,
           ),
           boxShadow: [
             BoxShadow(
@@ -367,8 +368,9 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                       Text(
                         job.title,
                         style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 5),

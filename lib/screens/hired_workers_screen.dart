@@ -51,8 +51,7 @@ class HiredWorkersScreen extends StatelessWidget {
                     return const SizedBox();
                   }
 
-                  final user =
-                      snapshot.data!.data() as Map<String, dynamic>?;
+                  final user = snapshot.data!.data() as Map<String, dynamic>?;
 
                   final name = user?["name"] ?? "Worker";
                   final trade = user?["trade"] ?? "";
@@ -82,12 +81,10 @@ class HiredWorkersScreen extends StatelessWidget {
                             radius: 22,
                             backgroundImage:
                                 photo != null ? NetworkImage(photo) : null,
-                            child: photo == null
-                                ? const Icon(Icons.person)
-                                : null,
+                            child:
+                                photo == null ? const Icon(Icons.person) : null,
                           ),
                           const SizedBox(width: 10),
-
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,13 +98,11 @@ class HiredWorkersScreen extends StatelessWidget {
                                 if (trade.isNotEmpty)
                                   Text(
                                     trade,
-                                    style:
-                                        const TextStyle(color: Colors.grey),
+                                    style: const TextStyle(color: Colors.grey),
                                   ),
                               ],
                             ),
                           ),
-
                           const Icon(Icons.check_circle, color: Colors.green),
                         ],
                       ),

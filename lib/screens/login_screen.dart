@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -10,7 +11,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
 
@@ -46,7 +46,6 @@ class _LoginScreenState extends State<LoginScreen> {
           "createdAt": FieldValue.serverTimestamp(),
         });
       }
-
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error: $e")),
@@ -65,8 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-
-              const Icon(Icons.construction, size: 70, color: Colors.orange),
+              const Icon(Icons.construction, size: 70, color: AppColors.green),
 
               const SizedBox(height: 20),
 
@@ -100,7 +98,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   value: role,
                   items: const [
                     DropdownMenuItem(value: "worker", child: Text("Worker")),
-                    DropdownMenuItem(value: "employer", child: Text("Employer")),
+                    DropdownMenuItem(
+                        value: "employer", child: Text("Employer")),
                   ],
                   onChanged: (value) {
                     setState(() {
@@ -138,7 +137,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       : "Already have account? Login",
                 ),
               )
-
             ],
           ),
         ),

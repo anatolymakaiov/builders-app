@@ -14,6 +14,7 @@ class AppUser {
 
   /// NEW: experience in years
   final int? experienceYears;
+  final int? experienceMonths;
 
   /// NEW: expected rate (£/hour or day)
   final double? rate;
@@ -27,6 +28,8 @@ class AppUser {
   /// NEW: certifications (CSCS etc.)
   final List<String>? certifications;
 
+  final List<Map<String, dynamic>>? references;
+
   /// employer
   final String? companyName;
 
@@ -39,22 +42,19 @@ class AppUser {
   AppUser({
     required this.id,
     required this.role,
-
     this.name,
     this.phone,
-
     this.trade,
     this.experienceYears,
+    this.experienceMonths,
     this.rate,
     this.availability,
     this.radius,
     this.certifications,
-
+    this.references,
     this.companyName,
-
     this.rating = 0,
     this.reviewsCount = 0,
-
     this.createdAt,
   });
 
@@ -120,27 +120,35 @@ class AppUser {
       return null;
     }
 
+    List<Map<String, dynamic>>? safeMapList(dynamic value) {
+      if (value == null) return null;
+
+      if (value is List) {
+        return value
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+      }
+
+      return null;
+    }
+
     return AppUser(
       id: id,
-
       role: data["role"] ?? "worker",
-
       name: data["name"],
       phone: data["phone"],
-
       trade: data["trade"],
-
       experienceYears: safeInt(data["experienceYears"]),
+      experienceMonths: safeInt(data["experienceMonths"]),
       rate: safeDouble(data["rate"]),
       availability: data["availability"],
       radius: safeDouble(data["radius"]),
       certifications: safeList(data["certifications"]),
-
+      references: safeMapList(data["references"]),
       companyName: data["companyName"],
-
       rating: safeDouble(data["rating"]) ?? 0,
       reviewsCount: safeInt(data["reviewsCount"]) ?? 0,
-
       createdAt: safeDate(data["createdAt"]),
     );
   }

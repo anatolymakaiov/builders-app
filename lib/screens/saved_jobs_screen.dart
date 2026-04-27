@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/job.dart';
 import 'job_details_screen.dart';
+import '../theme/app_theme.dart';
 
 class SavedJobsScreen extends StatelessWidget {
   const SavedJobsScreen({super.key});
@@ -12,7 +13,6 @@ class SavedJobsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     if (userId == null) {
       return const Scaffold(
         body: Center(child: Text("Not logged in")),
@@ -30,7 +30,6 @@ class SavedJobsScreen extends StatelessWidget {
             .collection("jobs")
             .snapshots(),
         builder: (context, snapshot) {
-
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -60,7 +59,6 @@ class SavedJobsScreen extends StatelessWidget {
               }),
             ),
             builder: (context, jobsSnapshot) {
-
               if (!jobsSnapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
@@ -79,16 +77,29 @@ class SavedJobsScreen extends StatelessWidget {
               return ListView.builder(
                 itemCount: jobs.length,
                 itemBuilder: (context, index) {
-
                   final job = jobs[index];
 
-                  return Card(
+                  return Container(
                     margin: const EdgeInsets.symmetric(
-                      horizontal: 10,
+                      horizontal: 16,
                       vertical: 8,
                     ),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     child: ListTile(
-                      title: Text(job.title),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 8,
+                      ),
+                      title: Text(
+                        job.title,
+                        style: const TextStyle(
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                       subtitle: Text("${job.city} • ${job.rateText}"),
                       trailing: const Icon(Icons.favorite, color: Colors.red),
                       onTap: () {

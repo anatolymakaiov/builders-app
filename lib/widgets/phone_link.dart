@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../theme/app_theme.dart';
 
 class PhoneLink extends StatelessWidget {
   final String? phone;
@@ -55,7 +56,7 @@ class PhoneLink extends StatelessWidget {
             Icon(
               Icons.phone,
               size: compact ? 16 : 18,
-              color: Colors.blue,
+              color: AppColors.greenDark,
             ),
             const SizedBox(width: 6),
             Flexible(
@@ -63,7 +64,7 @@ class PhoneLink extends StatelessWidget {
                 text,
                 style: style ??
                     const TextStyle(
-                      color: Colors.blue,
+                      color: AppColors.greenDark,
                       fontWeight: FontWeight.w600,
                       decoration: TextDecoration.underline,
                     ),

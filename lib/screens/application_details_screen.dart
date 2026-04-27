@@ -4,6 +4,7 @@ import 'chat_screen.dart';
 import 'worker_profile_screen.dart';
 import '../services/notification_service.dart';
 import '../widgets/phone_link.dart';
+import '../theme/app_theme.dart';
 
 class ApplicationDetailsScreen extends StatelessWidget {
   final String applicationId;
@@ -383,6 +384,99 @@ class ApplicationDetailsScreen extends StatelessWidget {
     );
   }
 
+  String textFromListOrString(dynamic value) {
+    if (value == null) return "";
+    if (value is List) {
+      return value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .join("\n");
+    }
+    return value.toString();
+  }
+
+  String experienceDurationText(Map<String, dynamic> data) {
+    final years = int.tryParse(data["experienceYears"]?.toString() ?? "") ?? 0;
+    final months =
+        int.tryParse(data["experienceMonths"]?.toString() ?? "") ?? 0;
+    final parts = <String>[];
+
+    if (years > 0) {
+      parts.add("$years ${years == 1 ? "year" : "years"}");
+    }
+    if (months > 0) {
+      parts.add("$months ${months == 1 ? "month" : "months"}");
+    }
+
+    return parts.join(" ");
+  }
+
+  List<Map<String, dynamic>> parseReferences(dynamic value) {
+    if (value is! List) return [];
+
+    return value
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((item) => item.values.any(
+              (field) => field != null && field.toString().trim().isNotEmpty,
+            ))
+        .toList();
+  }
+
+  Widget buildReferencesSection(dynamic value) {
+    final references = parseReferences(value);
+    if (references.isEmpty) return const SizedBox();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "References",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          ...references.map((reference) {
+            final name = reference["name"]?.toString().trim() ?? "";
+            final company = reference["company"]?.toString().trim() ?? "";
+            final phone = reference["phone"]?.toString().trim() ?? "";
+            final email = reference["email"]?.toString().trim() ?? "";
+
+            return Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (name.isNotEmpty)
+                    Text(
+                      name,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  if (company.isNotEmpty) Text(company),
+                  if (phone.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    PhoneLink(phone: phone),
+                  ],
+                  if (email.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(email),
+                  ],
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   Future<List<String>> loadPortfolioUrls(String userId) async {
     final urls = <String>[];
 
@@ -425,7 +519,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              "Candidate gallery",
+              "Work gallery",
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
@@ -547,7 +641,12 @@ class ApplicationDetailsScreen extends StatelessWidget {
                     builder: (context, setLocalState) {
                       final isSelected = selectedMembers.contains(memberId);
 
-                      return Card(
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundImage: photo == null
@@ -633,10 +732,14 @@ class ApplicationDetailsScreen extends StatelessWidget {
           final isTeam = (data["type"] ?? "single") == "team";
           final phone = user["phone"];
           final experience = user["experience"];
+          final experienceDuration = experienceDurationText(user);
           final permits = user["permits"];
           final qualifications = user["qualifications"];
+          final certifications = textFromListOrString(
+              user["certificationsText"] ?? user["certifications"]);
           final education = user["education"];
           final previousWork = user["previousWork"];
+          final references = user["references"];
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -667,7 +770,14 @@ class ApplicationDetailsScreen extends StatelessWidget {
                         ),
                         if (trade.isNotEmpty) ...[
                           const SizedBox(height: 4),
-                          Text(trade),
+                          Text(
+                            trade,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey,
+                            ),
+                          ),
                         ],
                         if (rate.isNotEmpty) ...[
                           const SizedBox(height: 4),
@@ -686,11 +796,14 @@ class ApplicationDetailsScreen extends StatelessWidget {
                   buildWorkerPhoneSection(phone),
                   buildWorkerInfoSection("Location", location),
                   buildWorkerInfoSection("About worker", bio),
-                  buildWorkerInfoSection("Experience", experience),
+                  buildWorkerInfoSection("Work experience", experienceDuration),
+                  buildWorkerInfoSection("Experience details", experience),
                   buildWorkerInfoSection("Permits / licences", permits),
                   buildWorkerInfoSection("Qualifications", qualifications),
-                  buildWorkerInfoSection("Education", education),
+                  buildWorkerInfoSection("Certifications", certifications),
+                  buildWorkerInfoSection("Education (optional)", education),
                   buildWorkerInfoSection("Previous work", previousWork),
+                  buildReferencesSection(references),
                 ],
 
                 if (isTeam)

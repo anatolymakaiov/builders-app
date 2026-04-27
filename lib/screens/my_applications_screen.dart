@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/job.dart';
 import '../screens/job_details_screen.dart';
 import '../services/notification_service.dart';
+import '../theme/app_theme.dart';
 
 class MyApplicationsScreen extends StatefulWidget {
   const MyApplicationsScreen({super.key});
@@ -24,13 +25,13 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       case "offer_accepted":
         return Colors.green;
       case "offer_sent":
-        return Colors.blue;
+        return AppColors.greenDark;
       case "negotiation":
         return Colors.purple;
       case "rejected":
         return Colors.red;
       default:
-        return Colors.orange;
+        return AppColors.ink;
     }
   }
 
@@ -396,13 +397,19 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
 
   /// 🔥 reusable card
   Widget buildCard(Job job, String status, String applicationId) {
-    return Card(
+    return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
         title: Text(
           job.title,
           style: const TextStyle(
-            fontWeight: FontWeight.bold,
+            color: AppColors.ink,
+            fontWeight: FontWeight.w800,
           ),
         ),
         subtitle: Text("${job.city} • £${job.rate.toInt()}"),

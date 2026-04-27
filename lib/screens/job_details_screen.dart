@@ -9,6 +9,7 @@ import 'chat_screen.dart';
 import '../models/job.dart';
 import '../services/calendar_service.dart';
 import '../services/notification_service.dart';
+import '../theme/app_theme.dart';
 
 class JobDetailScreen extends StatefulWidget {
   final Job job;
@@ -77,12 +78,28 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final uid = userId;
     if (uid == null) return [];
 
-    final snap = await FirebaseFirestore.instance
-        .collection("teams")
-        .where("members", arrayContains: uid)
-        .get();
+    final snap = await FirebaseFirestore.instance.collection("teams").get();
 
-    return snap.docs;
+    return snap.docs.where((doc) {
+      final data = doc.data();
+      return teamMemberIds(data["members"]).contains(uid) ||
+          data["ownerId"] == uid;
+    }).toList();
+  }
+
+  List<String> teamMemberIds(dynamic value) {
+    if (value is! List) return [];
+
+    return value
+        .map((item) {
+          if (item is String) return item;
+          if (item is Map) return item["userId"]?.toString();
+          return null;
+        })
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
   }
 
   /// 🔥 PICK TEAM
@@ -98,10 +115,15 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           padding: const EdgeInsets.all(16),
           children: teams.map((doc) {
             final data = doc.data() as Map<String, dynamic>;
-            final members = (data["members"] as List?) ?? [];
+            final members = teamMemberIds(data["members"]);
+            final avatarUrl = data["avatarUrl"] ?? data["photo"];
 
             return ListTile(
-              leading: const Icon(Icons.group),
+              leading: CircleAvatar(
+                backgroundImage:
+                    avatarUrl is String ? NetworkImage(avatarUrl) : null,
+                child: avatarUrl is String ? null : const Icon(Icons.group),
+              ),
               title: Text(data["name"] ?? "Team"),
               subtitle: Text("${members.length} members"),
               onTap: () {
@@ -631,8 +653,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.green.shade50,
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
@@ -643,7 +665,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: Colors.green,
+              color: AppColors.greenDark,
             ),
           ),
         ],
@@ -659,13 +681,13 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(
           children: [
-            const Icon(Icons.location_on, color: Colors.blue),
+            const Icon(Icons.location_on, color: AppColors.greenDark),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
                 widget.job.fullAddress,
                 style: const TextStyle(
-                  color: Colors.blue,
+                  color: AppColors.greenDark,
                   fontWeight: FontWeight.w600,
                   decoration: TextDecoration.underline,
                 ),
@@ -903,9 +925,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           margin: const EdgeInsets.only(top: 24),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.orange.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.orange.shade100),
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.surfaceAlt),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

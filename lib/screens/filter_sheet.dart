@@ -16,12 +16,14 @@ class FilterSheet extends StatefulWidget {
   final FilterResult current;
   final String title;
   final String actionLabel;
+  final bool showDistance;
 
   const FilterSheet({
     super.key,
     required this.current,
     this.title = "Filters",
     this.actionLabel = "Apply filters",
+    this.showDistance = false,
   });
 
   @override
@@ -90,7 +92,7 @@ class _FilterSheetState extends State<FilterSheet> {
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.all(20),
-        height: 520,
+        height: widget.showDistance ? 520 : 390,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -149,7 +151,7 @@ class _FilterSheetState extends State<FilterSheet> {
             /// JOB TYPE
 
             const Text(
-              "Job type",
+              "Work format",
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
 
@@ -180,35 +182,37 @@ class _FilterSheetState extends State<FilterSheet> {
 
             const SizedBox(height: 16),
 
-            /// DISTANCE
+            if (widget.showDistance) ...[
+              /// DISTANCE
 
-            const Text(
-              "Distance",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
+              const Text(
+                "Distance",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
 
-            const SizedBox(height: 4),
+              const SizedBox(height: 4),
 
-            Text(
-              "${distance.toInt()} miles",
-              style: const TextStyle(
-                color: Colors.grey,
+              Text(
+                "${distance.toInt()} miles",
+                style: const TextStyle(
+                  color: Colors.grey,
+                ),
               ),
-            ),
 
-            Slider(
-              min: 5,
-              max: 50,
-              divisions: 9,
-              value: distance,
-              onChanged: (v) {
-                setState(() {
-                  distance = v;
-                });
-              },
-            ),
+              Slider(
+                min: 5,
+                max: 50,
+                divisions: 9,
+                value: distance,
+                onChanged: (v) {
+                  setState(() {
+                    distance = v;
+                  });
+                },
+              ),
+            ],
 
             const Spacer(),
 

@@ -83,4 +83,49 @@ class ChatService {
 
     return doc.id;
   }
+
+  static Future<String> getOrCreateInternalTeamChat({
+    required String teamId,
+    required String teamName,
+    required List<String> members,
+  }) async {
+    final chatsRef = FirebaseFirestore.instance.collection("chats");
+
+    final existing = await chatsRef
+        .where("type", isEqualTo: "internal_team")
+        .where("teamId", isEqualTo: teamId)
+        .limit(1)
+        .get();
+
+    if (existing.docs.isNotEmpty) {
+      await existing.docs.first.reference.set({
+        "members": members,
+        "participants": members,
+        "teamName": teamName,
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      return existing.docs.first.id;
+    }
+
+    final anchorUser = members.isNotEmpty ? members.first : "";
+    final doc = await chatsRef.add({
+      "type": "internal_team",
+      "teamId": teamId,
+      "teamName": teamName,
+      "members": members,
+      "participants": members,
+      "workerId": anchorUser,
+      "employerId": anchorUser,
+      "createdAt": FieldValue.serverTimestamp(),
+      "updatedAt": FieldValue.serverTimestamp(),
+      "lastMessage": "",
+      "lastMessageType": "text",
+      "unreadCount_worker": 0,
+      "unreadCount_employer": 0,
+      "typing_worker": false,
+      "typing_employer": false,
+    });
+
+    return doc.id;
+  }
 }

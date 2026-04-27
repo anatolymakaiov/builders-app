@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'worker_profile_screen.dart';
 import 'job_list_screen.dart';
 import 'map_screen.dart';
-import 'edit_profile_screen.dart';
 import 'employer_dashboard_screen.dart';
 import 'my_applications_screen.dart';
 import 'my_chats_screen.dart';
@@ -13,6 +12,7 @@ import 'notifications_screen.dart';
 import 'employer_applications_screen.dart';
 import 'post_job_screen.dart';
 import 'employer_profile_screen.dart';
+import '../theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -286,15 +286,30 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: const Icon(Icons.add),
                     )
                   : null,
-              bottomNavigationBar: BottomNavigationBar(
-                currentIndex: currentIndex,
-                items: items,
-                type: BottomNavigationBarType.fixed,
-                onTap: (index) {
-                  setState(() {
-                    currentIndex = index;
-                  });
-                },
+              bottomNavigationBar: Container(
+                decoration: const BoxDecoration(
+                  color: AppColors.navy,
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(8),
+                  ),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: BottomNavigationBar(
+                    currentIndex: currentIndex,
+                    items: items,
+                    type: BottomNavigationBarType.fixed,
+                    backgroundColor: Colors.transparent,
+                    selectedItemColor: AppColors.green,
+                    unselectedItemColor: Colors.white,
+                    showUnselectedLabels: true,
+                    onTap: (index) {
+                      setState(() {
+                        currentIndex = index;
+                      });
+                    },
+                  ),
+                ),
               ),
             );
           },

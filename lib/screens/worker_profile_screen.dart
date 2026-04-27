@@ -63,6 +63,114 @@ class WorkerProfileScreen extends StatelessWidget {
     );
   }
 
+  String textFromListOrString(dynamic value) {
+    if (value == null) return "";
+    if (value is List) {
+      return value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .join("\n");
+    }
+    return value.toString();
+  }
+
+  String experienceDurationText(Map<String, dynamic> data) {
+    final years = int.tryParse(data["experienceYears"]?.toString() ?? "") ?? 0;
+    final months =
+        int.tryParse(data["experienceMonths"]?.toString() ?? "") ?? 0;
+    final parts = <String>[];
+
+    if (years > 0) {
+      parts.add("$years ${years == 1 ? "year" : "years"}");
+    }
+    if (months > 0) {
+      parts.add("$months ${months == 1 ? "month" : "months"}");
+    }
+
+    return parts.join(" ");
+  }
+
+  List<Map<String, dynamic>> parseReferences(dynamic value) {
+    if (value is! List) return [];
+
+    return value
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((item) => item.values.any(
+              (field) => field != null && field.toString().trim().isNotEmpty,
+            ))
+        .toList();
+  }
+
+  List<String> teamMemberIds(dynamic value) {
+    if (value is! List) return [];
+
+    return value
+        .map((item) {
+          if (item is String) return item;
+          if (item is Map) return item["userId"]?.toString();
+          return null;
+        })
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  Widget buildReferencesSection(dynamic value) {
+    final references = parseReferences(value);
+    if (references.isEmpty) return const SizedBox();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "References",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          ...references.map((reference) {
+            final name = reference["name"]?.toString().trim() ?? "";
+            final company = reference["company"]?.toString().trim() ?? "";
+            final phone = reference["phone"]?.toString().trim() ?? "";
+            final email = reference["email"]?.toString().trim() ?? "";
+
+            return Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (name.isNotEmpty)
+                    Text(
+                      name,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  if (company.isNotEmpty) Text(company),
+                  if (phone.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    PhoneLink(phone: phone),
+                  ],
+                  if (email.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(email),
+                  ],
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   Future<List<String>> loadPortfolioUrls() async {
     final urls = <String>[];
 
@@ -105,7 +213,7 @@ class WorkerProfileScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              "Portfolio",
+              "Work gallery",
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
@@ -141,6 +249,320 @@ class WorkerProfileScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 30),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> leaveReview(BuildContext context) async {
+    final employer = FirebaseAuth.instance.currentUser;
+    if (employer == null) return;
+
+    int rating = 5;
+    final reviewController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text("Leave review"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      return IconButton(
+                        icon: Icon(
+                          Icons.star,
+                          color: index < rating ? Colors.orange : Colors.grey,
+                        ),
+                        onPressed: () {
+                          setDialogState(() {
+                            rating = index + 1;
+                          });
+                        },
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: reviewController,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: "Review",
+                      hintText: "Quality of work, reliability, communication",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text("Submit"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != true) {
+      reviewController.dispose();
+      return;
+    }
+
+    final employerSnap = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(employer.uid)
+        .get();
+    final employerData = employerSnap.data();
+
+    await FirebaseFirestore.instance
+        .collection("users")
+        .doc(userId)
+        .collection("reviews")
+        .add({
+      "employerId": employer.uid,
+      "employerName": employerData?["companyName"] ??
+          employerData?["name"] ??
+          employer.email ??
+          "Employer",
+      "rating": rating,
+      "review": reviewController.text.trim(),
+      "createdAt": FieldValue.serverTimestamp(),
+      if (jobId != null) "jobId": jobId,
+    });
+
+    final reviewsSnapshot = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(userId)
+        .collection("reviews")
+        .get();
+    var total = 0.0;
+    for (final doc in reviewsSnapshot.docs) {
+      total += (doc.data()["rating"] ?? 0).toDouble();
+    }
+
+    final count = reviewsSnapshot.docs.length;
+    await FirebaseFirestore.instance.collection("users").doc(userId).set({
+      "rating": count == 0 ? 0 : total / count,
+      "reviewsCount": count,
+    }, SetOptions(merge: true));
+
+    reviewController.dispose();
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Review saved")),
+    );
+  }
+
+  Widget buildReviewsSection(bool canReview) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("users")
+          .doc(userId)
+          .collection("reviews")
+          .orderBy("createdAt", descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final docs = snapshot.data?.docs ?? [];
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      "Employer reviews",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  if (canReview)
+                    TextButton.icon(
+                      onPressed: () => leaveReview(context),
+                      icon: const Icon(Icons.rate_review),
+                      label: const Text("Add review"),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (!snapshot.hasData)
+                const LinearProgressIndicator()
+              else if (docs.isEmpty)
+                const Text("No reviews yet")
+              else
+                ...docs.map((doc) {
+                  final review = doc.data() as Map<String, dynamic>;
+                  final rating = review["rating"] ?? 0;
+                  final text = review["review"]?.toString().trim() ?? "";
+                  final employerName =
+                      review["employerName"]?.toString() ?? "Employer";
+
+                  return Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              employerName,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(Icons.star,
+                                color: Colors.orange, size: 18),
+                            Text(rating.toString()),
+                          ],
+                        ),
+                        if (text.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(text),
+                        ],
+                      ],
+                    ),
+                  );
+                }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget buildWorkerTeamsSection(BuildContext context, bool isMyProfile) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection("teams").snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final docs = snapshot.data!.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return teamMemberIds(data["members"]).contains(userId) ||
+              data["ownerId"] == userId;
+        }).toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (isMyProfile) ...[
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    await showCreateTeamDialog(context, userId);
+                  },
+                  icon: const Icon(Icons.group_add),
+                  label: const Text(
+                    "Create team",
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            const Text(
+              "Worker Teams",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (docs.isEmpty)
+              const Text("No worker teams yet")
+            else
+              ...docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final name = data["name"] ?? "Team";
+                final members = teamMemberIds(data["members"]);
+                final avatarUrl = data["avatarUrl"] ?? data["photo"];
+                final description = data["description"]?.toString().trim();
+
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TeamDetailsScreen(
+                          teamId: doc.id,
+                          teamData: data,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 24,
+                          backgroundColor: Colors.grey.shade300,
+                          backgroundImage: avatarUrl is String
+                              ? NetworkImage(avatarUrl)
+                              : null,
+                          child: avatarUrl is String
+                              ? null
+                              : const Icon(Icons.groups),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name.toString(),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              if (description != null && description.isNotEmpty)
+                                Text(
+                                  description,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
+                        ),
+                        Text("${members.length} members"),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.arrow_forward_ios, size: 14),
+                      ],
+                    ),
+                  ),
+                );
+              }),
           ],
         );
       },
@@ -207,10 +629,20 @@ class WorkerProfileScreen extends StatelessWidget {
             }
           }
 
+          String? currentRole;
+          if (currentUser != null && !isMyProfile) {
+            final currentSnap = await FirebaseFirestore.instance
+                .collection("users")
+                .doc(currentUser.uid)
+                .get();
+            currentRole = currentSnap.data()?["role"]?.toString();
+          }
+
           return {
             "user": userData,
             "applicationId": applicationId,
             "status": status,
+            "currentRole": currentRole,
           };
         }(),
         builder: (context, snapshot) {
@@ -222,6 +654,7 @@ class WorkerProfileScreen extends StatelessWidget {
           final data = result["user"] as Map<String, dynamic>;
           final String? applicationId = result["applicationId"];
           final String status = result["status"];
+          final String? currentRole = result["currentRole"];
           final offerRate = result["offerRate"];
           final offerNote = result["offerNote"];
           final name = data["name"] ?? "Worker";
@@ -232,10 +665,14 @@ class WorkerProfileScreen extends StatelessWidget {
           final photo = data["photo"];
           final phone = data["phone"];
           final experience = data["experience"];
+          final experienceDuration = experienceDurationText(data);
           final permits = data["permits"];
           final qualifications = data["qualifications"];
+          final certifications = textFromListOrString(
+              data["certificationsText"] ?? data["certifications"]);
           final education = data["education"];
           final previousWork = data["previousWork"];
+          final references = data["references"];
 
           final rating = (data["rating"] ?? 0).toDouble();
           final reviews = data["reviewsCount"] ?? 0;
@@ -270,7 +707,11 @@ class WorkerProfileScreen extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           trade,
-                          style: const TextStyle(color: Colors.grey),
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ],
                       if (rate != null) ...[
@@ -305,12 +746,16 @@ class WorkerProfileScreen extends StatelessWidget {
                 buildPhoneSection(phone),
                 buildInfoSection("Location", location),
                 buildInfoSection("About", bio),
-                buildInfoSection("Experience", experience),
+                buildInfoSection("Work experience", experienceDuration),
+                buildInfoSection("Experience details", experience),
                 buildInfoSection("Permits / licences", permits),
                 buildInfoSection("Qualifications", qualifications),
-                buildInfoSection("Education", education),
+                buildInfoSection("Certifications", certifications),
+                buildInfoSection("Education (optional)", education),
                 buildInfoSection("Previous work", previousWork),
+                buildReferencesSection(references),
                 buildPortfolioGallery(),
+                buildReviewsSection(!isMyProfile && currentRole == "employer"),
                 if (status == "offer_sent") ...[
                   const SizedBox(height: 20),
                   Container(
@@ -513,117 +958,7 @@ class WorkerProfileScreen extends StatelessWidget {
                   ),
                 ],
 
-                /// 🔥 CREATE TEAM
-                if (isMyProfile) ...[
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        await showCreateTeamDialog(context, userId);
-                      },
-                      icon: const Icon(Icons.group),
-                      label: const Text(
-                        "Create team",
-                        style: TextStyle(fontSize: 16),
-                      ),
-                    ),
-                  ),
-
-                  /// 🔥 MY TEAMS
-                  const SizedBox(height: 20),
-                  const Text(
-                    "My teams",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection("teams")
-                        .where("members", arrayContains: userId)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-
-                      final docs = snapshot.data!.docs;
-
-                      if (docs.isEmpty) {
-                        return const Text("No teams yet");
-                      }
-
-                      return Column(
-                        children: docs.map((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
-
-                          final name = data["name"] ?? "Team";
-                          final members = (data["members"] as List?) ?? [];
-                          final avatarUrl = data["avatarUrl"] ?? data["photo"];
-
-                          return GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => TeamDetailsScreen(
-                                    teamId: doc.id,
-                                    teamData:
-                                        doc.data() as Map<String, dynamic>,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 20,
-                                    backgroundColor: Colors.grey.shade300,
-                                    backgroundImage: avatarUrl is String
-                                        ? NetworkImage(avatarUrl)
-                                        : null,
-                                    child: avatarUrl is String
-                                        ? null
-                                        : const Icon(Icons.group),
-                                  ),
-                                  const SizedBox(width: 10),
-
-                                  /// NAME
-                                  Expanded(
-                                    child: Text(
-                                      name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-
-                                  /// COUNT
-                                  Text("${members.length} members"),
-
-                                  const SizedBox(width: 6),
-                                  const Icon(Icons.arrow_forward_ios, size: 14),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      );
-                    },
-                  ),
-                ],
+                buildWorkerTeamsSection(context, isMyProfile),
               ],
             ),
           );
@@ -639,6 +974,7 @@ Future<void> showCreateTeamDialog(
   String userId,
 ) async {
   final controller = TextEditingController();
+  final descriptionController = TextEditingController();
   final picker = ImagePicker();
   XFile? pickedAvatar;
   String? previewPath;
@@ -681,6 +1017,15 @@ Future<void> showCreateTeamDialog(
                   labelText: "Team name",
                 ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descriptionController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: "Team description",
+                  hintText: "Trades, skills, availability, typical projects",
+                ),
+              ),
             ],
           ),
           actions: [
@@ -705,11 +1050,14 @@ Future<void> showCreateTeamDialog(
 
                 await FirebaseFirestore.instance.collection("teams").add({
                   "name": name,
+                  "description": descriptionController.text.trim(),
                   "ownerId": userId,
                   "members": [userId],
+                  "memberStatuses": {userId: "active"},
                   if (avatarUrl != null) "avatarUrl": avatarUrl,
                   if (avatarUrl != null) "photo": avatarUrl,
                   "createdAt": FieldValue.serverTimestamp(),
+                  "updatedAt": FieldValue.serverTimestamp(),
                 });
 
                 if (!context.mounted) return;
@@ -727,4 +1075,7 @@ Future<void> showCreateTeamDialog(
       },
     ),
   );
+
+  controller.dispose();
+  descriptionController.dispose();
 }

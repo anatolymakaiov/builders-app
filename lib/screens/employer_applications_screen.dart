@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'application_details_screen.dart';
+import '../theme/app_theme.dart';
 
 class EmployerApplicationsScreen extends StatefulWidget {
   const EmployerApplicationsScreen({super.key});
@@ -25,7 +26,7 @@ class _EmployerApplicationsScreenState
       case "rejected":
         return Colors.red;
       default:
-        return Colors.orange;
+        return AppColors.ink;
     }
   }
 
@@ -299,15 +300,8 @@ class _EmployerApplicationsScreenState
                             horizontal: 16, vertical: 10),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            )
-                          ],
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -326,7 +320,8 @@ class _EmployerApplicationsScreenState
                                             ? "Team application"
                                             : workerName,
                                         style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.ink,
+                                          fontWeight: FontWeight.w800,
                                           fontSize: 16,
                                         ),
                                       ),

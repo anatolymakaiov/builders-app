@@ -12,6 +12,7 @@ import 'package:video_player/video_player.dart';
 import 'dart:async';
 import 'dart:io';
 import 'image_viewer_screen.dart';
+import '../theme/app_theme.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -595,6 +596,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
         final chatData = chatSnapshot.data!.data() as Map<String, dynamic>;
 
+        final isInternalTeamChat = chatData["type"] == "internal_team";
         final isWorker = uid == chatData["workerId"];
         final otherUserId =
             isWorker ? chatData["employerId"] : chatData["workerId"];
@@ -607,7 +609,9 @@ class _ChatScreenState extends State<ChatScreen> {
           builder: (context, userSnapshot) {
             final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
 
-            final name = userData?["name"] ?? "User";
+            final name = isInternalTeamChat
+                ? (chatData["teamName"] ?? "Team chat")
+                : (userData?["name"] ?? "User");
             final isOnline = userData?["isOnline"] ?? false;
 
             final lastSeenRaw = userData?["lastSeen"];
@@ -616,8 +620,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
             final typingWorker = chatData["typing_worker"] ?? false;
             final typingEmployer = chatData["typing_employer"] ?? false;
-            final isTyping =
-                (isWorker ? typingEmployer : typingWorker) && isOnline;
+            final isTyping = !isInternalTeamChat &&
+                (isWorker ? typingEmployer : typingWorker) &&
+                isOnline;
 
             return Scaffold(
               appBar: AppBar(
@@ -636,11 +641,12 @@ class _ChatScreenState extends State<ChatScreen> {
                   ],
                 ),
                 actions: [
-                  IconButton(
-                    tooltip: "Call",
-                    icon: const Icon(Icons.call),
-                    onPressed: () => showCallOptions(context, userData),
-                  ),
+                  if (!isInternalTeamChat)
+                    IconButton(
+                      tooltip: "Call",
+                      icon: const Icon(Icons.call),
+                      onPressed: () => showCallOptions(context, userData),
+                    ),
                 ],
               ),
               body: Column(
@@ -727,9 +733,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                         const BoxConstraints(maxWidth: 260),
                                     decoration: BoxDecoration(
                                       color: isMe
-                                          ? Colors.orange
-                                          : Colors.grey.shade300,
-                                      borderRadius: BorderRadius.circular(14),
+                                          ? AppColors.surfaceAlt
+                                          : Colors.grey.shade200,
+                                      borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Column(
                                       crossAxisAlignment:
@@ -843,7 +849,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                               Icon(Icons.done_all,
                                                   size: 16,
                                                   color: isRead
-                                                      ? Colors.blue
+                                                      ? AppColors.greenDark
                                                       : Colors.grey),
                                           ],
                                         ),
@@ -867,33 +873,52 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                   SafeArea(
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.add_circle_outline),
-                          onPressed: showAttachmentMenu,
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: controller,
-                            onChanged: handleTypingChanged,
-                            decoration: const InputDecoration(
-                              hintText: "Message...",
+                    child: Container(
+                      color: AppColors.navy,
+                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                      child: Row(
+                        children: [
+                          IconButton.filled(
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppColors.green,
+                              foregroundColor: Colors.white,
+                            ),
+                            icon: const Icon(Icons.add),
+                            onPressed: showAttachmentMenu,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: controller,
+                              onChanged: handleTypingChanged,
+                              decoration: const InputDecoration(
+                                hintText: "Type a message",
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                        IconButton(
-                          icon: Icon(
-                            isRecording ? Icons.stop_circle : Icons.mic,
-                            color: isRecording ? Colors.red : null,
+                          IconButton(
+                            icon: Icon(
+                              isRecording ? Icons.stop_circle : Icons.mic,
+                              color: isRecording ? Colors.red : Colors.white,
+                            ),
+                            onPressed: toggleRecording,
                           ),
-                          onPressed: toggleRecording,
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.send),
-                          onPressed: sendMessage,
-                        ),
-                      ],
+                          IconButton.filled(
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.white70,
+                              foregroundColor: AppColors.navy,
+                            ),
+                            icon: const Icon(Icons.send),
+                            onPressed: sendMessage,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],

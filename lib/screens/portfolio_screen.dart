@@ -60,7 +60,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("My Portfolio"),
+        title: const Text("My Work Gallery"),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: pickImage,
@@ -80,7 +80,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
 
           if (photos.isEmpty) {
             return const Center(
-              child: Text("No photos yet"),
+              child: Text("No work photos yet"),
             );
           }
 

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,9 +25,7 @@ class JobApp extends StatelessWidget {
     return MaterialApp(
       title: 'Builder Jobs',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.orange,
-      ),
+      theme: AppTheme.light,
       home: const AuthGate(),
     );
   }
@@ -41,9 +39,7 @@ class AuthGate extends StatefulWidget {
   State<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<AuthGate>
-    with WidgetsBindingObserver {
-
+class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -61,10 +57,7 @@ class _AuthGateState extends State<AuthGate>
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    await FirebaseFirestore.instance
-        .collection("users")
-        .doc(user.uid)
-        .update({
+    await FirebaseFirestore.instance.collection("users").doc(user.uid).update({
       "isOnline": isOnline,
       "lastSeen": FieldValue.serverTimestamp(),
     });
@@ -85,7 +78,6 @@ class _AuthGateState extends State<AuthGate>
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
@@ -107,7 +99,6 @@ class _AuthGateState extends State<AuthGate>
               .doc(user.uid)
               .get(),
           builder: (context, userSnapshot) {
-
             if (userSnapshot.connectionState == ConnectionState.waiting) {
               return const Scaffold(
                 body: Center(child: CircularProgressIndicator()),

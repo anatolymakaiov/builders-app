@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'worker_profile_screen.dart';
 import 'team_details_screen.dart';
 import 'hired_workers_screen.dart';
+import '../theme/app_theme.dart';
 
 class ApplicantsScreen extends StatelessWidget {
   final String jobId;
@@ -23,13 +24,13 @@ class ApplicantsScreen extends StatelessWidget {
         return Colors.deepPurple;
 
       case "negotiation":
-        return Colors.blue;
+        return AppColors.greenDark;
 
       case "rejected":
         return Colors.red;
 
       default:
-        return Colors.orange;
+        return AppColors.ink;
     }
   }
 
@@ -168,20 +169,13 @@ class ApplicantsScreen extends StatelessWidget {
                 final String? teamId = data["teamId"] as String?;
 
                 return InkWell(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(8),
                   onTap: () => openTeam(context, teamId),
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        )
-                      ],
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

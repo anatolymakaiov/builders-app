@@ -3,7 +3,7 @@ class Application {
   final String jobId;
   final String applicantId; // worker или team leader
   final String? teamId; // null если одиночная заявка
-  final String status; 
+  final String status;
   // applied, negotiation, offer, hired, rejected
 
   final DateTime createdAt;

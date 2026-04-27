@@ -1,34 +1,12 @@
 import 'package:flutter/material.dart';
 import '../models/job.dart';
 import '../screens/job_details_screen.dart';
+import '../theme/app_theme.dart';
 
 class JobCard extends StatelessWidget {
   final Job job;
 
   const JobCard({super.key, required this.job});
-
-  IconData _iconForJob(String title) {
-    final t = title.toLowerCase();
-
-    if (t.contains("electric")) return Icons.flash_on;
-    if (t.contains("plumb")) return Icons.plumbing;
-    if (t.contains("builder") || t.contains("construction"))
-      return Icons.construction;
-    if (t.contains("carpent")) return Icons.handyman;
-
-    return Icons.work;
-  }
-
-  Color _colorForJob(String title) {
-    final t = title.toLowerCase();
-
-    if (t.contains("electric")) return Colors.amber;
-    if (t.contains("plumb")) return Colors.blue;
-    if (t.contains("builder")) return Colors.orange;
-    if (t.contains("carpent")) return Colors.brown;
-
-    return Colors.grey;
-  }
 
   String rateText() {
     if (job.jobType == "negotiable") {
@@ -44,18 +22,15 @@ class JobCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final icon = _iconForJob(job.title);
-    final color = _colorForJob(job.title);
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-      child: Card(
-        elevation: 5,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(8),
           onTap: () {
             Navigator.push(
               context,
@@ -68,24 +43,6 @@ class JobCard extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                /// JOB ICON
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    icon,
-                    color: color,
-                    size: 30,
-                  ),
-                ),
-
-                const SizedBox(width: 16),
-
-                /// JOB INFO
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -93,17 +50,15 @@ class JobCard extends StatelessWidget {
                       Text(
                         job.title,
                         style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 17,
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
                         ),
                       ),
                       if (job.positions > 1) ...[
                         const SizedBox(height: 4),
                         Row(
                           children: [
-                            const Icon(Icons.group,
-                                size: 14, color: Colors.grey),
-                            const SizedBox(width: 4),
                             Text(
                               "${job.remainingPositions}/${job.positions} spots",
                               style: const TextStyle(
@@ -116,12 +71,6 @@ class JobCard extends StatelessWidget {
                       ],
                       Row(
                         children: [
-                          const Icon(
-                            Icons.location_on,
-                            size: 16,
-                            color: Colors.grey,
-                          ),
-                          const SizedBox(width: 4),
                           Text(
                             job.location,
                             style: const TextStyle(
@@ -142,13 +91,13 @@ class JobCard extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: Colors.green.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     rateText(),
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Colors.green,
+                      color: AppColors.greenDark,
                     ),
                   ),
                 ),

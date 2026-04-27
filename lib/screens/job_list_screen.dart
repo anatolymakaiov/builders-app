@@ -8,6 +8,7 @@ import 'package:test_app/services/job_repository.dart';
 import '../models/job.dart';
 import 'job_details_screen.dart';
 import 'filter_sheet.dart';
+import '../theme/app_theme.dart';
 
 enum SortType {
   nearest,
@@ -105,6 +106,7 @@ class _JobListScreenState extends State<JobListScreen> {
         current: filters,
         title: "Job subscription",
         actionLabel: "Subscribe",
+        showDistance: true,
       ),
     );
 
@@ -183,29 +185,47 @@ class _JobListScreenState extends State<JobListScreen> {
   }
 
   Widget metaChip({
-    required IconData icon,
     required String label,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: Colors.grey.shade700),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.grey.shade800,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppColors.ink,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget buildSortButton(SortType type, String label, IconData icon) {
+    final selected = sortType == type;
+
+    return Expanded(
+      child: OutlinedButton.icon(
+        onPressed: () {
+          setState(() {
+            sortType = type;
+          });
+        },
+        icon: Icon(icon, size: 16),
+        label: Text(
+          label,
+          overflow: TextOverflow.ellipsis,
+        ),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: selected ? AppColors.green : Colors.white,
+          foregroundColor: selected ? Colors.white : AppColors.ink,
+          side: BorderSide(
+            color: selected ? AppColors.green : Colors.grey.shade300,
           ),
-        ],
+        ),
       ),
     );
   }
@@ -215,14 +235,14 @@ class _JobListScreenState extends State<JobListScreen> {
     final duration =
         job.duration.trim().isEmpty ? "Duration not set" : job.duration.trim();
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         onTap: () {
           Navigator.push(
             context,
@@ -234,22 +254,8 @@ class _JobListScreenState extends State<JobListScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            /// 📷 IMAGE
-            if (job.photos.isNotEmpty)
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(14),
-                ),
-                child: Image.network(
-                  job.photos.first,
-                  height: 160,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-
             Padding(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -265,8 +271,9 @@ class _JobListScreenState extends State<JobListScreen> {
                               Text(
                                 job.trade,
                                 style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey,
+                                  fontSize: 13,
+                                  color: AppColors.muted,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
 
@@ -276,8 +283,9 @@ class _JobListScreenState extends State<JobListScreen> {
                             Text(
                               job.title,
                               style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                                fontSize: 20,
+                                color: AppColors.ink,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ],
@@ -357,11 +365,9 @@ class _JobListScreenState extends State<JobListScreen> {
                     runSpacing: 8,
                     children: [
                       metaChip(
-                        icon: Icons.work_outline,
                         label: jobTypeLabel(job.jobType),
                       ),
                       metaChip(
-                        icon: Icons.schedule,
                         label: duration,
                       ),
                     ],
@@ -383,7 +389,7 @@ class _JobListScreenState extends State<JobListScreen> {
                         child: Text(
                           job.rateText,
                           style: const TextStyle(
-                            color: Colors.green,
+                            color: AppColors.greenDark,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -447,6 +453,25 @@ class _JobListScreenState extends State<JobListScreen> {
               },
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                buildSortButton(
+                  SortType.nearest,
+                  "Distance",
+                  Icons.near_me_outlined,
+                ),
+                const SizedBox(width: 8),
+                buildSortButton(
+                  SortType.highestPay,
+                  "Pay",
+                  Icons.payments_outlined,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
 
           Expanded(
             child: StreamBuilder<Set<String>>(
@@ -481,13 +506,6 @@ class _JobListScreenState extends State<JobListScreen> {
                       if (filters.jobType != "All" &&
                           job.jobType.toLowerCase() !=
                               filters.jobType.toLowerCase()) {
-                        return false;
-                      }
-
-                      final distance = calculateDistance(job.lat, job.lng);
-
-                      if (distance != double.infinity &&
-                          distance > filters.distance) {
                         return false;
                       }
 

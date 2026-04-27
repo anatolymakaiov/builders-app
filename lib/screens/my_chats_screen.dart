@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'chat_screen.dart';
+import '../theme/app_theme.dart';
 
 class MyChatsScreen extends StatelessWidget {
   const MyChatsScreen({super.key});
@@ -140,9 +141,11 @@ class MyChatsScreen extends StatelessWidget {
 
               final workerId = data["workerId"];
               final employerId = data["employerId"];
+              final isInternalTeamChat = data["type"] == "internal_team";
               final isTeamChat =
                   data["type"] == "team" || data["teamId"] != null;
-              final showTeamAvatar = isTeamChat && uid == employerId;
+              final showTeamAvatar =
+                  isInternalTeamChat || (isTeamChat && uid == employerId);
 
               final isWorker = uid == workerId;
 
@@ -292,7 +295,7 @@ class MyChatsScreen extends StatelessWidget {
                                         margin: const EdgeInsets.only(left: 8),
                                         padding: const EdgeInsets.all(6),
                                         decoration: const BoxDecoration(
-                                          color: Colors.orange,
+                                          color: AppColors.green,
                                           shape: BoxShape.circle,
                                         ),
                                         child: Text(

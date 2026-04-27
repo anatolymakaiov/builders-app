@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/job.dart';
 import 'job_details_screen.dart';
+import '../theme/app_theme.dart';
 
 class MapJobsScreen extends StatefulWidget {
   const MapJobsScreen({super.key});
@@ -50,8 +51,8 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
         margin: const EdgeInsets.all(12),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,7 +62,8 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontWeight: FontWeight.bold,
+                color: AppColors.ink,
+                fontWeight: FontWeight.w800,
                 fontSize: 16,
               ),
             ),
@@ -72,8 +74,8 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
               spacing: 6,
               runSpacing: 6,
               children: [
-                _chip(job.workFormatText, Colors.blueGrey),
-                _chip(job.rateText, Colors.green),
+                _chip(job.workFormatText, AppColors.ink),
+                _chip(job.rateText, AppColors.greenDark),
               ],
             ),
             const Spacer(),
@@ -164,7 +166,7 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
                         return Container(
                           decoration: const BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.blue,
+                            color: AppColors.green,
                           ),
                           child: Center(
                             child: Text(

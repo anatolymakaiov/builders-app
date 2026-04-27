@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/job.dart';
 import 'job_details_screen.dart';
 import '../services/job_repository.dart';
+import '../theme/app_theme.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -261,7 +262,7 @@ class _MapScreenState extends State<MapScreen> {
       child: const Icon(
         Icons.my_location,
         size: 36,
-        color: Colors.blue,
+        color: AppColors.green,
       ),
     );
   }
@@ -272,7 +273,7 @@ class _MapScreenState extends State<MapScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: selected ? Colors.orange : Colors.white,
+        color: selected ? AppColors.green : Colors.white,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: Colors.black12),
         boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
@@ -441,19 +442,32 @@ class _MapScreenState extends State<MapScreen> {
     final distance = calculateDistance(job.lat, job.lng);
     final selected = job.id == selectedJobId;
 
-    return Card(
-      color: selected ? Colors.orange.shade100 : Colors.white,
+    return Container(
+      decoration: BoxDecoration(
+        color: selected ? AppColors.surfaceAlt : AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+      ),
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      elevation: selected ? 6 : 2,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(job.trade,
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            Text(job.title),
+            Text(
+              job.trade,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            Text(
+              job.title,
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+              ),
+            ),
             if (job.companyName.isNotEmpty) Text(job.companyName),
             Text("${job.city} ${job.postcode}"),
             const SizedBox(height: 6),
@@ -472,7 +486,7 @@ class _MapScreenState extends State<MapScreen> {
                   child: Text(
                     rateText(job),
                     style: const TextStyle(
-                      color: Colors.green,
+                      color: AppColors.greenDark,
                       fontWeight: FontWeight.bold,
                     ),
                   ),

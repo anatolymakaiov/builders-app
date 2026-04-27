@@ -17,14 +17,18 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final nameController = TextEditingController();
   final phoneController = TextEditingController();
+  final nicknameController = TextEditingController();
 
   final tradeController = TextEditingController();
   final companyController = TextEditingController();
 
   final bioController = TextEditingController();
   final experienceController = TextEditingController();
+  final experienceYearsController = TextEditingController();
+  final experienceMonthsController = TextEditingController();
   final permitsController = TextEditingController();
   final qualificationsController = TextEditingController();
+  final certificationsController = TextEditingController();
   final educationController = TextEditingController();
   final previousWorkController = TextEditingController();
   final rateController = TextEditingController();
@@ -34,6 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final websiteController = TextEditingController();
   final contactPersonController = TextEditingController();
   List<String> extraPhones = [];
+  List<Map<String, String>> references = [];
   final picker = ImagePicker();
 
   String role = "worker";
@@ -69,14 +74,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       nameController.text = data["name"] ?? "";
       phoneController.text = data["phone"] ?? "";
+      nicknameController.text =
+          data["nickname"] ?? data["username"] ?? data["nickName"] ?? "";
 
       tradeController.text = data["trade"] ?? "";
       companyController.text = data["companyName"] ?? "";
 
       bioController.text = data["bio"] ?? "";
       experienceController.text = data["experience"] ?? "";
+      experienceYearsController.text =
+          data["experienceYears"]?.toString() ?? "";
+      experienceMonthsController.text =
+          data["experienceMonths"]?.toString() ?? "";
       permitsController.text = data["permits"] ?? "";
       qualificationsController.text = data["qualifications"] ?? "";
+      certificationsController.text = textFromListOrString(
+        data["certificationsText"] ?? data["certifications"],
+      );
       educationController.text = data["education"] ?? "";
       previousWorkController.text = data["previousWork"] ?? "";
       rateController.text = data["rate"]?.toString() ?? "";
@@ -85,6 +99,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       websiteController.text = data["website"] ?? "";
       contactPersonController.text = data["contactPerson"] ?? "";
       extraPhones = List<String>.from(data["phones"] ?? []);
+      references = parseReferences(data["references"]);
       rating = (data["rating"] ?? 0).toDouble();
       reviewsCount = data["reviewsCount"] ?? 0;
 
@@ -124,6 +139,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return urls;
   }
 
+  String textFromListOrString(dynamic value) {
+    if (value == null) return "";
+    if (value is List) {
+      return value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .join("\n");
+    }
+    return value.toString();
+  }
+
+  List<String> splitLines(String text) {
+    return text
+        .split(RegExp(r"[\n,]"))
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+  List<Map<String, String>> parseReferences(dynamic value) {
+    if (value is List) {
+      return value.map((item) {
+        if (item is Map) {
+          return {
+            "name": item["name"]?.toString() ?? "",
+            "company": item["company"]?.toString() ?? "",
+            "phone": item["phone"]?.toString() ?? "",
+            "email": item["email"]?.toString() ?? "",
+          };
+        }
+        return {
+          "name": item.toString(),
+          "company": "",
+          "phone": "",
+          "email": "",
+        };
+      }).toList();
+    }
+
+    if (value is String && value.trim().isNotEmpty) {
+      return [
+        {
+          "name": value.trim(),
+          "company": "",
+          "phone": "",
+          "email": "",
+        }
+      ];
+    }
+
+    return [];
+  }
+
+  List<Map<String, String>> cleanedReferences() {
+    return references
+        .map((reference) => {
+              "name": (reference["name"] ?? "").trim(),
+              "company": (reference["company"] ?? "").trim(),
+              "phone": (reference["phone"] ?? "").trim(),
+              "email": (reference["email"] ?? "").trim(),
+            })
+        .where((reference) => reference.values.any((value) => value.isNotEmpty))
+        .toList();
+  }
+
   /// AVATAR
   Future<void> pickAndUploadAvatar() async {
     final picked = await picker.pickImage(source: ImageSource.gallery);
@@ -149,6 +229,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> saveProfile() async {
     final name = nameController.text.trim();
     final phone = phoneController.text.trim();
+    final certificationsText = certificationsController.text.trim();
 
     if (name.isEmpty || phone.isEmpty) return;
 
@@ -158,16 +239,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       "role": role,
       "name": role == "worker" ? name : null,
       "phone": phone,
+      "nickname": role == "worker" ? nicknameController.text.trim() : null,
+      "username": role == "worker" ? nicknameController.text.trim() : null,
 
       /// 🔥 WORKER
       "trade": role == "worker" ? tradeController.text.trim() : null,
       "experience": role == "worker" ? experienceController.text.trim() : null,
+      "experienceYears": role == "worker"
+          ? int.tryParse(experienceYearsController.text.trim())
+          : null,
+      "experienceMonths": role == "worker"
+          ? int.tryParse(experienceMonthsController.text.trim())
+          : null,
       "permits": role == "worker" ? permitsController.text.trim() : null,
       "qualifications":
           role == "worker" ? qualificationsController.text.trim() : null,
+      "certificationsText": role == "worker" ? certificationsText : null,
+      "certifications": role == "worker" ? splitLines(certificationsText) : [],
       "education": role == "worker" ? educationController.text.trim() : null,
       "previousWork":
           role == "worker" ? previousWorkController.text.trim() : null,
+      "references": role == "worker" ? cleanedReferences() : [],
       "rate":
           role == "worker" ? double.tryParse(rateController.text.trim()) : null,
 
@@ -223,7 +315,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text(
-              "Portfolio",
+              "Work gallery",
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             TextButton(
@@ -241,7 +333,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
         const SizedBox(height: 10),
-        if (portfolio.isEmpty) const Text("No portfolio yet"),
+        if (portfolio.isEmpty) const Text("No work photos yet"),
         if (portfolio.isNotEmpty)
           SizedBox(
             height: 90,
@@ -306,6 +398,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         /// 🔥 WORKER
         if (role == "worker") ...[
           TextField(
+            controller: nicknameController,
+            decoration: const InputDecoration(
+              labelText: "Nickname",
+              hintText: "Used by teammates to add you to a team",
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
               controller: tradeController,
               decoration: const InputDecoration(labelText: "Trade")),
           const SizedBox(height: 12),
@@ -313,10 +413,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
               controller: rateController,
               decoration: const InputDecoration(labelText: "Rate (£/hour)")),
           const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: experienceYearsController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: "Experience years",
+                    hintText: "Years",
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: experienceMonthsController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: "Months",
+                    hintText: "Months",
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           TextField(
               controller: experienceController,
               maxLines: 2,
-              decoration: const InputDecoration(labelText: "Experience")),
+              decoration: const InputDecoration(
+                labelText: "Experience details",
+                hintText: "Main skills, project types, responsibilities",
+              )),
           const SizedBox(height: 12),
           TextField(
             controller: permitsController,
@@ -332,7 +461,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             maxLines: 3,
             decoration: const InputDecoration(
               labelText: "Qualifications",
-              hintText: "NVQ, trade qualifications, certificates",
+              hintText: "NVQ, trade qualifications, specialist skills",
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: certificationsController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: "Certifications",
+              hintText: "CSCS, IPAF, PASMA, First Aid, asbestos awareness",
             ),
           ),
           const SizedBox(height: 12),
@@ -340,7 +478,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             controller: educationController,
             maxLines: 3,
             decoration: const InputDecoration(
-              labelText: "Education",
+              labelText: "Education (optional)",
               hintText: "Courses, college, training",
             ),
           ),
@@ -352,6 +490,97 @@ class _ProfileScreenState extends State<ProfileScreen> {
               labelText: "Previous work",
               hintText: "Previous projects, employers, responsibilities",
             ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            "References (optional)",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          ...references.asMap().entries.map((entry) {
+            final index = entry.key;
+            final reference = entry.value;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                children: [
+                  TextField(
+                    controller:
+                        TextEditingController(text: reference["name"] ?? ""),
+                    decoration: const InputDecoration(
+                      labelText: "Referee name",
+                      hintText: "Name",
+                    ),
+                    onChanged: (value) => references[index]["name"] = value,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller:
+                        TextEditingController(text: reference["company"] ?? ""),
+                    decoration: const InputDecoration(
+                      labelText: "Company / role",
+                      hintText: "Company, site manager, supervisor",
+                    ),
+                    onChanged: (value) => references[index]["company"] = value,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller:
+                        TextEditingController(text: reference["phone"] ?? ""),
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: "Phone",
+                      hintText: "Contact phone",
+                    ),
+                    onChanged: (value) => references[index]["phone"] = value,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: TextEditingController(
+                              text: reference["email"] ?? ""),
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(
+                            labelText: "Email",
+                            hintText: "Contact email",
+                          ),
+                          onChanged: (value) =>
+                              references[index]["email"] = value,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: () {
+                          references.removeAt(index);
+                          setState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }),
+          OutlinedButton.icon(
+            onPressed: () {
+              references.add({
+                "name": "",
+                "company": "",
+                "phone": "",
+                "email": "",
+              });
+              setState(() {});
+            },
+            icon: const Icon(Icons.add),
+            label: const Text("Add reference"),
           ),
         ],
 
