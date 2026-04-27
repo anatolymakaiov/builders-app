@@ -206,7 +206,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       scrollToBottom();
     } catch (e) {
-      print("MEDIA ERROR: $e");
+      debugPrint("MEDIA ERROR: $e");
     }
   }
 

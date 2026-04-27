@@ -106,6 +106,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Future<Map<String, dynamic>?> pickTeam(BuildContext context) async {
     final teams = await loadMyTeams();
 
+    if (!context.mounted) return null;
     if (teams.isEmpty) return null;
 
     return showModalBottomSheet<Map<String, dynamic>>(
@@ -183,15 +184,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     try {
       setState(() => isApplying = true);
 
-      final userDoc =
-          await FirebaseFirestore.instance.collection("users").doc(uid).get();
-
-      final workerName = userDoc.data()?["name"] ?? "Worker";
-
       /// 🔥 ШАГ 1 — ВЫБОР ТИПА
+      if (!mounted) return;
       final type = await pickApplyType(context);
 
       /// ❌ пользователь закрыл выбор
+      if (!mounted) return;
       if (type == null) {
         setState(() => isApplying = false);
         return;
@@ -201,6 +199,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       /// 👥 TEAM APPLY
       /// =====================================================
       if (type == "team") {
+        if (!mounted) return;
         final team = await pickTeam(context);
 
         /// ❌ закрыл выбор команды
@@ -275,6 +274,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           }
           return;
         }
+
+        final userDoc =
+            await FirebaseFirestore.instance.collection("users").doc(uid).get();
+        final workerName = userDoc.data()?["name"] ?? "Worker";
 
         await FirebaseFirestore.instance.collection("applications").add({
           "jobId": widget.job.id,
@@ -1070,11 +1073,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                       "status": "completed",
                     });
 
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Job completed")),
-                      );
-                    }
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Job completed")),
+                    );
                   },
                   icon: const Icon(Icons.check_circle, color: Colors.green),
                   label: const Text(
@@ -1205,6 +1207,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
                       chatId = doc.id;
                     }
+
+                    if (!context.mounted) return;
 
                     /// 🔥 переход в чат (если экран есть)
                     Navigator.push(

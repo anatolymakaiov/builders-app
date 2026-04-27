@@ -131,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return [
       const JobListScreen(),
       const MapScreen(),
-      SavedJobsScreen(),
+      const SavedJobsScreen(),
       const MyApplicationsScreen(),
       const NotificationsScreen(),
       const MyChatsScreen(),

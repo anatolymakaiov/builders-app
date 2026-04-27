@@ -40,7 +40,7 @@ class EmployerProfileScreen extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => ProfileScreen(),
+                  builder: (_) => const ProfileScreen(),
                 ),
               );
             },
@@ -339,7 +339,7 @@ class EmployerProfileScreen extends StatelessWidget {
 
                                       /// LOCATION
                                       Text(
-                                        "${job.city}",
+                                        job.city,
                                         style: const TextStyle(
                                           color: Colors.grey,
                                         ),

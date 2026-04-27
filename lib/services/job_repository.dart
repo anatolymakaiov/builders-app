@@ -27,7 +27,6 @@ class JobRepository {
           })
           .whereType<Job>()
           .toList();
-      ;
     });
   }
 
@@ -76,8 +75,6 @@ class JobRepository {
     if (employerId == null) {
       throw Exception("Job has no ownerId");
     }
-
-    final workerName = jobData["workerName"] ?? "Worker";
 
     /// 3. создаем application
     await _db.collection('applications').add({

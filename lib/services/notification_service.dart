@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class NotificationService {
@@ -52,42 +53,42 @@ class NotificationService {
       );
     });
 
-    print("✅ NotificationService initialized");
+    debugPrint("NotificationService initialized");
   }
 
   /// 🔥 SAVE TOKEN (без краша на iOS)
   Future<void> saveToken(String userId) async {
-    print("🔥 saveToken CALLED");
+    debugPrint("saveToken called");
 
     try {
       /// 🍏 Проверяем APNS (iOS)
       final apns = await _fcm.getAPNSToken();
 
       if (apns == null) {
-        print("⚠️ iOS: Push отключён (нет paid аккаунта)");
+        debugPrint("iOS push token unavailable");
         return;
       }
 
-      print("🍏 APNS TOKEN: $apns");
+      debugPrint("APNS token received");
 
       /// 🔥 Получаем FCM
       final token = await _fcm.getToken();
 
       if (token == null) {
-        print("❌ FCM TOKEN NULL");
+        debugPrint("FCM token is null");
         return;
       }
 
-      print("🔥 FCM TOKEN: $token");
+      debugPrint("FCM token received");
 
       /// 🔥 Сохраняем
       await _db.collection("users").doc(userId).set({
         "fcmToken": token,
       }, SetOptions(merge: true));
 
-      print("✅ TOKEN SAVED");
+      debugPrint("FCM token saved");
     } catch (e) {
-      print("❌ saveToken error: $e");
+      debugPrint("saveToken error: $e");
     }
   }
 
