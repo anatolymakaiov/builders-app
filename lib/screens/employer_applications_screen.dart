@@ -121,8 +121,9 @@ class _EmployerApplicationsScreenState
       body: StroykaScreenBody(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.all(12),
+            StroykaSurface(
+              margin: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+              padding: const EdgeInsets.all(10),
               child: Row(
                 children: [
                   /// STATUS
@@ -131,9 +132,11 @@ class _EmployerApplicationsScreenState
                       initialValue: selectedStatus,
                       isExpanded: true,
                       decoration: const InputDecoration(
-                        labelText: "Status",
+                        hintText: "Status",
                         border: OutlineInputBorder(),
                         isDense: true,
+                        filled: true,
+                        fillColor: Colors.white,
                       ),
                       items: [
                         "all",
@@ -165,9 +168,11 @@ class _EmployerApplicationsScreenState
                       initialValue: selectedTrade,
                       isExpanded: true,
                       decoration: const InputDecoration(
-                        labelText: "Trade",
+                        hintText: "Trade",
                         border: OutlineInputBorder(),
                         isDense: true,
+                        filled: true,
+                        fillColor: Colors.white,
                       ),
                       items: trades
                           .map((e) => DropdownMenuItem(
@@ -191,9 +196,11 @@ class _EmployerApplicationsScreenState
                       initialValue: selectedSite,
                       isExpanded: true,
                       decoration: const InputDecoration(
-                        labelText: "Site",
+                        hintText: "Site",
                         border: OutlineInputBorder(),
                         isDense: true,
+                        filled: true,
+                        fillColor: Colors.white,
                       ),
                       items: sites
                           .map((e) => DropdownMenuItem(

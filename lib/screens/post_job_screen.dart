@@ -307,137 +307,140 @@ class _PostJobScreenState extends State<PostJobScreen> {
       ),
       body: StroykaScreenBody(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              TextField(
-                controller: companyController,
-                decoration: const InputDecoration(labelText: "Company name"),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: selectedTrade,
-                items: trades
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (v) => setState(() => selectedTrade = v!),
-                decoration: const InputDecoration(labelText: "Trade"),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: titleController,
-                decoration: const InputDecoration(labelText: "Job title"),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: siteController,
-                decoration: const InputDecoration(labelText: "Site"),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: durationController,
-                decoration: const InputDecoration(
-                  labelText: "Duration (e.g. 2 weeks)",
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: weeklyHoursController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: "Hours per week",
-                  hintText: "40",
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: positionsController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: "Workers needed",
-                ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: jobType,
-                items: const [
-                  DropdownMenuItem(value: "hourly", child: Text("Daywork")),
-                  DropdownMenuItem(value: "price", child: Text("Price")),
-                  DropdownMenuItem(
-                      value: "negotiable", child: Text("Negotiable")),
-                ],
-                onChanged: (v) => setState(() => jobType = v!),
-                decoration: const InputDecoration(
-                  labelText: "Work format",
-                  hintText: "Daywork, price, negotiable",
-                ),
-              ),
-              if (jobType != "negotiable")
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+          child: StroykaSurface(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              children: [
                 TextField(
-                  controller: rateController,
+                  controller: companyController,
+                  decoration: const InputDecoration(labelText: "Company name"),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedTrade,
+                  items: trades
+                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                      .toList(),
+                  onChanged: (v) => setState(() => selectedTrade = v!),
+                  decoration: const InputDecoration(labelText: "Trade"),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(labelText: "Job title"),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: siteController,
+                  decoration: const InputDecoration(labelText: "Site"),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: durationController,
+                  decoration: const InputDecoration(
+                    labelText: "Duration (e.g. 2 weeks)",
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: weeklyHoursController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: "Rate (£)"),
+                  decoration: const InputDecoration(
+                    labelText: "Hours per week",
+                    hintText: "40",
+                  ),
                 ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: postcodeController,
-                decoration: const InputDecoration(labelText: "Postcode"),
-                onChanged: (_) => checkPostcode(),
-              ),
-              const SizedBox(height: 6),
-              Text(postcodeStatus),
-              const SizedBox(height: 12),
-              TextField(
-                controller: streetController,
-                decoration: const InputDecoration(labelText: "Street"),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: cityController,
-                decoration: const InputDecoration(labelText: "City"),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: descriptionController,
-                maxLines: 4,
-                decoration: const InputDecoration(labelText: "Description"),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: candidateRequirementsController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: "Candidate requirements",
-                  hintText: "Experience, skills, right to work, references",
+                const SizedBox(height: 12),
+                TextField(
+                  controller: positionsController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: "Workers needed",
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: requiredDocumentsController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: "Required documents / certifications",
-                  hintText: "CSCS, PPE, certifications, tools, documents",
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: jobType,
+                  items: const [
+                    DropdownMenuItem(value: "hourly", child: Text("Daywork")),
+                    DropdownMenuItem(value: "price", child: Text("Price")),
+                    DropdownMenuItem(
+                        value: "negotiable", child: Text("Negotiable")),
+                  ],
+                  onChanged: (v) => setState(() => jobType = v!),
+                  decoration: const InputDecoration(
+                    labelText: "Work format",
+                    hintText: "Daywork, price, negotiable",
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: pickJobPhotos,
-                child: const Text("Add photos"),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: loading ? null : saveJob,
-                  child: loading
-                      ? const CircularProgressIndicator()
-                      : Text(widget.existingJob != null
-                          ? "Update Job"
-                          : "Create Job"),
+                if (jobType != "negotiable")
+                  TextField(
+                    controller: rateController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: "Rate (£)"),
+                  ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: postcodeController,
+                  decoration: const InputDecoration(labelText: "Postcode"),
+                  onChanged: (_) => checkPostcode(),
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                Text(postcodeStatus),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: streetController,
+                  decoration: const InputDecoration(labelText: "Street"),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: cityController,
+                  decoration: const InputDecoration(labelText: "City"),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descriptionController,
+                  maxLines: 4,
+                  decoration: const InputDecoration(labelText: "Description"),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: candidateRequirementsController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: "Candidate requirements",
+                    hintText: "Experience, skills, right to work, references",
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: requiredDocumentsController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: "Required documents / certifications",
+                    hintText: "CSCS, PPE, certifications, tools, documents",
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: pickJobPhotos,
+                  child: const Text("Add photos"),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: loading ? null : saveJob,
+                    child: loading
+                        ? const CircularProgressIndicator()
+                        : Text(widget.existingJob != null
+                            ? "Update Job"
+                            : "Create Job"),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

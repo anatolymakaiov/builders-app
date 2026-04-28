@@ -778,7 +778,7 @@ class WorkerProfileScreen extends StatelessWidget {
                         Tab(text: "Info"),
                         Tab(text: "Contacts"),
                         Tab(text: "Photos"),
-                        Tab(text: "My teams"),
+                        Tab(text: "Teams"),
                       ],
                     ),
                   ),

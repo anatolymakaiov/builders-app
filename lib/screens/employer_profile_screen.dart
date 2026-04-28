@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/job.dart';
 import 'job_details_screen.dart';
@@ -9,7 +13,7 @@ import '../widgets/phone_link.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
-class EmployerProfileScreen extends StatelessWidget {
+class EmployerProfileScreen extends StatefulWidget {
   final String userId;
 
   const EmployerProfileScreen({
@@ -17,10 +21,17 @@ class EmployerProfileScreen extends StatelessWidget {
     required this.userId,
   });
 
+  @override
+  State<EmployerProfileScreen> createState() => _EmployerProfileScreenState();
+}
+
+class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
+  final picker = ImagePicker();
+
   Stream<List<Job>> getJobs() {
     return FirebaseFirestore.instance
         .collection("jobs")
-        .where("ownerId", isEqualTo: userId)
+        .where("ownerId", isEqualTo: widget.userId)
         .orderBy("createdAt", descending: true)
         .snapshots()
         .map((snapshot) {
@@ -30,34 +41,59 @@ class EmployerProfileScreen extends StatelessWidget {
     });
   }
 
+  Future<void> addCompanyPhoto() async {
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
+
+    final ref = FirebaseStorage.instance.ref().child(
+        "company_photos/${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg");
+
+    await ref.putFile(File(picked.path));
+    final url = await ref.getDownloadURL();
+
+    await FirebaseFirestore.instance
+        .collection("users")
+        .doc(widget.userId)
+        .set({
+      "companyPhotos": FieldValue.arrayUnion([url]),
+      "updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Company Profile"),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const ProfileScreen(),
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-            },
-          ),
+          if (FirebaseAuth.instance.currentUser?.uid == widget.userId) ...[
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ProfileScreen(),
+                  ),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout),
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+              },
+            ),
+          ],
         ],
       ),
       body: FutureBuilder<DocumentSnapshot>(
-        future:
-            FirebaseFirestore.instance.collection("users").doc(userId).get(),
+        future: FirebaseFirestore.instance
+            .collection("users")
+            .doc(widget.userId)
+            .get(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -86,6 +122,8 @@ class EmployerProfileScreen extends StatelessWidget {
           final headerImage =
               (data["profileHeaderImage"] ?? data["headerImage"])?.toString();
           final photos = List<String>.from(data["companyPhotos"] ?? []);
+          final isMyCompany =
+              FirebaseAuth.instance.currentUser?.uid == widget.userId;
 
           return DefaultTabController(
             length: 4,
@@ -421,6 +459,18 @@ class EmployerProfileScreen extends StatelessWidget {
                         ListView(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
                           children: [
+                            if (isMyCompany)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: addCompanyPhoto,
+                                    icon: const Icon(Icons.add_a_photo),
+                                    label: const Text("Add company photo"),
+                                  ),
+                                ),
+                              ),
                             if (photos.isEmpty)
                               const StroykaSurface(
                                 padding: EdgeInsets.all(18),

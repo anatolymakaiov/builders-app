@@ -133,37 +133,126 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     required int value,
     required Color color,
   }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.20)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              value.toString(),
-              style: TextStyle(
-                color: color,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+    return Container(
+      constraints: const BoxConstraints(minWidth: 82),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value.toString(),
+            style: TextStyle(
+              color: color,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
             ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.grey.shade800,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.grey.shade800,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> setJobActive(Job job, bool active) async {
+    await FirebaseFirestore.instance.collection("jobs").doc(job.id).set({
+      "status": active ? "active" : "closed",
+      "updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(active ? "Vacancy activated" : "Vacancy made inactive"),
+      ),
+    );
+  }
+
+  Widget buildFilterDropdown({
+    required String value,
+    required List<String> items,
+    required ValueChanged<String> onChanged,
+  }) {
+    return DropdownButton<String>(
+      value: items.contains(value) ? value : "All",
+      isExpanded: true,
+      underline: const SizedBox(),
+      dropdownColor: Colors.white,
+      style: const TextStyle(
+        color: AppColors.ink,
+        fontWeight: FontWeight.w800,
+      ),
+      items: items.map((item) {
+        return DropdownMenuItem(
+          value: item,
+          child: Text(
+            item,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        if (value == null) return;
+        onChanged(value);
+      },
+    );
+  }
+
+  Widget buildFilterPanel(List<String> tradeList, List<String> siteList) {
+    return StroykaSurface(
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: buildFilterDropdown(
+              value: selectedTrade,
+              items: tradeList,
+              onChanged: (value) => setState(() => selectedTrade = value),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: buildFilterDropdown(
+              value: selectedSite,
+              items: siteList,
+              onChanged: (value) => setState(() => selectedSite = value),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildStatusBadge(Job job) {
+    final isClosed = job.isClosed;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isClosed ? Colors.grey.shade700 : AppColors.green,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        isClosed ? "INACTIVE" : "ACTIVE",
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -208,63 +297,45 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
         final spotsLeft =
             (job.positions - acceptedSlots).clamp(0, job.positions);
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        return Wrap(
+          spacing: 6,
+          runSpacing: 6,
           children: [
-            Row(
-              children: [
-                buildStatTile(
-                  label: "Applied",
-                  value: docs.length,
-                  color: AppColors.ink,
-                ),
-                const SizedBox(width: 8),
-                buildStatTile(
-                  label: "In review",
-                  value: inReview,
-                  color: AppColors.greenDark,
-                ),
-                const SizedBox(width: 8),
-                buildStatTile(
-                  label: "Offers",
-                  value: offer,
-                  color: AppColors.green,
-                ),
-              ],
+            buildStatTile(
+              label: "Applied",
+              value: docs.length,
+              color: AppColors.ink,
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                buildStatTile(
-                  label: "Accepted",
-                  value: acceptedSlots,
-                  color: Colors.green,
-                ),
-                const SizedBox(width: 8),
-                buildStatTile(
-                  label: "Rejected",
-                  value: rejected,
-                  color: Colors.red,
-                ),
-                const SizedBox(width: 8),
-                buildStatTile(
-                  label: "Spots left",
-                  value: spotsLeft,
-                  color: Colors.deepPurple,
-                ),
-              ],
+            buildStatTile(
+              label: "Review",
+              value: inReview,
+              color: AppColors.greenDark,
+            ),
+            buildStatTile(
+              label: "Offers",
+              value: offer,
+              color: AppColors.green,
+            ),
+            buildStatTile(
+              label: "Accepted",
+              value: acceptedSlots,
+              color: Colors.green,
+            ),
+            buildStatTile(
+              label: "Rejected",
+              value: rejected,
+              color: Colors.red,
+            ),
+            buildStatTile(
+              label: "Left",
+              value: spotsLeft,
+              color: Colors.deepPurple,
             ),
             if (negotiation > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  "Negotiation: $negotiation",
-                  style: TextStyle(
-                    color: Colors.purple.shade700,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                ),
+              buildStatTile(
+                label: "Negotiation",
+                value: negotiation,
+                color: Colors.purple,
               ),
           ],
         );
@@ -350,27 +421,8 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (isClosed) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade700,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: const Text(
-                            "CLOSED",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                      ],
+                      buildStatusBadge(job),
+                      const SizedBox(height: 6),
                       Text(
                         job.title,
                         style: const TextStyle(
@@ -394,10 +446,26 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                   onSelected: (value) {
                     if (value == "delete") {
                       deleteJob(context, job);
+                    } else if (value == "toggle") {
+                      setJobActive(job, isClosed);
                     }
                   },
-                  itemBuilder: (context) => const [
+                  itemBuilder: (context) => [
                     PopupMenuItem(
+                      value: "toggle",
+                      child: Row(
+                        children: [
+                          Icon(
+                            isClosed ? Icons.play_circle : Icons.pause_circle,
+                            color:
+                                isClosed ? AppColors.greenDark : Colors.orange,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(isClosed ? "Make active" : "Make inactive"),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
                       value: "delete",
                       child: Row(
                         children: [
@@ -419,21 +487,6 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
             ),
             const SizedBox(height: 12),
             buildApplicationStats(job),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => deleteJob(context, job),
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                label: const Text(
-                  "Delete vacancy",
-                  style: TextStyle(color: Colors.red),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.red),
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -523,52 +576,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
 
                 return Column(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButton<String>(
-                              value: tradeList.contains(selectedTrade)
-                                  ? selectedTrade
-                                  : "All",
-                              isExpanded: true,
-                              items: tradeList.map((trade) {
-                                return DropdownMenuItem(
-                                  value: trade,
-                                  child: Text(trade),
-                                );
-                              }).toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  selectedTrade = value!;
-                                });
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: DropdownButton<String>(
-                              value: siteList.contains(selectedSite)
-                                  ? selectedSite
-                                  : "All",
-                              isExpanded: true,
-                              items: siteList.map((site) {
-                                return DropdownMenuItem(
-                                  value: site,
-                                  child: Text(site),
-                                );
-                              }).toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  selectedSite = value!;
-                                });
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    buildFilterPanel(tradeList, siteList),
                     Expanded(
                       child: ListView.builder(
                         itemCount: filteredJobs.length,
