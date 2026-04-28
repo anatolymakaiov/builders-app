@@ -666,7 +666,6 @@ class WorkerProfileScreen extends StatelessWidget {
           final offerRate = result["offerRate"];
           final offerNote = result["offerNote"];
           final name = data["name"] ?? "Worker";
-          final trade = data["trade"] ?? "";
           final bio = data["bio"] ?? "";
           final location = data["location"] ?? "";
           final photo = data["photo"];
@@ -682,9 +681,6 @@ class WorkerProfileScreen extends StatelessWidget {
           final education = data["education"];
           final previousWork = data["previousWork"];
           final references = data["references"];
-
-          final rating = (data["rating"] ?? 0).toDouble();
-          final reviews = data["reviewsCount"] ?? 0;
 
           return DefaultTabController(
             length: 4,
@@ -757,37 +753,6 @@ class WorkerProfileScreen extends StatelessWidget {
                                       color: AppColors.ink,
                                     ),
                                   ),
-                                  if (trade.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 3),
-                                      child: Text(
-                                        trade,
-                                        style: const TextStyle(
-                                          color: AppColors.muted,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                  if (rating > 0)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          const Icon(Icons.star,
-                                              color: Colors.amber, size: 16),
-                                          const SizedBox(width: 4),
-                                          Flexible(
-                                            child: Text(
-                                              "$rating ($reviews reviews)",
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
                                 ],
                               ),
                             ),
