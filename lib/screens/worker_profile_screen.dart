@@ -697,7 +697,7 @@ class WorkerProfileScreen extends StatelessWidget {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(14),
                       child: SizedBox(
-                        height: 156,
+                        height: 168,
                         child: Container(
                           decoration: BoxDecoration(
                             image: headerImage != null && headerImage.isNotEmpty
@@ -708,8 +708,8 @@ class WorkerProfileScreen extends StatelessWidget {
                                 : null,
                           ),
                           child: Container(
-                            alignment: Alignment.center,
-                            padding: const EdgeInsets.all(14),
+                            alignment: Alignment.bottomCenter,
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 begin: Alignment.topCenter,
@@ -723,8 +723,8 @@ class WorkerProfileScreen extends StatelessWidget {
                             child: Container(
                               width: double.infinity,
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
+                                horizontal: 12,
+                                vertical: 8,
                               ),
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.82),
@@ -738,7 +738,7 @@ class WorkerProfileScreen extends StatelessWidget {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   CircleAvatar(
-                                    radius: 36,
+                                    radius: 32,
                                     backgroundColor: Colors.grey.shade300,
                                     backgroundImage: photo is String
                                         ? NetworkImage(photo)
@@ -747,12 +747,12 @@ class WorkerProfileScreen extends StatelessWidget {
                                         ? const Icon(Icons.person, size: 30)
                                         : null,
                                   ),
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: 6),
                                   Text(
                                     name,
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
-                                      fontSize: 23,
+                                      fontSize: 20,
                                       fontWeight: FontWeight.w900,
                                       color: AppColors.ink,
                                     ),
@@ -764,22 +764,27 @@ class WorkerProfileScreen extends StatelessWidget {
                                         trade,
                                         style: const TextStyle(
                                           color: AppColors.muted,
-                                          fontSize: 16,
+                                          fontSize: 14,
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
                                     ),
                                   if (rating > 0)
                                     Padding(
-                                      padding: const EdgeInsets.only(top: 5),
+                                      padding: const EdgeInsets.only(top: 4),
                                       child: Row(
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,
                                         children: [
                                           const Icon(Icons.star,
-                                              color: Colors.amber, size: 20),
+                                              color: Colors.amber, size: 16),
                                           const SizedBox(width: 4),
-                                          Text("$rating ($reviews reviews)"),
+                                          Flexible(
+                                            child: Text(
+                                              "$rating ($reviews reviews)",
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
                                         ],
                                       ),
                                     ),

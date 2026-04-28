@@ -595,7 +595,13 @@ class ApplicationDetailsScreen extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.90),
+                borderRadius: BorderRadius.circular(14),
+              ),
               child: Column(
                 children: [
                   CircleAvatar(
@@ -610,13 +616,21 @@ class ApplicationDetailsScreen extends StatelessWidget {
                   const SizedBox(height: 12),
                   Text(
                     teamName.toString(),
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
+                      color: AppColors.ink,
                       fontSize: 22,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text("${memberIds.length} members"),
+                  Text(
+                    "${memberIds.length} members",
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -644,9 +658,20 @@ class ApplicationDetailsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
             ],
-            const Text(
-              "Team members",
-              style: TextStyle(fontWeight: FontWeight.bold),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.90),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                "Team members",
+                style: TextStyle(
+                  color: AppColors.ink,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
             const SizedBox(height: 10),
             ...memberIds.map((memberId) {

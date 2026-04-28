@@ -136,7 +136,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(14),
                       child: SizedBox(
-                        height: 156,
+                        height: 168,
                         child: Container(
                           decoration: BoxDecoration(
                             image: headerImage != null && headerImage.isNotEmpty
@@ -147,8 +147,8 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                                 : null,
                           ),
                           child: Container(
-                            alignment: Alignment.center,
-                            padding: const EdgeInsets.all(14),
+                            alignment: Alignment.bottomCenter,
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 begin: Alignment.topCenter,
@@ -162,8 +162,8 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                             child: Container(
                               width: double.infinity,
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
+                                horizontal: 12,
+                                vertical: 8,
                               ),
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.82),
@@ -177,7 +177,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   CircleAvatar(
-                                    radius: 36,
+                                    radius: 32,
                                     backgroundColor: Colors.grey.shade300,
                                     backgroundImage: logo is String
                                         ? NetworkImage(logo)
@@ -186,12 +186,12 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                                         ? const Icon(Icons.business, size: 30)
                                         : null,
                                   ),
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: 6),
                                   Text(
                                     name,
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
-                                      fontSize: 23,
+                                      fontSize: 20,
                                       fontWeight: FontWeight.w900,
                                       color: AppColors.ink,
                                     ),
