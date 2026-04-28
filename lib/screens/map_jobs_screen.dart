@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/job.dart';
 import 'job_details_screen.dart';
 import '../theme/app_theme.dart';
+import '../theme/stroyka_background.dart';
 
 class MapJobsScreen extends StatefulWidget {
   const MapJobsScreen({super.key});
@@ -46,57 +47,56 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
           14,
         );
       },
-      child: Container(
+      child: SizedBox(
         width: 220,
-        margin: const EdgeInsets.all(12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              job.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.ink,
-                fontWeight: FontWeight.w800,
-                fontSize: 16,
+        child: StroykaSurface(
+          margin: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                job.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.ink,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text("${job.city} ${job.postcode}"),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                _chip(job.workFormatText, AppColors.ink),
-                if (job.duration.isNotEmpty)
-                  _chip(job.duration, AppColors.greenDark),
-                if (job.listRateText.isNotEmpty)
-                  _chip(job.listRateText, AppColors.greenDark),
-              ],
-            ),
-            const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => JobDetailScreen(job: job),
-                    ),
-                  );
-                },
-                child: const Text("View"),
+              const SizedBox(height: 6),
+              Text("${job.city} ${job.postcode}"),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _chip(job.workFormatText, AppColors.ink),
+                  if (job.duration.isNotEmpty)
+                    _chip(job.duration, AppColors.greenDark),
+                  if (job.listRateText.isNotEmpty)
+                    _chip(job.listRateText, AppColors.greenDark),
+                ],
               ),
-            )
-          ],
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => JobDetailScreen(job: job),
+                      ),
+                    );
+                  },
+                  child: const Text("View"),
+                ),
+              )
+            ],
+          ),
         ),
       ),
     );
@@ -190,15 +190,21 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
                 alignment: Alignment.bottomCenter,
                 child: Container(
                   height: 220,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.vertical(
+                  decoration: BoxDecoration(
+                    color: AppColors.deep.withValues(alpha: 0.96),
+                    borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(20),
+                    ),
+                    border: Border(
+                      top: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.10),
+                      ),
                     ),
                     boxShadow: [
                       BoxShadow(
-                        blurRadius: 10,
-                        color: Colors.black12,
+                        blurRadius: 26,
+                        color: Colors.black.withValues(alpha: 0.28),
+                        offset: const Offset(0, -8),
                       )
                     ],
                   ),

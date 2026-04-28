@@ -9,6 +9,7 @@ import '../models/job.dart';
 import 'job_details_screen.dart';
 import '../services/job_repository.dart';
 import '../theme/app_theme.dart';
+import '../theme/stroyka_background.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -360,9 +361,21 @@ class _MapScreenState extends State<MapScreen> {
       maxChildSize: 0.9,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          decoration: BoxDecoration(
+            color: AppColors.deep.withValues(alpha: 0.96),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            border: Border(
+              top: BorderSide(
+                color: Colors.white.withValues(alpha: 0.10),
+              ),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.28),
+                blurRadius: 26,
+                offset: const Offset(0, -8),
+              ),
+            ],
           ),
           child: Column(
             children: [
@@ -371,48 +384,72 @@ class _MapScreenState extends State<MapScreen> {
                 width: 40,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: Colors.grey,
+                  color: Colors.white.withValues(alpha: 0.62),
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
                 child: Row(
                   children: [
-                    DropdownButton<String>(
-                      value: tradeFilter,
-                      items: trades.map((trade) {
-                        return DropdownMenuItem(
-                          value: trade,
-                          child: Text(trade),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          tradeFilter = value!;
-                        });
-                      },
+                    Expanded(
+                      child: StroykaSurface(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        borderRadius: BorderRadius.circular(12),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: tradeFilter,
+                            isExpanded: true,
+                            items: trades.map((trade) {
+                              return DropdownMenuItem(
+                                value: trade,
+                                child: Text(trade),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                tradeFilter = value!;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 10),
-                    DropdownButton<String>(
-                      value: sortBy,
-                      items: const [
-                        DropdownMenuItem(
-                            value: "distance", child: Text("Distance")),
-                        DropdownMenuItem(value: "rate", child: Text("Pay")),
-                        DropdownMenuItem(
-                            value: "newest", child: Text("Newest")),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          sortBy = value!;
-                        });
-                      },
+                    Expanded(
+                      child: StroykaSurface(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        borderRadius: BorderRadius.circular(12),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: sortBy,
+                            isExpanded: true,
+                            items: const [
+                              DropdownMenuItem(
+                                value: "distance",
+                                child: Text("Distance"),
+                              ),
+                              DropdownMenuItem(
+                                value: "rate",
+                                child: Text("Pay"),
+                              ),
+                              DropdownMenuItem(
+                                value: "newest",
+                                child: Text("Newest"),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              setState(() {
+                                sortBy = value!;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
-              const Divider(),
               Expanded(
                 child: ListView.builder(
                   controller: scrollController,
@@ -442,12 +479,13 @@ class _MapScreenState extends State<MapScreen> {
     final distance = calculateDistance(job.lat, job.lng);
     final selected = job.id == selectedJobId;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: selected ? AppColors.surfaceAlt : AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-      ),
+    return StroykaSurface(
+      texture: selected
+          ? "assets/branding/texture_light_cloud.jpg"
+          : "assets/branding/texture_light_triangles.jpg",
+      borderRadius: BorderRadius.circular(14),
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
