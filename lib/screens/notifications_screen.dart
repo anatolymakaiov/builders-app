@@ -151,13 +151,12 @@ class NotificationsScreen extends StatelessWidget {
                     (type == "work_start" || type == "offer") &&
                         data["offer"] is Map;
 
-                return Container(
+                return StroykaSurface(
                   margin:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: read ? AppColors.surface : AppColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  texture: read
+                      ? "assets/branding/texture_light_triangles.jpg"
+                      : "assets/branding/texture_light_dots.jpg",
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 18,

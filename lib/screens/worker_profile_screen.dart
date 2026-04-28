@@ -685,7 +685,7 @@ class WorkerProfileScreen extends StatelessWidget {
               child: Column(
                 children: [
                   StroykaSurface(
-                    margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                    margin: const EdgeInsets.fromLTRB(0, 12, 0, 10),
                     padding: const EdgeInsets.all(18),
                     child: Column(
                       children: [

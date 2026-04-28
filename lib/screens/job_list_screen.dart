@@ -236,12 +236,8 @@ class _JobListScreenState extends State<JobListScreen> {
     final duration =
         job.duration.trim().isEmpty ? "Duration not set" : job.duration.trim();
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-      ),
+    return StroykaSurface(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: () {

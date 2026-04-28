@@ -236,21 +236,10 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                             apps[index].id,
                           );
                         },
-                        child: Container(
+                        child: StroykaSurface(
                           margin: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
+                              horizontal: 12, vertical: 8),
                           padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.05),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-                              )
-                            ],
-                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -402,12 +391,8 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
 
   /// 🔥 reusable card
   Widget buildCard(Job job, String status, String applicationId) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-      ),
+    return StroykaSurface(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
         title: Text(
@@ -545,10 +530,9 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       initialValue: value,
       items: items,
       isExpanded: true,
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-        contentPadding: const EdgeInsets.symmetric(
+      decoration: const InputDecoration(
+        border: OutlineInputBorder(),
+        contentPadding: EdgeInsets.symmetric(
           horizontal: 10,
           vertical: 8,
         ),

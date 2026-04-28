@@ -985,70 +985,89 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              buildCompany(),
-              const SizedBox(height: 24),
-              buildPhotos(),
-              Text(widget.job.trade),
-              const SizedBox(height: 4),
-              Text(
-                widget.job.title,
-                style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              buildRateCard(),
-
-              buildPositionsInfo(),
-
-              /// 🔥 DURATION (НОВОЕ)
-              if (widget.job.duration.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.timer_outlined, size: 18),
-                      const SizedBox(width: 6),
+              StroykaSurface(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    buildCompany(),
+                    buildPhotos(),
+                    if (widget.job.trade.isNotEmpty)
                       Text(
-                        widget.job.duration,
+                        widget.job.trade,
                         style: const TextStyle(
-                          fontWeight: FontWeight.w500,
+                          color: AppColors.muted,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              if (widget.job.weeklyHours.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.schedule, size: 18),
-                      const SizedBox(width: 6),
-                      Text(
-                        "${widget.job.weeklyHours} hours per week",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w500,
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.job.title,
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    buildRateCard(),
+                    buildPositionsInfo(),
+                    if (widget.job.duration.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.timer_outlined, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              widget.job.duration,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                    if (widget.job.weeklyHours.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.schedule, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              "${widget.job.weeklyHours} hours per week",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 18),
+                    buildLocation(),
+                  ],
                 ),
-              const SizedBox(height: 24),
-              buildLocation(),
-              const SizedBox(height: 24),
-              buildDescription(),
-              buildJobInfoSection(
-                "Candidate requirements",
-                widget.job.candidateRequirements,
               ),
-              buildJobInfoSection(
-                "Required documents / certifications",
-                widget.job.requiredDocuments,
+              const SizedBox(height: 12),
+              StroykaSurface(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    buildDescription(),
+                    buildJobInfoSection(
+                      "Candidate requirements",
+                      widget.job.candidateRequirements,
+                    ),
+                    buildJobInfoSection(
+                      "Required documents / certifications",
+                      widget.job.requiredDocuments,
+                    ),
+                    buildYourOffer(),
+                  ],
+                ),
               ),
-              buildYourOffer(),
               const SizedBox(height: 30),
               if (userId != widget.job.ownerId) ...[
                 OutlinedButton.icon(
