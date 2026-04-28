@@ -3,9 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/job.dart';
-import 'job_details_screen.dart';
-import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/job_card.dart';
 
 class SavedJobsScreen extends StatelessWidget {
   const SavedJobsScreen({super.key});
@@ -81,40 +80,11 @@ class SavedJobsScreen extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final job = jobs[index];
 
-                    final meta = [
-                      job.city,
-                      job.workFormatText,
-                      if (job.duration.isNotEmpty) job.duration,
-                      if (job.listRateText.isNotEmpty) job.listRateText,
-                    ].where((item) => item.trim().isNotEmpty).join(" • ");
-
-                    return StroykaSurface(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 8,
-                        ),
-                        title: Text(
-                          job.displayTitle,
-                          style: const TextStyle(
-                            color: AppColors.ink,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        subtitle: Text(meta),
-                        trailing: const Icon(Icons.favorite, color: Colors.red),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => JobDetailScreen(job: job),
-                            ),
-                          );
-                        },
+                    return JobCard(
+                      job: job,
+                      trailingAction: const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Icon(Icons.favorite, color: Colors.red),
                       ),
                     );
                   },

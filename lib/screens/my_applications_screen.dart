@@ -8,6 +8,7 @@ import '../services/application_activity_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/job_card.dart';
 
 class MyApplicationsScreen extends StatefulWidget {
   const MyApplicationsScreen({super.key});
@@ -460,46 +461,16 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     required bool isUnread,
     required String userId,
   }) {
-    return StroykaSurface(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-        leading: isUnread
-            ? Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                  color: AppColors.green,
-                  shape: BoxShape.circle,
-                ),
-              )
-            : null,
-        title: Text(
-          job.displayTitle,
-          style: TextStyle(
-            color: AppColors.ink,
-            fontWeight: isUnread ? FontWeight.w900 : FontWeight.w800,
-          ),
-        ),
-        subtitle: Text([
-          job.city,
-          job.workFormatText,
-          if (job.duration.isNotEmpty) job.duration,
-          if (job.listRateText.isNotEmpty) job.listRateText,
-        ].where((item) => item.trim().isNotEmpty).join(" • ")),
-        trailing: Text(
-          statusLabel(status),
-          style: TextStyle(
-            color: getStatusColor(status),
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        onTap: () async {
-          await ApplicationActivityService.markRead(applicationId, userId);
-          if (!mounted) return;
-          await openJobDetails(context, job.id, applicationId);
-        },
-      ),
+    return JobCard(
+      job: job,
+      unread: isUnread,
+      statusText: statusLabel(status),
+      statusColor: getStatusColor(status),
+      onTap: () async {
+        await ApplicationActivityService.markRead(applicationId, userId);
+        if (!mounted) return;
+        await openJobDetails(context, job.id, applicationId);
+      },
     );
   }
 

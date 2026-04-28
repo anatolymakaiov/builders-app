@@ -107,11 +107,17 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
     if (existing.docs.isNotEmpty) {
       chatId = existing.docs.first.id;
+      await existing.docs.first.reference.set({
+        "participants": [workerId, employerId],
+        "members": [workerId, employerId],
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     } else {
       final doc = await FirebaseFirestore.instance.collection("chats").add({
         "workerId": workerId,
         "employerId": employerId,
         "participants": [workerId, employerId],
+        "members": [workerId, employerId],
         "lastMessage": "",
         "lastMessageType": "text",
         "updatedAt": FieldValue.serverTimestamp(),
@@ -944,19 +950,27 @@ class ApplicationDetailsScreen extends StatelessWidget {
                                       .instance
                                       .collection("chats")
                                       .where("jobId", isEqualTo: jobId)
-                                      .where("members", arrayContains: workerId)
+                                      .where("workerId", isEqualTo: workerId)
+                                      .where("employerId",
+                                          isEqualTo: employerId)
                                       .get();
 
                                   String chatId;
 
                                   if (existing.docs.isNotEmpty) {
                                     chatId = existing.docs.first.id;
+                                    await existing.docs.first.reference.set({
+                                      "participants": [workerId, employerId],
+                                      "members": [workerId, employerId],
+                                      "updatedAt": FieldValue.serverTimestamp(),
+                                    }, SetOptions(merge: true));
                                   } else {
                                     final doc = await FirebaseFirestore.instance
                                         .collection("chats")
                                         .add({
                                       "jobId": jobId,
                                       "members": [workerId, employerId],
+                                      "participants": [workerId, employerId],
                                       "workerId": workerId,
                                       "employerId": employerId,
                                       "workerName": "Worker",

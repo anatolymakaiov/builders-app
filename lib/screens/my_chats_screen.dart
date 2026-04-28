@@ -107,7 +107,7 @@ class MyChatsScreen extends StatelessWidget {
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection("chats")
-              .where("members", arrayContains: uid)
+              .where("participants", arrayContains: uid)
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {

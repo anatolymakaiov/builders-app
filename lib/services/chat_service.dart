@@ -19,6 +19,11 @@ class ChatService {
         .get();
 
     if (query.docs.isNotEmpty) {
+      await query.docs.first.reference.set({
+        "participants": [workerId, employerId],
+        "members": [workerId, employerId],
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       return query.docs.first.id;
     }
 
@@ -32,6 +37,7 @@ class ChatService {
 
       /// 🔥 ВАЖНО (для будущего списка чатов)
       "participants": [workerId, employerId],
+      "members": [workerId, employerId],
 
       /// 🔥 optional (удобно для UI)
       if (jobTitle != null) "jobTitle": jobTitle,
@@ -69,6 +75,11 @@ class ChatService {
         .get();
 
     if (existing.docs.isNotEmpty) {
+      await existing.docs.first.reference.set({
+        "members": [...members, employerId],
+        "participants": [...members, employerId],
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       return existing.docs.first.id;
     }
 
@@ -76,9 +87,17 @@ class ChatService {
       "type": "team",
       "teamId": teamId,
       "members": [...members, employerId],
+      "participants": [...members, employerId],
       "employerId": employerId,
       "jobId": jobId,
+      "lastMessage": "",
+      "lastMessageType": "text",
+      "unreadCount_worker": 0,
+      "unreadCount_employer": 0,
+      "typing_worker": false,
+      "typing_employer": false,
       "createdAt": FieldValue.serverTimestamp(),
+      "updatedAt": FieldValue.serverTimestamp(),
     });
 
     return doc.id;

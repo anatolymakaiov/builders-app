@@ -7,7 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/job.dart';
 import 'job_details_screen.dart';
 import '../theme/app_theme.dart';
-import '../theme/stroyka_background.dart';
+import '../widgets/job_card.dart';
 
 class MapJobsScreen extends StatefulWidget {
   const MapJobsScreen({super.key});
@@ -21,24 +21,6 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
 
   LatLng center = const LatLng(53.4808, -2.2426);
 
-  Widget _chip(String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-        ),
-      ),
-    );
-  }
-
   Widget buildJobCard(Job job) {
     return GestureDetector(
       onTap: () {
@@ -48,54 +30,27 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
         );
       },
       child: SizedBox(
-        width: 220,
-        child: StroykaSurface(
-          margin: const EdgeInsets.all(12),
-          padding: const EdgeInsets.all(12),
-          borderRadius: BorderRadius.circular(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                job.displayTitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.ink,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
+        width: 320,
+        child: JobCard(
+          job: job,
+          dense: true,
+          margin: const EdgeInsets.all(10),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => JobDetailScreen(job: job),
               ),
-              const SizedBox(height: 6),
-              Text("${job.city} ${job.postcode}"),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  _chip(job.workFormatText, AppColors.ink),
-                  if (job.duration.isNotEmpty)
-                    _chip(job.duration, AppColors.greenDark),
-                  if (job.listRateText.isNotEmpty)
-                    _chip(job.listRateText, AppColors.greenDark),
-                ],
-              ),
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => JobDetailScreen(job: job),
-                      ),
-                    );
-                  },
-                  child: const Text("View"),
-                ),
-              )
-            ],
+            );
+          },
+          bottomAction: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () {
+                mapController.move(LatLng(job.lat, job.lng), 14);
+              },
+              child: const Text("Show on map"),
+            ),
           ),
         ),
       ),

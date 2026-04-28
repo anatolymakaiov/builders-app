@@ -11,6 +11,7 @@ import '../services/calendar_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/job_card.dart';
 import '../widgets/phone_link.dart';
 
 class JobDetailScreen extends StatefulWidget {
@@ -977,11 +978,17 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
           if (existing.docs.isNotEmpty) {
             chatId = existing.docs.first.id;
+            await existing.docs.first.reference.set({
+              "participants": [uid, employerId],
+              "members": [uid, employerId],
+              "updatedAt": FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
           } else {
             final doc =
                 await FirebaseFirestore.instance.collection("chats").add({
               "jobId": widget.job.id,
               "participants": [uid, employerId],
+              "members": [uid, employerId],
               "workerId": uid,
               "employerId": employerId,
               "workerName": "Worker",
@@ -1536,114 +1543,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                           itemCount: jobs.length,
                           itemBuilder: (context, index) {
                             final job = jobs[index];
-                            return StroykaSurface(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(14),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => JobDetailScreen(job: job),
-                                    ),
-                                  );
-                                },
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (job.photos.isNotEmpty)
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: Image.network(
-                                          job.photos.first,
-                                          width: 70,
-                                          height: 70,
-                                          fit: BoxFit.cover,
-                                        ),
-                                      )
-                                    else
-                                      Container(
-                                        width: 70,
-                                        height: 70,
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey.shade300,
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        child: const Icon(Icons.work),
-                                      ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            job.displayTitle,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: AppColors.ink,
-                                              fontWeight: FontWeight.w900,
-                                              fontSize: 16,
-                                            ),
-                                          ),
-                                          if (job.shouldShowTrade)
-                                            Text(
-                                              job.trade,
-                                              style: const TextStyle(
-                                                color: AppColors.muted,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          if (job.city.isNotEmpty)
-                                            Text(
-                                              job.city,
-                                              style: const TextStyle(
-                                                color: AppColors.muted,
-                                              ),
-                                            ),
-                                          if (job.duration.isNotEmpty)
-                                            Text(
-                                              job.duration,
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                color: AppColors.muted,
-                                              ),
-                                            ),
-                                          const SizedBox(height: 6),
-                                          Wrap(
-                                            spacing: 8,
-                                            runSpacing: 6,
-                                            children: [
-                                              Text(
-                                                job.workFormatText,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              if (job.listRateText.isNotEmpty)
-                                                Text(
-                                                  job.listRateText,
-                                                  style: const TextStyle(
-                                                    color: AppColors.greenDark,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const Icon(
-                                      Icons.arrow_forward_ios,
-                                      size: 16,
-                                      color: AppColors.muted,
-                                    ),
-                                  ],
-                                ),
-                              ),
+                            return JobCard(
+                              job: job,
+                              margin: const EdgeInsets.only(bottom: 10),
                             );
                           },
                         );

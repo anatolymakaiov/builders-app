@@ -10,6 +10,7 @@ import 'job_details_screen.dart';
 import '../services/job_repository.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/job_card.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -477,129 +478,32 @@ class _MapScreenState extends State<MapScreen> {
 
   Widget buildJobCard(Job job) {
     final distance = calculateDistance(job.lat, job.lng);
-    final selected = job.id == selectedJobId;
 
-    return StroykaSurface(
-      texture: selected
-          ? "assets/branding/texture_light_cloud.jpg"
-          : "assets/branding/texture_light_triangles.jpg",
-      borderRadius: BorderRadius.circular(14),
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      padding: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (job.shouldShowTrade)
-              Text(
-                job.trade,
-                style: const TextStyle(
-                  color: AppColors.muted,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            Text(
-              job.displayTitle,
-              style: const TextStyle(
-                color: AppColors.ink,
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
-              ),
-            ),
-            if (job.companyName.isNotEmpty) Text(job.companyName),
-            Text("${job.city} ${job.postcode}"),
-            const SizedBox(height: 6),
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    job.workFormatText,
-                    style: TextStyle(
-                      color: Colors.grey.shade800,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                if (job.duration.isNotEmpty)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      job.duration,
-                      style: TextStyle(
-                        color: Colors.grey.shade800,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                if (job.listRateText.isNotEmpty)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      job.listRateText,
-                      style: const TextStyle(
-                        color: AppColors.greenDark,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                if (distance != double.infinity)
-                  Text("${distance.toStringAsFixed(1)} mi")
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                OutlinedButton(
-                  onPressed: () {
-                    mapController.move(LatLng(job.lat, job.lng), 17);
-                    setState(() {
-                      selectedJobId = job.id;
-                    });
-                  },
-                  child: const Text("Show on map"),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => JobDetailScreen(job: job),
-                      ),
-                    );
-                  },
-                  child: const Text("View", style: TextStyle(fontSize: 12)),
-                ),
-              ],
-            )
-          ],
+    return JobCard(
+      job: job,
+      dense: true,
+      distanceText: distance == double.infinity
+          ? null
+          : "${distance.toStringAsFixed(1)} mi",
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => JobDetailScreen(job: job),
+          ),
+        );
+      },
+      bottomAction: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton(
+          onPressed: () {
+            mapController.move(LatLng(job.lat, job.lng), 17);
+            setState(() {
+              selectedJobId = job.id;
+            });
+          },
+          child: const Text("Show on map"),
         ),
       ),
     );

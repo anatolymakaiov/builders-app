@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:test_app/services/job_alert_service.dart';
 import 'package:test_app/services/job_repository.dart';
 import '../models/job.dart';
-import 'job_details_screen.dart';
 import 'filter_sheet.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/job_card.dart';
 
 enum SortType {
   nearest,
@@ -165,44 +164,11 @@ class _JobListScreenState extends State<JobListScreen> {
     }
   }
 
-  String jobTypeLabel(String jobType) {
-    switch (jobType) {
-      case "hourly":
-        return "Daywork";
-      case "price":
-        return "Price";
-      case "negotiable":
-        return "Negotiable";
-      default:
-        return "Job";
-    }
-  }
-
   Future<void> toggleSavedJob(Job job, bool isSaved) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
     await jobRepository.toggleSaveJob(user.uid, job.id, isSaved);
-  }
-
-  Widget metaChip({
-    required String label,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.ink,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
   }
 
   Widget buildSortButton(SortType type, String label, IconData icon) {
@@ -233,167 +199,18 @@ class _JobListScreenState extends State<JobListScreen> {
 
   Widget buildJobCard(Job job, bool isSaved) {
     final distance = calculateDistance(job.lat, job.lng);
-    final duration =
-        job.duration.trim().isEmpty ? "Duration not set" : job.duration.trim();
-
-    return StroykaSurface(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => JobDetailScreen(job: job),
-            ),
-          );
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            /// 🔥 TRADE (только если есть)
-                            if (job.shouldShowTrade)
-                              Text(
-                                job.trade,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: AppColors.muted,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-
-                            if (job.shouldShowTrade) const SizedBox(height: 4),
-
-                            /// 🔥 TITLE (главный)
-                            Text(
-                              job.displayTitle,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                color: AppColors.ink,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: isSaved ? "Remove from saved" : "Save job",
-                        icon: Icon(
-                          isSaved ? Icons.favorite : Icons.favorite_border,
-                          color: isSaved ? Colors.red : Colors.grey,
-                        ),
-                        onPressed: () => toggleSavedJob(job, isSaved),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  /// 🔥 EMPLOYER
-                  if (job.ownerId.isNotEmpty && job.ownerId != "unknown")
-                    FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance
-                          .collection("users")
-                          .doc(job.ownerId)
-                          .get(),
-                      builder: (context, snapshot) {
-                        String name = "Company";
-                        String? photo;
-
-                        if (snapshot.hasData && snapshot.data!.exists) {
-                          final data =
-                              snapshot.data!.data() as Map<String, dynamic>;
-
-                          name =
-                              data["companyName"] ?? data["name"] ?? "Company";
-
-                          photo = data["photo"];
-                        }
-
-                        return Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 14,
-                              backgroundColor: Colors.grey.shade300,
-                              backgroundImage:
-                                  photo != null ? NetworkImage(photo) : null,
-                              child: photo == null
-                                  ? const Icon(Icons.business, size: 16)
-                                  : null,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                name,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            )
-                          ],
-                        );
-                      },
-                    ),
-
-                  const SizedBox(height: 8),
-
-                  /// 📍 LOCATION
-                  Text(
-                    "${job.city} ${job.postcode}",
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      metaChip(
-                        label: jobTypeLabel(job.jobType),
-                      ),
-                      metaChip(
-                        label: duration,
-                      ),
-                      if (job.listRateText.isNotEmpty)
-                        metaChip(
-                          label: job.listRateText,
-                        ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      if (distance != double.infinity)
-                        Text(
-                          "${distance.toStringAsFixed(1)} mi",
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            )
-          ],
+    return JobCard(
+      job: job,
+      distanceText: distance == double.infinity
+          ? null
+          : "${distance.toStringAsFixed(1)} mi",
+      trailingAction: IconButton(
+        tooltip: isSaved ? "Remove from saved" : "Save job",
+        icon: Icon(
+          isSaved ? Icons.favorite : Icons.favorite_border,
+          color: isSaved ? Colors.red : Colors.grey,
         ),
+        onPressed: () => toggleSavedJob(job, isSaved),
       ),
     );
   }
