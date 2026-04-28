@@ -411,7 +411,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     return SizedBox(
       width: double.infinity,
-      height: 50,
+      height: 52,
       child: ElevatedButton(
         onPressed: isApplying
             ? null
@@ -451,7 +451,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     return SizedBox(
       width: double.infinity,
-      height: 50,
+      height: 52,
       child: OutlinedButton.icon(
         onPressed: () {
           Navigator.push(
@@ -479,7 +479,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     return SizedBox(
       width: double.infinity,
-      height: 50,
+      height: 52,
       child: OutlinedButton.icon(
         onPressed: deleteJob,
         icon: const Icon(Icons.delete, color: Colors.red),
@@ -1068,50 +1068,111 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 30),
-              if (userId != widget.job.ownerId) ...[
-                OutlinedButton.icon(
-                  onPressed: openMaps,
-                  icon: const Icon(Icons.map),
-                  label: const Text("Show location on map"),
+              const SizedBox(height: 12),
+              StroykaSurface(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  children: [
+                    if (userId != widget.job.ownerId) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: OutlinedButton.icon(
+                          onPressed: openMaps,
+                          icon: const Icon(Icons.map),
+                          label: const Text("Show location on map"),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final uid = userId;
+                            if (uid == null) return;
+
+                            final employerId = widget.job.ownerId;
+
+                            final existing = await FirebaseFirestore.instance
+                                .collection("chats")
+                                .where("jobId", isEqualTo: widget.job.id)
+                                .where("participants", arrayContains: uid)
+                                .get();
+
+                            String chatId;
+
+                            if (existing.docs.isNotEmpty) {
+                              chatId = existing.docs.first.id;
+                            } else {
+                              final doc = await FirebaseFirestore.instance
+                                  .collection("chats")
+                                  .add({
+                                "jobId": widget.job.id,
+                                "participants": [uid, employerId],
+                                "workerId": uid,
+                                "employerId": employerId,
+                                "workerName": "Worker",
+                                "employerName": "Employer",
+                                "unreadCount_worker": 0,
+                                "unreadCount_employer": 0,
+                                "typing_worker": false,
+                                "typing_employer": false,
+                                "lastMessage": "",
+                                "lastMessageType": "text",
+                                "createdAt": FieldValue.serverTimestamp(),
+                                "updatedAt": FieldValue.serverTimestamp(),
+                              });
+
+                              chatId = doc.id;
+                            }
+
+                            if (!context.mounted) return;
+
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatScreen(chatId: chatId),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.chat),
+                          label: const Text("Message employer"),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      buildApplyButton(),
+                    ],
+                    buildEditButton(),
+                    if (userId == widget.job.ownerId) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            await FirebaseFirestore.instance
+                                .collection("jobs")
+                                .doc(widget.job.id)
+                                .update({
+                              "status": "completed",
+                            });
+
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Job completed")),
+                            );
+                          },
+                          icon: const Icon(Icons.check_circle),
+                          label: const Text("Complete job"),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 20),
-              ],
-
-              buildEditButton(),
-              const SizedBox(height: 10),
-
+              ),
               if (userId == widget.job.ownerId) ...[
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      await FirebaseFirestore.instance
-                          .collection("jobs")
-                          .doc(widget.job.id)
-                          .update({
-                        "status": "completed",
-                      });
-
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Job completed")),
-                      );
-                    },
-                    icon: const Icon(Icons.check_circle, color: Colors.green),
-                    label: const Text(
-                      "Complete job",
-                      style: TextStyle(color: Colors.green),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.green),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-              ],
-              if (userId == widget.job.ownerId)
+                const SizedBox(height: 12),
                 FutureBuilder<QuerySnapshot>(
                   future: FirebaseFirestore.instance
                       .collection("applications")
@@ -1140,13 +1201,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                       if (status == "rejected") rejected++;
                     }
 
-                    return Container(
-                      margin: const EdgeInsets.only(top: 20),
+                    return StroykaSurface(
                       padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1169,82 +1225,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     );
                   },
                 ),
-
-              /// 👇 APPLY (только для worker)
-              if (userId != widget.job.ownerId) ...[
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final uid = userId;
-                      if (uid == null) return;
-
-                      final employerId = widget.job.ownerId;
-
-                      /// 🔥 ищем существующий чат
-                      final existing = await FirebaseFirestore.instance
-                          .collection("chats")
-                          .where("jobId", isEqualTo: widget.job.id)
-                          .where("participants", arrayContains: uid)
-                          .get();
-
-                      String chatId;
-
-                      if (existing.docs.isNotEmpty) {
-                        chatId = existing.docs.first.id;
-                      } else {
-                        /// 🔥 создаём новый чат
-                        final doc = await FirebaseFirestore.instance
-                            .collection("chats")
-                            .add({
-                          /// 🔥 ОСНОВА
-                          "jobId": widget.job.id,
-                          "participants": [uid, employerId],
-
-                          /// 🔥 ДЛЯ ТВОЕГО ЧАТА (старого UI)
-                          "workerId": uid,
-                          "employerId": employerId,
-
-                          "workerName": "Worker",
-                          "employerName": "Employer",
-
-                          /// 🔥 СЧЁТЧИКИ
-                          "unreadCount_worker": 0,
-                          "unreadCount_employer": 0,
-
-                          /// 🔥 TYPING
-                          "typing_worker": false,
-                          "typing_employer": false,
-
-                          /// 🔥 СООБЩЕНИЯ
-                          "lastMessage": "",
-                          "lastMessageType": "text",
-
-                          /// 🔥 ДАТЫ
-                          "createdAt": FieldValue.serverTimestamp(),
-                          "updatedAt": FieldValue.serverTimestamp(),
-                        });
-
-                        chatId = doc.id;
-                      }
-
-                      if (!context.mounted) return;
-
-                      /// 🔥 переход в чат (если экран есть)
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChatScreen(chatId: chatId),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.chat),
-                    label: const Text("Message employer"),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                buildApplyButton(),
               ],
             ],
           ),

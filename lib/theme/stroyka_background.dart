@@ -103,7 +103,7 @@ class StroykaScreenBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      margin: const EdgeInsets.only(bottom: 8),
       padding: padding,
       child: child,
     );
