@@ -264,7 +264,7 @@ class _JobListScreenState extends State<JobListScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             /// 🔥 TRADE (только если есть)
-                            if (job.trade.isNotEmpty)
+                            if (job.shouldShowTrade)
                               Text(
                                 job.trade,
                                 style: const TextStyle(
@@ -274,11 +274,11 @@ class _JobListScreenState extends State<JobListScreen> {
                                 ),
                               ),
 
-                            if (job.trade.isNotEmpty) const SizedBox(height: 4),
+                            if (job.shouldShowTrade) const SizedBox(height: 4),
 
                             /// 🔥 TITLE (главный)
                             Text(
-                              job.title,
+                              job.displayTitle,
                               style: const TextStyle(
                                 fontSize: 20,
                                 color: AppColors.ink,
@@ -478,7 +478,9 @@ class _JobListScreenState extends State<JobListScreen> {
 
                       final filteredJobs = jobs.where((job) {
                         if (searchQuery.isNotEmpty &&
-                            !job.title.toLowerCase().contains(searchQuery) &&
+                            !job.displayTitle
+                                .toLowerCase()
+                                .contains(searchQuery) &&
                             !job.trade.toLowerCase().contains(searchQuery)) {
                           return false;
                         }

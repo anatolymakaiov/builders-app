@@ -414,13 +414,13 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                                                 CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                job.title,
+                                                job.displayTitle,
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 16,
                                                 ),
                                               ),
-                                              if (job.trade.isNotEmpty)
+                                              if (job.shouldShowTrade)
                                                 Text(
                                                   job.trade,
                                                   style: const TextStyle(

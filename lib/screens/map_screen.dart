@@ -491,15 +491,16 @@ class _MapScreenState extends State<MapScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              job.trade,
-              style: const TextStyle(
-                color: AppColors.muted,
-                fontWeight: FontWeight.w700,
+            if (job.shouldShowTrade)
+              Text(
+                job.trade,
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
             Text(
-              job.title,
+              job.displayTitle,
               style: const TextStyle(
                 color: AppColors.ink,
                 fontWeight: FontWeight.w800,

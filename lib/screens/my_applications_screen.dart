@@ -475,7 +475,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
               )
             : null,
         title: Text(
-          job.title,
+          job.displayTitle,
           style: TextStyle(
             color: AppColors.ink,
             fontWeight: isUnread ? FontWeight.w900 : FontWeight.w800,

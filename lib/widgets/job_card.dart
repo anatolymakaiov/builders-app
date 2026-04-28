@@ -36,7 +36,7 @@ class JobCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        job.title,
+                        job.displayTitle,
                         style: const TextStyle(
                           color: AppColors.ink,
                           fontWeight: FontWeight.w800,

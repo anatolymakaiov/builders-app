@@ -338,7 +338,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text("Delete vacancy"),
-        content: Text("Delete \"${job.title}\"?"),
+        content: Text("Delete \"${job.displayTitle}\"?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -414,7 +414,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                       buildStatusBadge(job),
                       const SizedBox(height: 6),
                       Text(
-                        job.title,
+                        job.displayTitle,
                         style: const TextStyle(
                           fontSize: 20,
                           color: AppColors.ink,
@@ -423,7 +423,10 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                       ),
                       const SizedBox(height: 5),
                       Text(
-                        "${job.trade} • ${job.city} ${job.postcode}",
+                        [
+                          if (job.shouldShowTrade) job.trade,
+                          "${job.city} ${job.postcode}".trim(),
+                        ].where((item) => item.isNotEmpty).join(" • "),
                         style: TextStyle(
                           color: Colors.grey.shade700,
                           fontWeight: FontWeight.w500,

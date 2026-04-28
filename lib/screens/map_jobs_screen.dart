@@ -57,7 +57,7 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                job.title,
+                job.displayTitle,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(

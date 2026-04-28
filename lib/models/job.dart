@@ -102,6 +102,18 @@ class Job {
     return "£${rate.toInt()}/hour";
   }
 
+  String get displayTitle {
+    final cleanTitle = title.trim();
+    if (cleanTitle.isNotEmpty) return cleanTitle;
+    return trade.trim();
+  }
+
+  bool get shouldShowTrade {
+    final cleanTrade = trade.trim();
+    if (cleanTrade.isEmpty) return false;
+    return cleanTrade.toLowerCase() != displayTitle.toLowerCase();
+  }
+
   /// 🔥 SHORT META
   String get shortMeta {
     final parts = <String>[];

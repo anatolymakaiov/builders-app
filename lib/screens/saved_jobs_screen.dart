@@ -99,7 +99,7 @@ class SavedJobsScreen extends StatelessWidget {
                           vertical: 8,
                         ),
                         title: Text(
-                          job.title,
+                          job.displayTitle,
                           style: const TextStyle(
                             color: AppColors.ink,
                             fontWeight: FontWeight.w800,

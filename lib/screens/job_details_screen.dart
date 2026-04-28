@@ -225,7 +225,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
         await FirebaseFirestore.instance.collection("applications").add({
           "jobId": widget.job.id,
-          "jobTitle": widget.job.title,
+          "jobTitle": widget.job.displayTitle,
 
           /// 🔥 ДОБАВЛЯЕМ (НЕ ЛОМАЕТ НИЧЕГО)
           "jobTrade": widget.job.trade,
@@ -284,7 +284,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
         await FirebaseFirestore.instance.collection("applications").add({
           "jobId": widget.job.id,
-          "jobTitle": widget.job.title,
+          "jobTitle": widget.job.displayTitle,
 
           /// 🔥 ДОБАВЛЯЕМ
           "jobTrade": widget.job.trade,
@@ -874,7 +874,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
   Future<void> addOfferToCalendar(Map<String, dynamic> offer) async {
     final added = await CalendarService.addOfferToCalendar(
-      title: widget.job.title,
+      title: widget.job.displayTitle,
       offer: offer,
       fallbackLocation: widget.job.fullAddress,
     );
@@ -1135,7 +1135,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (widget.job.trade.isNotEmpty)
+              if (widget.job.shouldShowTrade)
                 Text(
                   widget.job.trade,
                   style: const TextStyle(
@@ -1145,7 +1145,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 ),
               const SizedBox(height: 4),
               Text(
-                widget.job.title,
+                widget.job.displayTitle,
                 style: const TextStyle(
                   color: AppColors.ink,
                   fontSize: 26,
@@ -1539,10 +1539,109 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                             return StroykaSurface(
                               margin: const EdgeInsets.only(bottom: 12),
                               padding: const EdgeInsets.all(14),
-                              child: Text(
-                                job.title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => JobDetailScreen(job: job),
+                                    ),
+                                  );
+                                },
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (job.photos.isNotEmpty)
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.network(
+                                          job.photos.first,
+                                          width: 70,
+                                          height: 70,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      )
+                                    else
+                                      Container(
+                                        width: 70,
+                                        height: 70,
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade300,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: const Icon(Icons.work),
+                                      ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            job.displayTitle,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: AppColors.ink,
+                                              fontWeight: FontWeight.w900,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                          if (job.shouldShowTrade)
+                                            Text(
+                                              job.trade,
+                                              style: const TextStyle(
+                                                color: AppColors.muted,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          if (job.city.isNotEmpty)
+                                            Text(
+                                              job.city,
+                                              style: const TextStyle(
+                                                color: AppColors.muted,
+                                              ),
+                                            ),
+                                          if (job.duration.isNotEmpty)
+                                            Text(
+                                              job.duration,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: AppColors.muted,
+                                              ),
+                                            ),
+                                          const SizedBox(height: 6),
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 6,
+                                            children: [
+                                              Text(
+                                                job.workFormatText,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              if (job.listRateText.isNotEmpty)
+                                                Text(
+                                                  job.listRateText,
+                                                  style: const TextStyle(
+                                                    color: AppColors.greenDark,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const Icon(
+                                      Icons.arrow_forward_ios,
+                                      size: 16,
+                                      color: AppColors.muted,
+                                    ),
+                                  ],
                                 ),
                               ),
                             );
