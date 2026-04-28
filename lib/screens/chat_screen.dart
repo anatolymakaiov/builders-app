@@ -33,6 +33,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String? workerId;
   String? employerId;
+  List<String> chatMembers = [];
   bool _preloaded = false;
   bool _isTyping = false;
   bool isRecording = false;
@@ -68,15 +69,42 @@ class _ChatScreenState extends State<ChatScreen> {
 
     workerId = data["workerId"];
     employerId = data["employerId"];
+    chatMembers = chatRecipientIds(data);
 
     final isWorker = user.uid == workerId;
 
     await FirebaseFirestore.instance
         .collection("chats")
         .doc(widget.chatId)
-        .update({
+        .set({
       if (isWorker) "unreadCount_worker": 0 else "unreadCount_employer": 0,
-    });
+      "unreadFor": FieldValue.arrayRemove([user.uid]),
+    }, SetOptions(merge: true));
+  }
+
+  List<String> chatRecipientIds(Map<String, dynamic> data) {
+    final ids = <String>{};
+
+    final members = data["members"];
+    if (members is List) {
+      ids.addAll(members.map((item) => item.toString()));
+    }
+
+    final participants = data["participants"];
+    if (participants is List) {
+      ids.addAll(participants.map((item) => item.toString()));
+    }
+
+    final worker = data["workerId"]?.toString();
+    final employer = data["employerId"]?.toString();
+    if (worker != null && worker.isNotEmpty) ids.add(worker);
+    if (employer != null && employer.isNotEmpty) ids.add(employer);
+
+    return ids.where((id) => id.isNotEmpty).toList();
+  }
+
+  List<String> unreadRecipients(String senderId) {
+    return chatMembers.where((id) => id != senderId).toList();
   }
 
   void preloadImages(List<QueryDocumentSnapshot> messages) {
@@ -160,6 +188,7 @@ class _ChatScreenState extends State<ChatScreen> {
       "lastMessage": text,
       "lastMessageType": "text",
       "updatedAt": FieldValue.serverTimestamp(),
+      "unreadFor": FieldValue.arrayUnion(unreadRecipients(user.uid)),
       if (isWorker)
         "unreadCount_employer": FieldValue.increment(1)
       else
@@ -175,6 +204,7 @@ class _ChatScreenState extends State<ChatScreen> {
     required String lastMessage,
     required String lastMessageType,
     required bool isWorker,
+    required String senderId,
   }) async {
     await FirebaseFirestore.instance
         .collection("chats")
@@ -183,6 +213,7 @@ class _ChatScreenState extends State<ChatScreen> {
       "lastMessage": lastMessage,
       "lastMessageType": lastMessageType,
       "updatedAt": FieldValue.serverTimestamp(),
+      "unreadFor": FieldValue.arrayUnion(unreadRecipients(senderId)),
       if (isWorker)
         "unreadCount_employer": FieldValue.increment(1)
       else
@@ -230,6 +261,7 @@ class _ChatScreenState extends State<ChatScreen> {
         lastMessage: type == "video" ? "Video" : "Photo",
         lastMessageType: type,
         isWorker: isWorker,
+        senderId: user.uid,
       );
 
       scrollToBottom();
@@ -315,6 +347,7 @@ class _ChatScreenState extends State<ChatScreen> {
       lastMessage: normalizedLink,
       lastMessageType: "link",
       isWorker: isWorker,
+      senderId: user.uid,
     );
 
     scrollToBottom();
@@ -390,6 +423,7 @@ class _ChatScreenState extends State<ChatScreen> {
       lastMessage: "Voice message",
       lastMessageType: "audio",
       isWorker: isWorker,
+      senderId: user.uid,
     );
 
     scrollToBottom();

@@ -7,6 +7,7 @@ import 'dart:io';
 import 'team_details_screen.dart';
 
 import 'edit_profile_screen.dart';
+import '../services/application_activity_service.dart';
 import '../services/chat_service.dart';
 import 'chat_screen.dart';
 import '../widgets/phone_link.dart';
@@ -615,6 +616,7 @@ class WorkerProfileScreen extends StatelessWidget {
 
           String? applicationId;
           String status = "pending";
+          Map<String, dynamic>? applicationData;
 
           if (jobId != null && employerId != null) {
             final appQuery = await FirebaseFirestore.instance
@@ -627,7 +629,8 @@ class WorkerProfileScreen extends StatelessWidget {
             if (appQuery.docs.isNotEmpty) {
               final appDoc = appQuery.docs.first;
               applicationId = appDoc.id;
-              status = appDoc["status"] ?? "pending";
+              applicationData = appDoc.data();
+              status = applicationData["status"] ?? "pending";
             }
           }
 
@@ -643,6 +646,7 @@ class WorkerProfileScreen extends StatelessWidget {
           return {
             "user": userData,
             "applicationId": applicationId,
+            "applicationData": applicationData,
             "status": status,
             "currentRole": currentRole,
           };
@@ -655,6 +659,8 @@ class WorkerProfileScreen extends StatelessWidget {
           final result = snapshot.data!;
           final data = result["user"] as Map<String, dynamic>;
           final String? applicationId = result["applicationId"];
+          final applicationData =
+              (result["applicationData"] as Map<String, dynamic>?) ?? {};
           final String status = result["status"];
           final String? currentRole = result["currentRole"];
           final offerRate = result["offerRate"];
@@ -690,71 +696,96 @@ class WorkerProfileScreen extends StatelessWidget {
                     padding: EdgeInsets.zero,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          image: headerImage != null && headerImage.isNotEmpty
-                              ? DecorationImage(
-                                  image: NetworkImage(headerImage),
-                                  fit: BoxFit.cover,
-                                  opacity: 0.30,
-                                )
-                              : null,
-                        ),
+                      child: SizedBox(
+                        height: 156,
                         child: Container(
-                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                          color: Colors.white.withValues(
-                            alpha: headerImage != null && headerImage.isNotEmpty
-                                ? 0.58
-                                : 0,
+                          decoration: BoxDecoration(
+                            image: headerImage != null && headerImage.isNotEmpty
+                                ? DecorationImage(
+                                    image: NetworkImage(headerImage),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
                           ),
-                          child: Column(
-                            children: [
-                              CircleAvatar(
-                                radius: 42,
-                                backgroundColor: Colors.grey.shade300,
-                                backgroundImage: photo is String
-                                    ? NetworkImage(photo)
-                                    : null,
-                                child: photo == null
-                                    ? const Icon(Icons.person, size: 34)
-                                    : null,
+                          child: Container(
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.08),
+                                  Colors.black.withValues(alpha: 0.16),
+                                ],
                               ),
-                              const SizedBox(height: 10),
-                              Text(
-                                name,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 25,
-                                  fontWeight: FontWeight.w900,
-                                  color: AppColors.ink,
+                            ),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.82),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.92),
+                                  width: 1,
                                 ),
                               ),
-                              if (trade.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 3),
-                                  child: Text(
-                                    trade,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 36,
+                                    backgroundColor: Colors.grey.shade300,
+                                    backgroundImage: photo is String
+                                        ? NetworkImage(photo)
+                                        : null,
+                                    child: photo == null
+                                        ? const Icon(Icons.person, size: 30)
+                                        : null,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    name,
+                                    textAlign: TextAlign.center,
                                     style: const TextStyle(
-                                      color: AppColors.muted,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
+                                      fontSize: 23,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppColors.ink,
                                     ),
                                   ),
-                                ),
-                              if (rating > 0)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 5),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Icon(Icons.star,
-                                          color: Colors.amber, size: 20),
-                                      const SizedBox(width: 4),
-                                      Text("$rating ($reviews reviews)"),
-                                    ],
-                                  ),
-                                ),
-                            ],
+                                  if (trade.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 3),
+                                      child: Text(
+                                        trade,
+                                        style: const TextStyle(
+                                          color: AppColors.muted,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  if (rating > 0)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 5),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(Icons.star,
+                                              color: Colors.amber, size: 20),
+                                          const SizedBox(width: 4),
+                                          Text("$rating ($reviews reviews)"),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -894,9 +925,20 @@ class WorkerProfileScreen extends StatelessWidget {
                                                       .collection(
                                                           "applications")
                                                       .doc(applicationId)
-                                                      .update({
+                                                      .set({
                                                     "status": "offer_accepted",
-                                                  });
+                                                    "applicationActivityAt":
+                                                        FieldValue
+                                                            .serverTimestamp(),
+                                                    "updatedAt": FieldValue
+                                                        .serverTimestamp(),
+                                                    "unreadFor":
+                                                        FieldValue.arrayUnion(
+                                                      ApplicationActivityService
+                                                          .employerRecipients(
+                                                              applicationData),
+                                                    ),
+                                                  }, SetOptions(merge: true));
 
                                                   if (!context.mounted) return;
 
@@ -946,13 +988,30 @@ class WorkerProfileScreen extends StatelessWidget {
                                         if (status != "offer_accepted")
                                           Expanded(
                                             child: OutlinedButton(
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: Colors.red,
+                                                backgroundColor: Colors.white,
+                                                side: const BorderSide(
+                                                    color: Colors.red),
+                                              ),
                                               onPressed: () async {
                                                 await FirebaseFirestore.instance
                                                     .collection("applications")
                                                     .doc(applicationId)
-                                                    .update({
+                                                    .set({
                                                   "status": "rejected",
-                                                });
+                                                  "applicationActivityAt":
+                                                      FieldValue
+                                                          .serverTimestamp(),
+                                                  "updatedAt": FieldValue
+                                                      .serverTimestamp(),
+                                                  "unreadFor":
+                                                      FieldValue.arrayUnion(
+                                                    ApplicationActivityService
+                                                        .workerRecipients(
+                                                            applicationData),
+                                                  ),
+                                                }, SetOptions(merge: true));
                                               },
                                               child: const Text("Reject"),
                                             ),
@@ -966,9 +1025,20 @@ class WorkerProfileScreen extends StatelessWidget {
                                                 await FirebaseFirestore.instance
                                                     .collection("applications")
                                                     .doc(applicationId)
-                                                    .update({
+                                                    .set({
                                                   "status": "negotiation",
-                                                });
+                                                  "applicationActivityAt":
+                                                      FieldValue
+                                                          .serverTimestamp(),
+                                                  "updatedAt": FieldValue
+                                                      .serverTimestamp(),
+                                                  "unreadFor":
+                                                      FieldValue.arrayUnion(
+                                                    ApplicationActivityService
+                                                        .workerRecipients(
+                                                            applicationData),
+                                                  ),
+                                                }, SetOptions(merge: true));
                                               },
                                               child: const Text("Negotiation"),
                                             ),
@@ -1048,7 +1118,7 @@ class WorkerProfileScreen extends StatelessWidget {
                                                 await FirebaseFirestore.instance
                                                     .collection("applications")
                                                     .doc(applicationId)
-                                                    .update({
+                                                    .set({
                                                   "status": "offer_sent",
                                                   "offerRate": rate,
                                                   "offerNote": noteController
@@ -1056,7 +1126,18 @@ class WorkerProfileScreen extends StatelessWidget {
                                                       .trim(),
                                                   "offerCreatedAt": FieldValue
                                                       .serverTimestamp(),
-                                                });
+                                                  "applicationActivityAt":
+                                                      FieldValue
+                                                          .serverTimestamp(),
+                                                  "updatedAt": FieldValue
+                                                      .serverTimestamp(),
+                                                  "unreadFor":
+                                                      FieldValue.arrayUnion(
+                                                    ApplicationActivityService
+                                                        .workerRecipients(
+                                                            applicationData),
+                                                  ),
+                                                }, SetOptions(merge: true));
                                               },
                                               child: const Text("Offer"),
                                             ),
@@ -1068,9 +1149,20 @@ class WorkerProfileScreen extends StatelessWidget {
                                                 await FirebaseFirestore.instance
                                                     .collection("applications")
                                                     .doc(applicationId)
-                                                    .update({
+                                                    .set({
                                                   "status": "offer_accepted",
-                                                });
+                                                  "applicationActivityAt":
+                                                      FieldValue
+                                                          .serverTimestamp(),
+                                                  "updatedAt": FieldValue
+                                                      .serverTimestamp(),
+                                                  "unreadFor":
+                                                      FieldValue.arrayUnion(
+                                                    ApplicationActivityService
+                                                        .employerRecipients(
+                                                            applicationData),
+                                                  ),
+                                                }, SetOptions(merge: true));
                                               },
                                               child: const Text("Hire"),
                                             ),

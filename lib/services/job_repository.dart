@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/job.dart';
+import 'application_activity_service.dart';
 import 'notification_service.dart';
 
 enum ApplicationStatus {
@@ -89,6 +90,7 @@ class JobRepository {
       "jobSite": jobData["site"] ?? "",
 
       "createdAt": FieldValue.serverTimestamp(),
+      ...ApplicationActivityService.createdForEmployer(employerId.toString()),
     });
 
     /// 4. уведомление работодателю
@@ -141,9 +143,14 @@ class JobRepository {
   /// 🔥 UPDATE STATUS
   Future<void> updateApplicationStatus(
       String applicationId, ApplicationStatus status) async {
-    await _db.collection('applications').doc(applicationId).update({
-      "status": status.name,
-    });
+    final doc = await _db.collection('applications').doc(applicationId).get();
+    final data = doc.data() ?? {};
+
+    await ApplicationActivityService.updateStatus(
+      applicationId: applicationId,
+      status: status.name,
+      unreadFor: ApplicationActivityService.workerRecipients(data),
+    );
   }
 
   /// 🔹 SAVE / UNSAVE

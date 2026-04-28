@@ -108,8 +108,12 @@ class _FilterSheetState extends State<FilterSheet> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                TextButton(
+                OutlinedButton(
                   onPressed: resetFilters,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.black87,
+                  ),
                   child: const Text("Reset"),
                 )
               ],

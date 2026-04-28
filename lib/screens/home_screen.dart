@@ -91,27 +91,21 @@ class _HomeScreenState extends State<HomeScreen> {
   Stream<int> getUnreadChats() {
     if (userId == null) return const Stream.empty();
 
-    final field = role == "worker" ? "workerId" : "employerId";
-
     return FirebaseFirestore.instance
         .collection("chats")
-        .where(field, isEqualTo: userId)
+        .where("unreadFor", arrayContains: userId)
         .snapshots()
-        .map((snapshot) {
-      int total = 0;
+        .map((snapshot) => snapshot.docs.length);
+  }
 
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
+  Stream<int> getUnreadApplications() {
+    if (userId == null) return const Stream.empty();
 
-        if (role == "worker") {
-          total += (data["unreadCount_worker"] ?? 0) as int;
-        } else {
-          total += (data["unreadCount_employer"] ?? 0) as int;
-        }
-      }
-
-      return total;
-    });
+    return FirebaseFirestore.instance
+        .collection("applications")
+        .where("unreadFor", arrayContains: userId)
+        .snapshots()
+        .map((snap) => snap.docs.length);
   }
 
   /// 📱 SCREENS
@@ -180,6 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<BottomNavigationBarItem> getMenuItems(
     int notifCount,
     int chatCount,
+    int applicationCount,
   ) {
     if (role == "employer") {
       return [
@@ -191,8 +186,8 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: Icon(Icons.map),
           label: "Map",
         ),
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.assignment),
+        BottomNavigationBarItem(
+          icon: buildBadgeIcon(Icons.assignment, applicationCount),
           label: "Applications",
         ),
         BottomNavigationBarItem(
@@ -223,8 +218,8 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: Icon(Icons.favorite),
         label: "Saved",
       ),
-      const BottomNavigationBarItem(
-        icon: Icon(Icons.assignment),
+      BottomNavigationBarItem(
+        icon: buildBadgeIcon(Icons.assignment, applicationCount),
         label: "Applications",
       ),
       BottomNavigationBarItem(
@@ -260,62 +255,70 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context, chatSnap) {
             final chatCount = chatSnap.data ?? 0;
 
-            final screens = getScreens();
-            final items = getMenuItems(notifCount, chatCount);
+            return StreamBuilder<int>(
+              stream: getUnreadApplications(),
+              builder: (context, appSnap) {
+                final applicationCount = appSnap.data ?? 0;
 
-            if (currentIndex >= screens.length) {
-              currentIndex = 0;
-            }
+                final screens = getScreens();
+                final items =
+                    getMenuItems(notifCount, chatCount, applicationCount);
 
-            return Scaffold(
-              body: StroykaBackground(
-                asset: AppAssets.darkBackgrounds[
-                    currentIndex % AppAssets.darkBackgrounds.length],
-                child: IndexedStack(
-                  index: currentIndex,
-                  children: screens,
-                ),
-              ),
-              floatingActionButton: role == "employer" && currentIndex == 0
-                  ? FloatingActionButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PostJobScreen(
-                              onJobCreated: (_) {},
-                            ),
-                          ),
-                        );
-                      },
-                      child: const Icon(Icons.add),
-                    )
-                  : null,
-              bottomNavigationBar: Container(
-                decoration: const BoxDecoration(
-                  color: AppColors.navy,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(8),
+                if (currentIndex >= screens.length) {
+                  currentIndex = 0;
+                }
+
+                return Scaffold(
+                  body: StroykaBackground(
+                    asset: AppAssets.darkBackgrounds[
+                        currentIndex % AppAssets.darkBackgrounds.length],
+                    child: IndexedStack(
+                      index: currentIndex,
+                      children: screens,
+                    ),
                   ),
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: BottomNavigationBar(
-                    currentIndex: currentIndex,
-                    items: items,
-                    type: BottomNavigationBarType.fixed,
-                    backgroundColor: Colors.transparent,
-                    selectedItemColor: AppColors.green,
-                    unselectedItemColor: Colors.white,
-                    showUnselectedLabels: true,
-                    onTap: (index) {
-                      setState(() {
-                        currentIndex = index;
-                      });
-                    },
+                  floatingActionButton: role == "employer" && currentIndex == 0
+                      ? FloatingActionButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PostJobScreen(
+                                  onJobCreated: (_) {},
+                                ),
+                              ),
+                            );
+                          },
+                          child: const Icon(Icons.add),
+                        )
+                      : null,
+                  bottomNavigationBar: Container(
+                    decoration: const BoxDecoration(
+                      color: AppColors.navy,
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(8),
+                      ),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: BottomNavigationBar(
+                        currentIndex: currentIndex,
+                        items: items,
+                        type: BottomNavigationBarType.fixed,
+                        backgroundColor: Colors.transparent,
+                        selectedItemColor: AppColors.green,
+                        unselectedItemColor: Colors.white,
+                        showUnselectedLabels: true,
+                        onTap: (index) {
+                          setState(() {
+                            currentIndex = index;
+                          });
+                        },
+                      ),
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             );
           },
         );

@@ -134,33 +134,34 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     required Color color,
   }) {
     return Container(
-      constraints: const BoxConstraints(minWidth: 82),
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(7),
         border: Border.all(color: color.withValues(alpha: 0.20)),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             value.toString(),
             style: TextStyle(
               color: color,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.grey.shade800,
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.grey.shade800,
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -188,11 +189,16 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     required List<String> items,
     required ValueChanged<String> onChanged,
   }) {
-    return DropdownButton<String>(
-      value: items.contains(value) ? value : "All",
+    return DropdownButtonFormField<String>(
+      initialValue: items.contains(value) ? value : "All",
       isExpanded: true,
-      underline: const SizedBox(),
-      dropdownColor: Colors.white,
+      decoration: const InputDecoration(
+        border: OutlineInputBorder(),
+        isDense: true,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      ),
       style: const TextStyle(
         color: AppColors.ink,
         fontWeight: FontWeight.w800,
@@ -216,7 +222,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   Widget buildFilterPanel(List<String> tradeList, List<String> siteList) {
     return StroykaSurface(
       margin: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(10),
       child: Row(
         children: [
           Expanded(
@@ -272,7 +278,6 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
         final docs = snapshot.data!.docs;
 
         int inReview = 0;
-        int negotiation = 0;
         int offer = 0;
         int acceptedSlots = 0;
         int rejected = 0;
@@ -286,7 +291,6 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
               status == "review") {
             inReview++;
           }
-          if (status == "negotiation") negotiation++;
           if (status == "offer_sent") offer++;
           if (status == "offer_accepted" || status == "accepted") {
             acceptedSlots += applicationSlotCount(data);
@@ -297,47 +301,33 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
         final spotsLeft =
             (job.positions - acceptedSlots).clamp(0, job.positions);
 
-        return Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            buildStatTile(
-              label: "Applied",
-              value: docs.length,
-              color: AppColors.ink,
-            ),
-            buildStatTile(
-              label: "Review",
-              value: inReview,
-              color: AppColors.greenDark,
-            ),
-            buildStatTile(
-              label: "Offers",
-              value: offer,
-              color: AppColors.green,
-            ),
-            buildStatTile(
-              label: "Accepted",
-              value: acceptedSlots,
-              color: Colors.green,
-            ),
-            buildStatTile(
-              label: "Rejected",
-              value: rejected,
-              color: Colors.red,
-            ),
-            buildStatTile(
-              label: "Left",
-              value: spotsLeft,
-              color: Colors.deepPurple,
-            ),
-            if (negotiation > 0)
-              buildStatTile(
-                label: "Negotiation",
-                value: negotiation,
-                color: Colors.purple,
-              ),
-          ],
+        final stats = [
+          (label: "Applied", value: docs.length, color: AppColors.ink),
+          (label: "Review", value: inReview, color: AppColors.greenDark),
+          (label: "Offers", value: offer, color: AppColors.green),
+          (label: "Accepted", value: acceptedSlots, color: Colors.green),
+          (label: "Rejected", value: rejected, color: Colors.red),
+          (label: "Left", value: spotsLeft, color: Colors.deepPurple),
+        ];
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: stats.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 6,
+            mainAxisSpacing: 6,
+            mainAxisExtent: 34,
+          ),
+          itemBuilder: (context, index) {
+            final stat = stats[index];
+            return buildStatTile(
+              label: stat.label,
+              value: stat.value,
+              color: stat.color,
+            );
+          },
         );
       },
     );

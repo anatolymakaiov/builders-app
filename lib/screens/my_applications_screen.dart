@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/job.dart';
 import '../screens/job_details_screen.dart';
+import '../services/application_activity_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -121,14 +122,9 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         for (var doc in allDocs) doc.id: doc,
       }.values.toList();
 
-      /// 🔥 сортировка
-      unique.sort((a, b) {
-        final aTime = (a.data() as Map)["createdAt"] as Timestamp?;
-        final bTime = (b.data() as Map)["createdAt"] as Timestamp?;
-
-        if (aTime == null || bTime == null) return 0;
-        return bTime.compareTo(aTime);
-      });
+      unique.sort(
+        (a, b) => ApplicationActivityService.compareForUser(a, b, userId),
+      );
 
       return unique;
     });
@@ -181,6 +177,10 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                     itemCount: apps.length,
                     itemBuilder: (context, index) {
                       final data = apps[index].data() as Map<String, dynamic>;
+                      final isUnread = ApplicationActivityService.isUnreadFor(
+                        data,
+                        user.uid,
+                      );
 
                       final offer = data["offer"] as Map<String, dynamic>?;
 
@@ -222,7 +222,13 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                               jobData,
                             );
 
-                            return buildCard(job, status, apps[index].id);
+                            return buildCard(
+                              job,
+                              status,
+                              apps[index].id,
+                              isUnread: isUnread,
+                              userId: user.uid,
+                            );
                           },
                         );
                       }
@@ -230,6 +236,11 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                       /// ✅ если есть jobTitle — просто показываем
                       return InkWell(
                         onTap: () async {
+                          await ApplicationActivityService.markRead(
+                            apps[index].id,
+                            user.uid,
+                          );
+                          if (!context.mounted) return;
                           await openJobDetails(
                             context,
                             jobId,
@@ -240,17 +251,49 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                           margin: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 8),
                           padding: const EdgeInsets.all(16),
+                          borderRadius: BorderRadius.circular(10),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               /// TITLE
-                              Text(
-                                jobTitle,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
+                              Row(
+                                children: [
+                                  if (isUnread)
+                                    Container(
+                                      width: 10,
+                                      height: 10,
+                                      margin: const EdgeInsets.only(right: 8),
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.green,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  Expanded(
+                                    child: Text(
+                                      jobTitle,
+                                      style: TextStyle(
+                                        fontWeight: isUnread
+                                            ? FontWeight.w900
+                                            : FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
+                              if (isUnread)
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    "Updated",
+                                    style: TextStyle(
+                                      color: AppColors.greenDark,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              if (!isUnread) const SizedBox(height: 0),
 
                               const SizedBox(height: 6),
 
@@ -297,7 +340,17 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                                       await FirebaseFirestore.instance
                                           .collection("applications")
                                           .doc(apps[index].id)
-                                          .update({"status": "offer_accepted"});
+                                          .set({
+                                        "status": "offer_accepted",
+                                        "applicationActivityAt":
+                                            FieldValue.serverTimestamp(),
+                                        "updatedAt":
+                                            FieldValue.serverTimestamp(),
+                                        "unreadFor": FieldValue.arrayUnion(
+                                          ApplicationActivityService
+                                              .employerRecipients(data),
+                                        ),
+                                      }, SetOptions(merge: true));
 
                                       await FirebaseFirestore.instance
                                           .collection("jobs")
@@ -334,7 +387,17 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                                       await FirebaseFirestore.instance
                                           .collection("applications")
                                           .doc(apps[index].id)
-                                          .update({"status": "rejected"});
+                                          .set({
+                                        "status": "rejected",
+                                        "applicationActivityAt":
+                                            FieldValue.serverTimestamp(),
+                                        "updatedAt":
+                                            FieldValue.serverTimestamp(),
+                                        "unreadFor": FieldValue.arrayUnion(
+                                          ApplicationActivityService
+                                              .employerRecipients(data),
+                                        ),
+                                      }, SetOptions(merge: true));
                                     },
                                     child: const Text("Decline"),
                                   ),
@@ -390,16 +453,32 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   }
 
   /// 🔥 reusable card
-  Widget buildCard(Job job, String status, String applicationId) {
+  Widget buildCard(
+    Job job,
+    String status,
+    String applicationId, {
+    required bool isUnread,
+    required String userId,
+  }) {
     return StroykaSurface(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        leading: isUnread
+            ? Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: AppColors.green,
+                  shape: BoxShape.circle,
+                ),
+              )
+            : null,
         title: Text(
           job.title,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.ink,
-            fontWeight: FontWeight.w800,
+            fontWeight: isUnread ? FontWeight.w900 : FontWeight.w800,
           ),
         ),
         subtitle: Text([
@@ -415,7 +494,11 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        onTap: () => openJobDetails(context, job.id, applicationId),
+        onTap: () async {
+          await ApplicationActivityService.markRead(applicationId, userId);
+          if (!mounted) return;
+          await openJobDetails(context, job.id, applicationId);
+        },
       ),
     );
   }

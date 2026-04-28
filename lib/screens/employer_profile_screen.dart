@@ -135,45 +135,70 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                     padding: EdgeInsets.zero,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          image: headerImage != null && headerImage.isNotEmpty
-                              ? DecorationImage(
-                                  image: NetworkImage(headerImage),
-                                  fit: BoxFit.cover,
-                                  opacity: 0.30,
-                                )
-                              : null,
-                        ),
+                      child: SizedBox(
+                        height: 156,
                         child: Container(
-                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                          color: Colors.white.withValues(
-                            alpha: headerImage != null && headerImage.isNotEmpty
-                                ? 0.58
-                                : 0,
+                          decoration: BoxDecoration(
+                            image: headerImage != null && headerImage.isNotEmpty
+                                ? DecorationImage(
+                                    image: NetworkImage(headerImage),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
                           ),
-                          child: Column(
-                            children: [
-                              CircleAvatar(
-                                radius: 42,
-                                backgroundColor: Colors.grey.shade300,
-                                backgroundImage:
-                                    logo is String ? NetworkImage(logo) : null,
-                                child: logo == null
-                                    ? const Icon(Icons.business, size: 34)
-                                    : null,
+                          child: Container(
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.08),
+                                  Colors.black.withValues(alpha: 0.16),
+                                ],
                               ),
-                              const SizedBox(height: 10),
-                              Text(
-                                name,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 25,
-                                  fontWeight: FontWeight.w900,
-                                  color: AppColors.ink,
+                            ),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.82),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.92),
+                                  width: 1,
                                 ),
                               ),
-                            ],
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 36,
+                                    backgroundColor: Colors.grey.shade300,
+                                    backgroundImage: logo is String
+                                        ? NetworkImage(logo)
+                                        : null,
+                                    child: logo == null
+                                        ? const Icon(Icons.business, size: 30)
+                                        : null,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    name,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 23,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppColors.ink,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),

@@ -6,6 +6,7 @@ import 'post_job_screen.dart';
 import 'chat_screen.dart';
 
 import '../models/job.dart';
+import '../services/application_activity_service.dart';
 import '../services/calendar_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
@@ -240,6 +241,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           "employerId": widget.job.ownerId,
           "status": "pending",
           "createdAt": FieldValue.serverTimestamp(),
+          ...ApplicationActivityService.createdForEmployer(widget.job.ownerId),
         });
 
         if (mounted) {
@@ -299,6 +301,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           "employerId": widget.job.ownerId,
           "status": "pending",
           "createdAt": FieldValue.serverTimestamp(),
+          ...ApplicationActivityService.createdForEmployer(widget.job.ownerId),
         });
 
         if (mounted) {
@@ -801,7 +804,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       final workersCount = (appData["workersCount"] as num?)?.toInt() ?? 1;
       final filled = (jobData["filledPositions"] as num?)?.toInt() ?? 0;
 
-      transaction.update(appRef, {"status": "offer_accepted"});
+      transaction.update(appRef, {
+        "status": "offer_accepted",
+        "applicationActivityAt": FieldValue.serverTimestamp(),
+        "updatedAt": FieldValue.serverTimestamp(),
+        "unreadFor": FieldValue.arrayUnion(
+          ApplicationActivityService.employerRecipients(appData),
+        ),
+      });
       transaction.update(jobRef, {
         "filledPositions": filled + workersCount,
       });
@@ -848,7 +858,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       final filled = (jobData["filledPositions"] as num?)?.toInt() ?? 0;
       final nextFilled = (filled - workersCount).clamp(0, filled).toInt();
 
-      transaction.update(appRef, {"status": "offer_sent"});
+      transaction.update(appRef, {
+        "status": "offer_sent",
+        "applicationActivityAt": FieldValue.serverTimestamp(),
+        "updatedAt": FieldValue.serverTimestamp(),
+        "unreadFor": FieldValue.arrayUnion(
+          ApplicationActivityService.employerRecipients(appData),
+        ),
+      });
       transaction.update(jobRef, {
         "filledPositions": nextFilled,
       });

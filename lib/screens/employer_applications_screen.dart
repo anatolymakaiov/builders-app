@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'application_details_screen.dart';
 import 'worker_profile_screen.dart';
+import '../services/application_activity_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -98,10 +99,17 @@ class _EmployerApplicationsScreenState
   }
 
   Future<void> updateStatus(String id, String status) async {
-    await FirebaseFirestore.instance
+    final doc = await FirebaseFirestore.instance
         .collection("applications")
         .doc(id)
-        .update({"status": status});
+        .get();
+    final data = doc.data() ?? {};
+
+    await ApplicationActivityService.updateStatus(
+      applicationId: id,
+      status: status,
+      unreadFor: ApplicationActivityService.workerRecipients(data),
+    );
   }
 
   @override
@@ -230,7 +238,13 @@ class _EmployerApplicationsScreenState
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  final allApps = snapshot.data!.docs;
+                  final allApps = [...snapshot.data!.docs]..sort(
+                      (a, b) => ApplicationActivityService.compareForUser(
+                        a,
+                        b,
+                        employerId,
+                      ),
+                    );
 
                   trades = {"all"};
                   sites = {"all"};
@@ -279,6 +293,10 @@ class _EmployerApplicationsScreenState
                     itemBuilder: (context, index) {
                       final doc = apps[index];
                       final data = doc.data() as Map<String, dynamic>;
+                      final isUnread = ApplicationActivityService.isUnreadFor(
+                        data,
+                        employerId,
+                      );
 
                       final type = data["type"] ?? "single";
                       final workerName = data["workerName"] ?? "Worker";
@@ -295,11 +313,17 @@ class _EmployerApplicationsScreenState
                           : "";
 
                       return GestureDetector(
-                        onTap: () {
+                        onTap: () async {
+                          await ApplicationActivityService.markRead(
+                            doc.id,
+                            employerId,
+                          );
                           final workerId = data["workerId"] ??
                               (members.isNotEmpty ? members.first : null);
                           final jobId = data["jobId"]?.toString();
-                          final employerId = data["employerId"]?.toString();
+                          final appEmployerId = data["employerId"]?.toString();
+
+                          if (!context.mounted) return;
 
                           if (type != "team" && workerId != null) {
                             Navigator.push(
@@ -308,7 +332,7 @@ class _EmployerApplicationsScreenState
                                 builder: (_) => WorkerProfileScreen(
                                   userId: workerId.toString(),
                                   jobId: jobId,
-                                  employerId: employerId,
+                                  employerId: appEmployerId,
                                 ),
                               ),
                             );
@@ -330,14 +354,32 @@ class _EmployerApplicationsScreenState
                               horizontal: 16, vertical: 10),
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(8),
+                            color: isUnread
+                                ? AppColors.surfaceAlt
+                                : AppColors.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isUnread
+                                  ? AppColors.green
+                                  : Colors.transparent,
+                              width: 1.2,
+                            ),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
                                 children: [
+                                  if (isUnread)
+                                    Container(
+                                      width: 10,
+                                      height: 10,
+                                      margin: const EdgeInsets.only(right: 8),
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.green,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
                                   buildApplicantAvatar(data),
                                   const SizedBox(width: 10),
                                   Expanded(
@@ -349,9 +391,11 @@ class _EmployerApplicationsScreenState
                                           type == "team"
                                               ? "Team application"
                                               : workerName,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             color: AppColors.ink,
-                                            fontWeight: FontWeight.w800,
+                                            fontWeight: isUnread
+                                                ? FontWeight.w900
+                                                : FontWeight.w800,
                                             fontSize: 16,
                                           ),
                                         ),
@@ -368,7 +412,9 @@ class _EmployerApplicationsScreenState
                                     statusLabel(status),
                                     style: TextStyle(
                                       color: getStatusColor(status),
-                                      fontWeight: FontWeight.bold,
+                                      fontWeight: isUnread
+                                          ? FontWeight.w900
+                                          : FontWeight.bold,
                                     ),
                                   )
                                 ],

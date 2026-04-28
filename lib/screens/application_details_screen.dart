@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
 import 'worker_profile_screen.dart';
+import '../services/application_activity_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/phone_link.dart';
 import '../theme/app_theme.dart';
@@ -50,7 +52,14 @@ class ApplicationDetailsScreen extends StatelessWidget {
         /// ✅ обновляем статус заявки
         transaction.update(
           db.collection("applications").doc(applicationId),
-          {"status": status},
+          {
+            "status": status,
+            "applicationActivityAt": FieldValue.serverTimestamp(),
+            "updatedAt": FieldValue.serverTimestamp(),
+            "unreadFor": FieldValue.arrayUnion(
+              ApplicationActivityService.workerRecipients(data),
+            ),
+          },
         );
 
         /// 🔥 если приняли — увеличиваем занятые места
@@ -309,10 +318,12 @@ class ApplicationDetailsScreen extends StatelessWidget {
         ..remove("createdAt");
 
       /// 🔥 СОХРАНЕНИЕ OFFER
-      await FirebaseFirestore.instance
-          .collection("applications")
-          .doc(applicationId)
-          .update({"status": "offer_sent", "offer": offer});
+      await ApplicationActivityService.updateStatus(
+        applicationId: applicationId,
+        status: "offer_sent",
+        unreadFor: ApplicationActivityService.workerRecipients(data),
+        extra: {"offer": offer},
+      );
 
       await NotificationService().notifyOfferCreated(
         applicationId: applicationId,
@@ -612,12 +623,25 @@ class ApplicationDetailsScreen extends StatelessWidget {
             const SizedBox(height: 24),
             if (description != null &&
                 description.toString().trim().isNotEmpty) ...[
-              const Text(
-                "Team description",
-                style: TextStyle(fontWeight: FontWeight.bold),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.88),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Team description",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(description.toString()),
+                  ],
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(description.toString()),
               const SizedBox(height: 20),
             ],
             const Text(
@@ -695,6 +719,13 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUserId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ApplicationActivityService.markRead(applicationId, currentUserId);
+      });
+    }
+
     final Set<String> selectedMembers = {};
     final workerId = data["workerId"] ??
         data["userId"] ??
@@ -859,12 +890,13 @@ class ApplicationDetailsScreen extends StatelessWidget {
                                             "negotiation",
                                       });
                                     }
-                                    await FirebaseFirestore.instance
-                                        .collection("applications")
-                                        .doc(applicationId)
-                                        .update({
-                                      "status": "negotiation",
-                                    });
+                                    await ApplicationActivityService
+                                        .updateStatus(
+                                      applicationId: applicationId,
+                                      status: "negotiation",
+                                      unreadFor: ApplicationActivityService
+                                          .workerRecipients(liveData),
+                                    );
                                   } else {
                                     await updateStatus(context, "negotiation");
                                   }
@@ -949,15 +981,21 @@ class ApplicationDetailsScreen extends StatelessWidget {
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  backgroundColor: Colors.white,
+                                  side: const BorderSide(color: Colors.red),
+                                ),
                                 onPressed: () async {
                                   if ((liveData["type"] ?? "single") ==
                                       "team") {
-                                    await FirebaseFirestore.instance
-                                        .collection("applications")
-                                        .doc(applicationId)
-                                        .update({
-                                      "status": "rejected",
-                                    });
+                                    await ApplicationActivityService
+                                        .updateStatus(
+                                      applicationId: applicationId,
+                                      status: "rejected",
+                                      unreadFor: ApplicationActivityService
+                                          .workerRecipients(liveData),
+                                    );
                                   } else {
                                     await updateStatus(context, "rejected");
                                   }
@@ -990,15 +1028,21 @@ class ApplicationDetailsScreen extends StatelessWidget {
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  backgroundColor: Colors.white,
+                                  side: const BorderSide(color: Colors.red),
+                                ),
                                 onPressed: () async {
                                   if ((liveData["type"] ?? "single") ==
                                       "team") {
-                                    await FirebaseFirestore.instance
-                                        .collection("applications")
-                                        .doc(applicationId)
-                                        .update({
-                                      "status": "rejected",
-                                    });
+                                    await ApplicationActivityService
+                                        .updateStatus(
+                                      applicationId: applicationId,
+                                      status: "rejected",
+                                      unreadFor: ApplicationActivityService
+                                          .workerRecipients(liveData),
+                                    );
                                   } else {
                                     await updateStatus(context, "rejected");
                                   }
@@ -1015,6 +1059,11 @@ class ApplicationDetailsScreen extends StatelessWidget {
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  backgroundColor: Colors.white,
+                                  side: const BorderSide(color: Colors.red),
+                                ),
                                 onPressed: () async {
                                   await updateStatus(context, "negotiation");
                                 },
@@ -1026,13 +1075,13 @@ class ApplicationDetailsScreen extends StatelessWidget {
                               width: double.infinity,
                               child: OutlinedButton(
                                 onPressed: () async {
-                                  await FirebaseFirestore.instance
-                                      .collection("applications")
-                                      .doc(applicationId)
-                                      .update({
-                                    "status": "negotiation",
-                                    "offer": FieldValue.delete(),
-                                  });
+                                  await ApplicationActivityService.updateStatus(
+                                    applicationId: applicationId,
+                                    status: "negotiation",
+                                    unreadFor: ApplicationActivityService
+                                        .workerRecipients(liveData),
+                                    extra: {"offer": FieldValue.delete()},
+                                  );
                                 },
                                 child: const Text("Reject"),
                               ),

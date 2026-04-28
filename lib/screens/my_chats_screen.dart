@@ -151,9 +151,8 @@ class MyChatsScreen extends StatelessWidget {
 
                 final isWorker = uid == workerId;
 
-                final unread = isWorker
-                    ? (data["unreadCount_worker"] ?? 0)
-                    : (data["unreadCount_employer"] ?? 0);
+                final unreadFor = List<String>.from(data["unreadFor"] ?? []);
+                final unread = unreadFor.contains(uid) ? 1 : 0;
 
                 final otherUserId = isTeamChat
                     ? employerId

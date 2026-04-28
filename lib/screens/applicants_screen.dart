@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'worker_profile_screen.dart';
 import 'team_details_screen.dart';
 import 'hired_workers_screen.dart';
+import '../services/application_activity_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -243,10 +244,13 @@ class ApplicantsScreen extends StatelessWidget {
                                 Expanded(
                                   child: ElevatedButton(
                                     onPressed: () async {
-                                      await FirebaseFirestore.instance
-                                          .collection("applications")
-                                          .doc(doc.id)
-                                          .update({"status": "offer_sent"});
+                                      await ApplicationActivityService
+                                          .updateStatus(
+                                        applicationId: doc.id,
+                                        status: "offer_sent",
+                                        unreadFor: ApplicationActivityService
+                                            .workerRecipients(data),
+                                      );
                                     },
                                     child: const Text("Send offer"),
                                   ),
@@ -254,11 +258,19 @@ class ApplicantsScreen extends StatelessWidget {
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                      backgroundColor: Colors.white,
+                                      side: const BorderSide(color: Colors.red),
+                                    ),
                                     onPressed: () async {
-                                      await FirebaseFirestore.instance
-                                          .collection("applications")
-                                          .doc(doc.id)
-                                          .update({"status": "rejected"});
+                                      await ApplicationActivityService
+                                          .updateStatus(
+                                        applicationId: doc.id,
+                                        status: "rejected",
+                                        unreadFor: ApplicationActivityService
+                                            .workerRecipients(data),
+                                      );
                                     },
                                     child: const Text("Reject"),
                                   ),
