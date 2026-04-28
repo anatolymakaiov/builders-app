@@ -438,36 +438,39 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Center(
-                  child: Column(
-                    children: [
-                      GestureDetector(
-                        onTap: canEdit ? updateTeamAvatar : null,
-                        child: CircleAvatar(
-                          radius: 46,
-                          backgroundColor: Colors.grey.shade300,
-                          backgroundImage: avatar == null
-                              ? null
-                              : NetworkImage(avatar.toString()),
-                          child: avatar == null
-                              ? const Icon(Icons.groups, size: 40)
-                              : null,
+                StroykaSurface(
+                  padding: const EdgeInsets.all(18),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: canEdit ? updateTeamAvatar : null,
+                          child: CircleAvatar(
+                            radius: 46,
+                            backgroundColor: Colors.grey.shade300,
+                            backgroundImage: avatar == null
+                                ? null
+                                : NetworkImage(avatar.toString()),
+                            child: avatar == null
+                                ? const Icon(Icons.groups, size: 40)
+                                : null,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
+                        const SizedBox(height: 12),
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        "${members.length} members",
-                        style: const TextStyle(color: Colors.grey),
-                      ),
-                    ],
+                        const SizedBox(height: 6),
+                        Text(
+                          "${members.length} members",
+                          style: const TextStyle(color: Colors.grey),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -482,59 +485,78 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        "Team description",
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                StroykaSurface(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              "Team description",
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          if (canEdit)
+                            IconButton(
+                              tooltip: "Edit description",
+                              icon: const Icon(Icons.edit),
+                              onPressed: () =>
+                                  updateTeamDescription(description),
+                            ),
+                        ],
                       ),
-                    ),
-                    if (canEdit)
-                      IconButton(
-                        tooltip: "Edit description",
-                        icon: const Icon(Icons.edit),
-                        onPressed: () => updateTeamDescription(description),
-                      ),
-                  ],
+                      if (description.isEmpty)
+                        const Text("No team description yet")
+                      else
+                        Text(description),
+                    ],
+                  ),
                 ),
-                if (description.isEmpty)
-                  const Text("No team description yet")
-                else
-                  Text(description),
                 const SizedBox(height: 24),
-                buildTeamPortfolio(canEdit),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        "Team members",
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    if (canEdit)
-                      TextButton.icon(
-                        onPressed: () => addMember(members),
-                        icon: const Icon(Icons.person_add_alt),
-                        label: const Text("Add"),
-                      ),
-                  ],
+                StroykaSurface(
+                  padding: const EdgeInsets.all(18),
+                  child: buildTeamPortfolio(canEdit),
                 ),
-                const SizedBox(height: 10),
-                if (members.isEmpty)
-                  const Text("No members yet")
-                else
-                  ...members.map((memberId) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: buildMemberCard(
-                        context,
-                        memberId,
-                        canRemove && memberId != currentUserId,
+                const SizedBox(height: 24),
+                StroykaSurface(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              "Team members",
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          if (canEdit)
+                            TextButton.icon(
+                              onPressed: () => addMember(members),
+                              icon: const Icon(Icons.person_add_alt),
+                              label: const Text("Add"),
+                            ),
+                        ],
                       ),
-                    );
-                  }),
+                      const SizedBox(height: 10),
+                      if (members.isEmpty)
+                        const Text("No members yet")
+                      else
+                        ...members.map((memberId) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: buildMemberCard(
+                              context,
+                              memberId,
+                              canRemove && memberId != currentUserId,
+                            ),
+                          );
+                        }),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),

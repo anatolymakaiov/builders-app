@@ -522,7 +522,7 @@ class WorkerProfileScreen extends StatelessWidget {
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
+                      color: Colors.white.withValues(alpha: 0.86),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -681,7 +681,7 @@ class WorkerProfileScreen extends StatelessWidget {
           final reviews = data["reviewsCount"] ?? 0;
 
           return DefaultTabController(
-            length: 3,
+            length: 4,
             child: StroykaScreenBody(
               child: Column(
                 children: [
@@ -778,6 +778,7 @@ class WorkerProfileScreen extends StatelessWidget {
                         Tab(text: "Info"),
                         Tab(text: "Contacts"),
                         Tab(text: "Photos"),
+                        Tab(text: "My teams"),
                       ],
                     ),
                   ),
@@ -817,12 +818,6 @@ class WorkerProfileScreen extends StatelessWidget {
                               padding: const EdgeInsets.all(18),
                               child: buildReviewsSection(
                                   !isMyProfile && currentRole == "employer"),
-                            ),
-                            const SizedBox(height: 12),
-                            StroykaSurface(
-                              padding: const EdgeInsets.all(18),
-                              child:
-                                  buildWorkerTeamsSection(context, isMyProfile),
                             ),
                           ],
                         ),
@@ -1094,6 +1089,16 @@ class WorkerProfileScreen extends StatelessWidget {
                             StroykaSurface(
                               padding: const EdgeInsets.all(18),
                               child: buildPortfolioGallery(),
+                            ),
+                          ],
+                        ),
+                        ListView(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+                          children: [
+                            StroykaSurface(
+                              padding: const EdgeInsets.all(18),
+                              child:
+                                  buildWorkerTeamsSection(context, isMyProfile),
                             ),
                           ],
                         ),

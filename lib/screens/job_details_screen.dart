@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'employer_profile_screen.dart';
 import 'post_job_screen.dart';
 import 'chat_screen.dart';
 
@@ -11,6 +10,7 @@ import '../services/calendar_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/phone_link.dart';
 
 class JobDetailScreen extends StatefulWidget {
   final Job job;
@@ -875,37 +875,23 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
-  Widget buildYourOffer() {
+  Widget buildYourOfferTab(Map<String, dynamic> appData) {
     final applicationId = widget.applicationId;
     if (applicationId == null) return const SizedBox();
 
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection("applications")
-          .doc(applicationId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData || !snapshot.data!.exists) {
-          return const SizedBox();
-        }
+    final offer = appData["offer"] as Map<String, dynamic>?;
+    final status = appData["status"] ?? "";
 
-        final appData = snapshot.data!.data() as Map<String, dynamic>;
-        final offer = appData["offer"] as Map<String, dynamic>?;
-        final status = appData["status"] ?? "";
+    if (offer == null) return const SizedBox();
 
-        if (offer == null) return const SizedBox();
+    final accepted = status == "accepted" || status == "offer_accepted";
+    final canAccept = status == "offer" || status == "offer_sent";
 
-        final accepted = status == "accepted" || status == "offer_accepted";
-        final canAccept = status == "offer_sent";
-
-        return Container(
-          margin: const EdgeInsets.only(top: 24),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.surfaceAlt),
-          ),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+      children: [
+        StroykaSurface(
+          padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -924,27 +910,32 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                   label: const Text("Add to phone calendar"),
                 ),
               ),
-              const SizedBox(height: 8),
               if (canAccept)
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => acceptOffer(applicationId),
-                    child: const Text("Accept offer"),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => acceptOffer(applicationId),
+                      child: const Text("Accept offer"),
+                    ),
                   ),
                 ),
               if (accepted)
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () => withdrawOfferAcceptance(applicationId),
-                    child: const Text("Withdraw acceptance"),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => withdrawOfferAcceptance(applicationId),
+                      child: const Text("Withdraw acceptance"),
+                    ),
                   ),
                 ),
             ],
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 
@@ -1191,7 +1182,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 "Required documents / certifications",
                 widget.job.requiredDocuments,
               ),
-              buildYourOffer(),
             ],
           ),
         ),
@@ -1256,18 +1246,348 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
       children: [
-        StroykaSurface(
-          padding: const EdgeInsets.all(18),
-          child: buildCompany(),
+        SizedBox(
+          height: MediaQuery.of(context).size.height - 210,
+          child: buildEmbeddedCompanyProfile(),
         ),
       ],
     );
   }
 
+  Widget buildEmbeddedCompanyProfile() {
+    final ownerId = widget.job.ownerId;
+    if (ownerId.isEmpty || ownerId == "unknown") {
+      return const StroykaSurface(
+        padding: EdgeInsets.all(18),
+        child: Text("Company details not available"),
+      );
+    }
+
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection("users").doc(ownerId).get(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (!snapshot.data!.exists) {
+          return const StroykaSurface(
+            padding: EdgeInsets.all(18),
+            child: Text("Company not found"),
+          );
+        }
+
+        final data = snapshot.data!.data() as Map<String, dynamic>;
+        final name = data["companyName"] ?? data["name"] ?? "Company";
+        final description = data["bio"] ?? "";
+        final address = data["location"] ?? "";
+        final phone = data["phone"] ?? "";
+        final contactPerson = data["contactPerson"] ?? "";
+        final extraPhones = List<String>.from(data["phones"] ?? []);
+        final website = data["website"] ?? "";
+        final email = data["email"] ?? "";
+        final logo = data["photo"] ?? data["companyLogo"] ?? data["avatarUrl"];
+        final headerImage =
+            (data["profileHeaderImage"] ?? data["headerImage"])?.toString();
+        final photos = List<String>.from(data["companyPhotos"] ?? []);
+
+        return DefaultTabController(
+          length: 4,
+          child: Column(
+            children: [
+              StroykaSurface(
+                padding: EdgeInsets.zero,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      image: headerImage != null && headerImage.isNotEmpty
+                          ? DecorationImage(
+                              image: NetworkImage(headerImage),
+                              fit: BoxFit.cover,
+                              opacity: 0.30,
+                            )
+                          : null,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                      color: Colors.white.withValues(
+                        alpha: headerImage != null && headerImage.isNotEmpty
+                            ? 0.58
+                            : 0,
+                      ),
+                      child: Column(
+                        children: [
+                          CircleAvatar(
+                            radius: 42,
+                            backgroundColor: Colors.grey.shade300,
+                            backgroundImage:
+                                logo is String ? NetworkImage(logo) : null,
+                            child: logo == null
+                                ? const Icon(Icons.business, size: 34)
+                                : null,
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            name.toString(),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              StroykaSurface(
+                padding: const EdgeInsets.all(4),
+                borderRadius: BorderRadius.circular(999),
+                child: const TabBar(
+                  dividerColor: Colors.transparent,
+                  indicator: BoxDecoration(
+                    color: AppColors.green,
+                    borderRadius: BorderRadius.all(Radius.circular(999)),
+                  ),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: AppColors.ink,
+                  labelStyle: TextStyle(fontWeight: FontWeight.w800),
+                  tabs: [
+                    Tab(text: "Info"),
+                    Tab(text: "Contacts"),
+                    Tab(text: "Vacancies"),
+                    Tab(text: "Photos"),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        StroykaSurface(
+                          padding: const EdgeInsets.all(18),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                "About company",
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                description.toString().trim().isEmpty
+                                    ? "No company description yet"
+                                    : description.toString(),
+                              ),
+                              if (address.toString().trim().isNotEmpty) ...[
+                                const SizedBox(height: 18),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.location_on),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text(address.toString())),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        StroykaSurface(
+                          padding: const EdgeInsets.all(18),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (phone.toString().trim().isNotEmpty) ...[
+                                PhoneLink(phone: phone.toString()),
+                                const SizedBox(height: 16),
+                              ],
+                              if (contactPerson.toString().trim().isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 16),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.person),
+                                      const SizedBox(width: 8),
+                                      Text(contactPerson.toString()),
+                                    ],
+                                  ),
+                                ),
+                              ...extraPhones.map(
+                                (p) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: PhoneLink(
+                                    phone: p,
+                                    compact: true,
+                                  ),
+                                ),
+                              ),
+                              if (email.toString().trim().isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 16),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.email),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Text(email.toString())),
+                                    ],
+                                  ),
+                                ),
+                              if (website.toString().trim().isNotEmpty)
+                                Row(
+                                  children: [
+                                    const Icon(Icons.language),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text(website.toString())),
+                                  ],
+                                ),
+                              if (phone.toString().trim().isEmpty &&
+                                  extraPhones.isEmpty &&
+                                  email.toString().trim().isEmpty &&
+                                  website.toString().trim().isEmpty)
+                                const Text("No contacts yet"),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection("jobs")
+                          .where("ownerId", isEqualTo: ownerId)
+                          .orderBy("createdAt", descending: true)
+                          .snapshots(),
+                      builder: (context, jobsSnapshot) {
+                        if (!jobsSnapshot.hasData) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+
+                        final jobs = jobsSnapshot.data!.docs
+                            .map((doc) => Job.fromFirestore(
+                                  doc.id,
+                                  doc.data() as Map<String, dynamic>,
+                                ))
+                            .toList();
+
+                        if (jobs.isEmpty) {
+                          return const Center(child: Text("No jobs yet"));
+                        }
+
+                        return ListView.builder(
+                          padding: EdgeInsets.zero,
+                          itemCount: jobs.length,
+                          itemBuilder: (context, index) {
+                            final job = jobs[index];
+                            return StroykaSurface(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(14),
+                              child: Text(
+                                job.title,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                    ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        if (photos.isEmpty)
+                          const StroykaSurface(
+                            padding: EdgeInsets.all(18),
+                            child: Text("No company photos yet"),
+                          )
+                        else
+                          StroykaSurface(
+                            padding: const EdgeInsets.all(18),
+                            child: GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: photos.length,
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 10,
+                              ),
+                              itemBuilder: (_, index) => ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.network(
+                                  photos[index],
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final applicationId = widget.applicationId;
+
+    if (applicationId == null) {
+      return buildScaffold(hasOffer: false);
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("applications")
+          .doc(applicationId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final appData = snapshot.data?.data() as Map<String, dynamic>?;
+        final offer = appData?["offer"];
+        final status = appData?["status"]?.toString() ?? "";
+        final hasOffer = offer is Map<String, dynamic> &&
+            (status == "offer" ||
+                status == "offer_sent" ||
+                status == "accepted" ||
+                status == "offer_accepted");
+
+        return buildScaffold(
+          hasOffer: hasOffer,
+          appData: appData,
+        );
+      },
+    );
+  }
+
+  Widget buildScaffold({
+    required bool hasOffer,
+    Map<String, dynamic>? appData,
+  }) {
     return DefaultTabController(
-      length: 3,
+      length: hasOffer ? 4 : 3,
       child: Scaffold(
         appBar: AppBar(title: const Text("Job")),
         body: StroykaScreenBody(
@@ -1278,18 +1598,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 padding: const EdgeInsets.all(4),
                 borderRadius: BorderRadius.circular(999),
                 child: TabBar(
-                  onTap: (index) {
-                    if (index != 2) return;
-                    final ownerId = widget.job.ownerId;
-                    if (ownerId.isEmpty || ownerId == "unknown") return;
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => EmployerProfileScreen(userId: ownerId),
-                      ),
-                    );
-                  },
                   dividerColor: Colors.transparent,
                   indicator: const BoxDecoration(
                     color: AppColors.green,
@@ -1299,16 +1607,18 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                   labelColor: Colors.white,
                   unselectedLabelColor: AppColors.ink,
                   labelStyle: const TextStyle(fontWeight: FontWeight.w800),
-                  tabs: const [
-                    Tab(text: "Info"),
-                    Tab(text: "Photos"),
-                    Tab(text: "About company"),
+                  tabs: [
+                    if (hasOffer) const Tab(text: "Offer"),
+                    const Tab(text: "Info"),
+                    const Tab(text: "Photos"),
+                    const Tab(text: "About company"),
                   ],
                 ),
               ),
               Expanded(
                 child: TabBarView(
                   children: [
+                    if (hasOffer && appData != null) buildYourOfferTab(appData),
                     buildInfoTab(),
                     buildPhotosTab(),
                     buildCompanyTab(),

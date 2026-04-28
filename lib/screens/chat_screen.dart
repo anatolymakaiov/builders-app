@@ -36,6 +36,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _preloaded = false;
   bool _isTyping = false;
   bool isRecording = false;
+  final Set<String> _markedRead = {};
 
   @override
   void initState() {
@@ -98,6 +99,32 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     _preloaded = true;
+  }
+
+  void markUnreadMessagesRead(
+      List<QueryDocumentSnapshot> messages, String uid) {
+    final unread = messages.where((doc) {
+      if (_markedRead.contains(doc.id)) return false;
+      final data = doc.data() as Map<String, dynamic>;
+      final readBy = List<String>.from(data["readBy"] ?? []);
+      return !readBy.contains(uid);
+    }).toList();
+
+    if (unread.isEmpty) return;
+
+    for (final doc in unread) {
+      _markedRead.add(doc.id);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in unread) {
+        batch.update(doc.reference, {
+          "readBy": FieldValue.arrayUnion([uid]),
+        });
+      }
+      await batch.commit();
+    });
   }
 
   /// 🔤 TEXT
@@ -599,8 +626,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
         final isInternalTeamChat = chatData["type"] == "internal_team";
         final isWorker = uid == chatData["workerId"];
-        final otherUserId =
-            isWorker ? chatData["employerId"] : chatData["workerId"];
+        final otherUserId = isInternalTeamChat
+            ? uid
+            : (isWorker ? chatData["employerId"] : chatData["workerId"]);
 
         return StreamBuilder<DocumentSnapshot>(
           stream: FirebaseFirestore.instance
@@ -669,6 +697,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
                           final messages = snapshot.data!.docs;
                           preloadImages(messages);
+                          markUnreadMessagesRead(messages, uid);
 
                           return ListView.builder(
                             controller: scrollController,
@@ -703,17 +732,6 @@ class _ChatScreenState extends State<ChatScreen> {
                               final readBy =
                                   List<String>.from(data["readBy"] ?? []);
                               final isRead = readBy.length > 1;
-
-                              if (!readBy.contains(uid)) {
-                                FirebaseFirestore.instance
-                                    .collection("chats")
-                                    .doc(widget.chatId)
-                                    .collection("messages")
-                                    .doc(doc.id)
-                                    .update({
-                                  "readBy": FieldValue.arrayUnion([uid]),
-                                });
-                              }
 
                               return Column(
                                 children: [

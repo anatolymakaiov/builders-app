@@ -741,8 +741,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: StroykaScreenBody(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: buildForm(),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 110),
+          child: StroykaSurface(
+            padding: const EdgeInsets.all(18),
+            child: buildForm(),
+          ),
         ),
       ),
       bottomNavigationBar: SafeArea(
