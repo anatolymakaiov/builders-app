@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'application_details_screen.dart';
+import 'worker_profile_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -288,6 +289,25 @@ class _EmployerApplicationsScreenState
 
                       return GestureDetector(
                         onTap: () {
+                          final workerId = data["workerId"] ??
+                              (members.isNotEmpty ? members.first : null);
+                          final jobId = data["jobId"]?.toString();
+                          final employerId = data["employerId"]?.toString();
+
+                          if (type != "team" && workerId != null) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => WorkerProfileScreen(
+                                  userId: workerId.toString(),
+                                  jobId: jobId,
+                                  employerId: employerId,
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+
                           Navigator.push(
                             context,
                             MaterialPageRoute(

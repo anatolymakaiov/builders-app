@@ -529,8 +529,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
         final name = data["companyName"] ?? data["name"] ?? "Company";
         final photo = data["companyLogo"] ?? data["photo"] ?? data["avatarUrl"];
-        final isOwner = userId == ownerId;
-
         final companyCard = Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -551,9 +549,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      isOwner ? "Your company" : "Employer",
-                      style: const TextStyle(
+                    const Text(
+                      "Employer",
+                      style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey,
                       ),
@@ -566,39 +564,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    if (!isOwner) ...[
-                      const SizedBox(height: 4),
-                      const Text(
-                        "Tap to view profile",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
-              if (!isOwner) const Icon(Icons.arrow_forward_ios, size: 16),
             ],
           ),
         );
 
-        if (isOwner) return companyCard;
-
-        return GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => EmployerProfileScreen(
-                  userId: ownerId,
-                ),
-              ),
-            );
-          },
-          child: companyCard,
-        );
+        return companyCard;
       },
     );
   }
@@ -1304,17 +1277,29 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
                 padding: const EdgeInsets.all(4),
                 borderRadius: BorderRadius.circular(999),
-                child: const TabBar(
+                child: TabBar(
+                  onTap: (index) {
+                    if (index != 2) return;
+                    final ownerId = widget.job.ownerId;
+                    if (ownerId.isEmpty || ownerId == "unknown") return;
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => EmployerProfileScreen(userId: ownerId),
+                      ),
+                    );
+                  },
                   dividerColor: Colors.transparent,
-                  indicator: BoxDecoration(
+                  indicator: const BoxDecoration(
                     color: AppColors.green,
                     borderRadius: BorderRadius.all(Radius.circular(999)),
                   ),
                   indicatorSize: TabBarIndicatorSize.tab,
                   labelColor: Colors.white,
                   unselectedLabelColor: AppColors.ink,
-                  labelStyle: TextStyle(fontWeight: FontWeight.w800),
-                  tabs: [
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w800),
+                  tabs: const [
                     Tab(text: "Info"),
                     Tab(text: "Photos"),
                     Tab(text: "About company"),

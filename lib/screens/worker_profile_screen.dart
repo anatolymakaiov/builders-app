@@ -910,6 +910,28 @@ class WorkerProfileScreen extends StatelessWidget {
                                   ],
                                   if (applicationId != null) ...[
                                     const SizedBox(height: 12),
+                                    if (status == "offer_accepted") ...[
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.green.withValues(
+                                            alpha: 0.14,
+                                          ),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                        ),
+                                        child: const Text(
+                                          "Worker hired",
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: AppColors.greenDark,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
                                     Row(
                                       children: [
                                         if (status != "offer_accepted")

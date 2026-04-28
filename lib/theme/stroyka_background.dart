@@ -65,6 +65,7 @@ class StroykaSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       margin: margin,
       padding: padding,
       decoration: BoxDecoration(
