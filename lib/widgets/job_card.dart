@@ -13,6 +13,7 @@ class JobCard extends StatelessWidget {
   final Widget? bottomAction;
   final String? statusText;
   final Color? statusColor;
+  final String? detailText;
   final bool unread;
   final String? distanceText;
   final EdgeInsetsGeometry margin;
@@ -26,6 +27,7 @@ class JobCard extends StatelessWidget {
     this.bottomAction,
     this.statusText,
     this.statusColor,
+    this.detailText,
     this.unread = false,
     this.distanceText,
     this.margin = const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -68,7 +70,10 @@ class JobCard extends StatelessWidget {
                     ),
                   ],
                   Expanded(
-                    child: _CompanyHeader(job: job),
+                    child: _CompanyHeader(
+                      job: job,
+                      detailText: detailText,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   _CompanyLogo(job: job),
@@ -92,8 +97,6 @@ class JobCard extends StatelessWidget {
                       label: job.listRateText,
                       color: AppColors.greenDark,
                     ),
-                  if (job.city.trim().isNotEmpty)
-                    _MetaChip(label: job.city.trim()),
                   if (distanceText != null && distanceText!.isNotEmpty)
                     _MetaChip(label: distanceText!),
                   if (statusText != null && statusText!.isNotEmpty)
@@ -117,13 +120,21 @@ class JobCard extends StatelessWidget {
 
 class _CompanyHeader extends StatelessWidget {
   final Job job;
+  final String? detailText;
 
-  const _CompanyHeader({required this.job});
+  const _CompanyHeader({
+    required this.job,
+    this.detailText,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (job.ownerId.isEmpty || job.ownerId == "unknown") {
-      return _TitleBlock(job: job, companyName: job.companyName);
+      return _TitleBlock(
+        job: job,
+        companyName: job.companyName,
+        detailText: detailText,
+      );
     }
 
     return FutureBuilder<DocumentSnapshot>(
@@ -138,7 +149,11 @@ class _CompanyHeader extends StatelessWidget {
               .trim();
         }
 
-        return _TitleBlock(job: job, companyName: companyName);
+        return _TitleBlock(
+          job: job,
+          companyName: companyName,
+          detailText: detailText,
+        );
       },
     );
   }
@@ -147,14 +162,21 @@ class _CompanyHeader extends StatelessWidget {
 class _TitleBlock extends StatelessWidget {
   final Job job;
   final String companyName;
+  final String? detailText;
 
   const _TitleBlock({
     required this.job,
     required this.companyName,
+    this.detailText,
   });
 
   @override
   Widget build(BuildContext context) {
+    final location = [
+      job.city.trim(),
+      job.postcode.trim(),
+    ].where((item) => item.isNotEmpty).join(" ");
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -178,6 +200,32 @@ class _TitleBlock extends StatelessWidget {
               color: AppColors.muted,
               fontWeight: FontWeight.w700,
               fontSize: 14,
+            ),
+          ),
+        ],
+        if (location.isNotEmpty) ...[
+          const SizedBox(height: 3),
+          Text(
+            location,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ],
+        if (detailText != null && detailText!.trim().isNotEmpty) ...[
+          const SizedBox(height: 3),
+          Text(
+            detailText!.trim(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
             ),
           ),
         ],

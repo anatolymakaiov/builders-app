@@ -5,7 +5,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/job.dart';
 import '../screens/job_details_screen.dart';
 import '../services/application_activity_service.dart';
-import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/job_card.dart';
@@ -98,6 +97,19 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     }
   }
 
+  String applicationDateText(dynamic value) {
+    if (value is! Timestamp) return "";
+
+    final date = value.toDate();
+    final day = date.day.toString().padLeft(2, "0");
+    final month = date.month.toString().padLeft(2, "0");
+    final year = date.year.toString();
+    final hour = date.hour.toString().padLeft(2, "0");
+    final minute = date.minute.toString().padLeft(2, "0");
+
+    return "Applied $day/$month/$year $hour:$minute";
+  }
+
   /// 🔥 ПРАВИЛЬНЫЙ STREAM
   Stream<List<QueryDocumentSnapshot>> getApplicationsStream(String userId) {
     final singleStream = FirebaseFirestore.instance
@@ -183,230 +195,47 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                         user.uid,
                       );
 
-                      final offer = data["offer"] as Map<String, dynamic>?;
-
                       final status = data["status"] ?? "pending";
-
-                      /// ✅ БЕРЕМ ИЗ APPLICATION (быстро)
-                      final jobTitle = data["jobTitle"] ?? "Job";
-
                       final jobId = data["jobId"];
 
-                      /// 🔥 ЕСЛИ НЕТ jobTitle → fallback
-                      if (data["jobTitle"] == null) {
-                        return FutureBuilder<DocumentSnapshot>(
-                          future: FirebaseFirestore.instance
-                              .collection("jobs")
-                              .doc(jobId)
-                              .get(),
-                          builder: (context, jobSnapshot) {
-                            if (!jobSnapshot.hasData) {
-                              return const Padding(
-                                padding: EdgeInsets.all(16),
-                                child: Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                              );
-                            }
-
-                            if (!jobSnapshot.data!.exists) {
-                              return const ListTile(
-                                title: Text("Job not found"),
-                              );
-                            }
-
-                            final jobData = jobSnapshot.data!.data()
-                                as Map<String, dynamic>;
-
-                            final job = Job.fromFirestore(
-                              jobSnapshot.data!.id,
-                              jobData,
+                      return FutureBuilder<DocumentSnapshot>(
+                        future: FirebaseFirestore.instance
+                            .collection("jobs")
+                            .doc(jobId)
+                            .get(),
+                        builder: (context, jobSnapshot) {
+                          if (!jobSnapshot.hasData) {
+                            return const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Center(
+                                child: CircularProgressIndicator(),
+                              ),
                             );
+                          }
 
-                            return buildCard(
-                              job,
-                              status,
-                              apps[index].id,
-                              isUnread: isUnread,
-                              userId: user.uid,
+                          if (!jobSnapshot.data!.exists) {
+                            return const ListTile(
+                              title: Text("Job not found"),
                             );
-                          },
-                        );
-                      }
+                          }
 
-                      /// ✅ если есть jobTitle — просто показываем
-                      return InkWell(
-                        onTap: () async {
-                          await ApplicationActivityService.markRead(
-                            apps[index].id,
-                            user.uid,
+                          final jobData =
+                              jobSnapshot.data!.data() as Map<String, dynamic>;
+
+                          final job = Job.fromFirestore(
+                            jobSnapshot.data!.id,
+                            jobData,
                           );
-                          if (!context.mounted) return;
-                          await openJobDetails(
-                            context,
-                            jobId,
+
+                          return buildCard(
+                            job,
+                            status,
                             apps[index].id,
+                            appliedAt: data["createdAt"],
+                            isUnread: isUnread,
+                            userId: user.uid,
                           );
                         },
-                        child: StroykaSurface(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          padding: const EdgeInsets.all(16),
-                          borderRadius: BorderRadius.circular(10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              /// TITLE
-                              Row(
-                                children: [
-                                  if (isUnread)
-                                    Container(
-                                      width: 10,
-                                      height: 10,
-                                      margin: const EdgeInsets.only(right: 8),
-                                      decoration: const BoxDecoration(
-                                        color: AppColors.green,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                  Expanded(
-                                    child: Text(
-                                      jobTitle,
-                                      style: TextStyle(
-                                        fontWeight: isUnread
-                                            ? FontWeight.w900
-                                            : FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (isUnread)
-                                const Padding(
-                                  padding: EdgeInsets.only(top: 4),
-                                  child: Text(
-                                    "Updated",
-                                    style: TextStyle(
-                                      color: AppColors.greenDark,
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              if (!isUnread) const SizedBox(height: 0),
-
-                              const SizedBox(height: 6),
-
-                              /// STATUS
-                              Text(
-                                statusLabel(status),
-                                style: TextStyle(
-                                  color: getStatusColor(status),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-
-                              const SizedBox(height: 10),
-
-                              /// 🔥 OFFER UI
-                              if (status == "offer_sent" &&
-                                  data["offer"] != null) ...[
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const Text("Offer details",
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.bold)),
-                                      const SizedBox(height: 6),
-                                      ...buildOfferDetails(offer!),
-                                    ],
-                                  ),
-                                ),
-
-                                const SizedBox(height: 10),
-
-                                /// ACCEPT OFFER
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: () async {
-                                      await FirebaseFirestore.instance
-                                          .collection("applications")
-                                          .doc(apps[index].id)
-                                          .set({
-                                        "status": "offer_accepted",
-                                        "applicationActivityAt":
-                                            FieldValue.serverTimestamp(),
-                                        "updatedAt":
-                                            FieldValue.serverTimestamp(),
-                                        "unreadFor": FieldValue.arrayUnion(
-                                          ApplicationActivityService
-                                              .employerRecipients(data),
-                                        ),
-                                      }, SetOptions(merge: true));
-
-                                      await FirebaseFirestore.instance
-                                          .collection("jobs")
-                                          .doc(jobId)
-                                          .update({
-                                        "filledPositions":
-                                            FieldValue.increment(1)
-                                      });
-
-                                      final offer = data["offer"];
-                                      if (offer is Map<String, dynamic>) {
-                                        await NotificationService()
-                                            .notifyWorkStartReminder(
-                                          applicationId: apps[index].id,
-                                          applicationData: data,
-                                          offer: offer,
-                                        );
-                                      }
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.green,
-                                    ),
-                                    child: const Text("Accept offer"),
-                                  ),
-                                ),
-
-                                const SizedBox(height: 8),
-
-                                /// DECLINE
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: OutlinedButton(
-                                    onPressed: () async {
-                                      await FirebaseFirestore.instance
-                                          .collection("applications")
-                                          .doc(apps[index].id)
-                                          .set({
-                                        "status": "rejected",
-                                        "applicationActivityAt":
-                                            FieldValue.serverTimestamp(),
-                                        "updatedAt":
-                                            FieldValue.serverTimestamp(),
-                                        "unreadFor": FieldValue.arrayUnion(
-                                          ApplicationActivityService
-                                              .employerRecipients(data),
-                                        ),
-                                      }, SetOptions(merge: true));
-                                    },
-                                    child: const Text("Decline"),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
                       );
                     },
                   );
@@ -458,6 +287,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     Job job,
     String status,
     String applicationId, {
+    dynamic appliedAt,
     required bool isUnread,
     required String userId,
   }) {
@@ -466,6 +296,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       unread: isUnread,
       statusText: statusLabel(status),
       statusColor: getStatusColor(status),
+      detailText: applicationDateText(appliedAt),
       onTap: () async {
         await ApplicationActivityService.markRead(applicationId, userId);
         if (!mounted) return;
