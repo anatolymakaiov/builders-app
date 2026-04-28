@@ -97,6 +97,11 @@ class Job {
     return "Daywork";
   }
 
+  String get listRateText {
+    if (jobType != "hourly" || rate <= 0) return "";
+    return "£${rate.toInt()}/hour";
+  }
+
   /// 🔥 SHORT META
   String get shortMeta {
     final parts = <String>[];

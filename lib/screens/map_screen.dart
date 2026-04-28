@@ -480,21 +480,6 @@ class _MapScreenState extends State<MapScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    rateText(job),
-                    style: const TextStyle(
-                      color: AppColors.greenDark,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
                     color: Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(6),
                   ),
@@ -506,6 +491,38 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
                 ),
+                if (job.duration.isNotEmpty)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      job.duration,
+                      style: TextStyle(
+                        color: Colors.grey.shade800,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                if (job.listRateText.isNotEmpty)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      job.listRateText,
+                      style: const TextStyle(
+                        color: AppColors.greenDark,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                 if (distance != double.infinity)
                   Text("${distance.toStringAsFixed(1)} mi")
               ],

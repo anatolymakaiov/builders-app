@@ -367,30 +367,18 @@ class _JobListScreenState extends State<JobListScreen> {
                       metaChip(
                         label: duration,
                       ),
+                      if (job.listRateText.isNotEmpty)
+                        metaChip(
+                          label: job.listRateText,
+                        ),
                     ],
                   ),
 
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
 
-                  /// 💰 RATE + 📏 DISTANCE
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          job.rateText,
-                          style: const TextStyle(
-                            color: AppColors.greenDark,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
                       if (distance != double.infinity)
                         Text(
                           "${distance.toStringAsFixed(1)} mi",

@@ -355,12 +355,29 @@ class EmployerProfileScreen extends StatelessWidget {
                                                   ),
                                                 ),
                                               const SizedBox(height: 6),
-                                              Text(
-                                                job.rateText,
-                                                style: const TextStyle(
-                                                  color: AppColors.greenDark,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
+                                              Wrap(
+                                                spacing: 8,
+                                                runSpacing: 6,
+                                                children: [
+                                                  Text(
+                                                    job.workFormatText,
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  if (job
+                                                      .listRateText.isNotEmpty)
+                                                    Text(
+                                                      job.listRateText,
+                                                      style: const TextStyle(
+                                                        color:
+                                                            AppColors.greenDark,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                ],
                                               ),
                                             ],
                                           ),

@@ -81,14 +81,17 @@ class SavedJobsScreen extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final job = jobs[index];
 
-                    return Container(
+                    final meta = [
+                      job.city,
+                      job.workFormatText,
+                      if (job.duration.isNotEmpty) job.duration,
+                      if (job.listRateText.isNotEmpty) job.listRateText,
+                    ].where((item) => item.trim().isNotEmpty).join(" • ");
+
+                    return StroykaSurface(
                       margin: const EdgeInsets.symmetric(
-                        horizontal: 16,
+                        horizontal: 12,
                         vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(
@@ -102,7 +105,7 @@ class SavedJobsScreen extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        subtitle: Text("${job.city} • ${job.rateText}"),
+                        subtitle: Text(meta),
                         trailing: const Icon(Icons.favorite, color: Colors.red),
                         onTap: () {
                           Navigator.push(

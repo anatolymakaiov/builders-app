@@ -975,259 +975,366 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Job")),
-      body: StroykaScreenBody(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+  Widget buildMessageEmployerButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: OutlinedButton.icon(
+        onPressed: () async {
+          final uid = userId;
+          if (uid == null) return;
+
+          final employerId = widget.job.ownerId;
+
+          final existing = await FirebaseFirestore.instance
+              .collection("chats")
+              .where("jobId", isEqualTo: widget.job.id)
+              .where("participants", arrayContains: uid)
+              .get();
+
+          String chatId;
+
+          if (existing.docs.isNotEmpty) {
+            chatId = existing.docs.first.id;
+          } else {
+            final doc =
+                await FirebaseFirestore.instance.collection("chats").add({
+              "jobId": widget.job.id,
+              "participants": [uid, employerId],
+              "workerId": uid,
+              "employerId": employerId,
+              "workerName": "Worker",
+              "employerName": "Employer",
+              "unreadCount_worker": 0,
+              "unreadCount_employer": 0,
+              "typing_worker": false,
+              "typing_employer": false,
+              "lastMessage": "",
+              "lastMessageType": "text",
+              "createdAt": FieldValue.serverTimestamp(),
+              "updatedAt": FieldValue.serverTimestamp(),
+            });
+
+            chatId = doc.id;
+          }
+
+          if (!mounted) return;
+
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatScreen(chatId: chatId),
+            ),
+          );
+        },
+        icon: const Icon(Icons.chat),
+        label: const Text("Message employer"),
+      ),
+    );
+  }
+
+  Widget buildActionPanel() {
+    final isOwner = userId == widget.job.ownerId;
+
+    return StroykaSurface(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!isOwner) ...[
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: OutlinedButton.icon(
+                onPressed: openMaps,
+                icon: const Icon(Icons.map),
+                label: const Text("Show location on map"),
+              ),
+            ),
+            const SizedBox(height: 12),
+            buildMessageEmployerButton(),
+            const SizedBox(height: 12),
+            buildApplyButton(),
+          ] else ...[
+            buildEditButton(),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  await FirebaseFirestore.instance
+                      .collection("jobs")
+                      .doc(widget.job.id)
+                      .update({
+                    "status": "completed",
+                  });
+
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Job completed")),
+                  );
+                },
+                icon: const Icon(Icons.check_circle),
+                label: const Text("Complete job"),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget buildEmployerStats() {
+    if (userId != widget.job.ownerId) return const SizedBox();
+
+    return FutureBuilder<QuerySnapshot>(
+      future: FirebaseFirestore.instance
+          .collection("applications")
+          .where("jobId", isEqualTo: widget.job.id)
+          .get(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox();
+
+        final docs = snapshot.data!.docs;
+
+        int pending = 0;
+        int negotiation = 0;
+        int offer = 0;
+        int hired = 0;
+        int rejected = 0;
+
+        for (var doc in docs) {
+          final status =
+              (doc.data() as Map<String, dynamic>)["status"] ?? "pending";
+
+          if (status == "pending") pending++;
+          if (status == "negotiation") negotiation++;
+          if (status == "offer_sent") offer++;
+          if (status == "offer_accepted") hired++;
+          if (status == "rejected") rejected++;
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: StroykaSurface(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Applications",
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text("Total: ${docs.length}"),
+                Text("New: $pending"),
+                Text("Negotiation: $negotiation"),
+                Text("Offer sent: $offer"),
+                Text("Hired: $hired"),
+                Text("Rejected: $rejected"),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget buildInfoTab() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+      children: [
+        StroykaSurface(
+          padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              StroykaSurface(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    buildCompany(),
-                    buildPhotos(),
-                    if (widget.job.trade.isNotEmpty)
+              if (widget.job.trade.isNotEmpty)
+                Text(
+                  widget.job.trade,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              const SizedBox(height: 4),
+              Text(
+                widget.job.title,
+                style: const TextStyle(
+                  color: AppColors.ink,
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  metaPill(widget.job.workFormatText),
+                  if (widget.job.duration.isNotEmpty)
+                    metaPill(widget.job.duration),
+                  if (widget.job.listRateText.isNotEmpty)
+                    metaPill(widget.job.listRateText),
+                ],
+              ),
+              buildPositionsInfo(),
+              if (widget.job.weeklyHours.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.schedule, size: 18),
+                      const SizedBox(width: 6),
                       Text(
-                        widget.job.trade,
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    const SizedBox(height: 4),
-                    Text(
-                      widget.job.title,
-                      style: const TextStyle(
-                        color: AppColors.ink,
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    buildRateCard(),
-                    buildPositionsInfo(),
-                    if (widget.job.duration.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.timer_outlined, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              widget.job.duration,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (widget.job.weeklyHours.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.schedule, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              "${widget.job.weeklyHours} hours per week",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: 18),
-                    buildLocation(),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              StroykaSurface(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    buildDescription(),
-                    buildJobInfoSection(
-                      "Candidate requirements",
-                      widget.job.candidateRequirements,
-                    ),
-                    buildJobInfoSection(
-                      "Required documents / certifications",
-                      widget.job.requiredDocuments,
-                    ),
-                    buildYourOffer(),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              StroykaSurface(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  children: [
-                    if (userId != widget.job.ownerId) ...[
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: OutlinedButton.icon(
-                          onPressed: openMaps,
-                          icon: const Icon(Icons.map),
-                          label: const Text("Show location on map"),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            final uid = userId;
-                            if (uid == null) return;
-
-                            final employerId = widget.job.ownerId;
-
-                            final existing = await FirebaseFirestore.instance
-                                .collection("chats")
-                                .where("jobId", isEqualTo: widget.job.id)
-                                .where("participants", arrayContains: uid)
-                                .get();
-
-                            String chatId;
-
-                            if (existing.docs.isNotEmpty) {
-                              chatId = existing.docs.first.id;
-                            } else {
-                              final doc = await FirebaseFirestore.instance
-                                  .collection("chats")
-                                  .add({
-                                "jobId": widget.job.id,
-                                "participants": [uid, employerId],
-                                "workerId": uid,
-                                "employerId": employerId,
-                                "workerName": "Worker",
-                                "employerName": "Employer",
-                                "unreadCount_worker": 0,
-                                "unreadCount_employer": 0,
-                                "typing_worker": false,
-                                "typing_employer": false,
-                                "lastMessage": "",
-                                "lastMessageType": "text",
-                                "createdAt": FieldValue.serverTimestamp(),
-                                "updatedAt": FieldValue.serverTimestamp(),
-                              });
-
-                              chatId = doc.id;
-                            }
-
-                            if (!context.mounted) return;
-
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatScreen(chatId: chatId),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.chat),
-                          label: const Text("Message employer"),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      buildApplyButton(),
-                    ],
-                    buildEditButton(),
-                    if (userId == widget.job.ownerId) ...[
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            await FirebaseFirestore.instance
-                                .collection("jobs")
-                                .doc(widget.job.id)
-                                .update({
-                              "status": "completed",
-                            });
-
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Job completed")),
-                            );
-                          },
-                          icon: const Icon(Icons.check_circle),
-                          label: const Text("Complete job"),
-                        ),
+                        "${widget.job.weeklyHours} hours per week",
+                        style: const TextStyle(fontWeight: FontWeight.w500),
                       ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              if (userId == widget.job.ownerId) ...[
-                const SizedBox(height: 12),
-                FutureBuilder<QuerySnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection("applications")
-                      .where("jobId", isEqualTo: widget.job.id)
-                      .get(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const SizedBox();
-
-                    final docs = snapshot.data!.docs;
-
-                    int pending = 0;
-                    int negotiation = 0;
-                    int offer = 0;
-                    int hired = 0;
-                    int rejected = 0;
-
-                    for (var doc in docs) {
-                      final status =
-                          (doc.data() as Map<String, dynamic>)["status"] ??
-                              "pending";
-
-                      if (status == "pending") pending++;
-                      if (status == "negotiation") negotiation++;
-                      if (status == "offer_sent") offer++;
-                      if (status == "offer_accepted") hired++;
-                      if (status == "rejected") rejected++;
-                    }
-
-                    return StroykaSurface(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            "Applications",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text("Total: ${docs.length}"),
-                          Text("New: $pending"),
-                          Text("Negotiation: $negotiation"),
-                          Text("Offer sent: $offer"),
-                          Text("Hired: $hired"),
-                          Text("Rejected: $rejected"),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ],
+              const SizedBox(height: 18),
+              buildLocation(),
             ],
           ),
+        ),
+        const SizedBox(height: 12),
+        StroykaSurface(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              buildDescription(),
+              buildJobInfoSection(
+                "Candidate requirements",
+                widget.job.candidateRequirements,
+              ),
+              buildJobInfoSection(
+                "Required documents / certifications",
+                widget.job.requiredDocuments,
+              ),
+              buildYourOffer(),
+            ],
+          ),
+        ),
+        buildEmployerStats(),
+      ],
+    );
+  }
+
+  Widget metaPill(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppColors.ink,
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
+  Widget buildPhotosTab() {
+    if (widget.job.photos.isEmpty) {
+      return const Center(child: Text("No photos yet"));
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+      ),
+      itemCount: widget.job.photos.length,
+      itemBuilder: (context, index) {
+        final photo = widget.job.photos[index];
+
+        return GestureDetector(
+          onTap: () {
+            showDialog(
+              context: context,
+              builder: (_) => Dialog(
+                child: Image.network(photo),
+              ),
+            );
+          },
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.network(photo, fit: BoxFit.cover),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget buildCompanyTab() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+      children: [
+        StroykaSurface(
+          padding: const EdgeInsets.all(18),
+          child: buildCompany(),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(title: const Text("Job")),
+        body: StroykaScreenBody(
+          child: Column(
+            children: [
+              StroykaSurface(
+                margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                padding: const EdgeInsets.all(4),
+                borderRadius: BorderRadius.circular(999),
+                child: const TabBar(
+                  dividerColor: Colors.transparent,
+                  indicator: BoxDecoration(
+                    color: AppColors.green,
+                    borderRadius: BorderRadius.all(Radius.circular(999)),
+                  ),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: AppColors.ink,
+                  labelStyle: TextStyle(fontWeight: FontWeight.w800),
+                  tabs: [
+                    Tab(text: "Info"),
+                    Tab(text: "Photos"),
+                    Tab(text: "About company"),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    buildInfoTab(),
+                    buildPhotosTab(),
+                    buildCompanyTab(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: SafeArea(
+          child: buildActionPanel(),
         ),
       ),
     );

@@ -8,18 +8,6 @@ class JobCard extends StatelessWidget {
 
   const JobCard({super.key, required this.job});
 
-  String rateText() {
-    if (job.jobType == "negotiable") {
-      return "Negotiable";
-    }
-
-    if (job.jobType == "price") {
-      return "£${job.rate.toInt()}";
-    }
-
-    return "£${job.rate.toInt()}/h";
-  }
-
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -69,36 +57,30 @@ class JobCard extends StatelessWidget {
                           ],
                         ),
                       ],
-                      Row(
+                      Text(
+                        job.location,
+                        style: const TextStyle(
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
                         children: [
-                          Text(
-                            job.location,
-                            style: const TextStyle(
-                              color: Colors.grey,
+                          Text(job.workFormatText),
+                          if (job.duration.isNotEmpty) Text(job.duration),
+                          if (job.listRateText.isNotEmpty)
+                            Text(
+                              job.listRateText,
+                              style: const TextStyle(
+                                color: AppColors.greenDark,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ],
-                  ),
-                ),
-
-                /// RATE BADGE
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    rateText(),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.greenDark,
-                    ),
                   ),
                 ),
               ],

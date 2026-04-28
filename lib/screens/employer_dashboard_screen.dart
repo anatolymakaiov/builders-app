@@ -83,22 +83,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
         label: job.workFormatText,
         color: AppColors.ink,
       ),
-      buildMetaChip(
-        icon: Icons.payments_outlined,
-        label: job.rateText,
-        color: Colors.green,
-      ),
     ];
-
-    if (job.weeklyHours.isNotEmpty) {
-      chips.add(
-        buildMetaChip(
-          icon: Icons.schedule,
-          label: "${job.weeklyHours} hrs/week",
-          color: Colors.deepPurple,
-        ),
-      );
-    }
 
     if (job.duration.isNotEmpty) {
       chips.add(
@@ -106,6 +91,26 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
           icon: Icons.timelapse,
           label: job.duration,
           color: AppColors.greenDark,
+        ),
+      );
+    }
+
+    if (job.listRateText.isNotEmpty) {
+      chips.add(
+        buildMetaChip(
+          icon: Icons.payments_outlined,
+          label: job.listRateText,
+          color: Colors.green,
+        ),
+      );
+    }
+
+    if (job.weeklyHours.isNotEmpty) {
+      chips.add(
+        buildMetaChip(
+          icon: Icons.schedule,
+          label: "${job.weeklyHours} hrs/week",
+          color: Colors.deepPurple,
         ),
       );
     }

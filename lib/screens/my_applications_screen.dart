@@ -402,7 +402,12 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
             fontWeight: FontWeight.w800,
           ),
         ),
-        subtitle: Text("${job.city} • £${job.rate.toInt()}"),
+        subtitle: Text([
+          job.city,
+          job.workFormatText,
+          if (job.duration.isNotEmpty) job.duration,
+          if (job.listRateText.isNotEmpty) job.listRateText,
+        ].where((item) => item.trim().isNotEmpty).join(" • ")),
         trailing: Text(
           statusLabel(status),
           style: TextStyle(

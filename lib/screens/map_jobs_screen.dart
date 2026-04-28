@@ -75,7 +75,10 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
               runSpacing: 6,
               children: [
                 _chip(job.workFormatText, AppColors.ink),
-                _chip(job.rateText, AppColors.greenDark),
+                if (job.duration.isNotEmpty)
+                  _chip(job.duration, AppColors.greenDark),
+                if (job.listRateText.isNotEmpty)
+                  _chip(job.listRateText, AppColors.greenDark),
               ],
             ),
             const Spacer(),
