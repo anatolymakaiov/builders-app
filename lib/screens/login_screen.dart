@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -16,7 +15,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
 
-  String role = "worker"; // 🔥 выбор роли
+  String role = "worker";
   bool isLogin = true;
   bool loading = false;
 
@@ -39,7 +38,6 @@ class _LoginScreenState extends State<LoginScreen> {
           password: passwordController.text.trim(),
         );
 
-        /// 🔥 СОЗДАЕМ USER В FIRESTORE
         await FirebaseFirestore.instance
             .collection("users")
             .doc(result.user!.uid)
@@ -72,13 +70,6 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                SvgPicture.asset(
-                  AppAssets.logo,
-                  height: 94,
-                ),
-
-                const SizedBox(height: 18),
-
                 const Text(
                   "STROYKA",
                   style: TextStyle(
@@ -91,7 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 6),
 
                 const Text(
-                  "Работа в строительстве",
+                  "Construction work platform",
                   style: TextStyle(
                     color: AppColors.muted,
                     fontSize: 15,
@@ -118,7 +109,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 20),
 
-                /// ROLE (только при регистрации)
                 if (!isLogin)
                   DropdownButton<String>(
                     value: role,
@@ -144,7 +134,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: loading ? null : submit,
                     child: loading
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : Text(isLogin ? "Войти" : "Зарегистрироваться"),
+                        : Text(isLogin ? "Sign in" : "Create account"),
                   ),
                 ),
 
@@ -159,8 +149,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   },
                   child: Text(
                     isLogin
-                        ? "Нет аккаунта? Зарегистрироваться"
-                        : "Уже есть аккаунт? Войти",
+                        ? "No account? Create one"
+                        : "Already have an account? Sign in",
                   ),
                 )
               ],

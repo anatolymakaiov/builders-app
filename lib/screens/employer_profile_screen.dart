@@ -6,6 +6,7 @@ import 'job_details_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'edit_profile_screen.dart';
 import '../widgets/phone_link.dart';
+import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
 class EmployerProfileScreen extends StatelessWidget {
@@ -84,14 +85,14 @@ class EmployerProfileScreen extends StatelessWidget {
           final logo = data["photo"];
           final photos = List<String>.from(data["companyPhotos"] ?? []);
 
-          return StroykaScreenBody(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+          return DefaultTabController(
+            length: 4,
+            child: StroykaScreenBody(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  /// 🔥 HEADER
-                  Center(
+                  StroykaSurface(
+                    margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                    padding: const EdgeInsets.all(18),
                     child: Column(
                       children: [
                         CircleAvatar(
@@ -106,284 +107,311 @@ class EmployerProfileScreen extends StatelessWidget {
                         const SizedBox(height: 12),
                         Text(
                           name,
+                          textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.ink,
                           ),
                         ),
                       ],
                     ),
                   ),
-
-                  const SizedBox(height: 20),
-
-                  /// 📝 DESCRIPTION
-                  if (description.isNotEmpty) ...[
-                    const Text(
-                      "About company",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(description),
-                    const SizedBox(height: 16),
-                  ],
-
-                  /// 📍 ADDRESS
-                  if (address.isNotEmpty) ...[
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(address)),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  /// 📞 PHONE
-                  if (phone.isNotEmpty) ...[
-                    PhoneLink(phone: phone),
-                    const SizedBox(height: 16),
-                  ],
-                  if (phone.isNotEmpty)
-
-                    /// 👤 CONTACT PERSON
-                    if (contactPerson.isNotEmpty) ...[
-                      Row(
-                        children: [
-                          const Icon(Icons.person),
-                          const SizedBox(width: 8),
-                          Text(contactPerson),
-                        ],
+                  StroykaSurface(
+                    margin: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.all(4),
+                    borderRadius: BorderRadius.circular(999),
+                    child: const TabBar(
+                      dividerColor: Colors.transparent,
+                      indicator: BoxDecoration(
+                        color: AppColors.green,
+                        borderRadius: BorderRadius.all(Radius.circular(999)),
                       ),
-                      const SizedBox(height: 16),
-                    ],
-
-                  /// 📞 EXTRA PHONES
-                  if (extraPhones.isNotEmpty) ...[
-                    ...extraPhones.map((p) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: PhoneLink(phone: p, compact: true),
-                        )),
-                    const SizedBox(height: 16),
-                  ],
-
-                  /// ✉️ EMAIL
-                  if (email.isNotEmpty) ...[
-                    Row(
-                      children: [
-                        const Icon(Icons.email),
-                        const SizedBox(width: 8),
-                        Text(email),
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      labelColor: Colors.white,
+                      unselectedLabelColor: AppColors.ink,
+                      labelStyle: TextStyle(fontWeight: FontWeight.w800),
+                      tabs: [
+                        Tab(text: "Info"),
+                        Tab(text: "Contacts"),
+                        Tab(text: "Vacancies"),
+                        Tab(text: "Photos"),
                       ],
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  /// 🌐 WEBSITE
-                  if (website.isNotEmpty) ...[
-                    Row(
-                      children: [
-                        const Icon(Icons.language),
-                        const SizedBox(width: 8),
-                        Text(website),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  /// 👥 CONTACTS
-                  if (contacts.isNotEmpty) ...[
-                    const Text(
-                      "Contacts",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 6),
-                    ...contacts.map((c) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(c["name"] ?? ""),
-                          subtitle: PhoneLink(
-                            phone: c["phone"]?.toString(),
-                            compact: true,
-                          ),
-                        )),
-                    const SizedBox(height: 16),
-                  ],
-
-                  /// 🖼 PHOTOS
-                  if (photos.isNotEmpty) ...[
-                    const Text(
-                      "Gallery",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 120,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: photos.length,
-                        itemBuilder: (_, i) => Container(
-                          margin: const EdgeInsets.only(right: 8),
-                          width: 120,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            image: DecorationImage(
-                              image: NetworkImage(photos[i]),
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-
-                  const SizedBox(height: 30),
-
-                  /// 🔥 JOBS
-                  const Text(
-                    "Current Vacancies",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
                     ),
                   ),
-
-                  const SizedBox(height: 12),
-
-                  StreamBuilder<List<Job>>(
-                    stream: getJobs(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return const Center(
-                          child: CircularProgressIndicator(),
-                        );
-                      }
-
-                      final jobs = snapshot.data!;
-
-                      if (jobs.isEmpty) {
-                        return const Text("No jobs yet");
-                      }
-
-                      return Column(
-                        children: jobs.map((job) {
-                          return GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => JobDetailScreen(job: job),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        ListView(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+                          children: [
+                            StroykaSurface(
+                              padding: const EdgeInsets.all(18),
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  /// 📸 PHOTO
-                                  if (job.photos.isNotEmpty)
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.network(
-                                        job.photos.first,
-                                        width: 70,
-                                        height: 70,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    )
-                                  else
-                                    Container(
-                                      width: 70,
-                                      height: 70,
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.shade300,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(Icons.work),
+                                  const Text(
+                                    "About company",
+                                    style: TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900,
                                     ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    description.isEmpty
+                                        ? "No company description yet"
+                                        : description,
+                                  ),
+                                  if (address.isNotEmpty) ...[
+                                    const SizedBox(height: 18),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.location_on),
+                                        const SizedBox(width: 8),
+                                        Expanded(child: Text(address)),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        ListView(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+                          children: [
+                            StroykaSurface(
+                              padding: const EdgeInsets.all(18),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (phone.isNotEmpty) ...[
+                                    PhoneLink(phone: phone),
+                                    const SizedBox(height: 16),
+                                  ],
+                                  if (contactPerson.isNotEmpty) ...[
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.person),
+                                        const SizedBox(width: 8),
+                                        Text(contactPerson),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+                                  ],
+                                  if (extraPhones.isNotEmpty) ...[
+                                    ...extraPhones.map(
+                                      (p) => Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 8),
+                                        child:
+                                            PhoneLink(phone: p, compact: true),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                  ],
+                                  if (email.isNotEmpty) ...[
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.email),
+                                        const SizedBox(width: 8),
+                                        Expanded(child: Text(email)),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+                                  ],
+                                  if (website.isNotEmpty) ...[
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.language),
+                                        const SizedBox(width: 8),
+                                        Expanded(child: Text(website)),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+                                  ],
+                                  if (contacts.isEmpty &&
+                                      phone.isEmpty &&
+                                      email.isEmpty &&
+                                      website.isEmpty)
+                                    const Text("No contacts yet"),
+                                  if (contacts.isNotEmpty) ...[
+                                    const Text(
+                                      "Team contacts",
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    ...contacts.map(
+                                      (c) => ListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        title: Text(c["name"] ?? ""),
+                                        subtitle: PhoneLink(
+                                          phone: c["phone"]?.toString(),
+                                          compact: true,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        StreamBuilder<List<Job>>(
+                          stream: getJobs(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            }
 
-                                  const SizedBox(width: 12),
+                            final jobs = snapshot.data!;
 
-                                  /// 🧾 INFO
-                                  Expanded(
-                                    child: Column(
+                            if (jobs.isEmpty) {
+                              return const Center(child: Text("No jobs yet"));
+                            }
+
+                            return ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+                              itemCount: jobs.length,
+                              itemBuilder: (context, index) {
+                                final job = jobs[index];
+
+                                return StroykaSurface(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(14),
+                                  child: InkWell(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              JobDetailScreen(job: job),
+                                        ),
+                                      );
+                                    },
+                                    child: Row(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        /// TITLE
-                                        Text(
-                                          job.title,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
+                                        if (job.photos.isNotEmpty)
+                                          ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            child: Image.network(
+                                              job.photos.first,
+                                              width: 70,
+                                              height: 70,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          )
+                                        else
+                                          Container(
+                                            width: 70,
+                                            height: 70,
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey.shade300,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: const Icon(Icons.work),
+                                          ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                job.title,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16,
+                                                ),
+                                              ),
+                                              if (job.trade.isNotEmpty)
+                                                Text(
+                                                  job.trade,
+                                                  style: const TextStyle(
+                                                    color: Colors.grey,
+                                                  ),
+                                                ),
+                                              Text(
+                                                job.city,
+                                                style: const TextStyle(
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                              if (job.duration.isNotEmpty)
+                                                Text(
+                                                  job.duration,
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey,
+                                                  ),
+                                                ),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                job.rateText,
+                                                style: const TextStyle(
+                                                  color: AppColors.greenDark,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
-
-                                        const SizedBox(height: 4),
-
-                                        /// TRADE
-                                        if (job.trade.isNotEmpty)
-                                          Text(
-                                            job.trade,
-                                            style: const TextStyle(
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-
-                                        const SizedBox(height: 4),
-
-                                        /// LOCATION
-                                        Text(
-                                          job.city,
-                                          style: const TextStyle(
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-
-                                        const SizedBox(height: 6),
-
-                                        /// 🔥 DURATION
-                                        if (job.duration.isNotEmpty)
-                                          Text(
-                                            "⏱ ${job.duration}",
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-
-                                        const SizedBox(height: 6),
-
-                                        /// RATE
-                                        Text(
-                                          job.rateText,
-                                          style: const TextStyle(
-                                            color: Colors.green,
-                                            fontWeight: FontWeight.bold,
-                                          ),
+                                        const Icon(
+                                          Icons.arrow_forward_ios,
+                                          size: 16,
                                         ),
                                       ],
                                     ),
                                   ),
-
-                                  const Icon(Icons.arrow_forward_ios, size: 16),
-                                ],
+                                );
+                              },
+                            );
+                          },
+                        ),
+                        ListView(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+                          children: [
+                            if (photos.isEmpty)
+                              const StroykaSurface(
+                                padding: EdgeInsets.all(18),
+                                child: Text("No company photos yet"),
+                              )
+                            else
+                              StroykaSurface(
+                                padding: const EdgeInsets.all(18),
+                                child: GridView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount: photos.length,
+                                  gridDelegate:
+                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    crossAxisSpacing: 10,
+                                    mainAxisSpacing: 10,
+                                  ),
+                                  itemBuilder: (_, i) => ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.network(
+                                      photos[i],
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          );
-                        }).toList(),
-                      );
-                    },
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-
-                  const SizedBox(height: 30),
                 ],
               ),
             ),

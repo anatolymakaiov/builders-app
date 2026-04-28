@@ -8,8 +8,8 @@ class AppColors {
   static const canvas = Color(0xFFF7FAF8);
   static const surface = Color(0xFFF2F7F4);
   static const surfaceAlt = Color(0xFFE7F1EB);
-  static const green = Color(0xFF55B96C);
-  static const greenDark = Color(0xFF08754E);
+  static const green = Color(0xFF7DB9D8);
+  static const greenDark = Color(0xFF2F6E92);
   static const danger = Color(0xFFF04465);
 }
 

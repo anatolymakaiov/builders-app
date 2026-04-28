@@ -37,7 +37,6 @@ class JobApp extends StatelessWidget {
   }
 }
 
-/// 🔥 ГЛАВНЫЙ FIX — lifecycle observer
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
@@ -96,7 +95,6 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
         final user = snapshot.data!;
 
-        /// 🔥 СРАЗУ ONLINE ПРИ ВХОДЕ
         updateStatus(true);
 
         return FutureBuilder<DocumentSnapshot>(
