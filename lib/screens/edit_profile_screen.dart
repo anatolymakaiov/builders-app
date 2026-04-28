@@ -49,6 +49,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int reviewsCount = 0;
 
   String? photoUrl;
+  String? headerImageUrl;
+  File? headerImageFile;
   List<String> portfolio = [];
 
   String get userId => FirebaseAuth.instance.currentUser!.uid;
@@ -94,7 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
       educationController.text = data["education"] ?? "";
       previousWorkController.text = data["previousWork"] ?? "";
-      rateController.text = data["rate"]?.toString() ?? "";
+      rateController.text = "";
       locationController.text = data["location"] ?? "";
 
       websiteController.text = data["website"] ?? "";
@@ -105,6 +107,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       reviewsCount = data["reviewsCount"] ?? 0;
 
       photoUrl = data["photo"];
+      headerImageUrl =
+          (data["profileHeaderImage"] ?? data["headerImage"])?.toString();
       portfolio = portfolioUrls;
     });
   }
@@ -226,6 +230,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => photoUrl = url);
   }
 
+  Future<void> pickHeaderImage() async {
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
+
+    setState(() => headerImageFile = File(picked.path));
+  }
+
   /// SAVE PROFILE
   Future<void> saveProfile() async {
     final name = nameController.text.trim();
@@ -236,7 +247,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     setState(() => loading = true);
 
-    await FirebaseFirestore.instance.collection('users').doc(userId).set({
+    var savedHeaderImageUrl = headerImageUrl;
+    if (headerImageFile != null) {
+      final ref =
+          FirebaseStorage.instance.ref().child("profile_headers/$userId.jpg");
+      await ref.putFile(headerImageFile!);
+      savedHeaderImageUrl = await ref.getDownloadURL();
+    }
+
+    final profileData = <String, dynamic>{
       "role": role,
       "name": role == "worker" ? name : null,
       "phone": phone,
@@ -261,8 +280,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       "previousWork":
           role == "worker" ? previousWorkController.text.trim() : null,
       "references": role == "worker" ? cleanedReferences() : [],
-      "rate":
-          role == "worker" ? double.tryParse(rateController.text.trim()) : null,
+      "rate": FieldValue.delete(),
 
       /// 🔥 EMPLOYER
       "companyName": role == "employer" ? companyController.text.trim() : null,
@@ -277,15 +295,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
       "location": locationController.text.trim(),
 
       "updatedAt": FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    };
 
-    setState(() => loading = false);
+    if (savedHeaderImageUrl != null && savedHeaderImageUrl.isNotEmpty) {
+      profileData["profileHeaderImage"] = savedHeaderImageUrl;
+    }
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .set(profileData, SetOptions(merge: true));
+
+    setState(() {
+      loading = false;
+      headerImageUrl = savedHeaderImageUrl;
+      headerImageFile = null;
+    });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Profile saved")),
       );
     }
+  }
+
+  Widget buildHeaderBackgroundPicker() {
+    final hasHeaderImage = headerImageFile != null ||
+        (headerImageUrl != null && headerImageUrl!.isNotEmpty);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 16),
+        const Text(
+          "Profile header background",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            height: 118,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              image: hasHeaderImage
+                  ? DecorationImage(
+                      image: headerImageFile != null
+                          ? FileImage(headerImageFile!) as ImageProvider
+                          : NetworkImage(headerImageUrl!),
+                      fit: BoxFit.cover,
+                    )
+                  : null,
+            ),
+            child: Container(
+              alignment: Alignment.center,
+              color: Colors.black.withValues(alpha: hasHeaderImage ? 0.20 : 0),
+              child: OutlinedButton.icon(
+                onPressed: pickHeaderImage,
+                icon: const Icon(Icons.image_outlined),
+                label: Text(
+                    hasHeaderImage ? "Change background" : "Choose background"),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Future<void> logout() async {
@@ -364,6 +439,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         buildAvatar(),
+        buildHeaderBackgroundPicker(),
         const SizedBox(height: 20),
 
         DropdownButtonFormField<String>(
@@ -409,10 +485,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           TextField(
               controller: tradeController,
               decoration: const InputDecoration(labelText: "Trade")),
-          const SizedBox(height: 12),
-          TextField(
-              controller: rateController,
-              decoration: const InputDecoration(labelText: "Rate (£/hour)")),
           const SizedBox(height: 12),
           Row(
             children: [

@@ -661,10 +661,11 @@ class WorkerProfileScreen extends StatelessWidget {
           final offerNote = result["offerNote"];
           final name = data["name"] ?? "Worker";
           final trade = data["trade"] ?? "";
-          final rate = data["rate"];
           final bio = data["bio"] ?? "";
           final location = data["location"] ?? "";
           final photo = data["photo"];
+          final headerImage =
+              (data["profileHeaderImage"] ?? data["headerImage"])?.toString();
           final phone = data["phone"];
           final experience = data["experience"];
           final experienceDuration = experienceDurationText(data);
@@ -685,65 +686,78 @@ class WorkerProfileScreen extends StatelessWidget {
               child: Column(
                 children: [
                   StroykaSurface(
-                    margin: const EdgeInsets.fromLTRB(0, 12, 0, 10),
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      children: [
-                        CircleAvatar(
-                          radius: 50,
-                          backgroundColor: Colors.grey.shade300,
-                          backgroundImage:
-                              photo != null ? NetworkImage(photo) : null,
-                          child: photo == null
-                              ? const Icon(Icons.person, size: 40)
+                    margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                    padding: EdgeInsets.zero,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          image: headerImage != null && headerImage.isNotEmpty
+                              ? DecorationImage(
+                                  image: NetworkImage(headerImage),
+                                  fit: BoxFit.cover,
+                                  opacity: 0.30,
+                                )
                               : null,
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          name,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.ink,
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                          color: Colors.white.withValues(
+                            alpha: headerImage != null && headerImage.isNotEmpty
+                                ? 0.58
+                                : 0,
+                          ),
+                          child: Column(
+                            children: [
+                              CircleAvatar(
+                                radius: 42,
+                                backgroundColor: Colors.grey.shade300,
+                                backgroundImage: photo is String
+                                    ? NetworkImage(photo)
+                                    : null,
+                                child: photo == null
+                                    ? const Icon(Icons.person, size: 34)
+                                    : null,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                name,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 25,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.ink,
+                                ),
+                              ),
+                              if (trade.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 3),
+                                  child: Text(
+                                    trade,
+                                    style: const TextStyle(
+                                      color: AppColors.muted,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              if (rating > 0)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 5),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.star,
+                                          color: Colors.amber, size: 20),
+                                      const SizedBox(width: 4),
+                                      Text("$rating ($reviews reviews)"),
+                                    ],
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                        if (trade.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              trade,
-                              style: const TextStyle(
-                                color: AppColors.muted,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        if (rate != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              "£${rate.toString()}/hour",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.greenDark,
-                              ),
-                            ),
-                          ),
-                        if (rating > 0)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.star, color: Colors.amber),
-                                const SizedBox(width: 4),
-                                Text("$rating ($reviews reviews)"),
-                              ],
-                            ),
-                          ),
-                      ],
+                      ),
                     ),
                   ),
                   StroykaSurface(

@@ -83,6 +83,8 @@ class EmployerProfileScreen extends StatelessWidget {
               .toList();
 
           final logo = data["photo"];
+          final headerImage =
+              (data["profileHeaderImage"] ?? data["headerImage"])?.toString();
           final photos = List<String>.from(data["companyPhotos"] ?? []);
 
           return DefaultTabController(
@@ -91,30 +93,52 @@ class EmployerProfileScreen extends StatelessWidget {
               child: Column(
                 children: [
                   StroykaSurface(
-                    margin: const EdgeInsets.fromLTRB(0, 12, 0, 10),
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      children: [
-                        CircleAvatar(
-                          radius: 50,
-                          backgroundColor: Colors.grey.shade300,
-                          backgroundImage:
-                              logo is String ? NetworkImage(logo) : null,
-                          child: logo == null
-                              ? const Icon(Icons.business, size: 40)
+                    margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                    padding: EdgeInsets.zero,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          image: headerImage != null && headerImage.isNotEmpty
+                              ? DecorationImage(
+                                  image: NetworkImage(headerImage),
+                                  fit: BoxFit.cover,
+                                  opacity: 0.30,
+                                )
                               : null,
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          name,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.ink,
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                          color: Colors.white.withValues(
+                            alpha: headerImage != null && headerImage.isNotEmpty
+                                ? 0.58
+                                : 0,
+                          ),
+                          child: Column(
+                            children: [
+                              CircleAvatar(
+                                radius: 42,
+                                backgroundColor: Colors.grey.shade300,
+                                backgroundImage:
+                                    logo is String ? NetworkImage(logo) : null,
+                                child: logo == null
+                                    ? const Icon(Icons.business, size: 34)
+                                    : null,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                name,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 25,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.ink,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
                   StroykaSurface(

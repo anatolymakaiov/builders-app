@@ -294,7 +294,6 @@ class ApplicantsScreen extends StatelessWidget {
 
                     final name = userData?["name"] ?? "Worker";
                     final trade = userData?["trade"] ?? "";
-                    final rate = userData?["rate"];
                     final photo = userData?["photo"];
 
                     return InkWell(
@@ -382,8 +381,6 @@ class ApplicantsScreen extends StatelessWidget {
                                           style: const TextStyle(
                                               color: Colors.grey),
                                         ),
-                                      if (rate != null)
-                                        Text("£${rate.toString()}/h"),
                                     ],
                                   ),
                                 ),

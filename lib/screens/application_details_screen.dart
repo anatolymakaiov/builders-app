@@ -729,7 +729,6 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
             final name = user["name"] ?? "Worker";
             final trade = user["trade"] ?? "";
-            final rate = user["rate"] != null ? "£${user["rate"]}/h" : "";
             final bio = user["bio"] ?? "";
             final location = user["location"] ?? "";
             final photo = user["photo"];
@@ -780,16 +779,6 @@ class ApplicationDetailsScreen extends StatelessWidget {
                                 fontSize: 18,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                          if (rate.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              rate,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
                               ),
                             ),
                           ],
