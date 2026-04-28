@@ -13,6 +13,7 @@ import 'employer_applications_screen.dart';
 import 'post_job_screen.dart';
 import 'employer_profile_screen.dart';
 import '../theme/app_theme.dart';
+import '../theme/stroyka_background.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -267,9 +268,13 @@ class _HomeScreenState extends State<HomeScreen> {
             }
 
             return Scaffold(
-              body: IndexedStack(
-                index: currentIndex,
-                children: screens,
+              body: StroykaBackground(
+                asset: AppAssets.darkBackgrounds[
+                    currentIndex % AppAssets.darkBackgrounds.length],
+                child: IndexedStack(
+                  index: currentIndex,
+                  children: screens,
+                ),
               ),
               floatingActionButton: role == "employer" && currentIndex == 0
                   ? FloatingActionButton(

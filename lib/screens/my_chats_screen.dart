@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'chat_screen.dart';
 import '../theme/app_theme.dart';
+import '../theme/stroyka_background.dart';
 
 class MyChatsScreen extends StatelessWidget {
   const MyChatsScreen({super.key});
@@ -102,224 +103,231 @@ class MyChatsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text("My Chats"),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection("chats")
-            .where("members", arrayContains: uid)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: StroykaScreenBody(
+        child: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection("chats")
+              .where("members", arrayContains: uid)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text("No chats yet"));
-          }
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return const Center(child: Text("No chats yet"));
+            }
 
-          final chats = snapshot.data!.docs;
+            final chats = snapshot.data!.docs;
 
-          /// 🔥 SORT
-          chats.sort((a, b) {
-            final aData = a.data() as Map<String, dynamic>;
-            final bData = b.data() as Map<String, dynamic>;
+            /// 🔥 SORT
+            chats.sort((a, b) {
+              final aData = a.data() as Map<String, dynamic>;
+              final bData = b.data() as Map<String, dynamic>;
 
-            final aTime = aData["updatedAt"] as Timestamp?;
-            final bTime = bData["updatedAt"] as Timestamp?;
+              final aTime = aData["updatedAt"] as Timestamp?;
+              final bTime = bData["updatedAt"] as Timestamp?;
 
-            if (aTime == null && bTime == null) return 0;
-            if (aTime == null) return 1;
-            if (bTime == null) return -1;
+              if (aTime == null && bTime == null) return 0;
+              if (aTime == null) return 1;
+              if (bTime == null) return -1;
 
-            return bTime.compareTo(aTime);
-          });
+              return bTime.compareTo(aTime);
+            });
 
-          return ListView.builder(
-            itemCount: chats.length,
-            itemBuilder: (context, index) {
-              final chat = chats[index];
-              final data = chat.data() as Map<String, dynamic>;
+            return ListView.builder(
+              itemCount: chats.length,
+              itemBuilder: (context, index) {
+                final chat = chats[index];
+                final data = chat.data() as Map<String, dynamic>;
 
-              final workerId = data["workerId"];
-              final employerId = data["employerId"];
-              final isInternalTeamChat = data["type"] == "internal_team";
-              final isTeamChat =
-                  data["type"] == "team" || data["teamId"] != null;
-              final showTeamAvatar =
-                  isInternalTeamChat || (isTeamChat && uid == employerId);
+                final workerId = data["workerId"];
+                final employerId = data["employerId"];
+                final isInternalTeamChat = data["type"] == "internal_team";
+                final isTeamChat =
+                    data["type"] == "team" || data["teamId"] != null;
+                final showTeamAvatar =
+                    isInternalTeamChat || (isTeamChat && uid == employerId);
 
-              final isWorker = uid == workerId;
+                final isWorker = uid == workerId;
 
-              final unread = isWorker
-                  ? (data["unreadCount_worker"] ?? 0)
-                  : (data["unreadCount_employer"] ?? 0);
+                final unread = isWorker
+                    ? (data["unreadCount_worker"] ?? 0)
+                    : (data["unreadCount_employer"] ?? 0);
 
-              final otherUserId =
-                  isTeamChat ? employerId : (isWorker ? employerId : workerId);
-              final displayCollection = showTeamAvatar ? "teams" : "users";
-              final displayId = showTeamAvatar ? data["teamId"] : otherUserId;
+                final otherUserId = isTeamChat
+                    ? employerId
+                    : (isWorker ? employerId : workerId);
+                final displayCollection = showTeamAvatar ? "teams" : "users";
+                final displayId = showTeamAvatar ? data["teamId"] : otherUserId;
 
-              if (displayId == null) {
-                return const SizedBox();
-              }
+                if (displayId == null) {
+                  return const SizedBox();
+                }
 
-              final updatedAt = data["updatedAt"] as Timestamp?;
+                final updatedAt = data["updatedAt"] as Timestamp?;
 
-              final typingWorker = data["typing_worker"] ?? false;
-              final typingEmployer = data["typing_employer"] ?? false;
+                final typingWorker = data["typing_worker"] ?? false;
+                final typingEmployer = data["typing_employer"] ?? false;
 
-              final otherTyping = isWorker ? typingEmployer : typingWorker;
+                final otherTyping = isWorker ? typingEmployer : typingWorker;
 
-              final lastMessage = data["lastMessage"] ?? "";
-              final lastMessageType = data["lastMessageType"] ?? "text";
+                final lastMessage = data["lastMessage"] ?? "";
+                final lastMessageType = data["lastMessageType"] ?? "text";
 
-              return StreamBuilder<DocumentSnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection(displayCollection)
-                    .doc(displayId)
-                    .snapshots(),
-                builder: (context, displaySnap) {
-                  final displayData =
-                      displaySnap.data?.data() as Map<String, dynamic>?;
+                return StreamBuilder<DocumentSnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection(displayCollection)
+                      .doc(displayId)
+                      .snapshots(),
+                  builder: (context, displaySnap) {
+                    final displayData =
+                        displaySnap.data?.data() as Map<String, dynamic>?;
 
-                  final isOnline = showTeamAvatar
-                      ? false
-                      : displayData?["isOnline"] ?? false;
-                  final avatarUrl = avatarFrom(displayData);
-                  final chatName = showTeamAvatar
-                      ? (displayData?["name"] ?? data["teamName"] ?? "Team")
-                      : isWorker
-                          ? (displayData?["companyName"] ??
-                              displayData?["name"] ??
-                              data["employerName"] ??
-                              "Employer")
-                          : (displayData?["name"] ??
-                              data["workerName"] ??
-                              "Worker");
-                  final isTyping = otherTyping && isOnline;
+                    final isOnline = showTeamAvatar
+                        ? false
+                        : displayData?["isOnline"] ?? false;
+                    final avatarUrl = avatarFrom(displayData);
+                    final chatName = showTeamAvatar
+                        ? (displayData?["name"] ?? data["teamName"] ?? "Team")
+                        : isWorker
+                            ? (displayData?["companyName"] ??
+                                displayData?["name"] ??
+                                data["employerName"] ??
+                                "Employer")
+                            : (displayData?["name"] ??
+                                data["workerName"] ??
+                                "Worker");
+                    final isTyping = otherTyping && isOnline;
 
-                  return InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChatScreen(chatId: chat.id),
-                        ),
-                      );
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      child: Row(
-                        children: [
-                          chatAvatar(
-                            avatarUrl: avatarUrl,
-                            isOnline: isOnline,
-                            fallbackIcon:
-                                showTeamAvatar ? Icons.group : Icons.person,
+                    return InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChatScreen(chatId: chat.id),
                           ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        child: Row(
+                          children: [
+                            chatAvatar(
+                              avatarUrl: avatarUrl,
+                              isOnline: isOnline,
+                              fallbackIcon:
+                                  showTeamAvatar ? Icons.group : Icons.person,
+                            ),
 
-                          const SizedBox(width: 12),
+                            const SizedBox(width: 12),
 
-                          /// 💬 TEXT
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                /// NAME + TIME
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        chatName,
-                                        style: TextStyle(
-                                          fontWeight: unread > 0
-                                              ? FontWeight.bold
-                                              : FontWeight.w500,
-                                          fontSize: 16,
+                            /// 💬 TEXT
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  /// NAME + TIME
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          chatName,
+                                          style: TextStyle(
+                                            fontWeight: unread > 0
+                                                ? FontWeight.bold
+                                                : FontWeight.w500,
+                                            fontSize: 16,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                    ),
-                                    Text(
-                                      formatTime(updatedAt),
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-
-                                const SizedBox(height: 4),
-
-                                /// MESSAGE
-                                Row(
-                                  children: [
-                                    if (!isTyping && lastMessageType != "text")
-                                      const Padding(
-                                        padding: EdgeInsets.only(right: 4),
-                                        child: Icon(
-                                          Icons.attach_file,
-                                          size: 16,
+                                      Text(
+                                        formatTime(updatedAt),
+                                        style: const TextStyle(
+                                          fontSize: 12,
                                           color: Colors.grey,
                                         ),
                                       ),
-                                    Expanded(
-                                      child: Text(
-                                        isTyping
-                                            ? "typing..."
-                                            : lastMessagePreview(
-                                                lastMessageType,
-                                                lastMessage,
-                                              ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: isTyping
-                                              ? Colors.green
-                                              : Colors.grey[700],
-                                          fontStyle: isTyping
-                                              ? FontStyle.italic
-                                              : FontStyle.normal,
-                                          fontWeight: unread > 0
-                                              ? FontWeight.w600
-                                              : FontWeight.normal,
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 4),
+
+                                  /// MESSAGE
+                                  Row(
+                                    children: [
+                                      if (!isTyping &&
+                                          lastMessageType != "text")
+                                        const Padding(
+                                          padding: EdgeInsets.only(right: 4),
+                                          child: Icon(
+                                            Icons.attach_file,
+                                            size: 16,
+                                            color: Colors.grey,
+                                          ),
                                         ),
-                                      ),
-                                    ),
-                                    if (unread > 0)
-                                      Container(
-                                        margin: const EdgeInsets.only(left: 8),
-                                        padding: const EdgeInsets.all(6),
-                                        decoration: const BoxDecoration(
-                                          color: AppColors.green,
-                                          shape: BoxShape.circle,
-                                        ),
+                                      Expanded(
                                         child: Text(
-                                          unread > 9 ? "9+" : unread.toString(),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
+                                          isTyping
+                                              ? "typing..."
+                                              : lastMessagePreview(
+                                                  lastMessageType,
+                                                  lastMessage,
+                                                ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: isTyping
+                                                ? Colors.green
+                                                : Colors.grey[700],
+                                            fontStyle: isTyping
+                                                ? FontStyle.italic
+                                                : FontStyle.normal,
+                                            fontWeight: unread > 0
+                                                ? FontWeight.w600
+                                                : FontWeight.normal,
                                           ),
                                         ),
                                       ),
-                                  ],
-                                ),
-                              ],
+                                      if (unread > 0)
+                                        Container(
+                                          margin:
+                                              const EdgeInsets.only(left: 8),
+                                          padding: const EdgeInsets.all(6),
+                                          decoration: const BoxDecoration(
+                                            color: AppColors.green,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Text(
+                                            unread > 9
+                                                ? "9+"
+                                                : unread.toString(),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 10,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                },
-              );
-            },
-          );
-        },
+                    );
+                  },
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

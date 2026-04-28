@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/job.dart';
 import 'job_details_screen.dart';
 import '../theme/app_theme.dart';
+import '../theme/stroyka_background.dart';
 
 class EmployerDashboardScreen extends StatefulWidget {
   const EmployerDashboardScreen({super.key});
@@ -458,127 +459,129 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection("jobs")
-            .where("ownerId", isEqualTo: ownerId)
-            .orderBy("createdAt", descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (!snapshot.hasData) {
-            return const Center(child: Text("Error loading jobs"));
-          }
-
-          final jobs = snapshot.data!.docs.map((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            return Job.fromFirestore(doc.id, data);
-          }).toList();
-
-          final tradeSet = <String>{};
-          final siteSet = <String>{};
-
-          for (var job in jobs) {
-            if (job.trade.isNotEmpty) tradeSet.add(job.trade);
-            if (job.site.isNotEmpty) siteSet.add(job.site);
-          }
-
-          final tradeList = ["All", ...tradeSet];
-          final siteList = ["All", ...siteSet];
-
-          final filteredJobs = jobs.where((job) {
-            if (selectedTrade != "All" &&
-                job.trade.toLowerCase().trim() !=
-                    selectedTrade.toLowerCase().trim()) {
-              return false;
+      body: StroykaScreenBody(
+        child: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection("jobs")
+              .where("ownerId", isEqualTo: ownerId)
+              .orderBy("createdAt", descending: true)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
             }
 
-            if (selectedSite != "All" &&
-                job.site.toLowerCase().trim() !=
-                    selectedSite.toLowerCase().trim()) {
-              return false;
+            if (!snapshot.hasData) {
+              return const Center(child: Text("Error loading jobs"));
             }
 
-            return true;
-          }).toList();
+            final jobs = snapshot.data!.docs.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return Job.fromFirestore(doc.id, data);
+            }).toList();
 
-          return FutureBuilder<DocumentSnapshot>(
-            future: FirebaseFirestore.instance
-                .collection("users")
-                .doc(ownerId)
-                .get(),
-            builder: (context, employerSnapshot) {
-              final employerData =
-                  employerSnapshot.data?.data() as Map<String, dynamic>?;
+            final tradeSet = <String>{};
+            final siteSet = <String>{};
 
-              return Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButton<String>(
-                            value: tradeList.contains(selectedTrade)
-                                ? selectedTrade
-                                : "All",
-                            isExpanded: true,
-                            items: tradeList.map((trade) {
-                              return DropdownMenuItem(
-                                value: trade,
-                                child: Text(trade),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                selectedTrade = value!;
-                              });
-                            },
+            for (var job in jobs) {
+              if (job.trade.isNotEmpty) tradeSet.add(job.trade);
+              if (job.site.isNotEmpty) siteSet.add(job.site);
+            }
+
+            final tradeList = ["All", ...tradeSet];
+            final siteList = ["All", ...siteSet];
+
+            final filteredJobs = jobs.where((job) {
+              if (selectedTrade != "All" &&
+                  job.trade.toLowerCase().trim() !=
+                      selectedTrade.toLowerCase().trim()) {
+                return false;
+              }
+
+              if (selectedSite != "All" &&
+                  job.site.toLowerCase().trim() !=
+                      selectedSite.toLowerCase().trim()) {
+                return false;
+              }
+
+              return true;
+            }).toList();
+
+            return FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance
+                  .collection("users")
+                  .doc(ownerId)
+                  .get(),
+              builder: (context, employerSnapshot) {
+                final employerData =
+                    employerSnapshot.data?.data() as Map<String, dynamic>?;
+
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButton<String>(
+                              value: tradeList.contains(selectedTrade)
+                                  ? selectedTrade
+                                  : "All",
+                              isExpanded: true,
+                              items: tradeList.map((trade) {
+                                return DropdownMenuItem(
+                                  value: trade,
+                                  child: Text(trade),
+                                );
+                              }).toList(),
+                              onChanged: (value) {
+                                setState(() {
+                                  selectedTrade = value!;
+                                });
+                              },
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: DropdownButton<String>(
-                            value: siteList.contains(selectedSite)
-                                ? selectedSite
-                                : "All",
-                            isExpanded: true,
-                            items: siteList.map((site) {
-                              return DropdownMenuItem(
-                                value: site,
-                                child: Text(site),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                selectedSite = value!;
-                              });
-                            },
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: DropdownButton<String>(
+                              value: siteList.contains(selectedSite)
+                                  ? selectedSite
+                                  : "All",
+                              isExpanded: true,
+                              items: siteList.map((site) {
+                                return DropdownMenuItem(
+                                  value: site,
+                                  child: Text(site),
+                                );
+                              }).toList(),
+                              onChanged: (value) {
+                                setState(() {
+                                  selectedSite = value!;
+                                });
+                              },
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: filteredJobs.length,
-                      itemBuilder: (context, index) {
-                        return buildJobCard(
-                          context,
-                          filteredJobs[index],
-                          employerData,
-                        );
-                      },
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: filteredJobs.length,
+                        itemBuilder: (context, index) {
+                          return buildJobCard(
+                            context,
+                            filteredJobs[index],
+                            employerData,
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                ],
-              );
-            },
-          );
-        },
+                  ],
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

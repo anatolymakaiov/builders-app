@@ -5,6 +5,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 
+import '../theme/stroyka_background.dart';
+
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
 
@@ -66,40 +68,42 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         onPressed: pickImage,
         child: const Icon(Icons.add_a_photo),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection("portfolio")
-            .where("userId", isEqualTo: userId)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: StroykaScreenBody(
+        child: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection("portfolio")
+              .where("userId", isEqualTo: userId)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          final photos = snapshot.data!.docs;
+            final photos = snapshot.data!.docs;
 
-          if (photos.isEmpty) {
-            return const Center(
-              child: Text("No work photos yet"),
+            if (photos.isEmpty) {
+              return const Center(
+                child: Text("No work photos yet"),
+              );
+            }
+
+            return GridView.builder(
+              padding: const EdgeInsets.all(10),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              itemCount: photos.length,
+              itemBuilder: (context, index) {
+                final data = photos[index].data() as Map<String, dynamic>;
+                final url = data["imageUrl"] ?? data["image"];
+
+                return Image.network(url, fit: BoxFit.cover);
+              },
             );
-          }
-
-          return GridView.builder(
-            padding: const EdgeInsets.all(10),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
-            itemCount: photos.length,
-            itemBuilder: (context, index) {
-              final data = photos[index].data() as Map<String, dynamic>;
-              final url = data["imageUrl"] ?? data["image"];
-
-              return Image.network(url, fit: BoxFit.cover);
-            },
-          );
-        },
+          },
+        ),
       ),
     );
   }

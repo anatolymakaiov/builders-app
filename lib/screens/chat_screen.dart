@@ -13,6 +13,7 @@ import 'dart:async';
 import 'dart:io';
 import 'image_viewer_screen.dart';
 import '../theme/app_theme.dart';
+import '../theme/stroyka_background.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -649,279 +650,283 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                 ],
               ),
-              body: Column(
-                children: [
-                  Expanded(
-                    child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection("chats")
-                          .doc(widget.chatId)
-                          .collection("messages")
-                          .orderBy("createdAt")
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        }
+              body: StroykaScreenBody(
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection("chats")
+                            .doc(widget.chatId)
+                            .collection("messages")
+                            .orderBy("createdAt")
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          }
 
-                        final messages = snapshot.data!.docs;
-                        preloadImages(messages);
+                          final messages = snapshot.data!.docs;
+                          preloadImages(messages);
 
-                        return ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.all(10),
-                          itemCount: messages.length,
-                          itemBuilder: (context, index) {
-                            final doc = messages[index];
-                            final data = doc.data() as Map<String, dynamic>;
+                          return ListView.builder(
+                            controller: scrollController,
+                            padding: const EdgeInsets.all(10),
+                            itemCount: messages.length,
+                            itemBuilder: (context, index) {
+                              final doc = messages[index];
+                              final data = doc.data() as Map<String, dynamic>;
 
-                            final isMe = data["senderId"] == uid;
-                            final type = data["type"] ?? "text";
+                              final isMe = data["senderId"] == uid;
+                              final type = data["type"] ?? "text";
 
-                            final ts = data["createdAt"] as Timestamp?;
-                            final date = ts?.toDate();
-                            final time = formatTime(ts);
+                              final ts = data["createdAt"] as Timestamp?;
+                              final date = ts?.toDate();
+                              final time = formatTime(ts);
 
-                            bool showDate = index == 0;
+                              bool showDate = index == 0;
 
-                            if (!showDate && index > 0) {
-                              final prev = messages[index - 1].data()
-                                  as Map<String, dynamic>;
-                              final prevDate =
-                                  (prev["createdAt"] as Timestamp?)?.toDate();
+                              if (!showDate && index > 0) {
+                                final prev = messages[index - 1].data()
+                                    as Map<String, dynamic>;
+                                final prevDate =
+                                    (prev["createdAt"] as Timestamp?)?.toDate();
 
-                              if (date != null && prevDate != null) {
-                                showDate = date.day != prevDate.day ||
-                                    date.month != prevDate.month ||
-                                    date.year != prevDate.year;
+                                if (date != null && prevDate != null) {
+                                  showDate = date.day != prevDate.day ||
+                                      date.month != prevDate.month ||
+                                      date.year != prevDate.year;
+                                }
                               }
-                            }
 
-                            final readBy =
-                                List<String>.from(data["readBy"] ?? []);
-                            final isRead = readBy.length > 1;
+                              final readBy =
+                                  List<String>.from(data["readBy"] ?? []);
+                              final isRead = readBy.length > 1;
 
-                            if (!readBy.contains(uid)) {
-                              FirebaseFirestore.instance
-                                  .collection("chats")
-                                  .doc(widget.chatId)
-                                  .collection("messages")
-                                  .doc(doc.id)
-                                  .update({
-                                "readBy": FieldValue.arrayUnion([uid]),
-                              });
-                            }
+                              if (!readBy.contains(uid)) {
+                                FirebaseFirestore.instance
+                                    .collection("chats")
+                                    .doc(widget.chatId)
+                                    .collection("messages")
+                                    .doc(doc.id)
+                                    .update({
+                                  "readBy": FieldValue.arrayUnion([uid]),
+                                });
+                              }
 
-                            return Column(
-                              children: [
-                                if (showDate && date != null)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 10),
-                                    child: Text(formatDateLabel(date)),
-                                  ),
-                                Align(
-                                  alignment: isMe
-                                      ? Alignment.centerRight
-                                      : Alignment.centerLeft,
-                                  child: Container(
-                                    margin:
-                                        const EdgeInsets.symmetric(vertical: 4),
-                                    padding: const EdgeInsets.all(12),
-                                    constraints:
-                                        const BoxConstraints(maxWidth: 260),
-                                    decoration: BoxDecoration(
-                                      color: isMe
-                                          ? AppColors.surfaceAlt
-                                          : Colors.grey.shade200,
-                                      borderRadius: BorderRadius.circular(8),
+                              return Column(
+                                children: [
+                                  if (showDate && date != null)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 10),
+                                      child: Text(formatDateLabel(date)),
                                     ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.end,
-                                      children: [
-                                        if (type == "text")
-                                          Text(data["text"] ?? ""),
-                                        if (type == "image" &&
-                                            (data["imageUrl"] != null ||
-                                                data["mediaUrl"] != null))
-                                          GestureDetector(
-                                            onTap: () {
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (_) =>
-                                                      ImageViewerScreen(
-                                                          imageUrl: data[
-                                                                  "imageUrl"] ??
-                                                              data["mediaUrl"]),
-                                                ),
-                                              );
-                                            },
-                                            child: ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                              child: CachedNetworkImage(
-                                                imageUrl: data["imageUrl"],
-                                                width: 200,
-                                                fit: BoxFit.cover,
-                                                placeholder: (context, url) =>
-                                                    Container(
+                                  Align(
+                                    alignment: isMe
+                                        ? Alignment.centerRight
+                                        : Alignment.centerLeft,
+                                    child: Container(
+                                      margin: const EdgeInsets.symmetric(
+                                          vertical: 4),
+                                      padding: const EdgeInsets.all(12),
+                                      constraints:
+                                          const BoxConstraints(maxWidth: 260),
+                                      decoration: BoxDecoration(
+                                        color: isMe
+                                            ? AppColors.surfaceAlt
+                                            : Colors.grey.shade200,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          if (type == "text")
+                                            Text(data["text"] ?? ""),
+                                          if (type == "image" &&
+                                              (data["imageUrl"] != null ||
+                                                  data["mediaUrl"] != null))
+                                            GestureDetector(
+                                              onTap: () {
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (_) =>
+                                                        ImageViewerScreen(
+                                                            imageUrl: data[
+                                                                    "imageUrl"] ??
+                                                                data[
+                                                                    "mediaUrl"]),
+                                                  ),
+                                                );
+                                              },
+                                              child: ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                child: CachedNetworkImage(
+                                                  imageUrl: data["imageUrl"],
                                                   width: 200,
-                                                  height: 150,
-                                                  alignment: Alignment.center,
-                                                  child:
-                                                      const CircularProgressIndicator(
-                                                          strokeWidth: 2),
-                                                ),
-                                                errorWidget:
-                                                    (context, url, error) =>
-                                                        Container(
-                                                  width: 200,
-                                                  height: 150,
-                                                  alignment: Alignment.center,
-                                                  child: const Icon(
-                                                      Icons.broken_image),
+                                                  fit: BoxFit.cover,
+                                                  placeholder: (context, url) =>
+                                                      Container(
+                                                    width: 200,
+                                                    height: 150,
+                                                    alignment: Alignment.center,
+                                                    child:
+                                                        const CircularProgressIndicator(
+                                                            strokeWidth: 2),
+                                                  ),
+                                                  errorWidget:
+                                                      (context, url, error) =>
+                                                          Container(
+                                                    width: 200,
+                                                    height: 150,
+                                                    alignment: Alignment.center,
+                                                    child: const Icon(
+                                                        Icons.broken_image),
+                                                  ),
                                                 ),
                                               ),
                                             ),
-                                          ),
-                                        if (type == "video" &&
-                                            (data["videoUrl"] != null ||
-                                                data["mediaUrl"] != null))
-                                          VideoMessagePreview(
-                                            url: data["videoUrl"] ??
-                                                data["mediaUrl"],
-                                          ),
-                                        if (type == "audio" &&
-                                            (data["audioUrl"] != null ||
-                                                data["mediaUrl"] != null))
-                                          AudioMessageBubble(
-                                            url: data["audioUrl"] ??
-                                                data["mediaUrl"],
-                                          ),
-                                        if (type == "link" &&
-                                            (data["url"] != null ||
-                                                data["text"] != null))
-                                          InkWell(
-                                            onTap: () async {
-                                              final raw =
-                                                  data["url"] ?? data["text"];
-                                              final uri =
-                                                  Uri.tryParse(raw.toString());
-                                              if (uri == null) return;
-                                              await launchUrl(
-                                                uri,
-                                                mode: LaunchMode
-                                                    .externalApplication,
-                                              );
-                                            },
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Icon(Icons.link,
-                                                    size: 18),
-                                                const SizedBox(width: 6),
-                                                Flexible(
-                                                  child: Text(
-                                                    (data["url"] ??
-                                                            data["text"])
-                                                        .toString(),
-                                                    style: const TextStyle(
-                                                      decoration: TextDecoration
-                                                          .underline,
+                                          if (type == "video" &&
+                                              (data["videoUrl"] != null ||
+                                                  data["mediaUrl"] != null))
+                                            VideoMessagePreview(
+                                              url: data["videoUrl"] ??
+                                                  data["mediaUrl"],
+                                            ),
+                                          if (type == "audio" &&
+                                              (data["audioUrl"] != null ||
+                                                  data["mediaUrl"] != null))
+                                            AudioMessageBubble(
+                                              url: data["audioUrl"] ??
+                                                  data["mediaUrl"],
+                                            ),
+                                          if (type == "link" &&
+                                              (data["url"] != null ||
+                                                  data["text"] != null))
+                                            InkWell(
+                                              onTap: () async {
+                                                final raw =
+                                                    data["url"] ?? data["text"];
+                                                final uri = Uri.tryParse(
+                                                    raw.toString());
+                                                if (uri == null) return;
+                                                await launchUrl(
+                                                  uri,
+                                                  mode: LaunchMode
+                                                      .externalApplication,
+                                                );
+                                              },
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(Icons.link,
+                                                      size: 18),
+                                                  const SizedBox(width: 6),
+                                                  Flexible(
+                                                    child: Text(
+                                                      (data["url"] ??
+                                                              data["text"])
+                                                          .toString(),
+                                                      style: const TextStyle(
+                                                        decoration:
+                                                            TextDecoration
+                                                                .underline,
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
-                                              ],
+                                                ],
+                                              ),
                                             ),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(time,
+                                                  style: const TextStyle(
+                                                      fontSize: 10)),
+                                              const SizedBox(width: 4),
+                                              if (isMe)
+                                                Icon(Icons.done_all,
+                                                    size: 16,
+                                                    color: isRead
+                                                        ? AppColors.greenDark
+                                                        : Colors.grey),
+                                            ],
                                           ),
-                                        const SizedBox(height: 4),
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(time,
-                                                style: const TextStyle(
-                                                    fontSize: 10)),
-                                            const SizedBox(width: 4),
-                                            if (isMe)
-                                              Icon(Icons.done_all,
-                                                  size: 16,
-                                                  color: isRead
-                                                      ? AppColors.greenDark
-                                                      : Colors.grey),
-                                          ],
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  if (isTyping)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 12, bottom: 6),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text("typing..."),
+                                ],
+                              );
+                            },
+                          );
+                        },
                       ),
                     ),
-                  SafeArea(
-                    child: Container(
-                      color: AppColors.navy,
-                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-                      child: Row(
-                        children: [
-                          IconButton.filled(
-                            style: IconButton.styleFrom(
-                              backgroundColor: AppColors.green,
-                              foregroundColor: Colors.white,
+                    if (isTyping)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 12, bottom: 6),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text("typing..."),
+                        ),
+                      ),
+                    SafeArea(
+                      child: Container(
+                        color: AppColors.navy,
+                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                        child: Row(
+                          children: [
+                            IconButton.filled(
+                              style: IconButton.styleFrom(
+                                backgroundColor: AppColors.green,
+                                foregroundColor: Colors.white,
+                              ),
+                              icon: const Icon(Icons.add),
+                              onPressed: showAttachmentMenu,
                             ),
-                            icon: const Icon(Icons.add),
-                            onPressed: showAttachmentMenu,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: controller,
-                              onChanged: handleTypingChanged,
-                              decoration: const InputDecoration(
-                                hintText: "Type a message",
-                                filled: true,
-                                fillColor: Colors.white,
-                                contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: controller,
+                                onChanged: handleTypingChanged,
+                                decoration: const InputDecoration(
+                                  hintText: "Type a message",
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              isRecording ? Icons.stop_circle : Icons.mic,
-                              color: isRecording ? Colors.red : Colors.white,
+                            IconButton(
+                              icon: Icon(
+                                isRecording ? Icons.stop_circle : Icons.mic,
+                                color: isRecording ? Colors.red : Colors.white,
+                              ),
+                              onPressed: toggleRecording,
                             ),
-                            onPressed: toggleRecording,
-                          ),
-                          IconButton.filled(
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.white70,
-                              foregroundColor: AppColors.navy,
+                            IconButton.filled(
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.white70,
+                                foregroundColor: AppColors.navy,
+                              ),
+                              icon: const Icon(Icons.send),
+                              onPressed: sendMessage,
                             ),
-                            icon: const Icon(Icons.send),
-                            onPressed: sendMessage,
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           },

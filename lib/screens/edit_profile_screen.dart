@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
 
 import 'portfolio_screen.dart';
+import '../theme/stroyka_background.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -666,9 +667,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           )
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: buildForm(),
+      body: StroykaScreenBody(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: buildForm(),
+        ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(

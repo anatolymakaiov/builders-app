@@ -10,6 +10,7 @@ import '../models/job.dart';
 import '../services/calendar_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
+import '../theme/stroyka_background.dart';
 
 class JobDetailScreen extends StatefulWidget {
   final Job job;
@@ -978,254 +979,256 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Job")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            buildCompany(),
-            const SizedBox(height: 24),
-            buildPhotos(),
-            Text(widget.job.trade),
-            const SizedBox(height: 4),
-            Text(
-              widget.job.title,
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            buildRateCard(),
-
-            buildPositionsInfo(),
-
-            /// 🔥 DURATION (НОВОЕ)
-            if (widget.job.duration.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Row(
-                  children: [
-                    const Icon(Icons.timer_outlined, size: 18),
-                    const SizedBox(width: 6),
-                    Text(
-                      widget.job.duration,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+      body: StroykaScreenBody(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              buildCompany(),
+              const SizedBox(height: 24),
+              buildPhotos(),
+              Text(widget.job.trade),
+              const SizedBox(height: 4),
+              Text(
+                widget.job.title,
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
                 ),
-              ),
-            if (widget.job.weeklyHours.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Row(
-                  children: [
-                    const Icon(Icons.schedule, size: 18),
-                    const SizedBox(width: 6),
-                    Text(
-                      "${widget.job.weeklyHours} hours per week",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 24),
-            buildLocation(),
-            const SizedBox(height: 24),
-            buildDescription(),
-            buildJobInfoSection(
-              "Candidate requirements",
-              widget.job.candidateRequirements,
-            ),
-            buildJobInfoSection(
-              "Required documents / certifications",
-              widget.job.requiredDocuments,
-            ),
-            buildYourOffer(),
-            const SizedBox(height: 30),
-            if (userId != widget.job.ownerId) ...[
-              OutlinedButton.icon(
-                onPressed: openMaps,
-                icon: const Icon(Icons.map),
-                label: const Text("Show location on map"),
               ),
               const SizedBox(height: 20),
-            ],
 
-            buildEditButton(),
-            const SizedBox(height: 10),
+              buildRateCard(),
 
-            if (userId == widget.job.ownerId) ...[
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    await FirebaseFirestore.instance
-                        .collection("jobs")
-                        .doc(widget.job.id)
-                        .update({
-                      "status": "completed",
-                    });
+              buildPositionsInfo(),
 
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Job completed")),
-                    );
-                  },
-                  icon: const Icon(Icons.check_circle, color: Colors.green),
-                  label: const Text(
-                    "Complete job",
-                    style: TextStyle(color: Colors.green),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.green),
+              /// 🔥 DURATION (НОВОЕ)
+              if (widget.job.duration.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.timer_outlined, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        widget.job.duration,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 10),
-            ],
-            if (userId == widget.job.ownerId)
-              FutureBuilder<QuerySnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection("applications")
-                    .where("jobId", isEqualTo: widget.job.id)
-                    .get(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const SizedBox();
-
-                  final docs = snapshot.data!.docs;
-
-                  int pending = 0;
-                  int negotiation = 0;
-                  int offer = 0;
-                  int hired = 0;
-                  int rejected = 0;
-
-                  for (var doc in docs) {
-                    final status =
-                        (doc.data() as Map<String, dynamic>)["status"] ??
-                            "pending";
-
-                    if (status == "pending") pending++;
-                    if (status == "negotiation") negotiation++;
-                    if (status == "offer_sent") offer++;
-                    if (status == "offer_accepted") hired++;
-                    if (status == "rejected") rejected++;
-                  }
-
-                  return Container(
-                    margin: const EdgeInsets.only(top: 20),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "Applications",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+              if (widget.job.weeklyHours.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.schedule, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        "${widget.job.weeklyHours} hours per week",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w500,
                         ),
-                        const SizedBox(height: 10),
-                        Text("Total: ${docs.length}"),
-                        Text("New: $pending"),
-                        Text("Negotiation: $negotiation"),
-                        Text("Offer sent: $offer"),
-                        Text("Hired: $hired"),
-                        Text("Rejected: $rejected"),
-                      ],
-                    ),
-                  );
-                },
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 24),
+              buildLocation(),
+              const SizedBox(height: 24),
+              buildDescription(),
+              buildJobInfoSection(
+                "Candidate requirements",
+                widget.job.candidateRequirements,
               ),
+              buildJobInfoSection(
+                "Required documents / certifications",
+                widget.job.requiredDocuments,
+              ),
+              buildYourOffer(),
+              const SizedBox(height: 30),
+              if (userId != widget.job.ownerId) ...[
+                OutlinedButton.icon(
+                  onPressed: openMaps,
+                  icon: const Icon(Icons.map),
+                  label: const Text("Show location on map"),
+                ),
+                const SizedBox(height: 20),
+              ],
 
-            /// 👇 APPLY (только для worker)
-            if (userId != widget.job.ownerId) ...[
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final uid = userId;
-                    if (uid == null) return;
+              buildEditButton(),
+              const SizedBox(height: 10),
 
-                    final employerId = widget.job.ownerId;
-
-                    /// 🔥 ищем существующий чат
-                    final existing = await FirebaseFirestore.instance
-                        .collection("chats")
-                        .where("jobId", isEqualTo: widget.job.id)
-                        .where("participants", arrayContains: uid)
-                        .get();
-
-                    String chatId;
-
-                    if (existing.docs.isNotEmpty) {
-                      chatId = existing.docs.first.id;
-                    } else {
-                      /// 🔥 создаём новый чат
-                      final doc = await FirebaseFirestore.instance
-                          .collection("chats")
-                          .add({
-                        /// 🔥 ОСНОВА
-                        "jobId": widget.job.id,
-                        "participants": [uid, employerId],
-
-                        /// 🔥 ДЛЯ ТВОЕГО ЧАТА (старого UI)
-                        "workerId": uid,
-                        "employerId": employerId,
-
-                        "workerName": "Worker",
-                        "employerName": "Employer",
-
-                        /// 🔥 СЧЁТЧИКИ
-                        "unreadCount_worker": 0,
-                        "unreadCount_employer": 0,
-
-                        /// 🔥 TYPING
-                        "typing_worker": false,
-                        "typing_employer": false,
-
-                        /// 🔥 СООБЩЕНИЯ
-                        "lastMessage": "",
-                        "lastMessageType": "text",
-
-                        /// 🔥 ДАТЫ
-                        "createdAt": FieldValue.serverTimestamp(),
-                        "updatedAt": FieldValue.serverTimestamp(),
+              if (userId == widget.job.ownerId) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await FirebaseFirestore.instance
+                          .collection("jobs")
+                          .doc(widget.job.id)
+                          .update({
+                        "status": "completed",
                       });
 
-                      chatId = doc.id;
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Job completed")),
+                      );
+                    },
+                    icon: const Icon(Icons.check_circle, color: Colors.green),
+                    label: const Text(
+                      "Complete job",
+                      style: TextStyle(color: Colors.green),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.green),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+              if (userId == widget.job.ownerId)
+                FutureBuilder<QuerySnapshot>(
+                  future: FirebaseFirestore.instance
+                      .collection("applications")
+                      .where("jobId", isEqualTo: widget.job.id)
+                      .get(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const SizedBox();
+
+                    final docs = snapshot.data!.docs;
+
+                    int pending = 0;
+                    int negotiation = 0;
+                    int offer = 0;
+                    int hired = 0;
+                    int rejected = 0;
+
+                    for (var doc in docs) {
+                      final status =
+                          (doc.data() as Map<String, dynamic>)["status"] ??
+                              "pending";
+
+                      if (status == "pending") pending++;
+                      if (status == "negotiation") negotiation++;
+                      if (status == "offer_sent") offer++;
+                      if (status == "offer_accepted") hired++;
+                      if (status == "rejected") rejected++;
                     }
 
-                    if (!context.mounted) return;
-
-                    /// 🔥 переход в чат (если экран есть)
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ChatScreen(chatId: chatId),
+                    return Container(
+                      margin: const EdgeInsets.only(top: 20),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Applications",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text("Total: ${docs.length}"),
+                          Text("New: $pending"),
+                          Text("Negotiation: $negotiation"),
+                          Text("Offer sent: $offer"),
+                          Text("Hired: $hired"),
+                          Text("Rejected: $rejected"),
+                        ],
                       ),
                     );
                   },
-                  icon: const Icon(Icons.chat),
-                  label: const Text("Message employer"),
                 ),
-              ),
-              const SizedBox(height: 10),
-              buildApplyButton(),
+
+              /// 👇 APPLY (только для worker)
+              if (userId != widget.job.ownerId) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final uid = userId;
+                      if (uid == null) return;
+
+                      final employerId = widget.job.ownerId;
+
+                      /// 🔥 ищем существующий чат
+                      final existing = await FirebaseFirestore.instance
+                          .collection("chats")
+                          .where("jobId", isEqualTo: widget.job.id)
+                          .where("participants", arrayContains: uid)
+                          .get();
+
+                      String chatId;
+
+                      if (existing.docs.isNotEmpty) {
+                        chatId = existing.docs.first.id;
+                      } else {
+                        /// 🔥 создаём новый чат
+                        final doc = await FirebaseFirestore.instance
+                            .collection("chats")
+                            .add({
+                          /// 🔥 ОСНОВА
+                          "jobId": widget.job.id,
+                          "participants": [uid, employerId],
+
+                          /// 🔥 ДЛЯ ТВОЕГО ЧАТА (старого UI)
+                          "workerId": uid,
+                          "employerId": employerId,
+
+                          "workerName": "Worker",
+                          "employerName": "Employer",
+
+                          /// 🔥 СЧЁТЧИКИ
+                          "unreadCount_worker": 0,
+                          "unreadCount_employer": 0,
+
+                          /// 🔥 TYPING
+                          "typing_worker": false,
+                          "typing_employer": false,
+
+                          /// 🔥 СООБЩЕНИЯ
+                          "lastMessage": "",
+                          "lastMessageType": "text",
+
+                          /// 🔥 ДАТЫ
+                          "createdAt": FieldValue.serverTimestamp(),
+                          "updatedAt": FieldValue.serverTimestamp(),
+                        });
+
+                        chatId = doc.id;
+                      }
+
+                      if (!context.mounted) return;
+
+                      /// 🔥 переход в чат (если экран есть)
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(chatId: chatId),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.chat),
+                    label: const Text("Message employer"),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                buildApplyButton(),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

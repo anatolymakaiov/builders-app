@@ -9,6 +9,7 @@ import '../models/job.dart';
 import 'job_details_screen.dart';
 import 'filter_sheet.dart';
 import '../theme/app_theme.dart';
+import '../theme/stroyka_background.dart';
 
 enum SortType {
   nearest,
@@ -432,120 +433,122 @@ class _JobListScreenState extends State<JobListScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          /// SEARCH
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              controller: searchController,
-              decoration: InputDecoration(
-                hintText: "Search jobs",
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+      body: StroykaScreenBody(
+        child: Column(
+          children: [
+            /// SEARCH
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: TextField(
+                controller: searchController,
+                decoration: InputDecoration(
+                  hintText: "Search jobs",
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
+                onChanged: (value) {
+                  setState(() {
+                    searchQuery = value.toLowerCase();
+                  });
+                },
               ),
-              onChanged: (value) {
-                setState(() {
-                  searchQuery = value.toLowerCase();
-                });
-              },
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                buildSortButton(
-                  SortType.nearest,
-                  "Distance",
-                  Icons.near_me_outlined,
-                ),
-                const SizedBox(width: 8),
-                buildSortButton(
-                  SortType.highestPay,
-                  "Pay",
-                  Icons.payments_outlined,
-                ),
-              ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  buildSortButton(
+                    SortType.nearest,
+                    "Distance",
+                    Icons.near_me_outlined,
+                  ),
+                  const SizedBox(width: 8),
+                  buildSortButton(
+                    SortType.highestPay,
+                    "Pay",
+                    Icons.payments_outlined,
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
+            const SizedBox(height: 4),
 
-          Expanded(
-            child: StreamBuilder<Set<String>>(
-              stream: userId == null
-                  ? Stream.value(<String>{})
-                  : jobRepository.getSavedJobsStream(userId),
-              builder: (context, savedSnapshot) {
-                final savedJobIds = savedSnapshot.data ?? <String>{};
+            Expanded(
+              child: StreamBuilder<Set<String>>(
+                stream: userId == null
+                    ? Stream.value(<String>{})
+                    : jobRepository.getSavedJobsStream(userId),
+                builder: (context, savedSnapshot) {
+                  final savedJobIds = savedSnapshot.data ?? <String>{};
 
-                return StreamBuilder<List<Job>>(
-                  stream: jobRepository.getJobs(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-
-                    final jobs = snapshot.data!;
-
-                    final filteredJobs = jobs.where((job) {
-                      if (searchQuery.isNotEmpty &&
-                          !job.title.toLowerCase().contains(searchQuery) &&
-                          !job.trade.toLowerCase().contains(searchQuery)) {
-                        return false;
+                  return StreamBuilder<List<Job>>(
+                    stream: jobRepository.getJobs(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
                       }
 
-                      if (filters.trade != "All" &&
-                          job.trade.toLowerCase() !=
-                              filters.trade.toLowerCase()) {
-                        return false;
+                      final jobs = snapshot.data!;
+
+                      final filteredJobs = jobs.where((job) {
+                        if (searchQuery.isNotEmpty &&
+                            !job.title.toLowerCase().contains(searchQuery) &&
+                            !job.trade.toLowerCase().contains(searchQuery)) {
+                          return false;
+                        }
+
+                        if (filters.trade != "All" &&
+                            job.trade.toLowerCase() !=
+                                filters.trade.toLowerCase()) {
+                          return false;
+                        }
+
+                        if (filters.jobType != "All" &&
+                            job.jobType.toLowerCase() !=
+                                filters.jobType.toLowerCase()) {
+                          return false;
+                        }
+
+                        return true;
+                      }).toList();
+
+                      /// SORT
+                      if (sortType == SortType.nearest) {
+                        filteredJobs.sort((a, b) =>
+                            calculateDistance(a.lat, a.lng)
+                                .compareTo(calculateDistance(b.lat, b.lng)));
                       }
 
-                      if (filters.jobType != "All" &&
-                          job.jobType.toLowerCase() !=
-                              filters.jobType.toLowerCase()) {
-                        return false;
+                      if (sortType == SortType.highestPay) {
+                        filteredJobs.sort((a, b) => b.rate.compareTo(a.rate));
                       }
 
-                      return true;
-                    }).toList();
+                      if (sortType == SortType.newest) {
+                        filteredJobs.sort((a, b) =>
+                            (b.createdAt ?? DateTime.now())
+                                .compareTo(a.createdAt ?? DateTime.now()));
+                      }
 
-                    /// SORT
-                    if (sortType == SortType.nearest) {
-                      filteredJobs.sort((a, b) =>
-                          calculateDistance(a.lat, a.lng)
-                              .compareTo(calculateDistance(b.lat, b.lng)));
-                    }
+                      return ListView.builder(
+                        itemCount: filteredJobs.length,
+                        itemBuilder: (context, index) {
+                          final job = filteredJobs[index];
 
-                    if (sortType == SortType.highestPay) {
-                      filteredJobs.sort((a, b) => b.rate.compareTo(a.rate));
-                    }
-
-                    if (sortType == SortType.newest) {
-                      filteredJobs.sort((a, b) =>
-                          (b.createdAt ?? DateTime.now())
-                              .compareTo(a.createdAt ?? DateTime.now()));
-                    }
-
-                    return ListView.builder(
-                      itemCount: filteredJobs.length,
-                      itemBuilder: (context, index) {
-                        final job = filteredJobs[index];
-
-                        return buildJobCard(
-                          job,
-                          savedJobIds.contains(job.id),
-                        );
-                      },
-                    );
-                  },
-                );
-              },
+                          return buildJobCard(
+                            job,
+                            savedJobIds.contains(job.id),
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

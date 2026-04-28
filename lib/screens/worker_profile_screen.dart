@@ -10,6 +10,7 @@ import 'edit_profile_screen.dart';
 import '../services/chat_service.dart';
 import 'chat_screen.dart';
 import '../widgets/phone_link.dart';
+import '../theme/stroyka_background.dart';
 
 class WorkerProfileScreen extends StatelessWidget {
   final String userId;
@@ -677,289 +678,294 @@ class WorkerProfileScreen extends StatelessWidget {
           final rating = (data["rating"] ?? 0).toDouble();
           final reviews = data["reviewsCount"] ?? 0;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                /// 🔥 HEADER
-                Center(
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 50,
-                        backgroundColor: Colors.grey.shade300,
-                        backgroundImage:
-                            photo != null ? NetworkImage(photo) : null,
-                        child: photo == null
-                            ? const Icon(Icons.person, size: 40)
-                            : null,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (trade.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          trade,
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                      if (rate != null) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          "£${rate.toString()}/hour",
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                          ),
-                        ),
-                      ],
-
-                      /// ⭐ RATING
-                      if (rating > 0) ...[
-                        const SizedBox(height: 6),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.star, color: Colors.amber),
-                            const SizedBox(width: 4),
-                            Text("$rating ($reviews reviews)"),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 30),
-
-                buildPhoneSection(phone),
-                buildInfoSection("Location", location),
-                buildInfoSection("About", bio),
-                buildInfoSection("Work experience", experienceDuration),
-                buildInfoSection("Experience details", experience),
-                buildInfoSection("Permits / licences", permits),
-                buildInfoSection("Qualifications", qualifications),
-                buildInfoSection("Certifications", certifications),
-                buildInfoSection("Education (optional)", education),
-                buildInfoSection("Previous work", previousWork),
-                buildReferencesSection(references),
-                buildPortfolioGallery(),
-                buildReviewsSection(!isMyProfile && currentRole == "employer"),
-                if (status == "offer_sent") ...[
-                  const SizedBox(height: 20),
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: Colors.green.withValues(alpha: 0.3)),
-                    ),
+          return StroykaScreenBody(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  /// 🔥 HEADER
+                  Center(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          "Offer",
-                          style: TextStyle(
+                        CircleAvatar(
+                          radius: 50,
+                          backgroundColor: Colors.grey.shade300,
+                          backgroundImage:
+                              photo != null ? NetworkImage(photo) : null,
+                          child: photo == null
+                              ? const Icon(Icons.person, size: 40)
+                              : null,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 22,
                             fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Colors.green,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        if (offerRate != null) Text("Rate: £$offerRate/hour"),
-                        if (offerNote != null &&
-                            offerNote.toString().isNotEmpty)
-                          Text("Note: $offerNote"),
-                        const SizedBox(height: 12),
-                        if (!isMyProfile)
-                          SizedBox(
-                            width: double.infinity,
+                        if (trade.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            trade,
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                        if (rate != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            "£${rate.toString()}/hour",
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
+
+                        /// ⭐ RATING
+                        if (rating > 0) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.star, color: Colors.amber),
+                              const SizedBox(width: 4),
+                              Text("$rating ($reviews reviews)"),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  buildPhoneSection(phone),
+                  buildInfoSection("Location", location),
+                  buildInfoSection("About", bio),
+                  buildInfoSection("Work experience", experienceDuration),
+                  buildInfoSection("Experience details", experience),
+                  buildInfoSection("Permits / licences", permits),
+                  buildInfoSection("Qualifications", qualifications),
+                  buildInfoSection("Certifications", certifications),
+                  buildInfoSection("Education (optional)", education),
+                  buildInfoSection("Previous work", previousWork),
+                  buildReferencesSection(references),
+                  buildPortfolioGallery(),
+                  buildReviewsSection(
+                      !isMyProfile && currentRole == "employer"),
+                  if (status == "offer_sent") ...[
+                    const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: Colors.green.withValues(alpha: 0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Offer",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Colors.green,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (offerRate != null) Text("Rate: £$offerRate/hour"),
+                          if (offerNote != null &&
+                              offerNote.toString().isNotEmpty)
+                            Text("Note: $offerNote"),
+                          const SizedBox(height: 12),
+                          if (!isMyProfile)
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: () async {
+                                  await FirebaseFirestore.instance
+                                      .collection("applications")
+                                      .doc(applicationId)
+                                      .update({
+                                    "status": "offer_accepted",
+                                  });
+
+                                  if (!context.mounted) return;
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text("Offer accepted")),
+                                  );
+                                },
+                                child: const Text("Accept offer"),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  /// 💬 MESSAGE
+                  if (employerId != null && jobId != null)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 55,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final chatId = await ChatService.getOrCreateChat(
+                            workerId: userId,
+                            employerId: employerId!,
+                            jobId: jobId!,
+                          );
+
+                          if (!context.mounted) return;
+
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(chatId: chatId),
+                            ),
+                          );
+                        },
+                        child: const Text(
+                          "Message worker",
+                          style: TextStyle(fontSize: 18),
+                        ),
+                      ),
+                    ),
+                  if (applicationId != null) ...[
+                    const SizedBox(height: 12),
+
+                    /// ACTIONS
+                    Row(
+                      children: [
+                        /// ❌ REJECT (всегда кроме accepted)
+                        if (status != "offer_accepted")
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                await FirebaseFirestore.instance
+                                    .collection("applications")
+                                    .doc(applicationId)
+                                    .update({"status": "rejected"});
+                              },
+                              child: const Text("Reject"),
+                            ),
+                          ),
+
+                        if (status != "offer_accepted")
+                          const SizedBox(width: 10),
+
+                        /// 💬 NEGOTIATION (только из pending)
+                        if (status == "pending")
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                await FirebaseFirestore.instance
+                                    .collection("applications")
+                                    .doc(applicationId)
+                                    .update({"status": "negotiation"});
+                              },
+                              child: const Text("Negotiation"),
+                            ),
+                          ),
+
+                        if (status == "pending") const SizedBox(width: 10),
+
+                        /// 💰 OFFER (pending + negotiation)
+                        if (status == "pending" || status == "negotiation")
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                final rateController = TextEditingController();
+                                final noteController = TextEditingController();
+
+                                final result = await showDialog<bool>(
+                                  context: context,
+                                  builder: (_) => AlertDialog(
+                                    title: const Text("Send Offer"),
+                                    content: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        TextField(
+                                          controller: rateController,
+                                          keyboardType: TextInputType.number,
+                                          decoration: const InputDecoration(
+                                            labelText: "Rate (£/hour)",
+                                          ),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        TextField(
+                                          controller: noteController,
+                                          decoration: const InputDecoration(
+                                            labelText: "Message (optional)",
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, false),
+                                        child: const Text("Cancel"),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, true),
+                                        child: const Text("Send"),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                if (result != true) return;
+
+                                final rate =
+                                    double.tryParse(rateController.text.trim());
+
+                                await FirebaseFirestore.instance
+                                    .collection("applications")
+                                    .doc(applicationId)
+                                    .update({
+                                  "status": "offer_sent",
+                                  "offerRate": rate,
+                                  "offerNote": noteController.text.trim(),
+                                  "offerCreatedAt":
+                                      FieldValue.serverTimestamp(),
+                                });
+                              },
+                              child: const Text("Offer"),
+                            ),
+                          ),
+
+                        /// ✅ HIRED (только после оффера)
+                        if (status == "offer_sent")
+                          Expanded(
                             child: ElevatedButton(
                               onPressed: () async {
                                 await FirebaseFirestore.instance
                                     .collection("applications")
                                     .doc(applicationId)
-                                    .update({
-                                  "status": "offer_accepted",
-                                });
-
-                                if (!context.mounted) return;
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text("Offer accepted")),
-                                );
+                                    .update({"status": "offer_accepted"});
                               },
-                              child: const Text("Accept offer"),
+                              child: const Text("Hire"),
                             ),
                           ),
                       ],
                     ),
-                  ),
+                  ],
+
+                  buildWorkerTeamsSection(context, isMyProfile),
                 ],
-
-                /// 💬 MESSAGE
-                if (employerId != null && jobId != null)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        final chatId = await ChatService.getOrCreateChat(
-                          workerId: userId,
-                          employerId: employerId!,
-                          jobId: jobId!,
-                        );
-
-                        if (!context.mounted) return;
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ChatScreen(chatId: chatId),
-                          ),
-                        );
-                      },
-                      child: const Text(
-                        "Message worker",
-                        style: TextStyle(fontSize: 18),
-                      ),
-                    ),
-                  ),
-                if (applicationId != null) ...[
-                  const SizedBox(height: 12),
-
-                  /// ACTIONS
-                  Row(
-                    children: [
-                      /// ❌ REJECT (всегда кроме accepted)
-                      if (status != "offer_accepted")
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () async {
-                              await FirebaseFirestore.instance
-                                  .collection("applications")
-                                  .doc(applicationId)
-                                  .update({"status": "rejected"});
-                            },
-                            child: const Text("Reject"),
-                          ),
-                        ),
-
-                      if (status != "offer_accepted") const SizedBox(width: 10),
-
-                      /// 💬 NEGOTIATION (только из pending)
-                      if (status == "pending")
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () async {
-                              await FirebaseFirestore.instance
-                                  .collection("applications")
-                                  .doc(applicationId)
-                                  .update({"status": "negotiation"});
-                            },
-                            child: const Text("Negotiation"),
-                          ),
-                        ),
-
-                      if (status == "pending") const SizedBox(width: 10),
-
-                      /// 💰 OFFER (pending + negotiation)
-                      if (status == "pending" || status == "negotiation")
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              final rateController = TextEditingController();
-                              final noteController = TextEditingController();
-
-                              final result = await showDialog<bool>(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: const Text("Send Offer"),
-                                  content: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      TextField(
-                                        controller: rateController,
-                                        keyboardType: TextInputType.number,
-                                        decoration: const InputDecoration(
-                                          labelText: "Rate (£/hour)",
-                                        ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      TextField(
-                                        controller: noteController,
-                                        decoration: const InputDecoration(
-                                          labelText: "Message (optional)",
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(context, false),
-                                      child: const Text("Cancel"),
-                                    ),
-                                    ElevatedButton(
-                                      onPressed: () =>
-                                          Navigator.pop(context, true),
-                                      child: const Text("Send"),
-                                    ),
-                                  ],
-                                ),
-                              );
-
-                              if (result != true) return;
-
-                              final rate =
-                                  double.tryParse(rateController.text.trim());
-
-                              await FirebaseFirestore.instance
-                                  .collection("applications")
-                                  .doc(applicationId)
-                                  .update({
-                                "status": "offer_sent",
-                                "offerRate": rate,
-                                "offerNote": noteController.text.trim(),
-                                "offerCreatedAt": FieldValue.serverTimestamp(),
-                              });
-                            },
-                            child: const Text("Offer"),
-                          ),
-                        ),
-
-                      /// ✅ HIRED (только после оффера)
-                      if (status == "offer_sent")
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              await FirebaseFirestore.instance
-                                  .collection("applications")
-                                  .doc(applicationId)
-                                  .update({"status": "offer_accepted"});
-                            },
-                            child: const Text("Hire"),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-
-                buildWorkerTeamsSection(context, isMyProfile),
-              ],
+              ),
             ),
           );
         },

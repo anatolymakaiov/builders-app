@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../theme/app_theme.dart';
+import '../theme/stroyka_background.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -60,86 +62,109 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.construction, size: 70, color: AppColors.green),
+      body: SafeArea(
+        child: Center(
+          child: StroykaSurface(
+            margin: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(22, 28, 22, 24),
+            texture: "assets/branding/texture_light_cloud.jpg",
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SvgPicture.asset(
+                  AppAssets.logo,
+                  height: 94,
+                ),
 
-              const SizedBox(height: 20),
+                const SizedBox(height: 18),
 
-              const Text(
-                "Builder Jobs",
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
-              ),
+                const Text(
+                  "STROYKA",
+                  style: TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
 
-              const SizedBox(height: 40),
+                const SizedBox(height: 6),
 
-              /// EMAIL
-              TextField(
-                controller: emailController,
-                decoration: const InputDecoration(labelText: "Email"),
-              ),
+                const Text(
+                  "Работа в строительстве",
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
 
-              const SizedBox(height: 10),
+                const SizedBox(height: 32),
 
-              /// PASSWORD
-              TextField(
-                controller: passwordController,
-                decoration: const InputDecoration(labelText: "Password"),
-                obscureText: true,
-              ),
+                /// EMAIL
+                TextField(
+                  controller: emailController,
+                  decoration: const InputDecoration(labelText: "Email"),
+                ),
 
-              const SizedBox(height: 20),
+                const SizedBox(height: 10),
 
-              /// ROLE (только при регистрации)
-              if (!isLogin)
-                DropdownButton<String>(
-                  value: role,
-                  items: const [
-                    DropdownMenuItem(value: "worker", child: Text("Worker")),
-                    DropdownMenuItem(
-                        value: "employer", child: Text("Employer")),
-                  ],
-                  onChanged: (value) {
+                /// PASSWORD
+                TextField(
+                  controller: passwordController,
+                  decoration: const InputDecoration(labelText: "Password"),
+                  obscureText: true,
+                ),
+
+                const SizedBox(height: 20),
+
+                /// ROLE (только при регистрации)
+                if (!isLogin)
+                  DropdownButton<String>(
+                    value: role,
+                    items: const [
+                      DropdownMenuItem(value: "worker", child: Text("Worker")),
+                      DropdownMenuItem(
+                          value: "employer", child: Text("Employer")),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        role = value!;
+                      });
+                    },
+                  ),
+
+                const SizedBox(height: 30),
+
+                /// BUTTON
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: loading ? null : submit,
+                    child: loading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : Text(isLogin ? "Войти" : "Зарегистрироваться"),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                /// SWITCH LOGIN / REGISTER
+                TextButton(
+                  onPressed: () {
                     setState(() {
-                      role = value!;
+                      isLogin = !isLogin;
                     });
                   },
-                ),
-
-              const SizedBox(height: 30),
-
-              /// BUTTON
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: loading ? null : submit,
-                  child: loading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : Text(isLogin ? "Login" : "Register"),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              /// SWITCH LOGIN / REGISTER
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    isLogin = !isLogin;
-                  });
-                },
-                child: Text(
-                  isLogin
-                      ? "No account? Register"
-                      : "Already have account? Login",
-                ),
-              )
-            ],
+                  child: Text(
+                    isLogin
+                        ? "Нет аккаунта? Зарегистрироваться"
+                        : "Уже есть аккаунт? Войти",
+                  ),
+                )
+              ],
+            ),
           ),
         ),
       ),

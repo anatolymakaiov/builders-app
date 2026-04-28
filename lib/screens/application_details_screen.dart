@@ -5,6 +5,7 @@ import 'worker_profile_screen.dart';
 import '../services/notification_service.dart';
 import '../widgets/phone_link.dart';
 import '../theme/app_theme.dart';
+import '../theme/stroyka_background.dart';
 
 class ApplicationDetailsScreen extends StatelessWidget {
   final String applicationId;
@@ -709,358 +710,368 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text("Application")),
-      body: FutureBuilder<DocumentSnapshot>(
-        future:
-            FirebaseFirestore.instance.collection("users").doc(workerId).get(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: StroykaScreenBody(
+        child: FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance
+              .collection("users")
+              .doc(workerId)
+              .get(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          if (!snapshot.data!.exists) {
-            return const Center(child: Text("User not found"));
-          }
+            if (!snapshot.data!.exists) {
+              return const Center(child: Text("User not found"));
+            }
 
-          final user = snapshot.data!.data() as Map<String, dynamic>;
+            final user = snapshot.data!.data() as Map<String, dynamic>;
 
-          final name = user["name"] ?? "Worker";
-          final trade = user["trade"] ?? "";
-          final rate = user["rate"] != null ? "£${user["rate"]}/h" : "";
-          final bio = user["bio"] ?? "";
-          final location = user["location"] ?? "";
-          final photo = user["photo"];
-          final isTeam = (data["type"] ?? "single") == "team";
-          final phone = user["phone"];
-          final experience = user["experience"];
-          final experienceDuration = experienceDurationText(user);
-          final permits = user["permits"];
-          final qualifications = user["qualifications"];
-          final certifications = textFromListOrString(
-              user["certificationsText"] ?? user["certifications"]);
-          final education = user["education"];
-          final previousWork = user["previousWork"];
-          final references = user["references"];
+            final name = user["name"] ?? "Worker";
+            final trade = user["trade"] ?? "";
+            final rate = user["rate"] != null ? "£${user["rate"]}/h" : "";
+            final bio = user["bio"] ?? "";
+            final location = user["location"] ?? "";
+            final photo = user["photo"];
+            final isTeam = (data["type"] ?? "single") == "team";
+            final phone = user["phone"];
+            final experience = user["experience"];
+            final experienceDuration = experienceDurationText(user);
+            final permits = user["permits"];
+            final qualifications = user["qualifications"];
+            final certifications = textFromListOrString(
+                user["certificationsText"] ?? user["certifications"]);
+            final education = user["education"];
+            final previousWork = user["previousWork"];
+            final references = user["references"];
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (!isTeam) ...[
-                  /// 👤 HEADER
-                  Center(
-                    child: Column(
-                      children: [
-                        CircleAvatar(
-                          radius: 45,
-                          backgroundColor: Colors.grey.shade300,
-                          backgroundImage:
-                              photo != null ? NetworkImage(photo) : null,
-                          child: photo == null
-                              ? const Icon(Icons.person, size: 40)
-                              : null,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          name,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!isTeam) ...[
+                    /// 👤 HEADER
+                    Center(
+                      child: Column(
+                        children: [
+                          CircleAvatar(
+                            radius: 45,
+                            backgroundColor: Colors.grey.shade300,
+                            backgroundImage:
+                                photo != null ? NetworkImage(photo) : null,
+                            child: photo == null
+                                ? const Icon(Icons.person, size: 40)
+                                : null,
                           ),
-                        ),
-                        if (trade.isNotEmpty) ...[
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 12),
                           Text(
-                            trade,
+                            name,
                             style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                        if (rate.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            rate,
-                            style: const TextStyle(
+                              fontSize: 22,
                               fontWeight: FontWeight.bold,
-                              color: Colors.green,
                             ),
                           ),
+                          if (trade.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              trade,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                          if (rate.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              rate,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 30),
-                  buildWorkerPhoneSection(phone),
-                  buildWorkerInfoSection("Location", location),
-                  buildWorkerInfoSection("About worker", bio),
-                  buildWorkerInfoSection("Work experience", experienceDuration),
-                  buildWorkerInfoSection("Experience details", experience),
-                  buildWorkerInfoSection("Permits / licences", permits),
-                  buildWorkerInfoSection("Qualifications", qualifications),
-                  buildWorkerInfoSection("Certifications", certifications),
-                  buildWorkerInfoSection("Education (optional)", education),
-                  buildWorkerInfoSection("Previous work", previousWork),
-                  buildReferencesSection(references),
-                ],
+                    const SizedBox(height: 30),
+                    buildWorkerPhoneSection(phone),
+                    buildWorkerInfoSection("Location", location),
+                    buildWorkerInfoSection("About worker", bio),
+                    buildWorkerInfoSection(
+                        "Work experience", experienceDuration),
+                    buildWorkerInfoSection("Experience details", experience),
+                    buildWorkerInfoSection("Permits / licences", permits),
+                    buildWorkerInfoSection("Qualifications", qualifications),
+                    buildWorkerInfoSection("Certifications", certifications),
+                    buildWorkerInfoSection("Education (optional)", education),
+                    buildWorkerInfoSection("Previous work", previousWork),
+                    buildReferencesSection(references),
+                  ],
 
-                if (isTeam)
-                  buildTeamProfile(context, selectedMembers)
-                else ...[
-                  buildPortfolioGallery(workerId),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                WorkerProfileScreen(userId: workerId),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.person),
-                      label: const Text("Open full profile"),
+                  if (isTeam)
+                    buildTeamProfile(context, selectedMembers)
+                  else ...[
+                    buildPortfolioGallery(workerId),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  WorkerProfileScreen(userId: workerId),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.person),
+                        label: const Text("Open full profile"),
+                      ),
                     ),
-                  ),
-                ],
-                const SizedBox(height: 40),
+                  ],
+                  const SizedBox(height: 40),
 
-                /// 🔥 BUTTONS
-                /// 🔥 ACTIONS (НОВАЯ ЛОГИКА)
-                StreamBuilder<DocumentSnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection("applications")
-                      .doc(applicationId)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const SizedBox();
+                  /// 🔥 BUTTONS
+                  /// 🔥 ACTIONS (НОВАЯ ЛОГИКА)
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection("applications")
+                        .doc(applicationId)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const SizedBox();
 
-                    final liveData =
-                        snapshot.data!.data() as Map<String, dynamic>;
-                    final status = liveData["status"] ?? "pending";
+                      final liveData =
+                          snapshot.data!.data() as Map<String, dynamic>;
+                      final status = liveData["status"] ?? "pending";
 
-                    return Column(
-                      children: [
-                        /// =========================
-                        /// PENDING
-                        /// =========================
-                        if (status == "pending") ...[
-                          /// NEGOTIATION
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: () async {
-                                if ((liveData["type"] ?? "single") == "team") {
-                                  for (var memberId in selectedMembers) {
+                      return Column(
+                        children: [
+                          /// =========================
+                          /// PENDING
+                          /// =========================
+                          if (status == "pending") ...[
+                            /// NEGOTIATION
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: () async {
+                                  if ((liveData["type"] ?? "single") ==
+                                      "team") {
+                                    for (var memberId in selectedMembers) {
+                                      await FirebaseFirestore.instance
+                                          .collection("applications")
+                                          .doc(applicationId)
+                                          .update({
+                                        "membersStatus.$memberId":
+                                            "negotiation",
+                                      });
+                                    }
                                     await FirebaseFirestore.instance
                                         .collection("applications")
                                         .doc(applicationId)
                                         .update({
-                                      "membersStatus.$memberId": "negotiation",
+                                      "status": "negotiation",
                                     });
+                                  } else {
+                                    await updateStatus(context, "negotiation");
                                   }
+
+                                  final workerId = liveData["workerId"] ??
+                                      (liveData["members"] != null
+                                          ? liveData["members"][0]
+                                          : null);
+
+                                  final employerId = liveData["employerId"];
+                                  final jobId = liveData["jobId"];
+
+                                  if (workerId == null ||
+                                      employerId == null ||
+                                      jobId == null) {
+                                    return;
+                                  }
+
+                                  final existing = await FirebaseFirestore
+                                      .instance
+                                      .collection("chats")
+                                      .where("jobId", isEqualTo: jobId)
+                                      .where("members", arrayContains: workerId)
+                                      .get();
+
+                                  String chatId;
+
+                                  if (existing.docs.isNotEmpty) {
+                                    chatId = existing.docs.first.id;
+                                  } else {
+                                    final doc = await FirebaseFirestore.instance
+                                        .collection("chats")
+                                        .add({
+                                      "jobId": jobId,
+                                      "members": [workerId, employerId],
+                                      "workerId": workerId,
+                                      "employerId": employerId,
+                                      "workerName": "Worker",
+                                      "employerName": "Employer",
+                                      "unreadCount_worker": 0,
+                                      "unreadCount_employer": 0,
+                                      "typing_worker": false,
+                                      "typing_employer": false,
+                                      "lastMessage": "",
+                                      "lastMessageType": "text",
+                                      "createdAt": FieldValue.serverTimestamp(),
+                                      "updatedAt": FieldValue.serverTimestamp(),
+                                    });
+
+                                    chatId = doc.id;
+                                  }
+
+                                  if (context.mounted) {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            ChatScreen(chatId: chatId),
+                                      ),
+                                    );
+                                  }
+                                },
+                                child:
+                                    const Text("Start negotiation / Message"),
+                              ),
+                            ),
+
+                            const SizedBox(height: 10),
+
+                            /// MAKE OFFER
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: () => openOfferDialog(context),
+                                child: const Text("Make offer"),
+                              ),
+                            ),
+
+                            const SizedBox(height: 10),
+
+                            /// REJECT
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: () async {
+                                  if ((liveData["type"] ?? "single") ==
+                                      "team") {
+                                    await FirebaseFirestore.instance
+                                        .collection("applications")
+                                        .doc(applicationId)
+                                        .update({
+                                      "status": "rejected",
+                                    });
+                                  } else {
+                                    await updateStatus(context, "rejected");
+                                  }
+                                },
+                                child: const Text("Reject"),
+                              ),
+                            ),
+                          ],
+
+                          /// =========================
+                          /// NEGOTIATION
+                          /// =========================
+                          if (status == "negotiation") ...[
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: () => openChat(context),
+                                child: const Text("Negotiation / Message"),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: () => openOfferDialog(context),
+                                child: const Text("Make offer"),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: () async {
+                                  if ((liveData["type"] ?? "single") ==
+                                      "team") {
+                                    await FirebaseFirestore.instance
+                                        .collection("applications")
+                                        .doc(applicationId)
+                                        .update({
+                                      "status": "rejected",
+                                    });
+                                  } else {
+                                    await updateStatus(context, "rejected");
+                                  }
+                                },
+                                child: const Text("Reject"),
+                              ),
+                            ),
+                          ],
+
+                          /// =========================
+                          /// OFFER SENT
+                          /// =========================
+                          if (status == "offer_sent") ...[
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: () async {
+                                  await updateStatus(context, "negotiation");
+                                },
+                                child: const Text("Withdraw offer"),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: () async {
                                   await FirebaseFirestore.instance
                                       .collection("applications")
                                       .doc(applicationId)
                                       .update({
                                     "status": "negotiation",
+                                    "offer": FieldValue.delete(),
                                   });
-                                } else {
-                                  await updateStatus(context, "negotiation");
-                                }
-
-                                final workerId = liveData["workerId"] ??
-                                    (liveData["members"] != null
-                                        ? liveData["members"][0]
-                                        : null);
-
-                                final employerId = liveData["employerId"];
-                                final jobId = liveData["jobId"];
-
-                                if (workerId == null ||
-                                    employerId == null ||
-                                    jobId == null) {
-                                  return;
-                                }
-
-                                final existing = await FirebaseFirestore
-                                    .instance
-                                    .collection("chats")
-                                    .where("jobId", isEqualTo: jobId)
-                                    .where("members", arrayContains: workerId)
-                                    .get();
-
-                                String chatId;
-
-                                if (existing.docs.isNotEmpty) {
-                                  chatId = existing.docs.first.id;
-                                } else {
-                                  final doc = await FirebaseFirestore.instance
-                                      .collection("chats")
-                                      .add({
-                                    "jobId": jobId,
-                                    "members": [workerId, employerId],
-                                    "workerId": workerId,
-                                    "employerId": employerId,
-                                    "workerName": "Worker",
-                                    "employerName": "Employer",
-                                    "unreadCount_worker": 0,
-                                    "unreadCount_employer": 0,
-                                    "typing_worker": false,
-                                    "typing_employer": false,
-                                    "lastMessage": "",
-                                    "lastMessageType": "text",
-                                    "createdAt": FieldValue.serverTimestamp(),
-                                    "updatedAt": FieldValue.serverTimestamp(),
-                                  });
-
-                                  chatId = doc.id;
-                                }
-
-                                if (context.mounted) {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          ChatScreen(chatId: chatId),
-                                    ),
-                                  );
-                                }
-                              },
-                              child: const Text("Start negotiation / Message"),
+                                },
+                                child: const Text("Reject"),
+                              ),
                             ),
-                          ),
+                          ],
 
-                          const SizedBox(height: 10),
-
-                          /// MAKE OFFER
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: () => openOfferDialog(context),
-                              child: const Text("Make offer"),
+                          /// =========================
+                          /// HIRED
+                          /// =========================
+                          if (status == "offer_accepted") ...[
+                            const SizedBox(height: 10),
+                            const Text(
+                              "Worker hired",
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-
-                          const SizedBox(height: 10),
-
-                          /// REJECT
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton(
-                              onPressed: () async {
-                                if ((liveData["type"] ?? "single") == "team") {
-                                  await FirebaseFirestore.instance
-                                      .collection("applications")
-                                      .doc(applicationId)
-                                      .update({
-                                    "status": "rejected",
-                                  });
-                                } else {
-                                  await updateStatus(context, "rejected");
-                                }
-                              },
-                              child: const Text("Reject"),
-                            ),
-                          ),
+                          ],
                         ],
-
-                        /// =========================
-                        /// NEGOTIATION
-                        /// =========================
-                        if (status == "negotiation") ...[
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: () => openChat(context),
-                              child: const Text("Negotiation / Message"),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton(
-                              onPressed: () => openOfferDialog(context),
-                              child: const Text("Make offer"),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton(
-                              onPressed: () async {
-                                if ((liveData["type"] ?? "single") == "team") {
-                                  await FirebaseFirestore.instance
-                                      .collection("applications")
-                                      .doc(applicationId)
-                                      .update({
-                                    "status": "rejected",
-                                  });
-                                } else {
-                                  await updateStatus(context, "rejected");
-                                }
-                              },
-                              child: const Text("Reject"),
-                            ),
-                          ),
-                        ],
-
-                        /// =========================
-                        /// OFFER SENT
-                        /// =========================
-                        if (status == "offer_sent") ...[
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton(
-                              onPressed: () async {
-                                await updateStatus(context, "negotiation");
-                              },
-                              child: const Text("Withdraw offer"),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton(
-                              onPressed: () async {
-                                await FirebaseFirestore.instance
-                                    .collection("applications")
-                                    .doc(applicationId)
-                                    .update({
-                                  "status": "negotiation",
-                                  "offer": FieldValue.delete(),
-                                });
-                              },
-                              child: const Text("Reject"),
-                            ),
-                          ),
-                        ],
-
-                        /// =========================
-                        /// HIRED
-                        /// =========================
-                        if (status == "offer_accepted") ...[
-                          const SizedBox(height: 10),
-                          const Text(
-                            "Worker hired",
-                            style: TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ],
-                    );
-                  },
-                )
-              ],
-            ),
-          );
-        },
+                      );
+                    },
+                  )
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }

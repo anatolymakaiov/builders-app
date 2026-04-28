@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/job.dart';
+import '../theme/stroyka_background.dart';
 
 class ReviewWorkerScreen extends StatefulWidget {
   final Job job;
@@ -59,35 +60,37 @@ class _ReviewWorkerScreenState extends State<ReviewWorkerScreen> {
       appBar: AppBar(
         title: const Text("Review Worker"),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const Text(
-              "Rate the worker",
-              style: TextStyle(fontSize: 20),
-            ),
-            const SizedBox(height: 20),
-            buildStars(),
-            const SizedBox(height: 20),
-            TextField(
-              controller: reviewController,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: "Leave a review",
-                border: OutlineInputBorder(),
+      body: StroykaScreenBody(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              const Text(
+                "Rate the worker",
+                style: TextStyle(fontSize: 20),
               ),
-            ),
-            const SizedBox(height: 30),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: submitReview,
-                child: const Text("Submit review"),
+              const SizedBox(height: 20),
+              buildStars(),
+              const SizedBox(height: 20),
+              TextField(
+                controller: reviewController,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: "Leave a review",
+                  border: OutlineInputBorder(),
+                ),
               ),
-            )
-          ],
+              const SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: submitReview,
+                  child: const Text("Submit review"),
+                ),
+              )
+            ],
+          ),
         ),
       ),
     );

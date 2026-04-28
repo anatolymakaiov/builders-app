@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'application_details_screen.dart';
 import '../theme/app_theme.dart';
+import '../theme/stroyka_background.dart';
 
 class EmployerApplicationsScreen extends StatefulWidget {
   const EmployerApplicationsScreen({super.key});
@@ -116,253 +117,256 @@ class _EmployerApplicationsScreenState
 
     return Scaffold(
       appBar: AppBar(title: const Text("Applications")),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                /// STATUS
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: selectedStatus,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: "Status",
-                      border: OutlineInputBorder(),
-                      isDense: true,
+      body: StroykaScreenBody(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  /// STATUS
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: selectedStatus,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: "Status",
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: [
+                        "all",
+                        "pending",
+                        "negotiation",
+                        "offer_sent",
+                        "rejected",
+                        "offer_accepted"
+                      ]
+                          .map((e) => DropdownMenuItem(
+                                value: e,
+                                child:
+                                    Text(e == "all" ? "All" : statusLabel(e)),
+                              ))
+                          .toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          selectedStatus = value!;
+                        });
+                      },
                     ),
-                    items: [
-                      "all",
-                      "pending",
-                      "negotiation",
-                      "offer_sent",
-                      "rejected",
-                      "offer_accepted"
-                    ]
-                        .map((e) => DropdownMenuItem(
-                              value: e,
-                              child: Text(e == "all" ? "All" : statusLabel(e)),
-                            ))
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        selectedStatus = value!;
-                      });
-                    },
                   ),
-                ),
 
-                const SizedBox(width: 8),
+                  const SizedBox(width: 8),
 
-                /// TRADE
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: selectedTrade,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: "Trade",
-                      border: OutlineInputBorder(),
-                      isDense: true,
+                  /// TRADE
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: selectedTrade,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: "Trade",
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: trades
+                          .map((e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(e == "all" ? "All" : e),
+                              ))
+                          .toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          selectedTrade = value!;
+                        });
+                      },
                     ),
-                    items: trades
-                        .map((e) => DropdownMenuItem(
-                              value: e,
-                              child: Text(e == "all" ? "All" : e),
-                            ))
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        selectedTrade = value!;
-                      });
-                    },
                   ),
-                ),
 
-                const SizedBox(width: 8),
+                  const SizedBox(width: 8),
 
-                /// SITE
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: selectedSite,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: "Site",
-                      border: OutlineInputBorder(),
-                      isDense: true,
+                  /// SITE
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: selectedSite,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: "Site",
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: sites
+                          .map((e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(e == "all" ? "All" : e),
+                              ))
+                          .toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          selectedSite = value!;
+                        });
+                      },
                     ),
-                    items: sites
-                        .map((e) => DropdownMenuItem(
-                              value: e,
-                              child: Text(e == "all" ? "All" : e),
-                            ))
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        selectedSite = value!;
-                      });
-                    },
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection("applications")
-                  .where("employerId", isEqualTo: employerId)
-                  .orderBy("createdAt", descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final allApps = snapshot.data!.docs;
-
-                trades = {"all"};
-                sites = {"all"};
-
-                for (var doc in allApps) {
-                  final data = doc.data() as Map<String, dynamic>;
-
-                  final trade = (data["jobTrade"] ?? "").toString().trim();
-                  final site = (data["jobSite"] ?? "").toString().trim();
-
-                  if (trade.isNotEmpty) {
-                    trades.add(trade);
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection("applications")
+                    .where("employerId", isEqualTo: employerId)
+                    .orderBy("createdAt", descending: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
                   }
 
-                  if (site.isNotEmpty) {
-                    sites.add(site);
-                  }
-                }
-                final apps = allApps.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
+                  final allApps = snapshot.data!.docs;
 
-                  final status = data["status"] ?? "pending";
-                  final trade = (data["jobTrade"] ?? "").toString().trim();
-                  final site = (data["jobSite"] ?? "").toString().trim();
+                  trades = {"all"};
+                  sites = {"all"};
 
-                  if (selectedStatus != "all" && status != selectedStatus) {
-                    return false;
-                  }
-
-                  if (selectedTrade != "all" && trade != selectedTrade) {
-                    return false;
-                  }
-
-                  if (selectedSite != "all" && site != selectedSite) {
-                    return false;
-                  }
-
-                  return true;
-                }).toList();
-                if (apps.isEmpty) {
-                  return const Center(child: Text("No applications yet"));
-                }
-
-                return ListView.builder(
-                  itemCount: apps.length,
-                  itemBuilder: (context, index) {
-                    final doc = apps[index];
+                  for (var doc in allApps) {
                     final data = doc.data() as Map<String, dynamic>;
 
-                    final type = data["type"] ?? "single";
-                    final workerName = data["workerName"] ?? "Worker";
-                    final members = List<String>.from(data["members"] ?? []);
-                    final jobTitle = data["jobTitle"] ?? "Job";
+                    final trade = (data["jobTrade"] ?? "").toString().trim();
+                    final site = (data["jobSite"] ?? "").toString().trim();
+
+                    if (trade.isNotEmpty) {
+                      trades.add(trade);
+                    }
+
+                    if (site.isNotEmpty) {
+                      sites.add(site);
+                    }
+                  }
+                  final apps = allApps.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+
                     final status = data["status"] ?? "pending";
-                    final Timestamp? createdAt = data["createdAt"];
+                    final trade = (data["jobTrade"] ?? "").toString().trim();
+                    final site = (data["jobSite"] ?? "").toString().trim();
 
-                    final dateText = createdAt != null
-                        ? DateTime.fromMillisecondsSinceEpoch(
-                                createdAt.millisecondsSinceEpoch)
-                            .toString()
-                            .substring(0, 16)
-                        : "";
+                    if (selectedStatus != "all" && status != selectedStatus) {
+                      return false;
+                    }
 
-                    return GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ApplicationDetailsScreen(
-                              applicationId: doc.id,
-                              data: data,
-                            ),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                buildApplicantAvatar(data),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        type == "team"
-                                            ? "Team application"
-                                            : workerName,
-                                        style: const TextStyle(
-                                          color: AppColors.ink,
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                      if (type == "team")
-                                        Text(
-                                          "${members.length} members",
-                                          style: const TextStyle(
-                                              color: Colors.grey),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                Text(
-                                  statusLabel(status),
-                                  style: TextStyle(
-                                    color: getStatusColor(status),
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                )
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(jobTitle),
-                            if (dateText.isNotEmpty)
-                              Text(
-                                dateText,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey,
-                                ),
+                    if (selectedTrade != "all" && trade != selectedTrade) {
+                      return false;
+                    }
+
+                    if (selectedSite != "all" && site != selectedSite) {
+                      return false;
+                    }
+
+                    return true;
+                  }).toList();
+                  if (apps.isEmpty) {
+                    return const Center(child: Text("No applications yet"));
+                  }
+
+                  return ListView.builder(
+                    itemCount: apps.length,
+                    itemBuilder: (context, index) {
+                      final doc = apps[index];
+                      final data = doc.data() as Map<String, dynamic>;
+
+                      final type = data["type"] ?? "single";
+                      final workerName = data["workerName"] ?? "Worker";
+                      final members = List<String>.from(data["members"] ?? []);
+                      final jobTitle = data["jobTitle"] ?? "Job";
+                      final status = data["status"] ?? "pending";
+                      final Timestamp? createdAt = data["createdAt"];
+
+                      final dateText = createdAt != null
+                          ? DateTime.fromMillisecondsSinceEpoch(
+                                  createdAt.millisecondsSinceEpoch)
+                              .toString()
+                              .substring(0, 16)
+                          : "";
+
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ApplicationDetailsScreen(
+                                applicationId: doc.id,
+                                data: data,
                               ),
-                          ],
+                            ),
+                          );
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  buildApplicantAvatar(data),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          type == "team"
+                                              ? "Team application"
+                                              : workerName,
+                                          style: const TextStyle(
+                                            color: AppColors.ink,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        if (type == "team")
+                                          Text(
+                                            "${members.length} members",
+                                            style: const TextStyle(
+                                                color: Colors.grey),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  Text(
+                                    statusLabel(status),
+                                    style: TextStyle(
+                                      color: getStatusColor(status),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  )
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(jobTitle),
+                              if (dateText.isNotEmpty)
+                                Text(
+                                  dateText,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                );
-              },
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

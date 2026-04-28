@@ -6,6 +6,7 @@ import 'job_details_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'edit_profile_screen.dart';
 import '../widgets/phone_link.dart';
+import '../theme/stroyka_background.dart';
 
 class EmployerProfileScreen extends StatelessWidget {
   final String userId;
@@ -83,306 +84,308 @@ class EmployerProfileScreen extends StatelessWidget {
           final logo = data["photo"];
           final photos = List<String>.from(data["companyPhotos"] ?? []);
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                /// 🔥 HEADER
-                Center(
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 50,
-                        backgroundColor: Colors.grey.shade300,
-                        backgroundImage:
-                            logo is String ? NetworkImage(logo) : null,
-                        child: logo == null
-                            ? const Icon(Icons.business, size: 40)
-                            : null,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
+          return StroykaScreenBody(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  /// 🔥 HEADER
+                  Center(
+                    child: Column(
+                      children: [
+                        CircleAvatar(
+                          radius: 50,
+                          backgroundColor: Colors.grey.shade300,
+                          backgroundImage:
+                              logo is String ? NetworkImage(logo) : null,
+                          child: logo == null
+                              ? const Icon(Icons.business, size: 40)
+                              : null,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 12),
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
 
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
-                /// 📝 DESCRIPTION
-                if (description.isNotEmpty) ...[
-                  const Text(
-                    "About company",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(description),
-                  const SizedBox(height: 16),
-                ],
+                  /// 📝 DESCRIPTION
+                  if (description.isNotEmpty) ...[
+                    const Text(
+                      "About company",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(description),
+                    const SizedBox(height: 16),
+                  ],
 
-                /// 📍 ADDRESS
-                if (address.isNotEmpty) ...[
-                  Row(
-                    children: [
-                      const Icon(Icons.location_on),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(address)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                /// 📞 PHONE
-                if (phone.isNotEmpty) ...[
-                  PhoneLink(phone: phone),
-                  const SizedBox(height: 16),
-                ],
-                if (phone.isNotEmpty)
-
-                  /// 👤 CONTACT PERSON
-                  if (contactPerson.isNotEmpty) ...[
+                  /// 📍 ADDRESS
+                  if (address.isNotEmpty) ...[
                     Row(
                       children: [
-                        const Icon(Icons.person),
+                        const Icon(Icons.location_on),
                         const SizedBox(width: 8),
-                        Text(contactPerson),
+                        Expanded(child: Text(address)),
                       ],
                     ),
                     const SizedBox(height: 16),
                   ],
 
-                /// 📞 EXTRA PHONES
-                if (extraPhones.isNotEmpty) ...[
-                  ...extraPhones.map((p) => Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: PhoneLink(phone: p, compact: true),
-                      )),
-                  const SizedBox(height: 16),
-                ],
+                  /// 📞 PHONE
+                  if (phone.isNotEmpty) ...[
+                    PhoneLink(phone: phone),
+                    const SizedBox(height: 16),
+                  ],
+                  if (phone.isNotEmpty)
 
-                /// ✉️ EMAIL
-                if (email.isNotEmpty) ...[
-                  Row(
-                    children: [
-                      const Icon(Icons.email),
-                      const SizedBox(width: 8),
-                      Text(email),
+                    /// 👤 CONTACT PERSON
+                    if (contactPerson.isNotEmpty) ...[
+                      Row(
+                        children: [
+                          const Icon(Icons.person),
+                          const SizedBox(width: 8),
+                          Text(contactPerson),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
                     ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
 
-                /// 🌐 WEBSITE
-                if (website.isNotEmpty) ...[
-                  Row(
-                    children: [
-                      const Icon(Icons.language),
-                      const SizedBox(width: 8),
-                      Text(website),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
+                  /// 📞 EXTRA PHONES
+                  if (extraPhones.isNotEmpty) ...[
+                    ...extraPhones.map((p) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: PhoneLink(phone: p, compact: true),
+                        )),
+                    const SizedBox(height: 16),
+                  ],
 
-                /// 👥 CONTACTS
-                if (contacts.isNotEmpty) ...[
-                  const Text(
-                    "Contacts",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 6),
-                  ...contacts.map((c) => ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(c["name"] ?? ""),
-                        subtitle: PhoneLink(
-                          phone: c["phone"]?.toString(),
-                          compact: true,
-                        ),
-                      )),
-                  const SizedBox(height: 16),
-                ],
+                  /// ✉️ EMAIL
+                  if (email.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        const Icon(Icons.email),
+                        const SizedBox(width: 8),
+                        Text(email),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
-                /// 🖼 PHOTOS
-                if (photos.isNotEmpty) ...[
-                  const Text(
-                    "Gallery",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 120,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: photos.length,
-                      itemBuilder: (_, i) => Container(
-                        margin: const EdgeInsets.only(right: 8),
-                        width: 120,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          image: DecorationImage(
-                            image: NetworkImage(photos[i]),
-                            fit: BoxFit.cover,
+                  /// 🌐 WEBSITE
+                  if (website.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        const Icon(Icons.language),
+                        const SizedBox(width: 8),
+                        Text(website),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  /// 👥 CONTACTS
+                  if (contacts.isNotEmpty) ...[
+                    const Text(
+                      "Contacts",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    ...contacts.map((c) => ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(c["name"] ?? ""),
+                          subtitle: PhoneLink(
+                            phone: c["phone"]?.toString(),
+                            compact: true,
+                          ),
+                        )),
+                    const SizedBox(height: 16),
+                  ],
+
+                  /// 🖼 PHOTOS
+                  if (photos.isNotEmpty) ...[
+                    const Text(
+                      "Gallery",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 120,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: photos.length,
+                        itemBuilder: (_, i) => Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          width: 120,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            image: DecorationImage(
+                              image: NetworkImage(photos[i]),
+                              fit: BoxFit.cover,
+                            ),
                           ),
                         ),
                       ),
                     ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  const SizedBox(height: 30),
+
+                  /// 🔥 JOBS
+                  const Text(
+                    "Current Vacancies",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                  const SizedBox(height: 20),
-                ],
 
-                const SizedBox(height: 30),
+                  const SizedBox(height: 12),
 
-                /// 🔥 JOBS
-                const Text(
-                  "Current Vacancies",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                  StreamBuilder<List<Job>>(
+                    stream: getJobs(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      }
 
-                const SizedBox(height: 12),
+                      final jobs = snapshot.data!;
 
-                StreamBuilder<List<Job>>(
-                  stream: getJobs(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) {
-                      return const Center(
-                        child: CircularProgressIndicator(),
-                      );
-                    }
+                      if (jobs.isEmpty) {
+                        return const Text("No jobs yet");
+                      }
 
-                    final jobs = snapshot.data!;
-
-                    if (jobs.isEmpty) {
-                      return const Text("No jobs yet");
-                    }
-
-                    return Column(
-                      children: jobs.map((job) {
-                        return GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => JobDetailScreen(job: job),
+                      return Column(
+                        children: jobs.map((job) {
+                          return GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => JobDetailScreen(job: job),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                            );
-                          },
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                /// 📸 PHOTO
-                                if (job.photos.isNotEmpty)
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.network(
-                                      job.photos.first,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  /// 📸 PHOTO
+                                  if (job.photos.isNotEmpty)
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.network(
+                                        job.photos.first,
+                                        width: 70,
+                                        height: 70,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    )
+                                  else
+                                    Container(
                                       width: 70,
                                       height: 70,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  )
-                                else
-                                  Container(
-                                    width: 70,
-                                    height: 70,
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.shade300,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Icon(Icons.work),
-                                  ),
-
-                                const SizedBox(width: 12),
-
-                                /// 🧾 INFO
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      /// TITLE
-                                      Text(
-                                        job.title,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade300,
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
+                                      child: const Icon(Icons.work),
+                                    ),
 
-                                      const SizedBox(height: 4),
+                                  const SizedBox(width: 12),
 
-                                      /// TRADE
-                                      if (job.trade.isNotEmpty)
+                                  /// 🧾 INFO
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        /// TITLE
                                         Text(
-                                          job.trade,
+                                          job.title,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+
+                                        const SizedBox(height: 4),
+
+                                        /// TRADE
+                                        if (job.trade.isNotEmpty)
+                                          Text(
+                                            job.trade,
+                                            style: const TextStyle(
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+
+                                        const SizedBox(height: 4),
+
+                                        /// LOCATION
+                                        Text(
+                                          job.city,
                                           style: const TextStyle(
                                             color: Colors.grey,
                                           ),
                                         ),
 
-                                      const SizedBox(height: 4),
+                                        const SizedBox(height: 6),
 
-                                      /// LOCATION
-                                      Text(
-                                        job.city,
-                                        style: const TextStyle(
-                                          color: Colors.grey,
-                                        ),
-                                      ),
+                                        /// 🔥 DURATION
+                                        if (job.duration.isNotEmpty)
+                                          Text(
+                                            "⏱ ${job.duration}",
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
 
-                                      const SizedBox(height: 6),
+                                        const SizedBox(height: 6),
 
-                                      /// 🔥 DURATION
-                                      if (job.duration.isNotEmpty)
+                                        /// RATE
                                         Text(
-                                          "⏱ ${job.duration}",
+                                          job.rateText,
                                           style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey,
+                                            color: Colors.green,
+                                            fontWeight: FontWeight.bold,
                                           ),
                                         ),
-
-                                      const SizedBox(height: 6),
-
-                                      /// RATE
-                                      Text(
-                                        job.rateText,
-                                        style: const TextStyle(
-                                          color: Colors.green,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
 
-                                const Icon(Icons.arrow_forward_ios, size: 16),
-                              ],
+                                  const Icon(Icons.arrow_forward_ios, size: 16),
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      }).toList(),
-                    );
-                  },
-                ),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
 
-                const SizedBox(height: 30),
-              ],
+                  const SizedBox(height: 30),
+                ],
+              ),
             ),
           );
         },

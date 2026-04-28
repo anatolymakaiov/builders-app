@@ -1,15 +1,33 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  static const navy = Color(0xFF24324A);
-  static const ink = Color(0xFF263247);
-  static const muted = Color(0xFF7E858E);
-  static const canvas = Color(0xFFF8F8F7);
-  static const surface = Color(0xFFEFF5F2);
-  static const surfaceAlt = Color(0xFFE7EFEC);
-  static const green = Color(0xFF74C968);
-  static const greenDark = Color(0xFF3F8F57);
+  static const navy = Color(0xFF062E34);
+  static const deep = Color(0xFF021B21);
+  static const ink = Color(0xFF123238);
+  static const muted = Color(0xFF6B7C80);
+  static const canvas = Color(0xFFF7FAF8);
+  static const surface = Color(0xFFF2F7F4);
+  static const surfaceAlt = Color(0xFFE7F1EB);
+  static const green = Color(0xFF55B96C);
+  static const greenDark = Color(0xFF08754E);
   static const danger = Color(0xFFF04465);
+}
+
+class AppAssets {
+  static const logo = "assets/branding/stroyka_logo.svg";
+
+  static const darkBackgrounds = [
+    "assets/branding/bg_dark_workspace.jpg",
+    "assets/branding/bg_dark_office.jpg",
+    "assets/branding/bg_dark_tech.jpg",
+    "assets/branding/bg_dark_pattern.jpg",
+  ];
+
+  static const lightTextures = [
+    "assets/branding/texture_light_triangles.jpg",
+    "assets/branding/texture_light_cloud.jpg",
+    "assets/branding/texture_light_dots.jpg",
+  ];
 }
 
 class AppTheme {
@@ -27,19 +45,21 @@ class AppTheme {
     );
 
     return base.copyWith(
-      scaffoldBackgroundColor: AppColors.canvas,
+      scaffoldBackgroundColor: Colors.transparent,
       primaryColor: AppColors.green,
       appBarTheme: const AppBarTheme(
-        backgroundColor: AppColors.canvas,
-        foregroundColor: AppColors.ink,
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
         titleTextStyle: TextStyle(
-          color: AppColors.ink,
+          color: Colors.white,
           fontSize: 22,
           fontWeight: FontWeight.w800,
           letterSpacing: 0,
         ),
+        iconTheme: IconThemeData(color: Colors.white),
+        actionsIconTheme: IconThemeData(color: Colors.white),
       ),
       cardTheme: CardThemeData(
         color: AppColors.surface,
@@ -56,7 +76,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: const Color(0xFFFDFEFD),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide.none,
@@ -99,7 +119,7 @@ class AppTheme {
         displayColor: AppColors.ink,
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: AppColors.navy,
+        backgroundColor: AppColors.deep,
         selectedItemColor: AppColors.green,
         unselectedItemColor: Colors.white,
         selectedLabelStyle: TextStyle(
