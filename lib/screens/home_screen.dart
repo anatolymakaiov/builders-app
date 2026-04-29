@@ -263,6 +263,15 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    if (role == "admin") {
+      return Scaffold(
+        body: StroykaBackground(
+          asset: AppAssets.darkBackgrounds.first,
+          child: const AdminDashboardScreen(),
+        ),
+      );
+    }
+
     return StreamBuilder<int>(
       stream: getUnreadNotifications(),
       builder: (context, notifSnap) {
