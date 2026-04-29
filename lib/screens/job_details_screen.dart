@@ -9,6 +9,7 @@ import '../models/job.dart';
 import '../services/application_activity_service.dart';
 import '../services/calendar_service.dart';
 import '../services/notification_service.dart';
+import '../services/report_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/job_card.dart';
@@ -1631,7 +1632,22 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return DefaultTabController(
       length: hasOffer ? 4 : 3,
       child: Scaffold(
-        appBar: AppBar(title: const Text("Job")),
+        appBar: AppBar(
+          title: const Text("Job"),
+          actions: [
+            IconButton(
+              tooltip: "Report job",
+              icon: const Icon(Icons.flag_outlined),
+              onPressed: () => ReportService.showReportDialog(
+                context,
+                type: "job",
+                againstUserId: widget.job.ownerId,
+                jobId: widget.job.id,
+                applicationId: widget.applicationId,
+              ),
+            ),
+          ],
+        ),
         body: StroykaScreenBody(
           child: Column(
             children: [

@@ -1,0 +1,205 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class BillingLimitException implements Exception {
+  final String message;
+
+  const BillingLimitException(this.message);
+}
+
+class BillingService {
+  static const inactiveBillingMessage =
+      "Your billing plan is not active. Please open Billing and choose or activate a plan before posting a job.";
+
+  static const postingLimitMessage =
+      "You have reached your job posting limit. Please open Billing and choose a plan with more job posts.";
+
+  static int readInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? "") ?? 0;
+  }
+
+  static String formatLabel(String value) {
+    return value
+        .split("_")
+        .where((part) => part.isNotEmpty)
+        .map((part) => "${part[0].toUpperCase()}${part.substring(1)}")
+        .join(" ");
+  }
+
+  static String formatDate(dynamic value) {
+    if (value is Timestamp) {
+      final date = value.toDate();
+      return "${date.day.toString().padLeft(2, "0")}/"
+          "${date.month.toString().padLeft(2, "0")}/"
+          "${date.year}";
+    }
+    return value?.toString() ?? "";
+  }
+
+  static String planName(QueryDocumentSnapshot plan) {
+    final data = plan.data() as Map<String, dynamic>;
+    return data["name"]?.toString().trim().isNotEmpty == true
+        ? data["name"].toString()
+        : plan.id;
+  }
+
+  Future<void> assertEmployerCanPost(String employerId) async {
+    final userSnap = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(employerId)
+        .get();
+    final userData = userSnap.data() ?? {};
+    _assertEmployerCanPostFromData(userData);
+  }
+
+  Future<void> createJobWithBillingLimit({
+    required String employerId,
+    required Map<String, dynamic> jobData,
+  }) async {
+    final firestore = FirebaseFirestore.instance;
+    final userRef = firestore.collection("users").doc(employerId);
+    final jobRef = firestore.collection("jobs").doc();
+
+    await firestore.runTransaction((transaction) async {
+      final userSnap = await transaction.get(userRef);
+      final userData = userSnap.data() ?? {};
+      final role = userData["role"]?.toString() ?? "";
+
+      if (role == "employer") {
+        final billing = _assertEmployerCanPostFromData(userData);
+        final usedJobPosts = readInt(billing["usedJobPosts"]);
+
+        transaction.set(
+          userRef,
+          {
+            "billing.usedJobPosts": usedJobPosts + 1,
+            "billing.updatedAt": FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+
+      transaction.set(jobRef, {
+        ...jobData,
+        "createdAt": FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  Future<void> createPaymentRequest({
+    required String employerId,
+    required QueryDocumentSnapshot plan,
+    required String paymentMode,
+    required Map<String, dynamic> currentBilling,
+  }) async {
+    final planData = plan.data() as Map<String, dynamic>;
+    final availableJobPosts = readInt(
+      planData["jobPosts"] ?? planData["availableJobPosts"],
+    );
+    final usedJobPosts = readInt(currentBilling["usedJobPosts"]);
+
+    await FirebaseFirestore.instance.collection("payment_requests").add({
+      "employerId": employerId,
+      "planId": plan.id,
+      "planName": planName(plan),
+      "paymentMode": paymentMode,
+      "status": "pending",
+      "createdAt": FieldValue.serverTimestamp(),
+      "updatedAt": FieldValue.serverTimestamp(),
+    });
+
+    await FirebaseFirestore.instance.collection("users").doc(employerId).set({
+      "billing.planId": plan.id,
+      "billing.paymentMode": paymentMode,
+      "billing.directDebitEnabled": paymentMode == "direct_debit",
+      "billing.availableJobPosts": availableJobPosts,
+      "billing.usedJobPosts": usedJobPosts,
+      "billing.activeUntil": currentBilling["activeUntil"],
+      "billing.status": "payment_pending",
+      "billing.updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> updatePaymentRequestStatus(
+    DocumentReference ref,
+    String status,
+  ) async {
+    final firestore = FirebaseFirestore.instance;
+
+    await firestore.runTransaction((transaction) async {
+      final requestSnap = await transaction.get(ref);
+      final requestData =
+          requestSnap.data() as Map<String, dynamic>? ?? <String, dynamic>{};
+
+      transaction.set(
+        ref,
+        {
+          "status": status,
+          "updatedAt": FieldValue.serverTimestamp(),
+          if (status == "paid") "paidAt": FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      if (status != "paid") return;
+
+      final employerId = requestData["employerId"]?.toString() ?? "";
+      final planId = requestData["planId"]?.toString() ?? "";
+      if (employerId.isEmpty || planId.isEmpty) return;
+
+      final planRef = firestore.collection("plans").doc(planId);
+      final employerRef = firestore.collection("users").doc(employerId);
+      final planSnap = await transaction.get(planRef);
+      final planData = planSnap.data() ?? <String, dynamic>{};
+
+      final availableJobPosts = readInt(
+        planData["jobPosts"] ?? planData["availableJobPosts"],
+      );
+      final durationDays = readInt(planData["durationDays"]);
+      final activeUntil = Timestamp.fromDate(
+        DateTime.now().add(
+          Duration(days: durationDays > 0 ? durationDays : 30),
+        ),
+      );
+
+      transaction.set(
+        employerRef,
+        {
+          "billing.planId": planId,
+          "billing.paymentMode": requestData["paymentMode"],
+          "billing.directDebitEnabled":
+              requestData["paymentMode"]?.toString() == "direct_debit",
+          "billing.availableJobPosts": availableJobPosts,
+          "billing.usedJobPosts": 0,
+          "billing.activeUntil": activeUntil,
+          "billing.status": "active",
+          "billing.updatedAt": FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    });
+  }
+
+  Map<String, dynamic> _assertEmployerCanPostFromData(
+    Map<String, dynamic> userData,
+  ) {
+    final role = userData["role"]?.toString() ?? "";
+    if (role != "employer") return {};
+
+    final billing = Map<String, dynamic>.from(userData["billing"] ?? {});
+    final status = billing["status"]?.toString() ?? "";
+    final availableJobPosts = readInt(billing["availableJobPosts"]);
+    final usedJobPosts = readInt(billing["usedJobPosts"]);
+
+    if (status != "active") {
+      throw const BillingLimitException(inactiveBillingMessage);
+    }
+
+    if (usedJobPosts >= availableJobPosts) {
+      throw const BillingLimitException(postingLimitMessage);
+    }
+
+    return billing;
+  }
+}

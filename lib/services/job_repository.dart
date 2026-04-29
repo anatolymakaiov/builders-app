@@ -24,6 +24,10 @@ class JobRepository {
               return null;
             }
 
+            if (data["moderationStatus"] != "approved") {
+              return null;
+            }
+
             return Job.fromFirestore(doc.id, data);
           })
           .whereType<Job>()

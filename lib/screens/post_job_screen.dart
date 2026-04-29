@@ -9,8 +9,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
 
 import '../models/job.dart';
-import '../services/job_alert_service.dart';
+import '../services/billing_service.dart';
 import '../theme/stroyka_background.dart';
+import 'employer_profile_screen.dart';
 
 class PostJobScreen extends StatefulWidget {
   final Function(dynamic) onJobCreated;
@@ -29,8 +30,6 @@ class PostJobScreen extends StatefulWidget {
 }
 
 class _PostJobScreenState extends State<PostJobScreen> {
-  final jobAlertService = JobAlertService();
-
   final titleController = TextEditingController();
   final positionsController = TextEditingController();
   final durationController = TextEditingController();
@@ -207,6 +206,37 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   /// 🔥 CREATE / UPDATE JOB
 
+  Future<void> showBillingLimitMessage(
+      String message, String employerId) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Billing required"),
+        content: Text(message),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Open Billing"),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EmployerProfileScreen(
+          userId: employerId,
+          initialTab: 4,
+        ),
+      ),
+    );
+  }
+
   Future<void> saveJob() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -231,6 +261,18 @@ class _PostJobScreenState extends State<PostJobScreen> {
     if (result != null) {
       lat = (result["latitude"] as num?)?.toDouble() ?? 0;
       lng = (result["longitude"] as num?)?.toDouble() ?? 0;
+    }
+
+    if (widget.existingJob == null) {
+      try {
+        await BillingService().assertEmployerCanPost(user.uid);
+      } on BillingLimitException catch (e) {
+        if (mounted) {
+          setState(() => loading = false);
+          await showBillingLimitMessage(e.message, user.uid);
+        }
+        return;
+      }
     }
 
     /// upload photos
@@ -265,6 +307,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
       "photos": photoUrls,
       "lat": lat,
       "lng": lng,
+      if (widget.existingJob == null) "moderationStatus": "pending_review",
+      if (widget.existingJob == null) "moderationReason": "",
       "updatedAt": FieldValue.serverTimestamp(),
     };
 
@@ -279,13 +323,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
       /// 🔥 CREATE
       else {
-        final doc = await FirebaseFirestore.instance.collection('jobs').add({
-          ...data,
-          "createdAt": FieldValue.serverTimestamp(),
-        });
-
-        await jobAlertService.notifyMatchingWorkers(
-          jobId: doc.id,
+        await BillingService().createJobWithBillingLimit(
+          employerId: user.uid,
           jobData: data,
         );
       }
@@ -293,9 +332,20 @@ class _PostJobScreenState extends State<PostJobScreen> {
       widget.onJobCreated(true);
 
       if (mounted) Navigator.pop(context);
+    } on BillingLimitException catch (e) {
+      debugPrint("Billing limit: ${e.message}");
+      if (mounted) {
+        setState(() => loading = false);
+        await showBillingLimitMessage(e.message, user.uid);
+      }
     } catch (e) {
       debugPrint("Save error: $e");
-      setState(() => loading = false);
+      if (mounted) {
+        setState(() => loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not save job")),
+        );
+      }
     }
   }
 

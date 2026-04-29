@@ -40,6 +40,8 @@ class Job {
   final int applicantsCount;
   final DateTime? createdAt;
   final String status;
+  final String moderationStatus;
+  final String moderationReason;
 
   /// 🔥 NEW (КРИТИЧНО ДЛЯ БРИГАД)
   final int positions;
@@ -72,6 +74,8 @@ class Job {
     this.applicantsCount = 0,
     this.createdAt,
     this.status = "active",
+    this.moderationStatus = "",
+    this.moderationReason = "",
 
     /// 🔥 NEW
     this.positions = 1,
@@ -141,6 +145,21 @@ class Job {
       (positions - filledPositions).clamp(0, positions);
 
   bool get isClosed => status == "completed" || status == "closed";
+
+  bool get isApproved => moderationStatus == "approved";
+
+  String get moderationLabel {
+    switch (moderationStatus) {
+      case "pending_review":
+        return "Pending review";
+      case "approved":
+        return "Approved";
+      case "rejected":
+        return "Rejected";
+      default:
+        return "Not reviewed";
+    }
+  }
 
   /// 🔥 ADDRESS
   String get fullAddress {
@@ -230,6 +249,8 @@ class Job {
       applicantsCount: safeInt(data["applicantsCount"]),
       createdAt: safeDate(data["createdAt"]),
       status: data["status"]?.toString() ?? "active",
+      moderationStatus: data["moderationStatus"]?.toString() ?? "",
+      moderationReason: data["moderationReason"]?.toString() ?? "",
 
       /// 🔥 FIX
       positions: positionsRaw == 0 ? 1 : positionsRaw,

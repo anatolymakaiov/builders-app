@@ -12,6 +12,7 @@ import 'package:video_player/video_player.dart';
 import 'dart:async';
 import 'dart:io';
 import 'image_viewer_screen.dart';
+import '../services/report_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -710,6 +711,18 @@ class _ChatScreenState extends State<ChatScreen> {
                       icon: const Icon(Icons.call),
                       onPressed: () => showCallOptions(context, userData),
                     ),
+                  IconButton(
+                    tooltip: "Report chat",
+                    icon: const Icon(Icons.flag_outlined),
+                    onPressed: () => ReportService.showReportDialog(
+                      context,
+                      type: "chat",
+                      againstUserId:
+                          isInternalTeamChat ? null : otherUserId?.toString(),
+                      chatId: widget.chatId,
+                      jobId: chatData["jobId"]?.toString(),
+                    ),
+                  ),
                 ],
               ),
               body: StroykaScreenBody(

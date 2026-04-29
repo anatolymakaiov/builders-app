@@ -70,10 +70,14 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final jobs = snapshot.data!.docs.map((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            return Job.fromFirestore(doc.id, data);
-          }).toList();
+          final jobs = snapshot.data!.docs
+              .map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                if (data["moderationStatus"] != "approved") return null;
+                return Job.fromFirestore(doc.id, data);
+              })
+              .whereType<Job>()
+              .toList();
 
           final markers = jobs.map((job) {
             return Marker(

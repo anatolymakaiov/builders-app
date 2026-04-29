@@ -12,6 +12,7 @@ import 'notifications_screen.dart';
 import 'employer_applications_screen.dart';
 import 'post_job_screen.dart';
 import 'employer_profile_screen.dart';
+import 'admin_dashboard_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -60,7 +61,9 @@ class _HomeScreenState extends State<HomeScreen> {
         role = "worker";
       } else {
         final data = doc.data();
-        role = data?["role"] == "employer" ? "employer" : "worker";
+        final rawRole = data?["role"]?.toString();
+        role =
+            rawRole == "admin" || rawRole == "employer" ? rawRole! : "worker";
       }
     } catch (e) {
       debugPrint("INIT USER ERROR: $e");
@@ -110,6 +113,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 📱 SCREENS
   List<Widget> getScreens() {
+    if (role == "admin") {
+      return const [
+        AdminDashboardScreen(),
+      ];
+    }
+
     if (role == "employer") {
       return [
         const EmployerDashboardScreen(),
@@ -176,6 +185,15 @@ class _HomeScreenState extends State<HomeScreen> {
     int chatCount,
     int applicationCount,
   ) {
+    if (role == "admin") {
+      return const [
+        BottomNavigationBarItem(
+          icon: Icon(Icons.admin_panel_settings),
+          label: "Admin",
+        ),
+      ];
+    }
+
     if (role == "employer") {
       return [
         const BottomNavigationBarItem(

@@ -10,15 +10,20 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'edit_profile_screen.dart';
 import '../widgets/phone_link.dart';
 import '../widgets/job_card.dart';
+import '../services/billing_service.dart';
+import '../services/report_service.dart';
+import '../services/support_request_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
 class EmployerProfileScreen extends StatefulWidget {
   final String userId;
+  final int initialTab;
 
   const EmployerProfileScreen({
     super.key,
     required this.userId,
+    this.initialTab = 0,
   });
 
   @override
@@ -70,6 +75,11 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
         actions: [
           if (FirebaseAuth.instance.currentUser?.uid == widget.userId) ...[
             IconButton(
+              tooltip: "Support",
+              icon: const Icon(Icons.support_agent_outlined),
+              onPressed: () => SupportRequestService.showSupportDialog(context),
+            ),
+            IconButton(
               icon: const Icon(Icons.edit),
               onPressed: () {
                 Navigator.push(
@@ -85,6 +95,16 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
               onPressed: () async {
                 await FirebaseAuth.instance.signOut();
               },
+            ),
+          ] else ...[
+            IconButton(
+              tooltip: "Report company",
+              icon: const Icon(Icons.flag_outlined),
+              onPressed: () => ReportService.showReportDialog(
+                context,
+                type: "company",
+                againstUserId: widget.userId,
+              ),
             ),
           ],
         ],
@@ -113,6 +133,8 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
           final extraPhones = List<String>.from(data["phones"] ?? []);
           final website = data["website"] ?? "";
           final email = data["email"] ?? "";
+          final role = data["role"]?.toString() ?? "";
+          final billing = Map<String, dynamic>.from(data["billing"] ?? {});
 
           final contacts = (data["contacts"] as List<dynamic>? ?? [])
               .map((e) => Map<String, dynamic>.from(e))
@@ -124,9 +146,13 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
           final photos = List<String>.from(data["companyPhotos"] ?? []);
           final isMyCompany =
               FirebaseAuth.instance.currentUser?.uid == widget.userId;
+          final showBilling = isMyCompany && role == "employer";
+          final tabCount = showBilling ? 5 : 4;
+          final initialTab = widget.initialTab.clamp(0, tabCount - 1).toInt();
 
           return DefaultTabController(
-            length: 4,
+            length: tabCount,
+            initialIndex: initialTab,
             child: StroykaScreenBody(
               child: Column(
                 children: [
@@ -208,21 +234,22 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                     margin: const EdgeInsets.symmetric(horizontal: 12),
                     padding: const EdgeInsets.all(4),
                     borderRadius: BorderRadius.circular(999),
-                    child: const TabBar(
+                    child: TabBar(
                       dividerColor: Colors.transparent,
-                      indicator: BoxDecoration(
+                      indicator: const BoxDecoration(
                         color: AppColors.green,
                         borderRadius: BorderRadius.all(Radius.circular(999)),
                       ),
                       indicatorSize: TabBarIndicatorSize.tab,
                       labelColor: Colors.white,
                       unselectedLabelColor: AppColors.ink,
-                      labelStyle: TextStyle(fontWeight: FontWeight.w800),
+                      labelStyle: const TextStyle(fontWeight: FontWeight.w800),
                       tabs: [
-                        Tab(text: "Info"),
-                        Tab(text: "Contacts"),
-                        Tab(text: "Vacancies"),
-                        Tab(text: "Photos"),
+                        const Tab(text: "Info"),
+                        const Tab(text: "Contacts"),
+                        const Tab(text: "Vacancies"),
+                        const Tab(text: "Photos"),
+                        if (showBilling) const Tab(text: "Billing"),
                       ],
                     ),
                   ),
@@ -420,6 +447,11 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                               ),
                           ],
                         ),
+                        if (showBilling)
+                          _BillingSection(
+                            employerId: widget.userId,
+                            billing: billing,
+                          ),
                       ],
                     ),
                   ),
@@ -428,6 +460,274 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _BillingSection extends StatelessWidget {
+  final String employerId;
+  final Map<String, dynamic> billing;
+
+  const _BillingSection({
+    required this.employerId,
+    required this.billing,
+  });
+
+  static const paymentModes = [
+    "manual_invoice",
+    "direct_debit",
+    "card",
+  ];
+
+  Future<void> _choosePlan(
+    BuildContext context,
+    QueryDocumentSnapshot plan,
+  ) async {
+    var paymentMode = billing["paymentMode"]?.toString() ?? paymentModes.first;
+    if (!paymentModes.contains(paymentMode)) {
+      paymentMode = paymentModes.first;
+    }
+
+    final confirmedMode = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text("Choose plan"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    BillingService.planName(plan),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: paymentMode,
+                    decoration:
+                        const InputDecoration(labelText: "Payment mode"),
+                    items: paymentModes
+                        .map(
+                          (mode) => DropdownMenuItem(
+                            value: mode,
+                            child: Text(BillingService.formatLabel(mode)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() => paymentMode = value);
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, paymentMode),
+                  child: const Text("Request plan"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmedMode == null) return;
+
+    await BillingService().createPaymentRequest(
+      employerId: employerId,
+      plan: plan,
+      paymentMode: confirmedMode,
+      currentBilling: billing,
+    );
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Payment request created")),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final planId = billing["planId"]?.toString() ?? "No plan selected";
+    final paymentMode = billing["paymentMode"]?.toString() ?? "Not set";
+    final status = billing["status"]?.toString() ?? "Not set";
+    final availableJobPosts =
+        BillingService.readInt(billing["availableJobPosts"]);
+    final usedJobPosts = BillingService.readInt(billing["usedJobPosts"]);
+    final activeUntil = BillingService.formatDate(billing["activeUntil"]);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+      children: [
+        StroykaSurface(
+          padding: const EdgeInsets.all(18),
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Billing",
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _BillingRow(label: "Current plan", value: planId),
+              _BillingRow(
+                label: "Available job posts",
+                value: availableJobPosts.toString(),
+              ),
+              _BillingRow(
+                label: "Used job posts",
+                value: usedJobPosts.toString(),
+              ),
+              _BillingRow(
+                label: "Payment mode",
+                value: BillingService.formatLabel(paymentMode),
+              ),
+              _BillingRow(
+                label: "Billing status",
+                value: BillingService.formatLabel(status),
+              ),
+              if (activeUntil.isNotEmpty)
+                _BillingRow(label: "Active until", value: activeUntil),
+            ],
+          ),
+        ),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection("plans").snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const StroykaSurface(
+                padding: EdgeInsets.all(18),
+                child: LinearProgressIndicator(),
+              );
+            }
+
+            final plans = snapshot.data!.docs;
+            if (plans.isEmpty) {
+              return const StroykaSurface(
+                padding: EdgeInsets.all(18),
+                child: Text("No tariff plans yet"),
+              );
+            }
+
+            return Column(
+              children: plans.map((plan) {
+                final data = plan.data() as Map<String, dynamic>;
+                final price = data["price"]?.toString() ?? "";
+                final currency = data["currency"]?.toString() ?? "GBP";
+                final jobPosts = BillingService.readInt(
+                  data["jobPosts"] ?? data["availableJobPosts"],
+                );
+                final isCurrentPlan = plan.id == billing["planId"]?.toString();
+
+                return StroykaSurface(
+                  padding: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              BillingService.planName(plan),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          if (isCurrentPlan)
+                            const Icon(
+                              Icons.check_circle,
+                              color: AppColors.greenDark,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        [
+                          if (price.isNotEmpty) "$currency $price",
+                          "$jobPosts job posts",
+                        ].join(" • "),
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => _choosePlan(context, plan),
+                          child: Text(
+                            isCurrentPlan
+                                ? "Change payment mode"
+                                : "Choose plan",
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _BillingRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _BillingRow({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

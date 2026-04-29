@@ -9,6 +9,8 @@ import 'team_details_screen.dart';
 import 'edit_profile_screen.dart';
 import '../services/application_activity_service.dart';
 import '../services/chat_service.dart';
+import '../services/report_service.dart';
+import '../services/support_request_service.dart';
 import 'chat_screen.dart';
 import '../widgets/phone_link.dart';
 import '../theme/app_theme.dart';
@@ -582,6 +584,12 @@ class WorkerProfileScreen extends StatelessWidget {
         title: const Text("Worker Profile"),
         actions: [
           if (isMyProfile) ...[
+            IconButton(
+              tooltip: "Support",
+              icon: const Icon(Icons.support_agent_outlined),
+              onPressed: () => SupportRequestService.showSupportDialog(context),
+            ),
+
             /// ✏️ EDIT
             IconButton(
               icon: const Icon(Icons.edit),
@@ -601,6 +609,17 @@ class WorkerProfileScreen extends StatelessWidget {
               onPressed: () async {
                 await FirebaseAuth.instance.signOut();
               },
+            ),
+          ] else ...[
+            IconButton(
+              tooltip: "Report worker",
+              icon: const Icon(Icons.flag_outlined),
+              onPressed: () => ReportService.showReportDialog(
+                context,
+                type: "worker",
+                againstUserId: userId,
+                jobId: jobId,
+              ),
             ),
           ],
         ],
