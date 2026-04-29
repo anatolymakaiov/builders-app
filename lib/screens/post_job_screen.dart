@@ -156,12 +156,23 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   /// POSTCODE
 
+  String normalizeUKPostcode(String postcode) {
+    final clean =
+        postcode.replaceAll(RegExp(r'[^A-Za-z0-9]'), "").trim().toUpperCase();
+
+    if (clean.length <= 3) return clean;
+
+    return "${clean.substring(0, clean.length - 3)} "
+        "${clean.substring(clean.length - 3)}";
+  }
+
   bool isValidUKPostcode(String postcode) {
+    final normalized = normalizeUKPostcode(postcode);
     final regex = RegExp(
       r'^[A-Z]{1,2}[0-9][0-9A-Z]?\s?[0-9][A-Z]{2}$',
       caseSensitive: false,
     );
-    return regex.hasMatch(postcode.trim());
+    return regex.hasMatch(normalized);
   }
 
   Future<Map<String, dynamic>?> lookupPostcode(String postcode) async {
@@ -180,7 +191,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
   }
 
   void checkPostcode() async {
-    final postcode = postcodeController.text.trim();
+    final postcode = normalizeUKPostcode(postcodeController.text);
 
     if (!isValidUKPostcode(postcode)) {
       setState(() => postcodeStatus = "Invalid postcode");
@@ -205,6 +216,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
   }
 
   /// 🔥 CREATE / UPDATE JOB
+
+  void showValidationMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
 
   Future<void> showBillingLimitMessage(
       String message, String employerId) async {
@@ -241,15 +258,28 @@ class _PostJobScreenState extends State<PostJobScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final title = titleController.text.trim();
-    final postcode = postcodeController.text.trim();
+    final typedTitle = titleController.text.trim();
+    final title = typedTitle.isNotEmpty ? typedTitle : selectedTrade.trim();
+    final postcode = normalizeUKPostcode(postcodeController.text);
 
-    if (title.isEmpty || !isValidUKPostcode(postcode)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Invalid data")),
+    if (title.isEmpty) {
+      showValidationMessage("Enter a job title or choose a trade.");
+      return;
+    }
+
+    if (postcode.isEmpty) {
+      showValidationMessage("Enter a site postcode.");
+      return;
+    }
+
+    if (!isValidUKPostcode(postcode)) {
+      showValidationMessage(
+        "Enter a full UK postcode, for example SW1A 1AA.",
       );
       return;
     }
+
+    postcodeController.text = postcode;
 
     setState(() => loading = true);
 
