@@ -37,7 +37,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
   final cityController = TextEditingController();
   final postcodeController = TextEditingController();
   final rateController = TextEditingController();
-  final companyController = TextEditingController();
   final descriptionController = TextEditingController();
   final candidateRequirementsController = TextEditingController();
   final requiredDocumentsController = TextEditingController();
@@ -49,7 +48,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
   String jobType = "hourly";
   String selectedTrade = "Bricklayer";
 
-  File? companyLogo;
   List<File> jobPhotos = [];
   List<String> existingPhotos = [];
 
@@ -106,7 +104,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
       postcodeController.text = job.postcode;
       rateController.text = job.rate.toString();
 
-      companyController.text = job.companyName;
       descriptionController.text = job.description;
       candidateRequirementsController.text = job.candidateRequirements;
       requiredDocumentsController.text = job.requiredDocuments;
@@ -119,13 +116,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
   }
 
   /// IMAGE PICKERS
-
-  Future<void> pickCompanyLogo() async {
-    final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked != null) {
-      setState(() => companyLogo = File(picked.path));
-    }
-  }
 
   Future<void> pickJobPhotos() async {
     final picked = await picker.pickMultiImage();
@@ -215,6 +205,27 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   /// 🔥 CREATE / UPDATE JOB
 
+  Future<String> loadCompanyName(User user) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(user.uid)
+          .get();
+      final data = snapshot.data() ?? {};
+
+      final profileName =
+          (data["companyName"] ?? data["name"] ?? "").toString().trim();
+      if (profileName.isNotEmpty) return profileName;
+    } catch (e) {
+      debugPrint("Company profile lookup error: $e");
+    }
+
+    final emailName = user.email?.trim();
+    if (emailName != null && emailName.isNotEmpty) return emailName;
+
+    return "Company";
+  }
+
   void showValidationMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
@@ -280,6 +291,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
     setState(() => loading = true);
 
+    final companyName = await loadCompanyName(user);
     final result = await lookupPostcode(postcode);
 
     double lat = 0;
@@ -327,7 +339,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
           ? 0
           : double.tryParse(rateController.text) ?? 0,
       "jobType": jobType,
-      "companyName": companyController.text.trim(),
+      "companyName": companyName,
       "description": descriptionController.text.trim(),
       "candidateRequirements": candidateRequirementsController.text.trim(),
       "requiredDocuments": requiredDocumentsController.text.trim(),
@@ -389,11 +401,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
             padding: const EdgeInsets.all(18),
             child: Column(
               children: [
-                TextField(
-                  controller: companyController,
-                  decoration: const InputDecoration(labelText: "Company name"),
-                ),
-                const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   initialValue: selectedTrade,
                   items: trades
