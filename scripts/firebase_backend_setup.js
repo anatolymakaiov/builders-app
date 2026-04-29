@@ -140,14 +140,19 @@ function trialBillingData() {
   );
 
   return {
-    "billing.planId": "starter",
-    "billing.paymentMode": "manual_invoice",
-    "billing.directDebitEnabled": false,
-    "billing.availableJobPosts": 10,
-    "billing.usedJobPosts": 0,
-    "billing.activeUntil": activeUntil,
-    "billing.status": "active",
-    "billing.updatedAt": FieldValue.serverTimestamp(),
+    billing: {
+      planId: "starter",
+      planName: "Starter",
+      paymentMode: "manual_invoice",
+      directDebitEnabled: false,
+      availableJobPosts: 10,
+      usedJobPosts: 0,
+      activeUntil,
+      status: "active",
+      trialActive: true,
+      planRequestStatus: "pending",
+      updatedAt: FieldValue.serverTimestamp(),
+    },
   };
 }
 

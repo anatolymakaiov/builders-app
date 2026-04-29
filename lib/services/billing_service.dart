@@ -37,6 +37,40 @@ class BillingService {
     return value?.toString() ?? "";
   }
 
+  static Map<String, dynamic> billingFromUserData(Map<String, dynamic> data) {
+    final billing = <String, dynamic>{};
+    final rawBilling = data["billing"];
+
+    if (rawBilling is Map) {
+      billing.addAll(Map<String, dynamic>.from(rawBilling));
+    }
+
+    const fields = [
+      "planId",
+      "planName",
+      "paymentMode",
+      "directDebitEnabled",
+      "availableJobPosts",
+      "usedJobPosts",
+      "activeUntil",
+      "status",
+      "trialActive",
+      "planRequestStatus",
+      "paymentRequestId",
+      "trialStartedAt",
+      "updatedAt",
+    ];
+
+    for (final field in fields) {
+      final legacyKey = "billing.$field";
+      if (billing[field] == null && data.containsKey(legacyKey)) {
+        billing[field] = data[legacyKey];
+      }
+    }
+
+    return billing;
+  }
+
   static int daysRemaining(dynamic value) {
     if (value is! Timestamp) return 0;
 
@@ -91,8 +125,10 @@ class BillingService {
         transaction.set(
           userRef,
           {
-            "billing.usedJobPosts": usedJobPosts + 1,
-            "billing.updatedAt": FieldValue.serverTimestamp(),
+            "billing": {
+              "usedJobPosts": usedJobPosts + 1,
+              "updatedAt": FieldValue.serverTimestamp(),
+            },
           },
           SetOptions(merge: true),
         );
@@ -139,19 +175,21 @@ class BillingService {
       transaction.set(
         userRef,
         {
-          "billing.planId": plan.id,
-          "billing.planName": selectedPlanName,
-          "billing.paymentMode": paymentMode,
-          "billing.directDebitEnabled": paymentMode == "direct_debit",
-          "billing.availableJobPosts": availableJobPosts,
-          "billing.usedJobPosts": usedJobPosts,
-          "billing.activeUntil": activeUntil,
-          "billing.status": "active",
-          "billing.trialActive": true,
-          "billing.planRequestStatus": "pending",
-          "billing.paymentRequestId": paymentRequestRef.id,
-          "billing.trialStartedAt": FieldValue.serverTimestamp(),
-          "billing.updatedAt": FieldValue.serverTimestamp(),
+          "billing": {
+            "planId": plan.id,
+            "planName": selectedPlanName,
+            "paymentMode": paymentMode,
+            "directDebitEnabled": paymentMode == "direct_debit",
+            "availableJobPosts": availableJobPosts,
+            "usedJobPosts": usedJobPosts,
+            "activeUntil": activeUntil,
+            "status": "active",
+            "trialActive": true,
+            "planRequestStatus": "pending",
+            "paymentRequestId": paymentRequestRef.id,
+            "trialStartedAt": FieldValue.serverTimestamp(),
+            "updatedAt": FieldValue.serverTimestamp(),
+          },
         },
         SetOptions(merge: true),
       );
@@ -188,8 +226,10 @@ class BillingService {
         transaction.set(
           employerRef,
           {
-            "billing.planRequestStatus": status,
-            "billing.updatedAt": FieldValue.serverTimestamp(),
+            "billing": {
+              "planRequestStatus": status,
+              "updatedAt": FieldValue.serverTimestamp(),
+            },
           },
           SetOptions(merge: true),
         );
@@ -210,18 +250,20 @@ class BillingService {
       transaction.set(
         employerRef,
         {
-          "billing.planId": planId,
-          "billing.planName": requestData["planName"],
-          "billing.paymentMode": requestData["paymentMode"],
-          "billing.directDebitEnabled":
-              requestData["paymentMode"]?.toString() == "direct_debit",
-          "billing.availableJobPosts": availableJobPosts,
-          "billing.usedJobPosts": 0,
-          "billing.activeUntil": activeUntil,
-          "billing.status": "active",
-          "billing.trialActive": false,
-          "billing.planRequestStatus": status,
-          "billing.updatedAt": FieldValue.serverTimestamp(),
+          "billing": {
+            "planId": planId,
+            "planName": requestData["planName"],
+            "paymentMode": requestData["paymentMode"],
+            "directDebitEnabled":
+                requestData["paymentMode"]?.toString() == "direct_debit",
+            "availableJobPosts": availableJobPosts,
+            "usedJobPosts": 0,
+            "activeUntil": activeUntil,
+            "status": "active",
+            "trialActive": false,
+            "planRequestStatus": status,
+            "updatedAt": FieldValue.serverTimestamp(),
+          },
         },
         SetOptions(merge: true),
       );
@@ -234,7 +276,7 @@ class BillingService {
     final role = userData["role"]?.toString() ?? "";
     if (role != "employer") return {};
 
-    final billing = Map<String, dynamic>.from(userData["billing"] ?? {});
+    final billing = billingFromUserData(userData);
     final status = billing["status"]?.toString() ?? "";
     final availableJobPosts = readInt(billing["availableJobPosts"]);
     final usedJobPosts = readInt(billing["usedJobPosts"]);

@@ -134,7 +134,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
           final website = data["website"] ?? "";
           final email = data["email"] ?? "";
           final role = data["role"]?.toString() ?? "";
-          final billing = Map<String, dynamic>.from(data["billing"] ?? {});
+          final billing = BillingService.billingFromUserData(data);
 
           final contacts = (data["contacts"] as List<dynamic>? ?? [])
               .map((e) => Map<String, dynamic>.from(e))
