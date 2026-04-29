@@ -68,10 +68,14 @@ class JobRepository {
         .collection('applications')
         .where('jobId', isEqualTo: jobId)
         .where('workerId', isEqualTo: userId)
-        .limit(1)
         .get();
 
-    return snapshot.docs.isNotEmpty;
+    return snapshot.docs.any((doc) {
+      final data = doc.data();
+      final type = data["type"]?.toString();
+      final status = data["status"]?.toString();
+      return type != "team" && status != "withdrawn";
+    });
   }
 
   /// 🔥 APPLY
@@ -94,15 +98,25 @@ class JobRepository {
       throw Exception("Job has no ownerId");
     }
 
+    final userDoc = await _db.collection('users').doc(userId).get();
+    final workerName =
+        (userDoc.data()?["name"] ?? userDoc.data()?["displayName"] ?? "Worker")
+            .toString();
+
     /// 3. создаем application
     await _db.collection('applications').add({
       "jobId": jobId,
       "workerId": userId,
+      "applicantId": userId,
       "employerId": employerId,
       "status": "pending",
+      "type": "single",
+      "workerName": workerName,
+      "members": [userId],
+      "membersStatus": {userId: "pending"},
 
       // 🔥 ВАЖНО
-      "jobTitle": jobData["title"] ?? "",
+      "jobTitle": (jobData["title"] ?? jobData["trade"] ?? "").toString(),
       "jobTrade": jobData["trade"] ?? "",
       "jobSite": jobData["site"] ?? "",
 

@@ -33,6 +33,7 @@ class JobDetailScreen extends StatefulWidget {
 class _JobDetailScreenState extends State<JobDetailScreen> {
   bool isApplying = false;
   bool isApplied = false;
+  String? currentApplicationId;
   String role = "worker";
 
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
@@ -68,14 +69,29 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         .collection("applications")
         .where("jobId", isEqualTo: widget.job.id)
         .where("workerId", isEqualTo: uid)
-        .limit(1)
         .get();
+
+    QueryDocumentSnapshot<Map<String, dynamic>>? singleApplication;
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      if (isSingleApplicationData(data)) {
+        singleApplication = doc;
+        break;
+      }
+    }
 
     if (mounted) {
       setState(() {
-        isApplied = snap.docs.isNotEmpty;
+        isApplied = singleApplication != null;
+        currentApplicationId = singleApplication?.id;
       });
     }
+  }
+
+  bool isSingleApplicationData(Map<String, dynamic> data) {
+    final type = data["type"]?.toString();
+    final status = data["status"]?.toString();
+    return type != "team" && status != "withdrawn";
   }
 
   /// 🔥 LOAD MY TEAMS
@@ -175,20 +191,39 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final uid = userId;
     if (uid == null) return;
 
-    /// 🔥 CHECK AVAILABLE POSITIONS
-    final remainingPositions = await loadRemainingPositions();
-    if (!mounted) return;
+    if (isApplying) return;
+    setState(() => isApplying = true);
 
-    if (remainingPositions <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("No positions left")),
-      );
+    var remainingPositions = 0;
+    try {
+      /// 🔥 CHECK AVAILABLE POSITIONS
+      remainingPositions = await loadRemainingPositions();
+      if (!mounted) return;
+
+      if (remainingPositions <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No positions left")),
+        );
+        setState(() => isApplying = false);
+        return;
+      }
+
+      if (isApplied) {
+        setState(() => isApplying = false);
+        return;
+      }
+    } catch (e) {
+      debugPrint("POSITION CHECK ERROR: $e");
+      if (mounted) {
+        setState(() => isApplying = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not check available positions")),
+        );
+      }
       return;
     }
 
     try {
-      setState(() => isApplying = true);
-
       /// 🔥 ШАГ 1 — ВЫБОР ТИПА
       if (!mounted) return;
       final type = await pickApplyType(context);
@@ -252,7 +287,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         if (mounted) {
           setState(() {
             isApplying = false;
-            isApplied = true;
+            isApplied = false;
+            currentApplicationId = null;
           });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Application sent")),
@@ -273,15 +309,22 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             .collection("applications")
             .where("jobId", isEqualTo: widget.job.id)
             .where("workerId", isEqualTo: uid)
-            .limit(1)
             .get();
 
-        if (existing.docs.isNotEmpty) {
+        final existingSingle = existing.docs
+            .where((doc) => isSingleApplicationData(doc.data()))
+            .toList();
+
+        if (existingSingle.isNotEmpty) {
           if (mounted) {
             setState(() {
               isApplying = false;
               isApplied = true;
+              currentApplicationId = existingSingle.first.id;
             });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("You already applied")),
+            );
           }
           return;
         }
@@ -290,7 +333,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             await FirebaseFirestore.instance.collection("users").doc(uid).get();
         final workerName = userDoc.data()?["name"] ?? "Worker";
 
-        await FirebaseFirestore.instance.collection("applications").add({
+        final applicationRef =
+            await FirebaseFirestore.instance.collection("applications").add({
           "jobId": widget.job.id,
           "jobTitle": widget.job.displayTitle,
 
@@ -299,6 +343,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           "jobSite": widget.job.site,
 
           "workerId": uid,
+          "applicantId": uid,
           "workerName": workerName,
           "type": "single",
 
@@ -316,6 +361,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           setState(() {
             isApplying = false;
             isApplied = true;
+            currentApplicationId = applicationRef.id;
           });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Application sent")),
@@ -326,7 +372,74 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       }
     } catch (e) {
       debugPrint("APPLY ERROR: $e");
-      if (mounted) setState(() => isApplying = false);
+      if (mounted) {
+        setState(() => isApplying = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not send application")),
+        );
+      }
+    }
+  }
+
+  Future<void> withdrawApplication() async {
+    final uid = userId;
+    if (uid == null || isApplying) return;
+
+    setState(() => isApplying = true);
+
+    try {
+      final refs = <DocumentReference<Map<String, dynamic>>>[];
+
+      if (currentApplicationId != null) {
+        final doc = await FirebaseFirestore.instance
+            .collection("applications")
+            .doc(currentApplicationId)
+            .get();
+
+        final data = doc.data();
+        if (doc.exists &&
+            data != null &&
+            data["jobId"] == widget.job.id &&
+            data["workerId"] == uid &&
+            isSingleApplicationData(data)) {
+          refs.add(doc.reference);
+        }
+      }
+
+      if (refs.isEmpty) {
+        final snap = await FirebaseFirestore.instance
+            .collection("applications")
+            .where("jobId", isEqualTo: widget.job.id)
+            .where("workerId", isEqualTo: uid)
+            .get();
+
+        refs.addAll(
+          snap.docs
+              .where((doc) => isSingleApplicationData(doc.data()))
+              .map((doc) => doc.reference),
+        );
+      }
+
+      for (final ref in refs) {
+        await ref.delete();
+      }
+
+      if (!mounted) return;
+      setState(() {
+        isApplied = false;
+        isApplying = false;
+        currentApplicationId = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Application withdrawn")),
+      );
+    } catch (e) {
+      debugPrint("WITHDRAW APPLICATION ERROR: $e");
+      if (!mounted) return;
+      setState(() => isApplying = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not withdraw application")),
+      );
     }
   }
 
@@ -421,7 +534,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Widget buildApplyButton() {
-    if (role == "employer") return const SizedBox();
+    if (role != "worker") return const SizedBox();
 
     return SizedBox(
       width: double.infinity,
@@ -431,19 +544,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             ? null
             : () async {
                 if (isApplied) {
-                  final snap = await FirebaseFirestore.instance
-                      .collection("applications")
-                      .where("jobId", isEqualTo: widget.job.id)
-                      .where("workerId", isEqualTo: userId)
-                      .get();
-
-                  for (var doc in snap.docs) {
-                    await doc.reference.delete();
-                  }
-
-                  if (mounted) {
-                    setState(() => isApplied = false);
-                  }
+                  await withdrawApplication();
                 } else {
                   await apply();
                 }
