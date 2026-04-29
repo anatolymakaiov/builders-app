@@ -38,6 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _preloaded = false;
   bool _isTyping = false;
   bool isRecording = false;
+  bool isUploadingMedia = false;
   final Set<String> _markedRead = {};
 
   @override
@@ -205,6 +206,34 @@ class _ChatScreenState extends State<ChatScreen> {
     scrollToBottom();
   }
 
+  Uri? normalizeUrl(String text) {
+    final value = text.trim();
+    if (value.isEmpty) return null;
+
+    final normalized =
+        value.startsWith("http://") || value.startsWith("https://")
+            ? value
+            : "https://$value";
+
+    final uri = Uri.tryParse(normalized);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) return null;
+    return uri;
+  }
+
+  String extensionForPickedFile(XFile picked, String fallback) {
+    final namePart = picked.name.split(".").last;
+    if (namePart != picked.name && namePart.trim().isNotEmpty) {
+      return namePart.toLowerCase();
+    }
+
+    final pathPart = picked.path.split(".").last;
+    if (pathPart != picked.path && pathPart.trim().isNotEmpty) {
+      return pathPart.toLowerCase();
+    }
+
+    return fallback;
+  }
+
   Future<void> updateChatAfterMedia({
     required String lastMessage,
     required String lastMessageType,
@@ -233,15 +262,33 @@ class _ChatScreenState extends State<ChatScreen> {
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    if (isUploadingMedia) return;
 
     final file = File(picked.path);
-    final extension = picked.path.split(".").last;
+    if (!file.existsSync()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not read selected file")),
+      );
+      return;
+    }
+
+    final extension =
+        extensionForPickedFile(picked, type == "video" ? "mp4" : "jpg");
 
     try {
+      if (mounted) setState(() => isUploadingMedia = true);
+
       final ref = FirebaseStorage.instance.ref().child(
           "chat_media/${widget.chatId}/${DateTime.now().millisecondsSinceEpoch}.$extension");
 
-      await ref.putFile(file);
+      await ref.putFile(
+        file,
+        SettableMetadata(
+          contentType:
+              type == "video" ? "video/$extension" : "image/$extension",
+        ),
+      );
       final url = await ref.getDownloadURL();
 
       final isWorker = user.uid == workerId;
@@ -272,6 +319,13 @@ class _ChatScreenState extends State<ChatScreen> {
       scrollToBottom();
     } catch (e) {
       debugPrint("MEDIA ERROR: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Could not send $type")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isUploadingMedia = false);
     }
   }
 
@@ -329,10 +383,16 @@ class _ChatScreenState extends State<ChatScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final normalizedLink =
-        link.startsWith("http://") || link.startsWith("https://")
-            ? link
-            : "https://$link";
+    final uri = normalizeUrl(link);
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter a valid link")),
+      );
+      return;
+    }
+
+    final normalizedLink = uri.toString();
     final isWorker = user.uid == workerId;
 
     await FirebaseFirestore.instance
@@ -367,32 +427,51 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> startRecording() async {
-    final hasPermission = await audioRecorder.hasPermission();
-    if (!hasPermission) return;
+    try {
+      final hasPermission = await audioRecorder.hasPermission();
+      if (!hasPermission) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Microphone permission is required")),
+        );
+        return;
+      }
 
-    final dir = await getTemporaryDirectory();
-    final path =
-        "${dir.path}/voice_${widget.chatId}_${DateTime.now().millisecondsSinceEpoch}.m4a";
+      final dir = await getTemporaryDirectory();
+      final path =
+          "${dir.path}/voice_${widget.chatId}_${DateTime.now().millisecondsSinceEpoch}.m4a";
 
-    await audioRecorder.start(
-      const RecordConfig(
-        encoder: AudioEncoder.aacLc,
-      ),
-      path: path,
-    );
+      await audioRecorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+        ),
+        path: path,
+      );
 
-    setState(() {
-      isRecording = true;
-    });
+      setState(() {
+        isRecording = true;
+      });
+    } catch (e) {
+      debugPrint("START RECORDING ERROR: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not start recording")),
+      );
+    }
   }
 
   Future<void> stopRecordingAndSend() async {
-    final path = await audioRecorder.stop();
-
-    if (mounted) {
-      setState(() {
-        isRecording = false;
-      });
+    String? path;
+    try {
+      path = await audioRecorder.stop();
+    } catch (e) {
+      debugPrint("STOP RECORDING ERROR: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          isRecording = false;
+        });
+      }
     }
 
     if (path == null) return;
@@ -401,37 +480,58 @@ class _ChatScreenState extends State<ChatScreen> {
     if (user == null) return;
 
     final file = File(path);
-    if (!file.existsSync()) return;
+    if (!file.existsSync()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not read voice recording")),
+      );
+      return;
+    }
 
-    final ref = FirebaseStorage.instance.ref().child(
-        "chat_voice/${widget.chatId}/${DateTime.now().millisecondsSinceEpoch}.m4a");
+    try {
+      if (mounted) setState(() => isUploadingMedia = true);
 
-    await ref.putFile(file);
-    final url = await ref.getDownloadURL();
+      final ref = FirebaseStorage.instance.ref().child(
+          "chat_voice/${widget.chatId}/${DateTime.now().millisecondsSinceEpoch}.m4a");
 
-    final isWorker = user.uid == workerId;
+      await ref.putFile(
+        file,
+        SettableMetadata(contentType: "audio/mp4"),
+      );
+      final url = await ref.getDownloadURL();
 
-    await FirebaseFirestore.instance
-        .collection("chats")
-        .doc(widget.chatId)
-        .collection("messages")
-        .add({
-      "type": "audio",
-      "audioUrl": url,
-      "mediaUrl": url,
-      "senderId": user.uid,
-      "createdAt": FieldValue.serverTimestamp(),
-      "readBy": [user.uid],
-    });
+      final isWorker = user.uid == workerId;
 
-    await updateChatAfterMedia(
-      lastMessage: "Voice message",
-      lastMessageType: "audio",
-      isWorker: isWorker,
-      senderId: user.uid,
-    );
+      await FirebaseFirestore.instance
+          .collection("chats")
+          .doc(widget.chatId)
+          .collection("messages")
+          .add({
+        "type": "audio",
+        "audioUrl": url,
+        "mediaUrl": url,
+        "senderId": user.uid,
+        "createdAt": FieldValue.serverTimestamp(),
+        "readBy": [user.uid],
+      });
 
-    scrollToBottom();
+      await updateChatAfterMedia(
+        lastMessage: "Voice message",
+        lastMessageType: "audio",
+        isWorker: isWorker,
+        senderId: user.uid,
+      );
+
+      scrollToBottom();
+    } catch (e) {
+      debugPrint("SEND AUDIO ERROR: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not send voice message")),
+      );
+    } finally {
+      if (mounted) setState(() => isUploadingMedia = false);
+    }
   }
 
   Future<void> showAttachmentMenu() async {
@@ -813,21 +913,26 @@ class _ChatScreenState extends State<ChatScreen> {
                                             CrossAxisAlignment.end,
                                         children: [
                                           if (type == "text")
-                                            Text(data["text"] ?? ""),
+                                            _TextMessageContent(
+                                              text: data["text"] ?? "",
+                                              normalizeUrl: normalizeUrl,
+                                            ),
                                           if (type == "image" &&
                                               (data["imageUrl"] != null ||
                                                   data["mediaUrl"] != null))
                                             GestureDetector(
                                               onTap: () {
+                                                final imageUrl =
+                                                    (data["imageUrl"] ??
+                                                            data["mediaUrl"])
+                                                        .toString();
                                                 Navigator.push(
                                                   context,
                                                   MaterialPageRoute(
                                                     builder: (_) =>
                                                         ImageViewerScreen(
-                                                            imageUrl: data[
-                                                                    "imageUrl"] ??
-                                                                data[
-                                                                    "mediaUrl"]),
+                                                      imageUrl: imageUrl,
+                                                    ),
                                                   ),
                                                 );
                                               },
@@ -835,7 +940,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                                 borderRadius:
                                                     BorderRadius.circular(10),
                                                 child: CachedNetworkImage(
-                                                  imageUrl: data["imageUrl"],
+                                                  imageUrl: (data["imageUrl"] ??
+                                                          data["mediaUrl"])
+                                                      .toString(),
                                                   width: 200,
                                                   fit: BoxFit.cover,
                                                   placeholder: (context, url) =>
@@ -949,46 +1056,61 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Container(
                         color: AppColors.navy,
                         padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-                        child: Row(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            IconButton.filled(
-                              style: IconButton.styleFrom(
-                                backgroundColor: AppColors.green,
-                                foregroundColor: Colors.white,
+                            if (isUploadingMedia)
+                              const Padding(
+                                padding: EdgeInsets.only(bottom: 8),
+                                child: LinearProgressIndicator(),
                               ),
-                              icon: const Icon(Icons.add),
-                              onPressed: showAttachmentMenu,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: controller,
-                                onChanged: handleTypingChanged,
-                                decoration: const InputDecoration(
-                                  hintText: "Type a message",
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
+                            Row(
+                              children: [
+                                IconButton.filled(
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: AppColors.green,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  icon: const Icon(Icons.add),
+                                  onPressed: isUploadingMedia
+                                      ? null
+                                      : showAttachmentMenu,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    controller: controller,
+                                    onChanged: handleTypingChanged,
+                                    decoration: const InputDecoration(
+                                      hintText: "Type a message",
+                                      filled: true,
+                                      fillColor: Colors.white,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 12,
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                isRecording ? Icons.stop_circle : Icons.mic,
-                                color: isRecording ? Colors.red : Colors.white,
-                              ),
-                              onPressed: toggleRecording,
-                            ),
-                            IconButton.filled(
-                              style: IconButton.styleFrom(
-                                backgroundColor: Colors.white70,
-                                foregroundColor: AppColors.navy,
-                              ),
-                              icon: const Icon(Icons.send),
-                              onPressed: sendMessage,
+                                IconButton(
+                                  icon: Icon(
+                                    isRecording ? Icons.stop_circle : Icons.mic,
+                                    color:
+                                        isRecording ? Colors.red : Colors.white,
+                                  ),
+                                  onPressed:
+                                      isUploadingMedia ? null : toggleRecording,
+                                ),
+                                IconButton.filled(
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.white70,
+                                    foregroundColor: AppColors.navy,
+                                  ),
+                                  icon: const Icon(Icons.send),
+                                  onPressed:
+                                      isUploadingMedia ? null : sendMessage,
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -1001,6 +1123,39 @@ class _ChatScreenState extends State<ChatScreen> {
           },
         );
       },
+    );
+  }
+}
+
+class _TextMessageContent extends StatelessWidget {
+  final String text;
+  final Uri? Function(String text) normalizeUrl;
+
+  const _TextMessageContent({
+    required this.text,
+    required this.normalizeUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final uri = normalizeUrl(text);
+    if (uri == null) return Text(text);
+
+    return InkWell(
+      onTap: () => launchUrl(uri, mode: LaunchMode.externalApplication),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.link, size: 18),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              style: const TextStyle(decoration: TextDecoration.underline),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

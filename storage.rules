@@ -40,17 +40,22 @@ service firebase.storage {
       allow write: if signedIn();
     }
 
-    match /chat_media/{fileName} {
+    match /chat_media/{allPaths=**} {
       allow read: if signedIn();
       allow write: if signedIn();
     }
 
-    match /chat_audio/{fileName} {
+    match /chat_audio/{allPaths=**} {
       allow read: if signedIn();
       allow write: if signedIn();
     }
 
-    match /chat_video/{fileName} {
+    match /chat_video/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /chat_voice/{allPaths=**} {
       allow read: if signedIn();
       allow write: if signedIn();
     }
