@@ -38,6 +38,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// 🔥 NEW
   final websiteController = TextEditingController();
   final contactPersonController = TextEditingController();
+  final companyGoalsController = TextEditingController();
+  final companyAdvantagesController = TextEditingController();
+  final companyClientsController = TextEditingController();
+  final companyWhoWeAreController = TextEditingController();
+  final companyHistoryController = TextEditingController();
   List<String> extraPhones = [];
   List<Map<String, String>> references = [];
   final picker = ImagePicker();
@@ -101,6 +106,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       websiteController.text = data["website"] ?? "";
       contactPersonController.text = data["contactPerson"] ?? "";
+      companyGoalsController.text = data["companyGoals"] ?? "";
+      companyAdvantagesController.text = data["companyAdvantages"] ?? "";
+      companyClientsController.text = data["companyClients"] ?? "";
+      companyWhoWeAreController.text = data["companyWhoWeAre"] ?? "";
+      companyHistoryController.text = data["companyHistory"] ?? "";
       extraPhones = List<String>.from(data["phones"] ?? []);
       references = parseReferences(data["references"]);
       rating = (data["rating"] ?? 0).toDouble();
@@ -241,80 +251,110 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> saveProfile() async {
     final name = nameController.text.trim();
     final phone = phoneController.text.trim();
+    final companyName = companyController.text.trim();
     final certificationsText = certificationsController.text.trim();
 
-    if (name.isEmpty || phone.isEmpty) return;
+    if (role == "worker" && name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter your name")),
+      );
+      return;
+    }
+
+    if (role == "employer" && companyName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter company name")),
+      );
+      return;
+    }
 
     setState(() => loading = true);
 
-    var savedHeaderImageUrl = headerImageUrl;
-    if (headerImageFile != null) {
-      final ref =
-          FirebaseStorage.instance.ref().child("profile_headers/$userId.jpg");
-      await ref.putFile(headerImageFile!);
-      savedHeaderImageUrl = await ref.getDownloadURL();
-    }
+    try {
+      var savedHeaderImageUrl = headerImageUrl;
+      if (headerImageFile != null) {
+        final ref =
+            FirebaseStorage.instance.ref().child("profile_headers/$userId.jpg");
+        await ref.putFile(headerImageFile!);
+        savedHeaderImageUrl = await ref.getDownloadURL();
+      }
 
-    final profileData = <String, dynamic>{
-      "role": role,
-      "name": role == "worker" ? name : null,
-      "phone": phone,
-      "nickname": role == "worker" ? nicknameController.text.trim() : null,
-      "username": role == "worker" ? nicknameController.text.trim() : null,
+      final cleanedPhones = extraPhones
+          .map((phone) => phone.trim())
+          .where((phone) => phone.isNotEmpty)
+          .toList();
 
-      /// 🔥 WORKER
-      "trade": role == "worker" ? tradeController.text.trim() : null,
-      "experience": role == "worker" ? experienceController.text.trim() : null,
-      "experienceYears": role == "worker"
-          ? int.tryParse(experienceYearsController.text.trim())
-          : null,
-      "experienceMonths": role == "worker"
-          ? int.tryParse(experienceMonthsController.text.trim())
-          : null,
-      "permits": role == "worker" ? permitsController.text.trim() : null,
-      "qualifications":
-          role == "worker" ? qualificationsController.text.trim() : null,
-      "certificationsText": role == "worker" ? certificationsText : null,
-      "certifications": role == "worker" ? splitLines(certificationsText) : [],
-      "education": role == "worker" ? educationController.text.trim() : null,
-      "previousWork":
-          role == "worker" ? previousWorkController.text.trim() : null,
-      "references": role == "worker" ? cleanedReferences() : [],
-      "rate": FieldValue.delete(),
+      final profileData = <String, dynamic>{
+        "role": role,
+        "phone": phone,
+        "bio": bioController.text.trim(),
+        "location": locationController.text.trim(),
+        "updatedAt": FieldValue.serverTimestamp(),
+      };
 
-      /// 🔥 EMPLOYER
-      "companyName": role == "employer" ? companyController.text.trim() : null,
-      "website": role == "employer" ? websiteController.text.trim() : null,
-      "contactPerson":
-          role == "employer" ? contactPersonController.text.trim() : null,
+      if (role == "worker") {
+        profileData.addAll({
+          "name": name,
+          "nickname": nicknameController.text.trim(),
+          "username": nicknameController.text.trim(),
+          "trade": tradeController.text.trim(),
+          "experience": experienceController.text.trim(),
+          "experienceYears":
+              int.tryParse(experienceYearsController.text.trim()),
+          "experienceMonths":
+              int.tryParse(experienceMonthsController.text.trim()),
+          "permits": permitsController.text.trim(),
+          "qualifications": qualificationsController.text.trim(),
+          "certificationsText": certificationsText,
+          "certifications": splitLines(certificationsText),
+          "education": educationController.text.trim(),
+          "previousWork": previousWorkController.text.trim(),
+          "references": cleanedReferences(),
+          "rate": FieldValue.delete(),
+        });
+      }
 
-      "phones": role == "employer" ? extraPhones : [],
+      if (role == "employer") {
+        profileData.addAll({
+          "companyName": companyName,
+          "website": websiteController.text.trim(),
+          "contactPerson": contactPersonController.text.trim(),
+          "phones": cleanedPhones,
+          "companyGoals": companyGoalsController.text.trim(),
+          "companyAdvantages": companyAdvantagesController.text.trim(),
+          "companyClients": companyClientsController.text.trim(),
+          "companyWhoWeAre": companyWhoWeAreController.text.trim(),
+          "companyHistory": companyHistoryController.text.trim(),
+        });
+      }
 
-      /// 🔥 COMMON
-      "bio": bioController.text.trim(),
-      "location": locationController.text.trim(),
+      if (savedHeaderImageUrl != null && savedHeaderImageUrl.isNotEmpty) {
+        profileData["profileHeaderImage"] = savedHeaderImageUrl;
+      }
 
-      "updatedAt": FieldValue.serverTimestamp(),
-    };
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .set(profileData, SetOptions(merge: true));
 
-    if (savedHeaderImageUrl != null && savedHeaderImageUrl.isNotEmpty) {
-      profileData["profileHeaderImage"] = savedHeaderImageUrl;
-    }
+      if (!mounted) return;
 
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .set(profileData, SetOptions(merge: true));
+      setState(() {
+        loading = false;
+        headerImageUrl = savedHeaderImageUrl;
+        headerImageFile = null;
+        extraPhones = cleanedPhones;
+      });
 
-    setState(() {
-      loading = false;
-      headerImageUrl = savedHeaderImageUrl;
-      headerImageFile = null;
-    });
-
-    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Profile saved")),
+      );
+    } catch (e) {
+      debugPrint("Save profile error: $e");
+      if (!mounted) return;
+      setState(() => loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not save profile")),
       );
     }
   }
@@ -463,14 +503,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: const InputDecoration(labelText: "Name"),
           ),
           const SizedBox(height: 12),
+          TextField(
+            controller: phoneController,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(labelText: "Phone"),
+          ),
+          const SizedBox(height: 12),
         ],
-
-        TextField(
-          controller: phoneController,
-          decoration: const InputDecoration(labelText: "Phone"),
-        ),
-
-        const SizedBox(height: 12),
 
         /// 🔥 WORKER
         if (role == "worker") ...[
@@ -674,6 +713,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: const InputDecoration(labelText: "Contact person"),
           ),
           const SizedBox(height: 12),
+          TextField(
+            controller: phoneController,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(labelText: "Main phone"),
+          ),
+          const SizedBox(height: 12),
           const Text("Additional phones"),
           const SizedBox(height: 8),
           ...extraPhones.asMap().entries.map((entry) {
@@ -705,20 +750,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
             },
             child: const Text("Add phone"),
           ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: locationController,
+            maxLines: 2,
+            decoration: const InputDecoration(labelText: "Location / address"),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: bioController,
+            maxLines: 3,
+            decoration: const InputDecoration(labelText: "About"),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: companyGoalsController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: "Our goals and objectives",
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: companyAdvantagesController,
+            maxLines: 3,
+            decoration: const InputDecoration(labelText: "Our advantages"),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: companyClientsController,
+            maxLines: 3,
+            decoration: const InputDecoration(labelText: "Our clients"),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: companyWhoWeAreController,
+            maxLines: 3,
+            decoration: const InputDecoration(labelText: "Who we are"),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: companyHistoryController,
+            maxLines: 4,
+            decoration: const InputDecoration(labelText: "Our history"),
+          ),
         ],
 
-        const SizedBox(height: 12),
-
-        TextField(
+        if (role == "worker") ...[
+          const SizedBox(height: 12),
+          TextField(
             controller: locationController,
-            decoration: const InputDecoration(labelText: "Location")),
-        const SizedBox(height: 12),
-
-        TextField(
-          controller: bioController,
-          maxLines: 3,
-          decoration: const InputDecoration(labelText: "About"),
-        ),
+            decoration: const InputDecoration(labelText: "Location"),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: bioController,
+            maxLines: 3,
+            decoration: const InputDecoration(labelText: "About"),
+          ),
+        ],
 
         buildPortfolioPreview(),
 

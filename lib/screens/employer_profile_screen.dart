@@ -133,6 +133,11 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
           final extraPhones = List<String>.from(data["phones"] ?? []);
           final website = data["website"] ?? "";
           final email = data["email"] ?? "";
+          final companyGoals = data["companyGoals"]?.toString() ?? "";
+          final companyAdvantages = data["companyAdvantages"]?.toString() ?? "";
+          final companyClients = data["companyClients"]?.toString() ?? "";
+          final companyWhoWeAre = data["companyWhoWeAre"]?.toString() ?? "";
+          final companyHistory = data["companyHistory"]?.toString() ?? "";
           final role = data["role"]?.toString() ?? "";
           final billing = BillingService.billingFromUserData(data);
 
@@ -277,6 +282,26 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                                     description.isEmpty
                                         ? "No company description yet"
                                         : description,
+                                  ),
+                                  _CompanyInfoBlock(
+                                    title: "Our goals and objectives",
+                                    text: companyGoals,
+                                  ),
+                                  _CompanyInfoBlock(
+                                    title: "Our advantages",
+                                    text: companyAdvantages,
+                                  ),
+                                  _CompanyInfoBlock(
+                                    title: "Our clients",
+                                    text: companyClients,
+                                  ),
+                                  _CompanyInfoBlock(
+                                    title: "Who we are",
+                                    text: companyWhoWeAre,
+                                  ),
+                                  _CompanyInfoBlock(
+                                    title: "Our history",
+                                    text: companyHistory,
                                   ),
                                   if (address.isNotEmpty) ...[
                                     const SizedBox(height: 18),
@@ -460,6 +485,41 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _CompanyInfoBlock extends StatelessWidget {
+  final String title;
+  final String text;
+
+  const _CompanyInfoBlock({
+    required this.title,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cleanText = text.trim();
+    if (cleanText.isEmpty) return const SizedBox();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.ink,
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(cleanText),
+        ],
       ),
     );
   }
