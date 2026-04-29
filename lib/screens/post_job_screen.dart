@@ -30,7 +30,6 @@ class PostJobScreen extends StatefulWidget {
 }
 
 class _PostJobScreenState extends State<PostJobScreen> {
-  final titleController = TextEditingController();
   final positionsController = TextEditingController();
   final durationController = TextEditingController();
   final weeklyHoursController = TextEditingController();
@@ -98,7 +97,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
     if (widget.existingJob != null) {
       final job = widget.existingJob!;
 
-      titleController.text = job.title;
       positionsController.text = job.positions.toString();
       siteController.text = job.site;
       durationController.text = job.duration;
@@ -258,12 +256,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final typedTitle = titleController.text.trim();
-    final title = typedTitle.isNotEmpty ? typedTitle : selectedTrade.trim();
+    final title = selectedTrade.trim();
     final postcode = normalizeUKPostcode(postcodeController.text);
 
     if (title.isEmpty) {
-      showValidationMessage("Enter a job title or choose a trade.");
+      showValidationMessage("Choose a trade.");
       return;
     }
 
@@ -404,11 +401,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
                       .toList(),
                   onChanged: (v) => setState(() => selectedTrade = v!),
                   decoration: const InputDecoration(labelText: "Trade"),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(labelText: "Job title"),
                 ),
                 const SizedBox(height: 12),
                 TextField(
