@@ -52,9 +52,42 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         .doc(userId)
         .collection("portfolio")
         .add({
+      "userId": userId,
       "image": url,
       "imageUrl": url,
       "createdAt": FieldValue.serverTimestamp(),
+    });
+  }
+
+  Stream<List<String>> portfolioStream() {
+    return FirebaseFirestore.instance
+        .collection("users")
+        .doc(userId)
+        .collection("portfolio")
+        .snapshots()
+        .asyncMap((nestedSnapshot) async {
+      final urls = <String>[];
+
+      for (final doc in nestedSnapshot.docs) {
+        final data = doc.data();
+        final url = data["imageUrl"] ?? data["image"];
+        if (url != null) urls.add(url.toString());
+      }
+
+      final flatSnapshot = await FirebaseFirestore.instance
+          .collection("portfolio")
+          .where("userId", isEqualTo: userId)
+          .get();
+
+      for (final doc in flatSnapshot.docs) {
+        final data = doc.data();
+        final url = data["imageUrl"] ?? data["image"];
+        if (url != null && !urls.contains(url.toString())) {
+          urls.add(url.toString());
+        }
+      }
+
+      return urls;
     });
   }
 
@@ -69,21 +102,18 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         child: const Icon(Icons.add_a_photo),
       ),
       body: StroykaScreenBody(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection("portfolio")
-              .where("userId", isEqualTo: userId)
-              .snapshots(),
+        child: StreamBuilder<List<String>>(
+          stream: portfolioStream(),
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final photos = snapshot.data!.docs;
+            final photos = snapshot.data!;
 
             if (photos.isEmpty) {
               return const Center(
-                child: Text("No work photos yet"),
+                child: Text("No portfolio yet"),
               );
             }
 
@@ -96,10 +126,20 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
               ),
               itemCount: photos.length,
               itemBuilder: (context, index) {
-                final data = photos[index].data() as Map<String, dynamic>;
-                final url = data["imageUrl"] ?? data["image"];
+                final url = photos[index];
 
-                return Image.network(url, fit: BoxFit.cover);
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    url,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: Colors.grey.shade200,
+                      alignment: Alignment.center,
+                      child: const Icon(Icons.broken_image_outlined),
+                    ),
+                  ),
+                );
               },
             );
           },

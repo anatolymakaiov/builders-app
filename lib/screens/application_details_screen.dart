@@ -541,8 +541,48 @@ class ApplicationDetailsScreen extends StatelessWidget {
     return FutureBuilder<List<String>>(
       future: loadPortfolioUrls(userId),
       builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Work gallery",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 10),
+              LinearProgressIndicator(),
+            ],
+          );
+        }
+
+        if (snapshot.hasError) {
+          return const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Work gallery",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 10),
+              Text("Could not load portfolio"),
+            ],
+          );
+        }
+
         final items = snapshot.data ?? [];
-        if (items.isEmpty) return const SizedBox();
+        if (items.isEmpty) {
+          return const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Work gallery",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 10),
+              Text("No portfolio yet"),
+            ],
+          );
+        }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -577,6 +617,25 @@ class ApplicationDetailsScreen extends StatelessWidget {
                         width: 110,
                         height: 110,
                         fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 110,
+                          height: 110,
+                          color: Colors.grey.shade200,
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.broken_image_outlined),
+                        ),
+                        loadingBuilder: (context, child, progress) {
+                          if (progress == null) return child;
+                          return Container(
+                            width: 110,
+                            height: 110,
+                            color: Colors.grey.shade100,
+                            alignment: Alignment.center,
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          );
+                        },
                       ),
                     ),
                   );
