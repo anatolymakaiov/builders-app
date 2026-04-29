@@ -146,13 +146,17 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final batch = FirebaseFirestore.instance.batch();
-      for (final doc in unread) {
-        batch.update(doc.reference, {
-          "readBy": FieldValue.arrayUnion([uid]),
-        });
+      try {
+        final batch = FirebaseFirestore.instance.batch();
+        for (final doc in unread) {
+          batch.update(doc.reference, {
+            "readBy": FieldValue.arrayUnion([uid]),
+          });
+        }
+        await batch.commit();
+      } on FirebaseException catch (error) {
+        debugPrint("Mark messages read failed: ${error.code}");
       }
-      await batch.commit();
     });
   }
 

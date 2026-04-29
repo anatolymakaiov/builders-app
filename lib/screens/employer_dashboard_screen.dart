@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/job.dart';
+import 'employer_applications_screen.dart';
 import 'job_details_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -132,39 +133,59 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     required String label,
     required int value,
     required Color color,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      height: 34,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: color.withValues(alpha: 0.20)),
-      ),
-      child: Row(
-        children: [
-          Text(
-            value.toString(),
-            style: TextStyle(
-              color: color,
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-            ),
+        onTap: value > 0 ? onTap : null,
+        child: Container(
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: color.withValues(alpha: 0.20)),
           ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.grey.shade800,
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
+          child: Row(
+            children: [
+              Text(
+                value.toString(),
+                style: TextStyle(
+                  color: color,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
-            ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade800,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  void openApplicationsFor(Job job, String status) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EmployerApplicationsScreen(
+          initialJobId: job.id,
+          initialStatus: status,
+        ),
       ),
     );
   }
@@ -302,12 +323,42 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
             (job.positions - acceptedSlots).clamp(0, job.positions);
 
         final stats = [
-          (label: "Applied", value: docs.length, color: AppColors.ink),
-          (label: "Review", value: inReview, color: AppColors.greenDark),
-          (label: "Offers", value: offer, color: AppColors.green),
-          (label: "Accepted", value: acceptedSlots, color: Colors.green),
-          (label: "Rejected", value: rejected, color: Colors.red),
-          (label: "Left", value: spotsLeft, color: Colors.deepPurple),
+          (
+            label: "Applied",
+            value: docs.length,
+            color: AppColors.ink,
+            status: "all"
+          ),
+          (
+            label: "Review",
+            value: inReview,
+            color: AppColors.greenDark,
+            status: "pending"
+          ),
+          (
+            label: "Offers",
+            value: offer,
+            color: AppColors.green,
+            status: "offer_sent"
+          ),
+          (
+            label: "Accepted",
+            value: acceptedSlots,
+            color: Colors.green,
+            status: "offer_accepted"
+          ),
+          (
+            label: "Rejected",
+            value: rejected,
+            color: Colors.red,
+            status: "rejected"
+          ),
+          (
+            label: "Left",
+            value: spotsLeft,
+            color: Colors.deepPurple,
+            status: "all"
+          ),
         ];
 
         return GridView.builder(
@@ -326,6 +377,9 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
               label: stat.label,
               value: stat.value,
               color: stat.color,
+              onTap: stat.label == "Left"
+                  ? null
+                  : () => openApplicationsFor(job, stat.status),
             );
           },
         );

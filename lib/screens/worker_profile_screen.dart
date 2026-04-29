@@ -68,6 +68,39 @@ class WorkerProfileScreen extends StatelessWidget {
     );
   }
 
+  List<Widget> buildOfferDetails(Map<String, dynamic> offer) {
+    final rows = <Widget>[];
+
+    void addRow(String label, dynamic value) {
+      final text = value?.toString().trim() ?? "";
+      if (text.isEmpty) return;
+
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Text("$label: $text"),
+        ),
+      );
+    }
+
+    addRow("Work format", offer["workFormat"]);
+    addRow("Rate / price", offer["rate"] == null ? null : "£${offer["rate"]}");
+    addRow("Work period", offer["workPeriod"]);
+    addRow("Hours per week", offer["weeklyHours"]);
+    addRow("Schedule", offer["schedule"]);
+    addRow("Start", offer["startDateTime"] ?? offer["startDate"]);
+    addRow("Site address", offer["siteAddress"]);
+    addRow("Required on first day", offer["firstDayRequirements"]);
+    addRow("Description", offer["description"] ?? offer["message"]);
+    addRow("Valid until", offer["validUntil"]);
+
+    if (rows.isEmpty) {
+      rows.add(const Text("Offer details not provided"));
+    }
+
+    return rows;
+  }
+
   String textFromListOrString(dynamic value) {
     if (value == null) return "";
     if (value is List) {
@@ -796,7 +829,7 @@ class WorkerProfileScreen extends StatelessWidget {
                       labelStyle: TextStyle(fontWeight: FontWeight.w800),
                       tabs: [
                         Tab(text: "Info"),
-                        Tab(text: "Contacts"),
+                        Tab(text: "Actions"),
                         Tab(text: "Photos"),
                         Tab(text: "Teams"),
                       ],
@@ -814,6 +847,7 @@ class WorkerProfileScreen extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  buildPhoneSection(phone),
                                   buildInfoSection("Location", location),
                                   buildInfoSection("About", bio),
                                   buildInfoSection(
@@ -830,6 +864,7 @@ class WorkerProfileScreen extends StatelessWidget {
                                       "Education (optional)", education),
                                   buildInfoSection(
                                       "Previous work", previousWork),
+                                  buildReferencesSection(references),
                                 ],
                               ),
                             ),
@@ -849,8 +884,6 @@ class WorkerProfileScreen extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  buildPhoneSection(phone),
-                                  buildReferencesSection(references),
                                   if (employerId != null && jobId != null)
                                     SizedBox(
                                       width: double.infinity,
@@ -898,11 +931,19 @@ class WorkerProfileScreen extends StatelessWidget {
                                             ),
                                           ),
                                           const SizedBox(height: 8),
-                                          if (offerRate != null)
-                                            Text("Rate: £$offerRate/hour"),
-                                          if (offerNote != null &&
-                                              offerNote.toString().isNotEmpty)
-                                            Text("Note: $offerNote"),
+                                          if (applicationData["offer"]
+                                              is Map<String, dynamic>)
+                                            ...buildOfferDetails(
+                                              applicationData["offer"]
+                                                  as Map<String, dynamic>,
+                                            )
+                                          else ...[
+                                            if (offerRate != null)
+                                              Text("Rate: £$offerRate/hour"),
+                                            if (offerNote != null &&
+                                                offerNote.toString().isNotEmpty)
+                                              Text("Note: $offerNote"),
+                                          ],
                                           if (!isMyProfile) ...[
                                             const SizedBox(height: 12),
                                             SizedBox(

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
 import 'worker_profile_screen.dart';
 import '../services/application_activity_service.dart';
+import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/phone_link.dart';
 import '../theme/app_theme.dart';
@@ -87,56 +88,59 @@ class ApplicationDetailsScreen extends StatelessWidget {
   }
 
   Future<void> openChat(BuildContext context) async {
-    final workerId = data["workerId"] ??
-        data["userId"] ??
-        (data["members"] != null && data["members"].isNotEmpty
-            ? data["members"][0]
-            : null);
-    final employerId = data["employerId"];
-
-    if (workerId == null || employerId == null) return;
-
-    final existing = await FirebaseFirestore.instance
-        .collection("chats")
-        .where("workerId", isEqualTo: workerId)
-        .where("employerId", isEqualTo: employerId)
-        .limit(1)
-        .get();
-
-    String chatId;
-
-    if (existing.docs.isNotEmpty) {
-      chatId = existing.docs.first.id;
-      await existing.docs.first.reference.set({
-        "participants": [workerId, employerId],
-        "members": [workerId, employerId],
-        "updatedAt": FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    } else {
-      final doc = await FirebaseFirestore.instance.collection("chats").add({
-        "workerId": workerId,
-        "employerId": employerId,
-        "participants": [workerId, employerId],
-        "members": [workerId, employerId],
-        "lastMessage": "",
-        "lastMessageType": "text",
-        "updatedAt": FieldValue.serverTimestamp(),
-        "unreadCount_worker": 0,
-        "unreadCount_employer": 0,
-        "typing_worker": false,
-        "typing_employer": false,
-      });
-
-      chatId = doc.id;
-    }
-
-    if (!context.mounted) return;
+    final chatId = await chatIdForApplication(data);
+    if (chatId == null || !context.mounted) return;
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ChatScreen(chatId: chatId),
       ),
+    );
+  }
+
+  Future<String?> chatIdForApplication(Map<String, dynamic> source) async {
+    final isTeam = (source["type"] ?? "single") == "team";
+    final employerId = source["employerId"]?.toString();
+    final jobId = source["jobId"]?.toString();
+
+    if (employerId == null ||
+        employerId.isEmpty ||
+        jobId == null ||
+        jobId.isEmpty) {
+      return null;
+    }
+
+    if (isTeam) {
+      final teamId = source["teamId"]?.toString();
+      final members = List<String>.from(source["members"] ?? [])
+          .where((id) => id.trim().isNotEmpty)
+          .toList();
+
+      if (teamId == null || teamId.isEmpty || members.isEmpty) return null;
+
+      return ChatService.getOrCreateTeamChat(
+        teamId: teamId,
+        employerId: employerId,
+        jobId: jobId,
+        members: members,
+        applicationId: applicationId,
+      );
+    }
+
+    final workerId = source["workerId"] ??
+        source["userId"] ??
+        (source["members"] != null && source["members"].isNotEmpty
+            ? source["members"][0]
+            : null);
+
+    if (workerId == null) return null;
+
+    return ChatService.getOrCreateChat(
+      workerId: workerId.toString(),
+      employerId: employerId,
+      jobId: jobId,
+      applicationId: applicationId,
     );
   }
 
@@ -932,61 +936,10 @@ class ApplicationDetailsScreen extends StatelessWidget {
                                     await updateStatus(context, "negotiation");
                                   }
 
-                                  final workerId = liveData["workerId"] ??
-                                      (liveData["members"] != null
-                                          ? liveData["members"][0]
-                                          : null);
+                                  final chatId =
+                                      await chatIdForApplication(liveData);
 
-                                  final employerId = liveData["employerId"];
-                                  final jobId = liveData["jobId"];
-
-                                  if (workerId == null ||
-                                      employerId == null ||
-                                      jobId == null) {
-                                    return;
-                                  }
-
-                                  final existing = await FirebaseFirestore
-                                      .instance
-                                      .collection("chats")
-                                      .where("jobId", isEqualTo: jobId)
-                                      .where("workerId", isEqualTo: workerId)
-                                      .where("employerId",
-                                          isEqualTo: employerId)
-                                      .get();
-
-                                  String chatId;
-
-                                  if (existing.docs.isNotEmpty) {
-                                    chatId = existing.docs.first.id;
-                                    await existing.docs.first.reference.set({
-                                      "participants": [workerId, employerId],
-                                      "members": [workerId, employerId],
-                                      "updatedAt": FieldValue.serverTimestamp(),
-                                    }, SetOptions(merge: true));
-                                  } else {
-                                    final doc = await FirebaseFirestore.instance
-                                        .collection("chats")
-                                        .add({
-                                      "jobId": jobId,
-                                      "members": [workerId, employerId],
-                                      "participants": [workerId, employerId],
-                                      "workerId": workerId,
-                                      "employerId": employerId,
-                                      "workerName": "Worker",
-                                      "employerName": "Employer",
-                                      "unreadCount_worker": 0,
-                                      "unreadCount_employer": 0,
-                                      "typing_worker": false,
-                                      "typing_employer": false,
-                                      "lastMessage": "",
-                                      "lastMessageType": "text",
-                                      "createdAt": FieldValue.serverTimestamp(),
-                                      "updatedAt": FieldValue.serverTimestamp(),
-                                    });
-
-                                    chatId = doc.id;
-                                  }
+                                  if (chatId == null) return;
 
                                   if (context.mounted) {
                                     Navigator.push(
@@ -1137,6 +1090,29 @@ class ApplicationDetailsScreen extends StatelessWidget {
                               style: TextStyle(
                                 color: Colors.green,
                                 fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+
+                          if (status == "rejected") ...[
+                            const SizedBox(height: 10),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: Colors.red.withValues(alpha: 0.22),
+                                ),
+                              ),
+                              child: const Text(
+                                "Application rejected",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
                             ),
                           ],

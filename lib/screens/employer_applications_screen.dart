@@ -2,13 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'application_details_screen.dart';
-import 'worker_profile_screen.dart';
 import '../services/application_activity_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
 class EmployerApplicationsScreen extends StatefulWidget {
-  const EmployerApplicationsScreen({super.key});
+  final String? initialJobId;
+  final String initialStatus;
+
+  const EmployerApplicationsScreen({
+    super.key,
+    this.initialJobId,
+    this.initialStatus = "all",
+  });
 
   @override
   State<EmployerApplicationsScreen> createState() =>
@@ -22,6 +28,13 @@ class _EmployerApplicationsScreenState
   Set<String> sites = {"all"};
   String selectedTrade = "all";
   String selectedSite = "all";
+
+  @override
+  void initState() {
+    super.initState();
+    selectedStatus = widget.initialStatus;
+  }
+
   Color getStatusColor(String status) {
     switch (status) {
       case "accepted":
@@ -270,6 +283,11 @@ class _EmployerApplicationsScreenState
                     final trade = (data["jobTrade"] ?? "").toString().trim();
                     final site = (data["jobSite"] ?? "").toString().trim();
 
+                    if (widget.initialJobId != null &&
+                        data["jobId"]?.toString() != widget.initialJobId) {
+                      return false;
+                    }
+
                     if (selectedStatus != "all" && status != selectedStatus) {
                       return false;
                     }
@@ -318,26 +336,7 @@ class _EmployerApplicationsScreenState
                             doc.id,
                             employerId,
                           );
-                          final workerId = data["workerId"] ??
-                              (members.isNotEmpty ? members.first : null);
-                          final jobId = data["jobId"]?.toString();
-                          final appEmployerId = data["employerId"]?.toString();
-
                           if (!context.mounted) return;
-
-                          if (type != "team" && workerId != null) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => WorkerProfileScreen(
-                                  userId: workerId.toString(),
-                                  jobId: jobId,
-                                  employerId: appEmployerId,
-                                ),
-                              ),
-                            );
-                            return;
-                          }
 
                           Navigator.push(
                             context,

@@ -75,6 +75,20 @@ service cloud.firestore {
         allow create: if signedIn();
         allow read, update, delete: if isAdmin() || isSelf(userId);
       }
+
+      match /portfolio/{portfolioId} {
+        allow create, read, update, delete: if isAdmin() || isSelf(userId);
+      }
+
+      match /reviews/{reviewId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if isAdmin() || isSelf(userId);
+      }
+    }
+
+    match /saved_jobs/{userId}/jobs/{jobId} {
+      allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
 
     match /jobs/{jobId} {
@@ -111,7 +125,8 @@ service cloud.firestore {
 
       match /messages/{messageId} {
         allow create, read: if isAdmin() || isChatParticipant(chatId);
-        allow update, delete: if isAdmin();
+        allow update: if isAdmin() || isChatParticipant(chatId);
+        allow delete: if isAdmin();
       }
     }
 

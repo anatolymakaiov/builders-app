@@ -12,6 +12,8 @@
  *   node scripts/firebase_backend_setup.js --trial-billing-all --commit
  *   node scripts/firebase_backend_setup.js --trial-billing=EMPLOYER_UID --commit
  *   node scripts/firebase_backend_setup.js --normalize-payment-requests --commit
+ *   node scripts/firebase_backend_setup.js --ensure-admin-login=UID,email,password --commit
+ *   node scripts/firebase_backend_setup.js --backfill-chats --commit
  */
 
 const path = require("path");
@@ -184,6 +186,74 @@ async function normalizePaymentRequests() {
   console.log(`Payment requests needing normalization: ${count}`);
 }
 
+async function ensureAdminLogin(value) {
+  if (!value) {
+    throw new Error("--ensure-admin-login requires UID,email,password");
+  }
+
+  const [uid, email, password] = value.split(",");
+  if (!uid || !email || !password) {
+    throw new Error("--ensure-admin-login requires UID,email,password");
+  }
+
+  logAction(`upsert auth admin user ${uid} (${email})`);
+  if (commit) {
+    try {
+      await admin.auth().updateUser(uid, {
+        email,
+        password,
+        emailVerified: true,
+        disabled: false,
+      });
+    } catch (error) {
+      if (error.code !== "auth/user-not-found") throw error;
+      await admin.auth().createUser({
+        uid,
+        email,
+        password,
+        emailVerified: true,
+        disabled: false,
+      });
+    }
+  }
+
+  await setAdmin(uid);
+}
+
+async function backfillChats() {
+  const snap = await db.collection("chats").get();
+  let count = 0;
+
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    const participants = new Set();
+
+    if (Array.isArray(data.participants)) {
+      for (const id of data.participants) {
+        if (id) participants.add(String(id));
+      }
+    }
+    if (Array.isArray(data.members)) {
+      for (const id of data.members) {
+        if (id) participants.add(String(id));
+      }
+    }
+    if (data.workerId) participants.add(String(data.workerId));
+    if (data.employerId) participants.add(String(data.employerId));
+
+    if (participants.size === 0) continue;
+
+    count += 1;
+    await maybeSet(doc.ref, {
+      participants: Array.from(participants),
+      members: Array.from(participants),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  console.log(`Chats normalized: ${count}`);
+}
+
 async function main() {
   if (args.includes("--seed-plans")) await seedPlans();
 
@@ -200,6 +270,11 @@ async function main() {
   if (args.includes("--normalize-payment-requests")) {
     await normalizePaymentRequests();
   }
+
+  const adminLogin = argValue("--ensure-admin-login");
+  if (adminLogin) await ensureAdminLogin(adminLogin);
+
+  if (args.includes("--backfill-chats")) await backfillChats();
 
   if (!commit) {
     console.log("Dry-run complete. Add --commit to apply these changes.");

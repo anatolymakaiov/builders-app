@@ -7,6 +7,7 @@ class ChatService {
     required String workerId,
     required String employerId,
     required String jobId,
+    String? applicationId,
     String? jobTitle, // 🔥 optional (на будущее)
   }) async {
     /// 🔍 1. ищем существующий чат
@@ -20,6 +21,8 @@ class ChatService {
 
     if (query.docs.isNotEmpty) {
       await query.docs.first.reference.set({
+        "type": "single",
+        if (applicationId != null) "applicationId": applicationId,
         "participants": [workerId, employerId],
         "members": [workerId, employerId],
         "updatedAt": FieldValue.serverTimestamp(),
@@ -34,6 +37,8 @@ class ChatService {
       "workerId": workerId,
       "employerId": employerId,
       "jobId": jobId,
+      "type": "single",
+      if (applicationId != null) "applicationId": applicationId,
 
       /// 🔥 ВАЖНО (для будущего списка чатов)
       "participants": [workerId, employerId],
@@ -65,17 +70,20 @@ class ChatService {
     required String employerId,
     required String jobId,
     required List<String> members,
+    String? applicationId,
   }) async {
     final chatsRef = FirebaseFirestore.instance.collection("chats");
 
     final existing = await chatsRef
         .where("teamId", isEqualTo: teamId)
+        .where("employerId", isEqualTo: employerId)
         .where("jobId", isEqualTo: jobId)
         .limit(1)
         .get();
 
     if (existing.docs.isNotEmpty) {
       await existing.docs.first.reference.set({
+        if (applicationId != null) "applicationId": applicationId,
         "members": [...members, employerId],
         "participants": [...members, employerId],
         "updatedAt": FieldValue.serverTimestamp(),
@@ -86,6 +94,7 @@ class ChatService {
     final doc = await chatsRef.add({
       "type": "team",
       "teamId": teamId,
+      if (applicationId != null) "applicationId": applicationId,
       "members": [...members, employerId],
       "participants": [...members, employerId],
       "employerId": employerId,
