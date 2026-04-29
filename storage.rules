@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    match /profile_photos/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /profile_headers/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /company_photos/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /job_photos/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /team_avatars/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /team_portfolio/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /chat_media/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /chat_audio/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /chat_video/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+  }
+}

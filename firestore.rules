@@ -1,0 +1,193 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function userPath(userId) {
+      return /databases/$(database)/documents/users/$(userId);
+    }
+
+    function hasUserDoc() {
+      return signedIn() && exists(userPath(uid()));
+    }
+
+    function role() {
+      return hasUserDoc() ? get(userPath(uid())).data.role : null;
+    }
+
+    function isAdmin() {
+      return role() == "admin";
+    }
+
+    function isEmployer() {
+      return role() == "employer";
+    }
+
+    function isWorker() {
+      return role() == "worker";
+    }
+
+    function isSelf(userId) {
+      return signedIn() && uid() == userId;
+    }
+
+    function jobPath(jobId) {
+      return /databases/$(database)/documents/jobs/$(jobId);
+    }
+
+    function isJobOwner(jobId) {
+      return signedIn()
+        && exists(jobPath(jobId))
+        && get(jobPath(jobId)).data.ownerId == uid();
+    }
+
+    function isChatParticipant(chatId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/chats/$(chatId))
+        && (
+          get(/databases/$(database)/documents/chats/$(chatId)).data.workerId == uid()
+          || get(/databases/$(database)/documents/chats/$(chatId)).data.employerId == uid()
+          || (
+            get(/databases/$(database)/documents/chats/$(chatId)).data.participants is list
+            && uid() in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+          )
+          || (
+            get(/databases/$(database)/documents/chats/$(chatId)).data.members is list
+            && uid() in get(/databases/$(database)/documents/chats/$(chatId)).data.members
+          )
+        );
+    }
+
+    match /users/{userId} {
+      allow create: if signedIn() && (isSelf(userId) || isAdmin());
+      allow read: if signedIn();
+      allow update: if isAdmin() || isSelf(userId);
+      allow delete: if isAdmin();
+
+      match /notifications/{notificationId} {
+        allow create: if signedIn();
+        allow read, update, delete: if isAdmin() || isSelf(userId);
+      }
+    }
+
+    match /jobs/{jobId} {
+      allow create: if isAdmin()
+        || (isEmployer() && request.resource.data.ownerId == uid());
+      allow read: if signedIn();
+      allow update, delete: if isAdmin()
+        || (isEmployer() && resource.data.ownerId == uid());
+    }
+
+    match /applications/{applicationId} {
+      allow create: if signedIn()
+        && (
+          isAdmin()
+          || request.resource.data.workerId == uid()
+          || request.resource.data.employerId == uid()
+          || isJobOwner(request.resource.data.jobId)
+        );
+      allow read, update, delete: if isAdmin()
+        || resource.data.workerId == uid()
+        || resource.data.employerId == uid()
+        || isJobOwner(resource.data.jobId)
+        || (resource.data.members is list && uid() in resource.data.members);
+    }
+
+    match /chats/{chatId} {
+      allow create: if signedIn();
+      allow read, update: if isAdmin()
+        || resource.data.workerId == uid()
+        || resource.data.employerId == uid()
+        || (resource.data.participants is list && uid() in resource.data.participants)
+        || (resource.data.members is list && uid() in resource.data.members);
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow create, read: if isAdmin() || isChatParticipant(chatId);
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    match /reports/{reportId} {
+      allow create: if signedIn()
+        && request.resource.data.fromUserId == uid()
+        && request.resource.data.status == "open";
+      allow read: if isAdmin() || resource.data.fromUserId == uid();
+      allow update, delete: if isAdmin();
+    }
+
+    match /support_requests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == uid()
+        && request.resource.data.status == "open";
+      allow read: if isAdmin() || resource.data.userId == uid();
+      allow update, delete: if isAdmin();
+    }
+
+    match /payment_requests/{requestId} {
+      allow create: if isEmployer()
+        && request.resource.data.employerId == uid()
+        && request.resource.data.status == "pending";
+      allow read: if isAdmin() || resource.data.employerId == uid();
+      allow update, delete: if isAdmin();
+    }
+
+    match /plans/{planId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /job_alerts/{alertId} {
+      allow create: if signedIn() && request.resource.data.userId == uid();
+      allow read, update, delete: if isAdmin() || resource.data.userId == uid();
+    }
+
+    match /teams/{teamId} {
+      allow create: if signedIn()
+        && (
+          request.resource.data.createdBy == uid()
+          || (
+            request.resource.data.members is list
+            && uid() in request.resource.data.members
+          )
+        );
+      allow read: if signedIn();
+      allow update: if isAdmin()
+        || resource.data.createdBy == uid()
+        || (resource.data.members is list && uid() in resource.data.members);
+      allow delete: if isAdmin() || resource.data.createdBy == uid();
+    }
+
+    match /portfolio/{portfolioId} {
+      allow create: if signedIn()
+        && (
+          request.resource.data.userId == uid()
+          || request.resource.data.teamId is string
+        );
+      allow read: if signedIn();
+      allow update, delete: if isAdmin()
+        || resource.data.userId == uid();
+    }
+
+    match /reviews/{reviewId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow create: if signedIn();
+      allow read, update, delete: if isAdmin()
+        || resource.data.userId == uid()
+        || resource.data.workerId == uid()
+        || resource.data.employerId == uid();
+    }
+  }
+}
