@@ -1294,6 +1294,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         final headerImage =
             (data["profileHeaderImage"] ?? data["headerImage"])?.toString();
         final photos = List<String>.from(data["companyPhotos"] ?? []);
+        final canViewAllCompanyJobs = userId == ownerId || role == "admin";
 
         return DefaultTabController(
           length: 4,
@@ -1512,7 +1513,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                                   doc.id,
                                   doc.data() as Map<String, dynamic>,
                                 ))
-                            .toList();
+                            .where((job) {
+                          if (canViewAllCompanyJobs) return true;
+                          return _isWorkerVisibleCompanyJob(job);
+                        }).toList();
 
                         if (jobs.isEmpty) {
                           return const Center(child: Text("No jobs yet"));
@@ -1571,6 +1575,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         );
       },
     );
+  }
+
+  bool _isWorkerVisibleCompanyJob(Job job) {
+    final status = job.status.trim().toLowerCase();
+    final isPublished =
+        status.isEmpty || status == "active" || status == "published";
+
+    return job.moderationStatus == "approved" && isPublished;
   }
 
   @override

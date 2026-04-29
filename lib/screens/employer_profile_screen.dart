@@ -32,8 +32,12 @@ class EmployerProfileScreen extends StatefulWidget {
 
 class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   final picker = ImagePicker();
+  String viewerRole = "worker";
 
   Stream<List<Job>> getJobs() {
+    final viewerId = FirebaseAuth.instance.currentUser?.uid;
+    final canViewAllJobs = viewerId == widget.userId || viewerRole == "admin";
+
     return FirebaseFirestore.instance
         .collection("jobs")
         .where("ownerId", isEqualTo: widget.userId)
@@ -42,8 +46,41 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
         .map((snapshot) {
       return snapshot.docs.map((doc) {
         return Job.fromFirestore(doc.id, doc.data());
+      }).where((job) {
+        if (canViewAllJobs) return true;
+        return _isWorkerVisibleCompanyJob(job);
       }).toList();
     });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    loadViewerRole();
+  }
+
+  Future<void> loadViewerRole() async {
+    final viewer = FirebaseAuth.instance.currentUser;
+    if (viewer == null) return;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(viewer.uid)
+        .get();
+
+    if (!mounted) return;
+
+    setState(() {
+      viewerRole = snapshot.data()?["role"]?.toString() ?? "worker";
+    });
+  }
+
+  bool _isWorkerVisibleCompanyJob(Job job) {
+    final status = job.status.trim().toLowerCase();
+    final isPublished =
+        status.isEmpty || status == "active" || status == "published";
+
+    return job.moderationStatus == "approved" && isPublished;
   }
 
   Future<void> addCompanyPhoto() async {
