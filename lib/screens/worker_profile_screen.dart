@@ -1420,97 +1420,194 @@ Future<void> showCreateTeamDialog(
   final picker = ImagePicker();
   XFile? pickedAvatar;
   String? previewPath;
+  var isSaving = false;
+  String? validationError;
+
+  List<String> normalizeMemberIds(dynamic value) {
+    if (value is! List) return [];
+
+    return value
+        .map((item) {
+          if (item is String) return item;
+          if (item is Map) return item["userId"]?.toString();
+          return null;
+        })
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+  }
+
+  Future<bool> teamAlreadyExists(String name) async {
+    final normalizedName = name.trim().toLowerCase();
+    final memberKey = [userId]..sort();
+
+    final snap = await FirebaseFirestore.instance
+        .collection("teams")
+        .where("ownerId", isEqualTo: userId)
+        .get();
+
+    return snap.docs.any((doc) {
+      final data = doc.data();
+      final existingName =
+          (data["nameLower"] ?? data["name"] ?? "").toString().toLowerCase();
+      final existingMembers = normalizeMemberIds(data["members"]);
+
+      return existingName == normalizedName &&
+          existingMembers.join("|") == memberKey.join("|");
+    });
+  }
 
   await showDialog(
     context: context,
-    builder: (_) => StatefulBuilder(
-      builder: (context, setDialogState) {
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext, setDialogState) {
         return AlertDialog(
           title: const Text("Create team"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                onTap: () async {
-                  final picked =
-                      await picker.pickImage(source: ImageSource.gallery);
-                  if (picked == null) return;
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: isSaving
+                      ? null
+                      : () async {
+                          final picked = await picker.pickImage(
+                            source: ImageSource.gallery,
+                          );
+                          if (picked == null) return;
 
-                  setDialogState(() {
-                    pickedAvatar = picked;
-                    previewPath = picked.path;
-                  });
-                },
-                child: CircleAvatar(
-                  radius: 38,
-                  backgroundColor: Colors.grey.shade300,
-                  backgroundImage: previewPath != null
-                      ? FileImage(File(previewPath!))
-                      : null,
-                  child: previewPath == null
-                      ? const Icon(Icons.add_a_photo, size: 28)
-                      : null,
+                          setDialogState(() {
+                            pickedAvatar = picked;
+                            previewPath = picked.path;
+                          });
+                        },
+                  child: CircleAvatar(
+                    radius: 38,
+                    backgroundColor: Colors.grey.shade300,
+                    backgroundImage: previewPath != null
+                        ? FileImage(File(previewPath!))
+                        : null,
+                    child: previewPath == null
+                        ? const Icon(Icons.add_a_photo, size: 28)
+                        : null,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: controller,
-                decoration: const InputDecoration(
-                  labelText: "Team name",
+                const SizedBox(height: 14),
+                TextField(
+                  controller: controller,
+                  enabled: !isSaving,
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    labelText: "Team name",
+                    errorText: validationError,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: descriptionController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: "Team description",
-                  hintText: "Trades, skills, availability, typical projects",
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descriptionController,
+                  enabled: !isSaving,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: "Team description",
+                    hintText: "Trades, skills, availability, typical projects",
+                  ),
                 ),
-              ),
-            ],
+                if (isSaving) ...[
+                  const SizedBox(height: 16),
+                  const LinearProgressIndicator(),
+                ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
               child: const Text("Cancel"),
             ),
             ElevatedButton(
-              onPressed: () async {
-                final name = controller.text.trim();
-                if (name.isEmpty) return;
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      final name = controller.text.trim();
+                      if (name.isEmpty) {
+                        setDialogState(() {
+                          validationError = "Enter team name";
+                        });
+                        return;
+                      }
 
-                String? avatarUrl;
+                      setDialogState(() {
+                        isSaving = true;
+                        validationError = null;
+                      });
 
-                if (pickedAvatar != null) {
-                  final ref = FirebaseStorage.instance.ref().child(
-                      "team_avatars/${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg");
+                      try {
+                        final duplicate = await teamAlreadyExists(name);
+                        if (duplicate) {
+                          setDialogState(() {
+                            isSaving = false;
+                            validationError = "Team already exists";
+                          });
+                          return;
+                        }
 
-                  await ref.putFile(File(pickedAvatar!.path));
-                  avatarUrl = await ref.getDownloadURL();
-                }
+                        String? avatarUrl;
 
-                await FirebaseFirestore.instance.collection("teams").add({
-                  "name": name,
-                  "description": descriptionController.text.trim(),
-                  "ownerId": userId,
-                  "members": [userId],
-                  "memberStatuses": {userId: "active"},
-                  if (avatarUrl != null) "avatarUrl": avatarUrl,
-                  if (avatarUrl != null) "photo": avatarUrl,
-                  "createdAt": FieldValue.serverTimestamp(),
-                  "updatedAt": FieldValue.serverTimestamp(),
-                });
+                        if (pickedAvatar != null) {
+                          final ref = FirebaseStorage.instance.ref().child(
+                              "team_avatars/${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg");
 
-                if (!context.mounted) return;
+                          await ref.putFile(File(pickedAvatar!.path));
+                          avatarUrl = await ref.getDownloadURL();
+                        }
 
-                Navigator.pop(context);
+                        await FirebaseFirestore.instance
+                            .collection("teams")
+                            .add({
+                          "name": name,
+                          "nameLower": name.toLowerCase(),
+                          "description": descriptionController.text.trim(),
+                          "ownerId": userId,
+                          "createdBy": userId,
+                          "members": [userId],
+                          "memberKey": userId,
+                          "memberStatuses": {userId: "active"},
+                          if (avatarUrl != null) "avatarUrl": avatarUrl,
+                          if (avatarUrl != null) "photo": avatarUrl,
+                          "createdAt": FieldValue.serverTimestamp(),
+                          "updatedAt": FieldValue.serverTimestamp(),
+                        });
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Team created")),
-                );
-              },
-              child: const Text("Create"),
+                        if (!dialogContext.mounted) return;
+
+                        Navigator.pop(dialogContext);
+
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Team created")),
+                        );
+                      } catch (e) {
+                        debugPrint("CREATE TEAM ERROR: $e");
+                        if (!dialogContext.mounted) return;
+                        setDialogState(() {
+                          isSaving = false;
+                        });
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text("Could not create team")),
+                        );
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text("Create"),
             ),
           ],
         );

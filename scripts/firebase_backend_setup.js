@@ -14,6 +14,7 @@
  *   node scripts/firebase_backend_setup.js --normalize-payment-requests --commit
  *   node scripts/firebase_backend_setup.js --ensure-admin-login=UID,email,password --commit
  *   node scripts/firebase_backend_setup.js --backfill-chats --commit
+ *   node scripts/firebase_backend_setup.js --find-duplicate-teams
  */
 
 const path = require("path");
@@ -259,6 +260,65 @@ async function backfillChats() {
   console.log(`Chats normalized: ${count}`);
 }
 
+function normalizedTeamMembers(value) {
+  if (!Array.isArray(value)) return [];
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object") return item.userId;
+          return null;
+        })
+        .filter(Boolean)
+        .map(String),
+    ),
+  ).sort();
+}
+
+async function findDuplicateTeams() {
+  const snap = await db.collection("teams").get();
+  const groups = new Map();
+
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    const ownerId = data.ownerId || data.createdBy || "";
+    const name = String(data.nameLower || data.name || "").trim().toLowerCase();
+    const members = normalizedTeamMembers(data.members);
+    const key = [ownerId, name, members.join("|")].join("::");
+
+    if (!ownerId || !name || members.length === 0) continue;
+
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({
+      id: doc.id,
+      ownerId,
+      name: data.name || name,
+      members,
+      createdAt: data.createdAt || null,
+    });
+  }
+
+  const duplicates = Array.from(groups.values()).filter(
+    (items) => items.length > 1,
+  );
+
+  if (duplicates.length === 0) {
+    console.log("No duplicate identical teams found.");
+    return;
+  }
+
+  console.log(`Duplicate identical team groups found: ${duplicates.length}`);
+  for (const group of duplicates) {
+    console.log(JSON.stringify(group, null, 2));
+  }
+
+  console.log(
+    "No data was deleted. Review these IDs manually before deleting anything.",
+  );
+}
+
 async function main() {
   if (args.includes("--seed-plans")) await seedPlans();
 
@@ -280,6 +340,8 @@ async function main() {
   if (adminLogin) await ensureAdminLogin(adminLogin);
 
   if (args.includes("--backfill-chats")) await backfillChats();
+
+  if (args.includes("--find-duplicate-teams")) await findDuplicateTeams();
 
   if (!commit) {
     console.log("Dry-run complete. Add --commit to apply these changes.");
