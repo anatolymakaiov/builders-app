@@ -37,11 +37,29 @@ class BillingService {
     return value?.toString() ?? "";
   }
 
+  static int daysRemaining(dynamic value) {
+    if (value is! Timestamp) return 0;
+
+    final remaining = value.toDate().difference(DateTime.now());
+    if (remaining.isNegative) return 0;
+
+    return (remaining.inHours / 24).ceil().clamp(0, 9999).toInt();
+  }
+
   static String planName(QueryDocumentSnapshot plan) {
     final data = plan.data() as Map<String, dynamic>;
     return data["name"]?.toString().trim().isNotEmpty == true
         ? data["name"].toString()
         : plan.id;
+  }
+
+  static Timestamp activeUntilForPlan(Map<String, dynamic> planData) {
+    final durationDays = readInt(planData["durationDays"]);
+    return Timestamp.fromDate(
+      DateTime.now().add(
+        Duration(days: durationDays > 0 ? durationDays : 30),
+      ),
+    );
   }
 
   Future<void> assertEmployerCanPost(String employerId) async {
@@ -93,32 +111,51 @@ class BillingService {
     required String paymentMode,
     required Map<String, dynamic> currentBilling,
   }) async {
+    final firestore = FirebaseFirestore.instance;
     final planData = plan.data() as Map<String, dynamic>;
     final availableJobPosts = readInt(
       planData["jobPosts"] ?? planData["availableJobPosts"],
     );
-    final usedJobPosts = readInt(currentBilling["usedJobPosts"]);
+    final currentStatus = currentBilling["status"]?.toString() ?? "";
+    final usedJobPosts =
+        currentStatus == "active" ? readInt(currentBilling["usedJobPosts"]) : 0;
+    final activeUntil = activeUntilForPlan(planData);
+    final selectedPlanName = planName(plan);
 
-    await FirebaseFirestore.instance.collection("payment_requests").add({
-      "employerId": employerId,
-      "planId": plan.id,
-      "planName": planName(plan),
-      "paymentMode": paymentMode,
-      "status": "pending",
-      "createdAt": FieldValue.serverTimestamp(),
-      "updatedAt": FieldValue.serverTimestamp(),
+    await firestore.runTransaction((transaction) async {
+      final userRef = firestore.collection("users").doc(employerId);
+      final paymentRequestRef = firestore.collection("payment_requests").doc();
+
+      transaction.set(paymentRequestRef, {
+        "employerId": employerId,
+        "planId": plan.id,
+        "planName": selectedPlanName,
+        "paymentMode": paymentMode,
+        "status": "pending",
+        "createdAt": FieldValue.serverTimestamp(),
+        "updatedAt": FieldValue.serverTimestamp(),
+      });
+
+      transaction.set(
+        userRef,
+        {
+          "billing.planId": plan.id,
+          "billing.planName": selectedPlanName,
+          "billing.paymentMode": paymentMode,
+          "billing.directDebitEnabled": paymentMode == "direct_debit",
+          "billing.availableJobPosts": availableJobPosts,
+          "billing.usedJobPosts": usedJobPosts,
+          "billing.activeUntil": activeUntil,
+          "billing.status": "active",
+          "billing.trialActive": true,
+          "billing.planRequestStatus": "pending",
+          "billing.paymentRequestId": paymentRequestRef.id,
+          "billing.trialStartedAt": FieldValue.serverTimestamp(),
+          "billing.updatedAt": FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
     });
-
-    await FirebaseFirestore.instance.collection("users").doc(employerId).set({
-      "billing.planId": plan.id,
-      "billing.paymentMode": paymentMode,
-      "billing.directDebitEnabled": paymentMode == "direct_debit",
-      "billing.availableJobPosts": availableJobPosts,
-      "billing.usedJobPosts": usedJobPosts,
-      "billing.activeUntil": currentBilling["activeUntil"],
-      "billing.status": "payment_pending",
-      "billing.updatedAt": FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
   }
 
   Future<void> updatePaymentRequestStatus(
@@ -142,31 +179,39 @@ class BillingService {
         SetOptions(merge: true),
       );
 
-      if (status != "paid") return;
-
       final employerId = requestData["employerId"]?.toString() ?? "";
       final planId = requestData["planId"]?.toString() ?? "";
-      if (employerId.isEmpty || planId.isEmpty) return;
+      if (employerId.isEmpty) return;
+
+      final employerRef = firestore.collection("users").doc(employerId);
+      if (status != "paid") {
+        transaction.set(
+          employerRef,
+          {
+            "billing.planRequestStatus": status,
+            "billing.updatedAt": FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+        return;
+      }
+
+      if (planId.isEmpty) return;
 
       final planRef = firestore.collection("plans").doc(planId);
-      final employerRef = firestore.collection("users").doc(employerId);
       final planSnap = await transaction.get(planRef);
       final planData = planSnap.data() ?? <String, dynamic>{};
 
       final availableJobPosts = readInt(
         planData["jobPosts"] ?? planData["availableJobPosts"],
       );
-      final durationDays = readInt(planData["durationDays"]);
-      final activeUntil = Timestamp.fromDate(
-        DateTime.now().add(
-          Duration(days: durationDays > 0 ? durationDays : 30),
-        ),
-      );
+      final activeUntil = activeUntilForPlan(planData);
 
       transaction.set(
         employerRef,
         {
           "billing.planId": planId,
+          "billing.planName": requestData["planName"],
           "billing.paymentMode": requestData["paymentMode"],
           "billing.directDebitEnabled":
               requestData["paymentMode"]?.toString() == "direct_debit",
@@ -174,6 +219,8 @@ class BillingService {
           "billing.usedJobPosts": 0,
           "billing.activeUntil": activeUntil,
           "billing.status": "active",
+          "billing.trialActive": false,
+          "billing.planRequestStatus": status,
           "billing.updatedAt": FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),

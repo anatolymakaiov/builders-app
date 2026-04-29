@@ -552,19 +552,28 @@ class _BillingSection extends StatelessWidget {
     if (!context.mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Payment request created")),
+      const SnackBar(
+        content: Text("Trial activated. Plan request is pending approval."),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final planId = billing["planId"]?.toString() ?? "No plan selected";
+    final planId = billing["planId"]?.toString() ?? "";
+    final planName = billing["planName"]?.toString().trim().isNotEmpty == true
+        ? billing["planName"].toString()
+        : planId;
     final paymentMode = billing["paymentMode"]?.toString() ?? "Not set";
     final status = billing["status"]?.toString() ?? "Not set";
+    final planRequestStatus =
+        billing["planRequestStatus"]?.toString() ?? "not_requested";
+    final trialActive = billing["trialActive"] == true;
     final availableJobPosts =
         BillingService.readInt(billing["availableJobPosts"]);
     final usedJobPosts = BillingService.readInt(billing["usedJobPosts"]);
     final activeUntil = BillingService.formatDate(billing["activeUntil"]);
+    final trialDaysLeft = BillingService.daysRemaining(billing["activeUntil"]);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
@@ -583,7 +592,26 @@ class _BillingSection extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              _BillingRow(label: "Current plan", value: planId),
+              Row(
+                children: [
+                  _BillingPill(
+                    label: BillingService.formatLabel(status),
+                    active: status == "active",
+                  ),
+                  if (trialActive) ...[
+                    const SizedBox(width: 8),
+                    const _BillingPill(
+                      label: "Trial active",
+                      active: true,
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              _BillingRow(
+                label: "Current plan",
+                value: planName.isEmpty ? "No plan selected" : planName,
+              ),
               _BillingRow(
                 label: "Available job posts",
                 value: availableJobPosts.toString(),
@@ -600,6 +628,15 @@ class _BillingSection extends StatelessWidget {
                 label: "Billing status",
                 value: BillingService.formatLabel(status),
               ),
+              _BillingRow(
+                label: "Plan request",
+                value: BillingService.formatLabel(planRequestStatus),
+              ),
+              if (trialActive)
+                _BillingRow(
+                  label: "Trial days left",
+                  value: trialDaysLeft.toString(),
+                ),
               if (activeUntil.isNotEmpty)
                 _BillingRow(label: "Active until", value: activeUntil),
             ],
@@ -688,6 +725,40 @@ class _BillingSection extends StatelessWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+class _BillingPill extends StatelessWidget {
+  final String label;
+  final bool active;
+
+  const _BillingPill({
+    required this.label,
+    required this.active,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: active
+            ? AppColors.green.withValues(alpha: 0.14)
+            : AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: active ? AppColors.greenDark : Colors.transparent,
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: active ? AppColors.greenDark : AppColors.ink,
+          fontWeight: FontWeight.w900,
+          fontSize: 12,
+        ),
+      ),
     );
   }
 }
