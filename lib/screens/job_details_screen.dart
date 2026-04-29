@@ -8,6 +8,7 @@ import 'chat_screen.dart';
 import '../models/job.dart';
 import '../services/application_activity_service.dart';
 import '../services/calendar_service.dart';
+import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../services/report_service.dart';
 import '../theme/app_theme.dart';
@@ -251,6 +252,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             isApplying = false;
             isApplied = true;
           });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Application sent")),
+          );
         }
 
         return;
@@ -311,6 +315,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             isApplying = false;
             isApplied = true;
           });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Application sent")),
+          );
         }
 
         return;
@@ -436,7 +443,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     setState(() => isApplied = false);
                   }
                 } else {
-                  apply();
+                  await apply();
                 }
               },
         child: Text(
@@ -968,44 +975,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           if (uid == null) return;
 
           final employerId = widget.job.ownerId;
+          if (employerId.isEmpty) return;
 
-          final existing = await FirebaseFirestore.instance
-              .collection("chats")
-              .where("jobId", isEqualTo: widget.job.id)
-              .where("participants", arrayContains: uid)
-              .get();
-
-          String chatId;
-
-          if (existing.docs.isNotEmpty) {
-            chatId = existing.docs.first.id;
-            await existing.docs.first.reference.set({
-              "participants": [uid, employerId],
-              "members": [uid, employerId],
-              "updatedAt": FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true));
-          } else {
-            final doc =
-                await FirebaseFirestore.instance.collection("chats").add({
-              "jobId": widget.job.id,
-              "participants": [uid, employerId],
-              "members": [uid, employerId],
-              "workerId": uid,
-              "employerId": employerId,
-              "workerName": "Worker",
-              "employerName": "Employer",
-              "unreadCount_worker": 0,
-              "unreadCount_employer": 0,
-              "typing_worker": false,
-              "typing_employer": false,
-              "lastMessage": "",
-              "lastMessageType": "text",
-              "createdAt": FieldValue.serverTimestamp(),
-              "updatedAt": FieldValue.serverTimestamp(),
-            });
-
-            chatId = doc.id;
-          }
+          final chatId = await ChatService.getOrCreateChat(
+            workerId: uid,
+            employerId: employerId,
+            jobId: widget.job.id,
+            jobTitle: widget.job.displayTitle,
+          );
 
           if (!mounted) return;
 

@@ -29,6 +29,9 @@ class _HomeScreenState extends State<HomeScreen> {
   String role = "worker";
   String? userId;
   bool loading = true;
+  int _lastNotificationCount = 0;
+  int _lastChatCount = 0;
+  int _lastApplicationCount = 0;
 
   @override
   void initState() {
@@ -275,17 +278,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return StreamBuilder<int>(
       stream: getUnreadNotifications(),
       builder: (context, notifSnap) {
-        final notifCount = notifSnap.data ?? 0;
+        if (notifSnap.hasData) _lastNotificationCount = notifSnap.data ?? 0;
+        final notifCount = _lastNotificationCount;
 
         return StreamBuilder<int>(
           stream: getUnreadChats(),
           builder: (context, chatSnap) {
-            final chatCount = chatSnap.data ?? 0;
+            if (chatSnap.hasData) _lastChatCount = chatSnap.data ?? 0;
+            final chatCount = _lastChatCount;
 
             return StreamBuilder<int>(
               stream: getUnreadApplications(),
               builder: (context, appSnap) {
-                final applicationCount = appSnap.data ?? 0;
+                if (appSnap.hasData) _lastApplicationCount = appSnap.data ?? 0;
+                final applicationCount = _lastApplicationCount;
 
                 final screens = getScreens();
                 final items =

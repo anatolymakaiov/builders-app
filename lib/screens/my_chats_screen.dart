@@ -46,6 +46,18 @@ class MyChatsScreen extends StatelessWidget {
     return value is String && value.isNotEmpty ? value : null;
   }
 
+  bool chatBelongsToUser(Map<String, dynamic> data, String uid) {
+    bool containsId(dynamic value) {
+      return value is List &&
+          value.map((item) => item.toString()).contains(uid);
+    }
+
+    return data["workerId"]?.toString() == uid ||
+        data["employerId"]?.toString() == uid ||
+        containsId(data["participants"]) ||
+        containsId(data["members"]);
+  }
+
   Widget chatAvatar({
     required String? avatarUrl,
     required bool isOnline,
@@ -105,10 +117,7 @@ class MyChatsScreen extends StatelessWidget {
       ),
       body: StroykaScreenBody(
         child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection("chats")
-              .where("participants", arrayContains: uid)
-              .snapshots(),
+          stream: FirebaseFirestore.instance.collection("chats").snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -118,7 +127,14 @@ class MyChatsScreen extends StatelessWidget {
               return const Center(child: Text("No chats yet"));
             }
 
-            final chats = snapshot.data!.docs;
+            final chats = snapshot.data!.docs.where((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return chatBelongsToUser(data, uid);
+            }).toList();
+
+            if (chats.isEmpty) {
+              return const Center(child: Text("No chats yet"));
+            }
 
             /// 🔥 SORT
             chats.sort((a, b) {

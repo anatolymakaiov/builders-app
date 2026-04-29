@@ -299,6 +299,8 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     return JobCard(
       job: job,
       unread: isUnread,
+      statusText: statusLabel(status),
+      statusColor: getStatusColor(status),
       detailText: statusLine,
       onTap: () async {
         await ApplicationActivityService.markRead(applicationId, userId);

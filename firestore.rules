@@ -116,7 +116,8 @@ service cloud.firestore {
 
     match /chats/{chatId} {
       allow create: if signedIn();
-      allow read, update: if isAdmin()
+      allow read: if signedIn();
+      allow update: if isAdmin()
         || resource.data.workerId == uid()
         || resource.data.employerId == uid()
         || (resource.data.participants is list && uid() in resource.data.participants)

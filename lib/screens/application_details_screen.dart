@@ -353,6 +353,13 @@ class ApplicationDetailsScreen extends StatelessWidget {
     }
   }
 
+  ButtonStyle get primaryActionStyle => ElevatedButton.styleFrom(
+        backgroundColor: AppColors.green,
+        foregroundColor: Colors.white,
+        minimumSize: const Size.fromHeight(52),
+        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+      );
+
   String _jobTypeLabel(String jobType) {
     switch (jobType) {
       case "hourly":
@@ -812,315 +819,308 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
             return SingleChildScrollView(
               padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (!isTeam) ...[
-                    /// 👤 HEADER
-                    Center(
-                      child: Column(
-                        children: [
-                          CircleAvatar(
-                            radius: 45,
-                            backgroundColor: Colors.grey.shade300,
-                            backgroundImage:
-                                photo != null ? NetworkImage(photo) : null,
-                            child: photo == null
-                                ? const Icon(Icons.person, size: 40)
-                                : null,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            name,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
+              child: StroykaSurface(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!isTeam) ...[
+                      /// 👤 HEADER
+                      Center(
+                        child: Column(
+                          children: [
+                            CircleAvatar(
+                              radius: 45,
+                              backgroundColor: Colors.grey.shade300,
+                              backgroundImage:
+                                  photo != null ? NetworkImage(photo) : null,
+                              child: photo == null
+                                  ? const Icon(Icons.person, size: 40)
+                                  : null,
                             ),
-                          ),
-                          if (trade.isNotEmpty) ...[
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 12),
                             Text(
-                              trade,
+                              name,
                               style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
+                            if (trade.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                trade,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 30),
-                    buildWorkerPhoneSection(phone),
-                    buildWorkerInfoSection("Location", location),
-                    buildWorkerInfoSection("About worker", bio),
-                    buildWorkerInfoSection(
-                        "Work experience", experienceDuration),
-                    buildWorkerInfoSection("Experience details", experience),
-                    buildWorkerInfoSection("Permits / licences", permits),
-                    buildWorkerInfoSection("Qualifications", qualifications),
-                    buildWorkerInfoSection("Certifications", certifications),
-                    buildWorkerInfoSection("Education (optional)", education),
-                    buildWorkerInfoSection("Previous work", previousWork),
-                    buildReferencesSection(references),
-                  ],
+                      const SizedBox(height: 30),
+                      buildWorkerPhoneSection(phone),
+                      buildWorkerInfoSection("Location", location),
+                      buildWorkerInfoSection("About worker", bio),
+                      buildWorkerInfoSection(
+                          "Work experience", experienceDuration),
+                      buildWorkerInfoSection("Experience details", experience),
+                      buildWorkerInfoSection("Permits / licences", permits),
+                      buildWorkerInfoSection("Qualifications", qualifications),
+                      buildWorkerInfoSection("Certifications", certifications),
+                      buildWorkerInfoSection("Education (optional)", education),
+                      buildWorkerInfoSection("Previous work", previousWork),
+                      buildReferencesSection(references),
+                    ],
 
-                  if (isTeam)
-                    buildTeamProfile(context, selectedMembers)
-                  else ...[
-                    buildPortfolioGallery(workerId),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  WorkerProfileScreen(userId: workerId),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.person),
-                        label: const Text("Open full profile"),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 40),
+                    if (isTeam)
+                      buildTeamProfile(context, selectedMembers)
+                    else ...[
+                      buildPortfolioGallery(workerId),
+                    ],
+                    const SizedBox(height: 40),
 
-                  /// 🔥 BUTTONS
-                  /// 🔥 ACTIONS (НОВАЯ ЛОГИКА)
-                  StreamBuilder<DocumentSnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection("applications")
-                        .doc(applicationId)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) return const SizedBox();
+                    /// 🔥 BUTTONS
+                    /// 🔥 ACTIONS (НОВАЯ ЛОГИКА)
+                    StreamBuilder<DocumentSnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection("applications")
+                          .doc(applicationId)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) return const SizedBox();
 
-                      final liveData =
-                          snapshot.data!.data() as Map<String, dynamic>;
-                      final status = liveData["status"] ?? "pending";
+                        final liveData =
+                            snapshot.data!.data() as Map<String, dynamic>;
+                        final status = liveData["status"] ?? "pending";
 
-                      return Column(
-                        children: [
-                          /// =========================
-                          /// PENDING
-                          /// =========================
-                          if (status == "pending") ...[
-                            /// NEGOTIATION
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: () async {
-                                  if ((liveData["type"] ?? "single") ==
-                                      "team") {
-                                    for (var memberId in selectedMembers) {
-                                      await FirebaseFirestore.instance
-                                          .collection("applications")
-                                          .doc(applicationId)
-                                          .update({
-                                        "membersStatus.$memberId":
-                                            "negotiation",
-                                      });
+                        return Column(
+                          children: [
+                            /// =========================
+                            /// PENDING
+                            /// =========================
+                            if (status == "pending") ...[
+                              /// NEGOTIATION
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  style: primaryActionStyle,
+                                  onPressed: () async {
+                                    if ((liveData["type"] ?? "single") ==
+                                        "team") {
+                                      for (var memberId in selectedMembers) {
+                                        await FirebaseFirestore.instance
+                                            .collection("applications")
+                                            .doc(applicationId)
+                                            .update({
+                                          "membersStatus.$memberId":
+                                              "negotiation",
+                                        });
+                                      }
+                                      await ApplicationActivityService
+                                          .updateStatus(
+                                        applicationId: applicationId,
+                                        status: "negotiation",
+                                        unreadFor: ApplicationActivityService
+                                            .workerRecipients(liveData),
+                                      );
+                                    } else {
+                                      await updateStatus(
+                                          context, "negotiation");
                                     }
+
+                                    final chatId =
+                                        await chatIdForApplication(liveData);
+
+                                    if (chatId == null) return;
+
+                                    if (context.mounted) {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              ChatScreen(chatId: chatId),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  child:
+                                      const Text("Start negotiation / Message"),
+                                ),
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              /// MAKE OFFER
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  style: primaryActionStyle,
+                                  onPressed: () => openOfferDialog(context),
+                                  child: const Text("Make offer"),
+                                ),
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              /// REJECT
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.red,
+                                    backgroundColor: Colors.white,
+                                    side: const BorderSide(color: Colors.red),
+                                  ),
+                                  onPressed: () async {
+                                    if ((liveData["type"] ?? "single") ==
+                                        "team") {
+                                      await ApplicationActivityService
+                                          .updateStatus(
+                                        applicationId: applicationId,
+                                        status: "rejected",
+                                        unreadFor: ApplicationActivityService
+                                            .workerRecipients(liveData),
+                                      );
+                                    } else {
+                                      await updateStatus(context, "rejected");
+                                    }
+                                  },
+                                  child: const Text("Reject"),
+                                ),
+                              ),
+                            ],
+
+                            /// =========================
+                            /// NEGOTIATION
+                            /// =========================
+                            if (status == "negotiation") ...[
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  style: primaryActionStyle,
+                                  onPressed: () => openChat(context),
+                                  child: const Text("Negotiation / Message"),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  style: primaryActionStyle,
+                                  onPressed: () => openOfferDialog(context),
+                                  child: const Text("Make offer"),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.red,
+                                    backgroundColor: Colors.white,
+                                    side: const BorderSide(color: Colors.red),
+                                  ),
+                                  onPressed: () async {
+                                    if ((liveData["type"] ?? "single") ==
+                                        "team") {
+                                      await ApplicationActivityService
+                                          .updateStatus(
+                                        applicationId: applicationId,
+                                        status: "rejected",
+                                        unreadFor: ApplicationActivityService
+                                            .workerRecipients(liveData),
+                                      );
+                                    } else {
+                                      await updateStatus(context, "rejected");
+                                    }
+                                  },
+                                  child: const Text("Reject"),
+                                ),
+                              ),
+                            ],
+
+                            /// =========================
+                            /// OFFER SENT
+                            /// =========================
+                            if (status == "offer_sent") ...[
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.red,
+                                    backgroundColor: Colors.white,
+                                    side: const BorderSide(color: Colors.red),
+                                  ),
+                                  onPressed: () async {
+                                    await updateStatus(context, "negotiation");
+                                  },
+                                  child: const Text("Withdraw offer"),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton(
+                                  onPressed: () async {
                                     await ApplicationActivityService
                                         .updateStatus(
                                       applicationId: applicationId,
                                       status: "negotiation",
                                       unreadFor: ApplicationActivityService
                                           .workerRecipients(liveData),
+                                      extra: {"offer": FieldValue.delete()},
                                     );
-                                  } else {
-                                    await updateStatus(context, "negotiation");
-                                  }
-
-                                  final chatId =
-                                      await chatIdForApplication(liveData);
-
-                                  if (chatId == null) return;
-
-                                  if (context.mounted) {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            ChatScreen(chatId: chatId),
-                                      ),
-                                    );
-                                  }
-                                },
-                                child:
-                                    const Text("Start negotiation / Message"),
-                              ),
-                            ),
-
-                            const SizedBox(height: 10),
-
-                            /// MAKE OFFER
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: () => openOfferDialog(context),
-                                child: const Text("Make offer"),
-                              ),
-                            ),
-
-                            const SizedBox(height: 10),
-
-                            /// REJECT
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  backgroundColor: Colors.white,
-                                  side: const BorderSide(color: Colors.red),
-                                ),
-                                onPressed: () async {
-                                  if ((liveData["type"] ?? "single") ==
-                                      "team") {
-                                    await ApplicationActivityService
-                                        .updateStatus(
-                                      applicationId: applicationId,
-                                      status: "rejected",
-                                      unreadFor: ApplicationActivityService
-                                          .workerRecipients(liveData),
-                                    );
-                                  } else {
-                                    await updateStatus(context, "rejected");
-                                  }
-                                },
-                                child: const Text("Reject"),
-                              ),
-                            ),
-                          ],
-
-                          /// =========================
-                          /// NEGOTIATION
-                          /// =========================
-                          if (status == "negotiation") ...[
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: () => openChat(context),
-                                child: const Text("Negotiation / Message"),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                onPressed: () => openOfferDialog(context),
-                                child: const Text("Make offer"),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  backgroundColor: Colors.white,
-                                  side: const BorderSide(color: Colors.red),
-                                ),
-                                onPressed: () async {
-                                  if ((liveData["type"] ?? "single") ==
-                                      "team") {
-                                    await ApplicationActivityService
-                                        .updateStatus(
-                                      applicationId: applicationId,
-                                      status: "rejected",
-                                      unreadFor: ApplicationActivityService
-                                          .workerRecipients(liveData),
-                                    );
-                                  } else {
-                                    await updateStatus(context, "rejected");
-                                  }
-                                },
-                                child: const Text("Reject"),
-                              ),
-                            ),
-                          ],
-
-                          /// =========================
-                          /// OFFER SENT
-                          /// =========================
-                          if (status == "offer_sent") ...[
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  backgroundColor: Colors.white,
-                                  side: const BorderSide(color: Colors.red),
-                                ),
-                                onPressed: () async {
-                                  await updateStatus(context, "negotiation");
-                                },
-                                child: const Text("Withdraw offer"),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                onPressed: () async {
-                                  await ApplicationActivityService.updateStatus(
-                                    applicationId: applicationId,
-                                    status: "negotiation",
-                                    unreadFor: ApplicationActivityService
-                                        .workerRecipients(liveData),
-                                    extra: {"offer": FieldValue.delete()},
-                                  );
-                                },
-                                child: const Text("Reject"),
-                              ),
-                            ),
-                          ],
-
-                          /// =========================
-                          /// HIRED
-                          /// =========================
-                          if (status == "offer_accepted") ...[
-                            const SizedBox(height: 10),
-                            const Text(
-                              "Worker hired",
-                              style: TextStyle(
-                                color: Colors.green,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-
-                          if (status == "rejected") ...[
-                            const SizedBox(height: 10),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: Colors.red.withValues(alpha: 0.22),
+                                  },
+                                  child: const Text("Reject"),
                                 ),
                               ),
-                              child: const Text(
-                                "Application rejected",
-                                textAlign: TextAlign.center,
+                            ],
+
+                            /// =========================
+                            /// HIRED
+                            /// =========================
+                            if (status == "offer_accepted") ...[
+                              const SizedBox(height: 10),
+                              const Text(
+                                "Worker hired",
                                 style: TextStyle(
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.w900,
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ),
+                            ],
+
+                            if (status == "rejected") ...[
+                              const SizedBox(height: 10),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: Colors.red.withValues(alpha: 0.22),
+                                  ),
+                                ),
+                                child: const Text(
+                                  "Application rejected",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
-                      );
-                    },
-                  )
-                ],
+                        );
+                      },
+                    )
+                  ],
+                ),
               ),
             );
           },
