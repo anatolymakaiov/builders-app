@@ -15,11 +15,13 @@ import 'worker_profile_screen.dart';
 class TeamDetailsScreen extends StatefulWidget {
   final String teamId;
   final Map<String, dynamic> teamData;
+  final bool showInternalChat;
 
   const TeamDetailsScreen({
     super.key,
     required this.teamId,
     required this.teamData,
+    this.showInternalChat = true,
   });
 
   @override
@@ -474,17 +476,19 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: members.isEmpty
-                        ? null
-                        : () => openInternalChat(name, members),
-                    icon: const Icon(Icons.forum),
-                    label: const Text("Team chat"),
+                if (widget.showInternalChat) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: members.isEmpty
+                          ? null
+                          : () => openInternalChat(name, members),
+                      icon: const Icon(Icons.forum),
+                      label: const Text("Team chat"),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 18),
+                  const SizedBox(height: 18),
+                ],
                 StroykaSurface(
                   padding: const EdgeInsets.all(18),
                   child: Column(

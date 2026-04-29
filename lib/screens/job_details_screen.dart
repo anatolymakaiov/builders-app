@@ -236,6 +236,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
           "type": "team",
           "teamId": team["teamId"],
+          "workerId": uid,
+          "applicantId": uid,
           "members": members,
 
           /// 🔥 НОВОЕ

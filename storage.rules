@@ -35,7 +35,7 @@ service firebase.storage {
       allow write: if signedIn();
     }
 
-    match /team_portfolio/{fileName} {
+    match /team_portfolio/{allPaths=**} {
       allow read: if signedIn();
       allow write: if signedIn();
     }

@@ -9,6 +9,7 @@ import 'team_details_screen.dart';
 import 'edit_profile_screen.dart';
 import '../services/application_activity_service.dart';
 import '../services/chat_service.dart';
+import '../services/notification_service.dart';
 import '../services/report_service.dart';
 import '../services/support_request_service.dart';
 import 'chat_screen.dart';
@@ -99,6 +100,240 @@ class WorkerProfileScreen extends StatelessWidget {
     }
 
     return rows;
+  }
+
+  String _jobTypeLabel(String jobType) {
+    switch (jobType) {
+      case "hourly":
+        return "Daywork";
+      case "price":
+        return "Price";
+      case "negotiable":
+        return "Negotiable";
+      default:
+        return jobType;
+    }
+  }
+
+  Future<void> openExpandedOfferDialog(
+    BuildContext context, {
+    required String applicationId,
+    required Map<String, dynamic> applicationData,
+  }) async {
+    String jobType = "hourly";
+    final rateController = TextEditingController();
+    final workPeriodController = TextEditingController();
+    final weeklyHoursController = TextEditingController();
+    final scheduleController = TextEditingController();
+    final startDateTimeController = TextEditingController();
+    final siteAddressController = TextEditingController(
+      text: (applicationData["jobSite"] ?? applicationData["site"] ?? "")
+          .toString(),
+    );
+    final firstDayRequirementsController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final validUntilController = TextEditingController();
+
+    Widget offerTextField({
+      required TextEditingController controller,
+      required String label,
+      String? hint,
+      TextInputType? keyboardType,
+      int maxLines = 1,
+    }) {
+      return TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          border: const OutlineInputBorder(),
+        ),
+      );
+    }
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text("Make offer"),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        initialValue: jobType,
+                        decoration: const InputDecoration(
+                          labelText: "Work format",
+                          hintText: "Daywork, price, negotiable",
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: "hourly",
+                            child: Text("Daywork"),
+                          ),
+                          DropdownMenuItem(
+                            value: "price",
+                            child: Text("Price"),
+                          ),
+                          DropdownMenuItem(
+                            value: "negotiable",
+                            child: Text("Negotiable"),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setDialogState(() => jobType = value);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      offerTextField(
+                        controller: rateController,
+                        label: jobType == "price" ? "Price (£)" : "Rate (£)",
+                        hint: jobType == "price"
+                            ? "Total project price"
+                            : "Hourly or day rate",
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 12),
+                      offerTextField(
+                        controller: workPeriodController,
+                        label: "Work period",
+                        hint: "2 weeks, 3 months, ongoing",
+                      ),
+                      const SizedBox(height: 12),
+                      offerTextField(
+                        controller: weeklyHoursController,
+                        label: "Hours per week",
+                        hint: "40",
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 12),
+                      offerTextField(
+                        controller: scheduleController,
+                        label: "Work schedule",
+                        hint: "7:00-17:00, 1 hour break",
+                      ),
+                      const SizedBox(height: 12),
+                      offerTextField(
+                        controller: startDateTimeController,
+                        label: "Start date and time",
+                        hint: "Monday 12 May, 7:00",
+                      ),
+                      const SizedBox(height: 12),
+                      offerTextField(
+                        controller: siteAddressController,
+                        label: "Site address",
+                        hint: "Full construction site address",
+                      ),
+                      const SizedBox(height: 12),
+                      offerTextField(
+                        controller: firstDayRequirementsController,
+                        label: "Required on first day",
+                        hint: "Documents, certifications, tools, PPE, etc.",
+                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 12),
+                      offerTextField(
+                        controller: descriptionController,
+                        label: "Offer description",
+                        hint: "Additional conditions, notes, or expectations",
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 12),
+                      offerTextField(
+                        controller: validUntilController,
+                        label: "Offer valid until",
+                        hint: "Friday 16 May, 18:00",
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (startDateTimeController.text.trim().isEmpty ||
+                        siteAddressController.text.trim().isEmpty) {
+                      return;
+                    }
+                    Navigator.pop(context, true);
+                  },
+                  child: const Text("Send offer"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != true) {
+      rateController.dispose();
+      workPeriodController.dispose();
+      weeklyHoursController.dispose();
+      scheduleController.dispose();
+      startDateTimeController.dispose();
+      siteAddressController.dispose();
+      firstDayRequirementsController.dispose();
+      descriptionController.dispose();
+      validUntilController.dispose();
+      return;
+    }
+
+    try {
+      final offer = {
+        "jobType": jobType,
+        "workFormat": _jobTypeLabel(jobType),
+        "rate": rateController.text.trim(),
+        "workPeriod": workPeriodController.text.trim(),
+        "weeklyHours": weeklyHoursController.text.trim(),
+        "schedule": scheduleController.text.trim(),
+        "startDateTime": startDateTimeController.text.trim(),
+        "siteAddress": siteAddressController.text.trim(),
+        "firstDayRequirements": firstDayRequirementsController.text.trim(),
+        "description": descriptionController.text.trim(),
+        "validUntil": validUntilController.text.trim(),
+        "startDate": startDateTimeController.text.trim(),
+        "message": descriptionController.text.trim(),
+        "createdAt": FieldValue.serverTimestamp(),
+      };
+      final notificationOffer = Map<String, dynamic>.from(offer)
+        ..remove("createdAt");
+
+      await ApplicationActivityService.updateStatus(
+        applicationId: applicationId,
+        status: "offer_sent",
+        unreadFor: ApplicationActivityService.workerRecipients(applicationData),
+        extra: {"offer": offer},
+      );
+
+      await NotificationService().notifyOfferCreated(
+        applicationId: applicationId,
+        applicationData: applicationData,
+        offer: notificationOffer,
+      );
+    } finally {
+      rateController.dispose();
+      workPeriodController.dispose();
+      weeklyHoursController.dispose();
+      scheduleController.dispose();
+      startDateTimeController.dispose();
+      siteAddressController.dispose();
+      firstDayRequirementsController.dispose();
+      descriptionController.dispose();
+      validUntilController.dispose();
+    }
   }
 
   String textFromListOrString(dynamic value) {
@@ -550,6 +785,7 @@ class WorkerProfileScreen extends StatelessWidget {
                         builder: (_) => TeamDetailsScreen(
                           teamId: doc.id,
                           teamData: data,
+                          showInternalChat: isMyProfile,
                         ),
                       ),
                     );
@@ -715,8 +951,6 @@ class WorkerProfileScreen extends StatelessWidget {
               (result["applicationData"] as Map<String, dynamic>?) ?? {};
           final String status = result["status"];
           final String? currentRole = result["currentRole"];
-          final offerRate = result["offerRate"];
-          final offerNote = result["offerNote"];
           final name = data["name"] ?? "Worker";
           final bio = data["bio"] ?? "";
           final location = data["location"] ?? "";
@@ -899,11 +1133,23 @@ class WorkerProfileScreen extends StatelessWidget {
                                           foregroundColor: Colors.white,
                                         ),
                                         onPressed: () async {
+                                          if (status == "pending") {
+                                            await ApplicationActivityService
+                                                .updateStatus(
+                                              applicationId: applicationId,
+                                              status: "negotiation",
+                                              unreadFor:
+                                                  ApplicationActivityService
+                                                      .workerRecipients(
+                                                          applicationData),
+                                            );
+                                          }
                                           final chatId =
                                               await ChatService.getOrCreateChat(
                                             workerId: userId,
                                             employerId: employerId!,
                                             jobId: jobId!,
+                                            applicationId: applicationId,
                                           );
 
                                           if (!context.mounted) return;
@@ -916,7 +1162,8 @@ class WorkerProfileScreen extends StatelessWidget {
                                             ),
                                           );
                                         },
-                                        child: const Text("Message worker"),
+                                        child:
+                                            const Text("Message / Negotiation"),
                                       ),
                                     ),
                                     if (status == "offer_sent") ...[
@@ -947,15 +1194,9 @@ class WorkerProfileScreen extends StatelessWidget {
                                                 applicationData["offer"]
                                                     as Map<String, dynamic>,
                                               )
-                                            else ...[
-                                              if (offerRate != null)
-                                                Text("Rate: £$offerRate/hour"),
-                                              if (offerNote != null &&
-                                                  offerNote
-                                                      .toString()
-                                                      .isNotEmpty)
-                                                Text("Note: $offerNote"),
-                                            ],
+                                            else
+                                              const Text(
+                                                  "Offer details not provided"),
                                             if (!isMyProfile) ...[
                                               const SizedBox(height: 12),
                                               SizedBox(
@@ -1081,41 +1322,6 @@ class WorkerProfileScreen extends StatelessWidget {
                                           ),
                                         if (status != "offer_accepted")
                                           const SizedBox(width: 10),
-                                        if (status == "pending")
-                                          Expanded(
-                                            child: OutlinedButton(
-                                              style: OutlinedButton.styleFrom(
-                                                foregroundColor:
-                                                    AppColors.greenDark,
-                                                backgroundColor: Colors.white,
-                                                side: const BorderSide(
-                                                  color: AppColors.green,
-                                                ),
-                                              ),
-                                              onPressed: () async {
-                                                await FirebaseFirestore.instance
-                                                    .collection("applications")
-                                                    .doc(applicationId)
-                                                    .set({
-                                                  "status": "negotiation",
-                                                  "applicationActivityAt":
-                                                      FieldValue
-                                                          .serverTimestamp(),
-                                                  "updatedAt": FieldValue
-                                                      .serverTimestamp(),
-                                                  "unreadFor":
-                                                      FieldValue.arrayUnion(
-                                                    ApplicationActivityService
-                                                        .workerRecipients(
-                                                            applicationData),
-                                                  ),
-                                                }, SetOptions(merge: true));
-                                              },
-                                              child: const Text("Negotiation"),
-                                            ),
-                                          ),
-                                        if (status == "pending")
-                                          const SizedBox(width: 10),
                                         if (status == "pending" ||
                                             status == "negotiation")
                                           Expanded(
@@ -1125,96 +1331,13 @@ class WorkerProfileScreen extends StatelessWidget {
                                                     AppColors.green,
                                                 foregroundColor: Colors.white,
                                               ),
-                                              onPressed: () async {
-                                                final rateController =
-                                                    TextEditingController();
-                                                final noteController =
-                                                    TextEditingController();
-
-                                                final result =
-                                                    await showDialog<bool>(
-                                                  context: context,
-                                                  builder: (_) => AlertDialog(
-                                                    title: const Text(
-                                                        "Send Offer"),
-                                                    content: Column(
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      children: [
-                                                        TextField(
-                                                          controller:
-                                                              rateController,
-                                                          keyboardType:
-                                                              TextInputType
-                                                                  .number,
-                                                          decoration:
-                                                              const InputDecoration(
-                                                            labelText:
-                                                                "Rate (£/hour)",
-                                                          ),
-                                                        ),
-                                                        const SizedBox(
-                                                            height: 10),
-                                                        TextField(
-                                                          controller:
-                                                              noteController,
-                                                          decoration:
-                                                              const InputDecoration(
-                                                            labelText:
-                                                                "Message (optional)",
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                                context, false),
-                                                        child: const Text(
-                                                            "Cancel"),
-                                                      ),
-                                                      ElevatedButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                                context, true),
-                                                        child:
-                                                            const Text("Send"),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                );
-
-                                                if (result != true) return;
-
-                                                final rate = double.tryParse(
-                                                  rateController.text.trim(),
-                                                );
-
-                                                await FirebaseFirestore.instance
-                                                    .collection("applications")
-                                                    .doc(applicationId)
-                                                    .set({
-                                                  "status": "offer_sent",
-                                                  "offerRate": rate,
-                                                  "offerNote": noteController
-                                                      .text
-                                                      .trim(),
-                                                  "offerCreatedAt": FieldValue
-                                                      .serverTimestamp(),
-                                                  "applicationActivityAt":
-                                                      FieldValue
-                                                          .serverTimestamp(),
-                                                  "updatedAt": FieldValue
-                                                      .serverTimestamp(),
-                                                  "unreadFor":
-                                                      FieldValue.arrayUnion(
-                                                    ApplicationActivityService
-                                                        .workerRecipients(
-                                                            applicationData),
-                                                  ),
-                                                }, SetOptions(merge: true));
-                                              },
+                                              onPressed: () =>
+                                                  openExpandedOfferDialog(
+                                                context,
+                                                applicationId: applicationId,
+                                                applicationData:
+                                                    applicationData,
+                                              ),
                                               child: const Text("Make offer"),
                                             ),
                                           ),
