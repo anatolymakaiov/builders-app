@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/job.dart';
 import 'employer_applications_screen.dart';
 import 'job_details_screen.dart';
+import '../services/job_repository.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -17,6 +18,7 @@ class EmployerDashboardScreen extends StatefulWidget {
 }
 
 class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
+  final jobRepository = JobRepository();
   String selectedTrade = "All";
   String selectedSite = "All";
 
@@ -565,12 +567,8 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
         ],
       ),
       body: StroykaScreenBody(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection("jobs")
-              .where("ownerId", isEqualTo: ownerId)
-              .orderBy("createdAt", descending: true)
-              .snapshots(),
+        child: StreamBuilder<List<Job>>(
+          stream: jobRepository.getJobsByOwner(ownerId),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -580,10 +578,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
               return const Center(child: Text("Error loading jobs"));
             }
 
-            final jobs = snapshot.data!.docs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              return Job.fromFirestore(doc.id, data);
-            }).toList();
+            final jobs = snapshot.data!;
 
             final tradeSet = <String>{};
             final siteSet = <String>{};

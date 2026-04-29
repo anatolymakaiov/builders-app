@@ -15,7 +15,11 @@ class JobRepository {
 
   /// 🔹 ВСЕ JOBS
   Stream<List<Job>> getJobs() {
-    return _db.collection('jobs').snapshots().map((snapshot) {
+    return _db
+        .collection('jobs')
+        .where('moderationStatus', isEqualTo: 'approved')
+        .snapshots(includeMetadataChanges: true)
+        .map((snapshot) {
       return snapshot.docs
           .map((doc) {
             final data = doc.data();
@@ -24,14 +28,15 @@ class JobRepository {
               return null;
             }
 
-            if (data["moderationStatus"] != "approved") {
-              return null;
-            }
-
             return Job.fromFirestore(doc.id, data);
           })
           .whereType<Job>()
-          .toList();
+          .toList()
+        ..sort((a, b) {
+          final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          return bDate.compareTo(aDate);
+        });
     });
   }
 
@@ -40,12 +45,20 @@ class JobRepository {
     return _db
         .collection('jobs')
         .where('ownerId', isEqualTo: ownerId)
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
         .map((snapshot) {
-      return snapshot.docs.map((doc) {
+      final jobs = snapshot.docs.map((doc) {
         final data = doc.data();
         return Job.fromFirestore(doc.id, data);
       }).toList();
+
+      jobs.sort((a, b) {
+        final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bDate.compareTo(aDate);
+      });
+
+      return jobs;
     });
   }
 

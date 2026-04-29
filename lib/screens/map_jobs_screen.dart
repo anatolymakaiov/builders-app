@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/job.dart';
+import '../services/job_repository.dart';
 import 'job_details_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/job_card.dart';
@@ -18,6 +18,7 @@ class MapJobsScreen extends StatefulWidget {
 
 class _MapJobsScreenState extends State<MapJobsScreen> {
   final MapController mapController = MapController();
+  final jobRepository = JobRepository();
 
   LatLng center = const LatLng(53.4808, -2.2426);
 
@@ -63,21 +64,14 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
       appBar: AppBar(
         title: const Text("Jobs Map"),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('jobs').snapshots(),
+      body: StreamBuilder<List<Job>>(
+        stream: jobRepository.getJobs(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final jobs = snapshot.data!.docs
-              .map((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                if (data["moderationStatus"] != "approved") return null;
-                return Job.fromFirestore(doc.id, data);
-              })
-              .whereType<Job>()
-              .toList();
+          final jobs = snapshot.data!;
 
           final markers = jobs.map((job) {
             return Marker(
