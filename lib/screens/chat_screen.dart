@@ -344,81 +344,6 @@ class _ChatScreenState extends State<ChatScreen> {
     await sendPickedMedia(picked: picked, type: "video");
   }
 
-  Future<void> sendLink() async {
-    final linkController = TextEditingController();
-
-    final link = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Send link"),
-          content: TextField(
-            controller: linkController,
-            decoration: const InputDecoration(
-              labelText: "Link",
-              hintText: "https://example.com",
-            ),
-            keyboardType: TextInputType.url,
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context, linkController.text.trim());
-              },
-              child: const Text("Send"),
-            ),
-          ],
-        );
-      },
-    );
-
-    linkController.dispose();
-
-    if (link == null || link.isEmpty) return;
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final uri = normalizeUrl(link);
-    if (uri == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Enter a valid link")),
-      );
-      return;
-    }
-
-    final normalizedLink = uri.toString();
-    final isWorker = user.uid == workerId;
-
-    await FirebaseFirestore.instance
-        .collection("chats")
-        .doc(widget.chatId)
-        .collection("messages")
-        .add({
-      "type": "link",
-      "url": normalizedLink,
-      "text": normalizedLink,
-      "senderId": user.uid,
-      "createdAt": FieldValue.serverTimestamp(),
-      "readBy": [user.uid],
-    });
-
-    await updateChatAfterMedia(
-      lastMessage: normalizedLink,
-      lastMessageType: "link",
-      isWorker: isWorker,
-      senderId: user.uid,
-    );
-
-    scrollToBottom();
-  }
-
   Future<void> toggleRecording() async {
     if (isRecording) {
       await stopRecordingAndSend();
@@ -557,14 +482,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 onTap: () {
                   Navigator.pop(context);
                   sendVideo();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.link),
-                title: const Text("Link"),
-                onTap: () {
-                  Navigator.pop(context);
-                  sendLink();
                 },
               ),
             ],
