@@ -78,8 +78,10 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
 
   bool _isWorkerVisibleCompanyJob(Job job) {
     final status = job.status.trim().toLowerCase();
-    final isPublished =
-        status.isEmpty || status == "active" || status == "published";
+    final isPublished = status.isEmpty ||
+        status == "active" ||
+        status == "published" ||
+        status == "open";
 
     return job.moderationStatus == "approved" && isPublished;
   }
