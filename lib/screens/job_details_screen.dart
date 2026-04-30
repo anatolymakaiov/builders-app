@@ -482,14 +482,47 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return accepted;
   }
 
+  int readInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? "") ?? 0;
+  }
+
+  ({int positions, int filledPositions, int remaining}) jobPositionCounts(
+    Map<String, dynamic>? data,
+  ) {
+    final rawPositions = readInt(data?["positions"]);
+    final positions = rawPositions <= 0 ? widget.job.positions : rawPositions;
+    final safePositions = positions <= 0 ? 1 : positions;
+    final filledPositions =
+        readInt(data?["filledPositions"]).clamp(0, safePositions).toInt();
+    final remaining =
+        (safePositions - filledPositions).clamp(0, safePositions).toInt();
+
+    return (
+      positions: safePositions,
+      filledPositions: filledPositions,
+      remaining: remaining,
+    );
+  }
+
   Future<int> loadRemainingPositions() async {
-    final snap = await FirebaseFirestore.instance
-        .collection("applications")
-        .where("jobId", isEqualTo: widget.job.id)
+    final jobDoc = await FirebaseFirestore.instance
+        .collection("jobs")
+        .doc(widget.job.id)
         .get();
 
-    final accepted = acceptedSlotsFromDocs(snap.docs);
-    return (widget.job.positions - accepted).clamp(0, widget.job.positions);
+    if (!jobDoc.exists) {
+      throw Exception("Job not found");
+    }
+
+    final data = jobDoc.data();
+    final ownerId = data?["ownerId"]?.toString() ?? widget.job.ownerId;
+    if (ownerId.isEmpty || ownerId == "unknown") {
+      throw Exception("Job has no ownerId");
+    }
+
+    return jobPositionCounts(data).remaining;
   }
 
   Future<void> deleteJob() async {
@@ -828,17 +861,13 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Widget buildPositionsInfo() {
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
-          .collection("applications")
-          .where("jobId", isEqualTo: widget.job.id)
+          .collection("jobs")
+          .doc(widget.job.id)
           .snapshots(),
       builder: (context, snapshot) {
-        final accepted = snapshot.hasData
-            ? acceptedSlotsFromDocs(snapshot.data!.docs)
-            : widget.job.filledPositions;
-        final remaining =
-            (widget.job.positions - accepted).clamp(0, widget.job.positions);
+        final counts = jobPositionCounts(snapshot.data?.data());
 
         return Padding(
           padding: const EdgeInsets.only(top: 12),
@@ -847,7 +876,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               const Icon(Icons.group, size: 18),
               const SizedBox(width: 6),
               Text(
-                "$remaining/${widget.job.positions} spots available",
+                "${counts.remaining}/${counts.positions} spots available",
                 style: const TextStyle(
                   fontWeight: FontWeight.w500,
                 ),
