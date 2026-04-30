@@ -43,6 +43,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
   final siteController = TextEditingController();
 
   bool loading = false;
+  bool pickingPhotos = false;
   String postcodeStatus = "";
 
   String jobType = "hourly";
@@ -118,11 +119,24 @@ class _PostJobScreenState extends State<PostJobScreen> {
   /// IMAGE PICKERS
 
   Future<void> pickJobPhotos() async {
-    final picked = await picker.pickMultiImage();
-    if (picked.isNotEmpty) {
-      setState(() {
-        jobPhotos.addAll(picked.map((e) => File(e.path)));
-      });
+    if (loading || pickingPhotos) return;
+
+    try {
+      setState(() => pickingPhotos = true);
+      final picked = await picker.pickMultiImage();
+      if (picked.isNotEmpty) {
+        setState(() {
+          jobPhotos.addAll(picked.map((e) => File(e.path)));
+        });
+      }
+    } catch (e) {
+      debugPrint("PICK JOB PHOTOS ERROR: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not select job photos")),
+      );
+    } finally {
+      if (mounted) setState(() => pickingPhotos = false);
     }
   }
 
@@ -503,9 +517,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: pickJobPhotos,
-                  child: const Text("Add photos"),
+                  onPressed: loading || pickingPhotos ? null : pickJobPhotos,
+                  child:
+                      Text(pickingPhotos ? "Opening photos..." : "Add photos"),
                 ),
+                if (jobPhotos.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text("${jobPhotos.length} new photos selected"),
+                  ),
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,

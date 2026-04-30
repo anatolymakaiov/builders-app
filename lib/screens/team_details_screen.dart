@@ -30,6 +30,7 @@ class TeamDetailsScreen extends StatefulWidget {
 
 class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
   final picker = ImagePicker();
+  bool uploadingTeamPortfolio = false;
 
   String get currentUserId => FirebaseAuth.instance.currentUser!.uid;
 
@@ -111,25 +112,44 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
     }, SetOptions(merge: true));
   }
 
-  Future<void> addTeamPortfolioImage() async {
-    final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked == null) return;
+  Future<void> addTeamPortfolioImages() async {
+    if (uploadingTeamPortfolio) return;
 
-    final ref = FirebaseStorage.instance.ref().child(
-        "team_portfolio/${widget.teamId}/${DateTime.now().millisecondsSinceEpoch}.jpg");
+    try {
+      final picked = await picker.pickMultiImage();
+      if (picked.isEmpty) return;
 
-    await ref.putFile(File(picked.path));
-    final url = await ref.getDownloadURL();
+      setState(() => uploadingTeamPortfolio = true);
 
-    await FirebaseFirestore.instance
-        .collection("teams")
-        .doc(widget.teamId)
-        .collection("portfolio")
-        .add({
-      "image": url,
-      "imageUrl": url,
-      "createdAt": FieldValue.serverTimestamp(),
-    });
+      final batch = FirebaseFirestore.instance.batch();
+      final portfolioRef = FirebaseFirestore.instance
+          .collection("teams")
+          .doc(widget.teamId)
+          .collection("portfolio");
+
+      for (final image in picked) {
+        final ref = FirebaseStorage.instance.ref().child(
+            "team_portfolio/${widget.teamId}/${DateTime.now().millisecondsSinceEpoch}_${image.name}");
+
+        await ref.putFile(File(image.path));
+        final url = await ref.getDownloadURL();
+        batch.set(portfolioRef.doc(), {
+          "image": url,
+          "imageUrl": url,
+          "createdAt": FieldValue.serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
+    } catch (e) {
+      debugPrint("TEAM PORTFOLIO UPLOAD ERROR: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not upload team photos")),
+      );
+    } finally {
+      if (mounted) setState(() => uploadingTeamPortfolio = false);
+    }
   }
 
   Future<Map<String, dynamic>?> findWorker(String query) async {
@@ -285,12 +305,15 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                   IconButton(
                     tooltip: "Add photo",
                     icon: const Icon(Icons.add_a_photo),
-                    onPressed: addTeamPortfolioImage,
+                    onPressed:
+                        uploadingTeamPortfolio ? null : addTeamPortfolioImages,
                   ),
               ],
             ),
             const SizedBox(height: 8),
-            if (!snapshot.hasData)
+            if (uploadingTeamPortfolio)
+              const LinearProgressIndicator()
+            else if (!snapshot.hasData)
               const LinearProgressIndicator()
             else if (photos.isEmpty)
               const Text("No team portfolio yet")

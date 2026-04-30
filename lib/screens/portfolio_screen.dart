@@ -16,47 +16,56 @@ class PortfolioScreen extends StatefulWidget {
 
 class _PortfolioScreenState extends State<PortfolioScreen> {
   final picker = ImagePicker();
-  File? image;
+  bool uploading = false;
 
   String get userId => FirebaseAuth.instance.currentUser!.uid;
 
-  Future<void> pickImage() async {
-    final picked = await picker.pickImage(source: ImageSource.gallery);
+  Future<void> pickImages() async {
+    if (uploading) return;
 
-    if (picked == null) return;
+    try {
+      final picked = await picker.pickMultiImage();
+      if (picked.isEmpty) return;
 
-    image = File(picked.path);
+      setState(() => uploading = true);
 
-    uploadImage();
-  }
+      final batch = FirebaseFirestore.instance.batch();
+      final flatPortfolioRef = FirebaseFirestore.instance.collection(
+        "portfolio",
+      );
+      final userPortfolioRef = FirebaseFirestore.instance
+          .collection("users")
+          .doc(userId)
+          .collection("portfolio");
 
-  Future<void> uploadImage() async {
-    if (image == null) return;
+      for (final image in picked) {
+        final ref = FirebaseStorage.instance.ref().child(
+            "portfolio/$userId/${DateTime.now().millisecondsSinceEpoch}_${image.name}");
 
-    final ref = FirebaseStorage.instance.ref().child(
-        "portfolio/$userId/${DateTime.now().millisecondsSinceEpoch}.jpg");
+        await ref.putFile(File(image.path));
 
-    await ref.putFile(image!);
+        final url = await ref.getDownloadURL();
+        final data = {
+          "userId": userId,
+          "image": url,
+          "imageUrl": url,
+          "createdAt": FieldValue.serverTimestamp(),
+        };
 
-    final url = await ref.getDownloadURL();
+        batch.set(flatPortfolioRef.doc(), data);
+        batch.set(userPortfolioRef.doc(), data);
+      }
 
-    await FirebaseFirestore.instance.collection("portfolio").add({
-      "userId": userId,
-      "image": url,
-      "imageUrl": url,
-      "createdAt": FieldValue.serverTimestamp()
-    });
-
-    await FirebaseFirestore.instance
-        .collection("users")
-        .doc(userId)
-        .collection("portfolio")
-        .add({
-      "userId": userId,
-      "image": url,
-      "imageUrl": url,
-      "createdAt": FieldValue.serverTimestamp(),
-    });
+      await batch.commit();
+    } catch (e) {
+      debugPrint("PORTFOLIO UPLOAD ERROR: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not upload portfolio photos")),
+      );
+    } finally {
+      if (mounted) setState(() => uploading = false);
+    }
   }
 
   Stream<List<String>> portfolioStream() {
@@ -98,51 +107,56 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         title: const Text("My Work Gallery"),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: pickImage,
+        onPressed: uploading ? null : pickImages,
         child: const Icon(Icons.add_a_photo),
       ),
       body: StroykaScreenBody(
-        child: StreamBuilder<List<String>>(
-          stream: portfolioStream(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
+        child: Stack(
+          children: [
+            StreamBuilder<List<String>>(
+              stream: portfolioStream(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-            final photos = snapshot.data!;
+                final photos = snapshot.data!;
 
-            if (photos.isEmpty) {
-              return const Center(
-                child: Text("No portfolio yet"),
-              );
-            }
+                if (photos.isEmpty) {
+                  return const Center(
+                    child: Text("No portfolio yet"),
+                  );
+                }
 
-            return GridView.builder(
-              padding: const EdgeInsets.all(10),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: photos.length,
-              itemBuilder: (context, index) {
-                final url = photos[index];
-
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: Colors.grey.shade200,
-                      alignment: Alignment.center,
-                      child: const Icon(Icons.broken_image_outlined),
-                    ),
+                return GridView.builder(
+                  padding: const EdgeInsets.all(10),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
                   ),
+                  itemCount: photos.length,
+                  itemBuilder: (context, index) {
+                    final url = photos[index];
+
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        url,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: Colors.grey.shade200,
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.broken_image_outlined),
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
-            );
-          },
+            ),
+            if (uploading) const LinearProgressIndicator(),
+          ],
         ),
       ),
     );

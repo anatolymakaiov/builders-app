@@ -33,6 +33,7 @@ class EmployerProfileScreen extends StatefulWidget {
 class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   final picker = ImagePicker();
   String viewerRole = "worker";
+  bool uploadingCompanyPhotos = false;
 
   Stream<List<Job>> getJobs() {
     final viewerId = FirebaseAuth.instance.currentUser?.uid;
@@ -84,24 +85,43 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   }
 
   Future<void> addCompanyPhoto() async {
-    final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked == null) return;
+    if (uploadingCompanyPhotos) return;
 
-    final ref = FirebaseStorage.instance.ref().child(
-        "company_photos/${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg");
+    try {
+      final picked = await picker.pickMultiImage();
+      if (picked.isEmpty) return;
 
-    await ref.putFile(File(picked.path));
-    final url = await ref.getDownloadURL();
+      setState(() => uploadingCompanyPhotos = true);
 
-    await FirebaseFirestore.instance
-        .collection("users")
-        .doc(widget.userId)
-        .set({
-      "companyPhotos": FieldValue.arrayUnion([url]),
-      "updatedAt": FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+      final urls = <String>[];
+      for (final image in picked) {
+        final ref = FirebaseStorage.instance.ref().child(
+            "company_photos/${widget.userId}_${DateTime.now().millisecondsSinceEpoch}_${image.name}");
 
-    if (mounted) setState(() {});
+        await ref.putFile(File(image.path));
+        urls.add(await ref.getDownloadURL());
+      }
+
+      if (urls.isEmpty) return;
+
+      await FirebaseFirestore.instance
+          .collection("users")
+          .doc(widget.userId)
+          .set({
+        "companyPhotos": FieldValue.arrayUnion(urls),
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint("COMPANY PHOTOS UPLOAD ERROR: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not upload company photos")),
+      );
+    } finally {
+      if (mounted) setState(() => uploadingCompanyPhotos = false);
+    }
   }
 
   @override
@@ -474,11 +494,20 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                                 child: SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton.icon(
-                                    onPressed: addCompanyPhoto,
+                                    onPressed: uploadingCompanyPhotos
+                                        ? null
+                                        : addCompanyPhoto,
                                     icon: const Icon(Icons.add_a_photo),
-                                    label: const Text("Add company photo"),
+                                    label: Text(uploadingCompanyPhotos
+                                        ? "Uploading..."
+                                        : "Add company photos"),
                                   ),
                                 ),
+                              ),
+                            if (uploadingCompanyPhotos)
+                              const Padding(
+                                padding: EdgeInsets.only(bottom: 12),
+                                child: LinearProgressIndicator(),
                               ),
                             if (photos.isEmpty)
                               const StroykaSurface(
