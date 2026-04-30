@@ -953,12 +953,16 @@ class WorkerProfileScreen extends StatelessWidget {
             /// ✏️ EDIT
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () {
-                Navigator.push(
+              onPressed: () async {
+                final saved = await Navigator.push<bool>(
                   context,
                   MaterialPageRoute(
                     builder: (_) => const ProfileScreen(),
                   ),
+                );
+                if (!context.mounted || saved != true) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Profile saved")),
                 );
               },
             ),
@@ -984,14 +988,13 @@ class WorkerProfileScreen extends StatelessWidget {
           ],
         ],
       ),
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: () async {
-          final userSnap = await FirebaseFirestore.instance
-              .collection("users")
-              .doc(userId)
-              .get();
-
-          final userData = userSnap.data() as Map<String, dynamic>;
+      body: StreamBuilder<Map<String, dynamic>>(
+        stream: FirebaseFirestore.instance
+            .collection("users")
+            .doc(userId)
+            .snapshots()
+            .asyncMap((userSnap) async {
+          final userData = userSnap.data() ?? <String, dynamic>{};
 
           String? applicationId;
           String status = "pending";
@@ -1029,7 +1032,7 @@ class WorkerProfileScreen extends StatelessWidget {
             "status": status,
             "currentRole": currentRole,
           };
-        }(),
+        }),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());

@@ -138,12 +138,16 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
             ),
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () {
-                Navigator.push(
+              onPressed: () async {
+                final saved = await Navigator.push<bool>(
                   context,
                   MaterialPageRoute(
                     builder: (_) => const ProfileScreen(),
                   ),
+                );
+                if (!context.mounted || saved != true) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Profile saved")),
                 );
               },
             ),
@@ -166,11 +170,11 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
           ],
         ],
       ),
-      body: FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
             .collection("users")
             .doc(widget.userId)
-            .get(),
+            .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());

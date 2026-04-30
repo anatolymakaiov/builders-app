@@ -378,9 +378,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         extraPhones = cleanedPhones;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Profile saved")),
-      );
+      Navigator.pop(context, true);
     } catch (e) {
       debugPrint("Save profile error: $e");
       if (!mounted) return;
