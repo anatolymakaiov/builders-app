@@ -179,8 +179,11 @@ service cloud.firestore {
       allow read: if signedIn();
       allow update: if isAdmin()
         || resource.data.createdBy == uid()
+        || resource.data.ownerId == uid()
         || (resource.data.members is list && uid() in resource.data.members);
-      allow delete: if isAdmin() || resource.data.createdBy == uid();
+      allow delete: if isAdmin()
+        || resource.data.createdBy == uid()
+        || resource.data.ownerId == uid();
 
       match /portfolio/{portfolioId} {
         allow read: if signedIn();

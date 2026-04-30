@@ -50,7 +50,49 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
   }
 
   bool canEditTeam(Map<String, dynamic> team, List<String> members) {
-    return team["ownerId"] == currentUserId || members.contains(currentUserId);
+    return isTeamLeader(team);
+  }
+
+  bool isTeamLeader(Map<String, dynamic> team) {
+    return team["ownerId"] == currentUserId ||
+        team["createdBy"] == currentUserId;
+  }
+
+  bool isTeamMember(List<String> members) {
+    return members.contains(currentUserId);
+  }
+
+  Future<bool> confirmAction({
+    required String title,
+    required String message,
+    required String confirmText,
+    bool destructive = true,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: destructive
+                ? ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  )
+                : null,
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(confirmText),
+          ),
+        ],
+      ),
+    );
+
+    return result == true;
   }
 
   Future<void> updateTeamDescription(String currentDescription) async {
@@ -245,7 +287,14 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
     }, SetOptions(merge: true));
   }
 
-  Future<void> removeMember(String userId) async {
+  Future<void> removeMember(String userId, String userName) async {
+    final confirmed = await confirmAction(
+      title: "Remove member",
+      message: "Remove $userName from this team?",
+      confirmText: "Remove",
+    );
+    if (!confirmed) return;
+
     final teamRef =
         FirebaseFirestore.instance.collection("teams").doc(widget.teamId);
     final snap = await teamRef.get();
@@ -255,8 +304,76 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
 
     await teamRef.set({
       "members": members,
+      "memberStatuses.$userId": FieldValue.delete(),
       "updatedAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  Future<void> leaveTeam(
+      Map<String, dynamic> team, List<String> members) async {
+    if (isTeamLeader(team)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Team leader should delete the team instead"),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await confirmAction(
+      title: "Leave team",
+      message: "Are you sure you want to leave this team?",
+      confirmText: "Leave",
+    );
+    if (!confirmed) return;
+
+    final updatedMembers = [...members]
+      ..removeWhere((memberId) => memberId == currentUserId);
+
+    await FirebaseFirestore.instance
+        .collection("teams")
+        .doc(widget.teamId)
+        .set({
+      "members": updatedMembers,
+      "memberStatuses.$currentUserId": FieldValue.delete(),
+      "updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.pop(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text("You left the team")),
+    );
+  }
+
+  Future<void> deleteTeam() async {
+    final confirmed = await confirmAction(
+      title: "Delete team",
+      message:
+          "Delete this team permanently? This cannot be undone, but existing applications and chats will not be automatically deleted.",
+      confirmText: "Delete",
+    );
+    if (!confirmed) return;
+
+    final firestore = FirebaseFirestore.instance;
+    final teamRef = firestore.collection("teams").doc(widget.teamId);
+    final portfolio = await teamRef.collection("portfolio").get();
+    final batch = firestore.batch();
+
+    for (final doc in portfolio.docs) {
+      batch.delete(doc.reference);
+    }
+    batch.delete(teamRef);
+
+    await batch.commit();
+
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.pop(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text("Team deleted")),
+    );
   }
 
   Future<void> openInternalChat(
@@ -364,6 +481,7 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
     BuildContext context,
     String memberId,
     bool canRemove,
+    bool isLeader,
   ) {
     return FutureBuilder<DocumentSnapshot>(
       future:
@@ -412,9 +530,12 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                 ? IconButton(
                     tooltip: "Remove member",
                     icon: const Icon(Icons.delete_outline),
-                    onPressed: () => removeMember(memberId),
+                    onPressed: () =>
+                        removeMember(memberId, userName.toString()),
                   )
-                : null,
+                : isLeader
+                    ? const Chip(label: Text("Leader"))
+                    : null,
             onTap: () {
               Navigator.push(
                 context,
@@ -437,6 +558,15 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
           .doc(widget.teamId)
           .snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasData && !snapshot.data!.exists) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) Navigator.pop(context);
+          });
+          return const Scaffold(
+            body: Center(child: Text("Team deleted")),
+          );
+        }
+
         final liveData = snapshot.data?.data() as Map<String, dynamic>?;
         final team = liveData ?? widget.teamData;
         final members = memberIdsFrom(team["members"]);
@@ -445,7 +575,7 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
             (team["description"] ?? team["bio"])?.toString().trim() ?? "";
         final avatar = team["avatarUrl"] ?? team["photo"] ?? team["logo"];
         final canEdit = canEditTeam(team, members);
-        final canRemove = team["ownerId"] == currentUserId;
+        final isMember = isTeamMember(members);
 
         return Scaffold(
           appBar: AppBar(
@@ -456,6 +586,12 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                   tooltip: "Add member",
                   icon: const Icon(Icons.person_add_alt),
                   onPressed: () => addMember(members),
+                ),
+              if (canEdit)
+                IconButton(
+                  tooltip: "Delete team",
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: deleteTeam,
                 ),
             ],
           ),
@@ -508,6 +644,28 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                           : () => openInternalChat(name, members),
                       icon: const Icon(Icons.forum),
                       label: const Text("Team chat"),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                ],
+                if (canEdit || isMember) ...[
+                  StroykaSurface(
+                    padding: const EdgeInsets.all(14),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red),
+                        ),
+                        onPressed: canEdit
+                            ? deleteTeam
+                            : () => leaveTeam(team, members),
+                        icon: Icon(
+                          canEdit ? Icons.delete_outline : Icons.logout,
+                        ),
+                        label: Text(canEdit ? "Delete team" : "Leave team"),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -577,7 +735,9 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                             child: buildMemberCard(
                               context,
                               memberId,
-                              canRemove && memberId != currentUserId,
+                              canEdit && memberId != currentUserId,
+                              memberId == team["ownerId"] ||
+                                  memberId == team["createdBy"],
                             ),
                           );
                         }),
