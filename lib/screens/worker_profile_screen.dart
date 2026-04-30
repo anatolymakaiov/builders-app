@@ -1515,27 +1515,11 @@ Future<void> showCreateTeamDialog(
   XFile? pickedAvatar;
   String? previewPath;
   var isSaving = false;
+  var createRequestInProgress = false;
   String? validationError;
-
-  List<String> normalizeMemberIds(dynamic value) {
-    if (value is! List) return [];
-
-    return value
-        .map((item) {
-          if (item is String) return item;
-          if (item is Map) return item["userId"]?.toString();
-          return null;
-        })
-        .whereType<String>()
-        .where((id) => id.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
-  }
 
   Future<bool> teamAlreadyExists(String name) async {
     final normalizedName = name.trim().toLowerCase();
-    final memberKey = [userId]..sort();
 
     final snap = await FirebaseFirestore.instance
         .collection("teams")
@@ -1546,10 +1530,8 @@ Future<void> showCreateTeamDialog(
       final data = doc.data();
       final existingName =
           (data["nameLower"] ?? data["name"] ?? "").toString().toLowerCase();
-      final existingMembers = normalizeMemberIds(data["members"]);
 
-      return existingName == normalizedName &&
-          existingMembers.join("|") == memberKey.join("|");
+      return existingName == normalizedName;
     });
   }
 
@@ -1624,6 +1606,8 @@ Future<void> showCreateTeamDialog(
               onPressed: isSaving
                   ? null
                   : () async {
+                      if (createRequestInProgress) return;
+
                       final name = controller.text.trim();
                       if (name.isEmpty) {
                         setDialogState(() {
@@ -1632,6 +1616,7 @@ Future<void> showCreateTeamDialog(
                         return;
                       }
 
+                      createRequestInProgress = true;
                       setDialogState(() {
                         isSaving = true;
                         validationError = null;
@@ -1640,10 +1625,18 @@ Future<void> showCreateTeamDialog(
                       try {
                         final duplicate = await teamAlreadyExists(name);
                         if (duplicate) {
+                          createRequestInProgress = false;
                           setDialogState(() {
                             isSaving = false;
                             validationError = "Team already exists";
                           });
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Team already exists"),
+                              ),
+                            );
+                          }
                           return;
                         }
 
@@ -1684,6 +1677,7 @@ Future<void> showCreateTeamDialog(
                         );
                       } catch (e) {
                         debugPrint("CREATE TEAM ERROR: $e");
+                        createRequestInProgress = false;
                         if (!dialogContext.mounted) return;
                         setDialogState(() {
                           isSaving = false;
