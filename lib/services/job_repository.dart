@@ -23,8 +23,12 @@ class JobRepository {
       return snapshot.docs
           .map((doc) {
             final data = doc.data();
+            final ownerId = data["ownerId"] ??
+                data["employerId"] ??
+                data["createdBy"] ??
+                data["userId"];
 
-            if (data["ownerId"] == null || data["ownerId"] == "") {
+            if (ownerId == null || ownerId.toString().trim().isEmpty) {
               return null;
             }
 

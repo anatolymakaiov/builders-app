@@ -261,27 +261,43 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           return;
         }
 
-        await FirebaseFirestore.instance.collection("applications").add({
-          "jobId": widget.job.id,
-          "jobTitle": widget.job.displayTitle,
+        await FirebaseFirestore.instance.runTransaction((transaction) async {
+          final jobRef =
+              FirebaseFirestore.instance.collection("jobs").doc(widget.job.id);
+          final applicationRef =
+              FirebaseFirestore.instance.collection("applications").doc();
+          final jobSnap = await transaction.get(jobRef);
 
-          /// 🔥 ДОБАВЛЯЕМ (НЕ ЛОМАЕТ НИЧЕГО)
-          "jobTrade": widget.job.trade,
-          "jobSite": widget.job.site,
+          if (!jobSnap.exists) throw Exception("Job not found");
 
-          "type": "team",
-          "teamId": team["teamId"],
-          "workerId": uid,
-          "applicantId": uid,
-          "members": members,
+          final jobData = jobSnap.data() as Map<String, dynamic>;
+          final ownerId = jobOwnerId(jobData);
+          final counts = jobPositionCounts(jobData);
+          if (ownerId.isEmpty) throw Exception("Job has no ownerId");
+          if (members.length > counts.remaining) {
+            throw Exception("not_enough_spots");
+          }
 
-          /// 🔥 НОВОЕ
-          "membersStatus": {for (var id in members) id: "pending"},
-
-          "employerId": widget.job.ownerId,
-          "status": "pending",
-          "createdAt": FieldValue.serverTimestamp(),
-          ...ApplicationActivityService.createdForEmployer(widget.job.ownerId),
+          transaction.set(applicationRef, {
+            "jobId": widget.job.id,
+            "jobTitle": (jobData["title"] ??
+                    jobData["trade"] ??
+                    widget.job.displayTitle)
+                .toString(),
+            "jobTrade": jobData["trade"] ?? widget.job.trade,
+            "jobSite": jobData["site"] ?? widget.job.site,
+            "type": "team",
+            "teamId": team["teamId"],
+            "workerId": uid,
+            "applicantId": uid,
+            "members": members,
+            "workersCount": members.length,
+            "membersStatus": {for (var id in members) id: "pending"},
+            "employerId": ownerId,
+            "status": "pending",
+            "createdAt": FieldValue.serverTimestamp(),
+            ...ApplicationActivityService.createdForEmployer(ownerId),
+          });
         });
 
         if (mounted) {
@@ -334,27 +350,41 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         final workerName = userDoc.data()?["name"] ?? "Worker";
 
         final applicationRef =
-            await FirebaseFirestore.instance.collection("applications").add({
-          "jobId": widget.job.id,
-          "jobTitle": widget.job.displayTitle,
+            FirebaseFirestore.instance.collection("applications").doc();
 
-          /// 🔥 ДОБАВЛЯЕМ
-          "jobTrade": widget.job.trade,
-          "jobSite": widget.job.site,
+        await FirebaseFirestore.instance.runTransaction((transaction) async {
+          final jobRef =
+              FirebaseFirestore.instance.collection("jobs").doc(widget.job.id);
+          final jobSnap = await transaction.get(jobRef);
 
-          "workerId": uid,
-          "applicantId": uid,
-          "workerName": workerName,
-          "type": "single",
+          if (!jobSnap.exists) throw Exception("Job not found");
 
-          /// 🔥 ДЕЛАЕМ ЕДИНУЮ ЛОГИКУ
-          "members": [uid],
-          "membersStatus": {uid: "pending"},
+          final jobData = jobSnap.data() as Map<String, dynamic>;
+          final ownerId = jobOwnerId(jobData);
+          final counts = jobPositionCounts(jobData);
+          if (ownerId.isEmpty) throw Exception("Job has no ownerId");
+          if (counts.remaining <= 0) throw Exception("no_positions_left");
 
-          "employerId": widget.job.ownerId,
-          "status": "pending",
-          "createdAt": FieldValue.serverTimestamp(),
-          ...ApplicationActivityService.createdForEmployer(widget.job.ownerId),
+          transaction.set(applicationRef, {
+            "jobId": widget.job.id,
+            "jobTitle": (jobData["title"] ??
+                    jobData["trade"] ??
+                    widget.job.displayTitle)
+                .toString(),
+            "jobTrade": jobData["trade"] ?? widget.job.trade,
+            "jobSite": jobData["site"] ?? widget.job.site,
+            "workerId": uid,
+            "applicantId": uid,
+            "workerName": workerName,
+            "type": "single",
+            "members": [uid],
+            "workersCount": 1,
+            "membersStatus": {uid: "pending"},
+            "employerId": ownerId,
+            "status": "pending",
+            "createdAt": FieldValue.serverTimestamp(),
+            ...ApplicationActivityService.createdForEmployer(ownerId),
+          });
         });
 
         if (mounted) {
@@ -374,8 +404,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       debugPrint("APPLY ERROR: $e");
       if (mounted) {
         setState(() => isApplying = false);
+        final message = e.toString().contains("not_enough_spots") ||
+                e.toString().contains("no_positions_left")
+            ? "No positions left"
+            : "Could not send application";
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Could not send application")),
+          SnackBar(content: Text(message)),
         );
       }
     }
@@ -488,14 +522,38 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return int.tryParse(value?.toString() ?? "") ?? 0;
   }
 
+  String jobOwnerId(Map<String, dynamic>? data) {
+    final candidates = [
+      data?["ownerId"],
+      data?["employerId"],
+      data?["createdBy"],
+      data?["userId"],
+      widget.job.ownerId,
+    ];
+
+    for (final value in candidates) {
+      final id = value?.toString().trim() ?? "";
+      if (id.isNotEmpty && id != "unknown") return id;
+    }
+
+    return "";
+  }
+
   ({int positions, int filledPositions, int remaining}) jobPositionCounts(
     Map<String, dynamic>? data,
   ) {
     final rawPositions = readInt(data?["positions"]);
-    final positions = rawPositions <= 0 ? widget.job.positions : rawPositions;
+    final rawRemaining = readInt(data?["remainingPositions"]);
+    final rawFilledPositions = readInt(data?["filledPositions"]);
+    final positions = rawPositions <= 0
+        ? (rawRemaining > 0
+            ? rawRemaining + rawFilledPositions
+            : widget.job.positions)
+        : rawPositions;
     final safePositions = positions <= 0 ? 1 : positions;
-    final filledPositions =
-        readInt(data?["filledPositions"]).clamp(0, safePositions).toInt();
+    final filledPositions = rawFilledPositions <= 0 && rawRemaining > 0
+        ? (safePositions - rawRemaining).clamp(0, safePositions).toInt()
+        : rawFilledPositions.clamp(0, safePositions).toInt();
     final remaining =
         (safePositions - filledPositions).clamp(0, safePositions).toInt();
 
@@ -517,12 +575,27 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
 
     final data = jobDoc.data();
-    final ownerId = data?["ownerId"]?.toString() ?? widget.job.ownerId;
-    if (ownerId.isEmpty || ownerId == "unknown") {
+    final ownerId = jobOwnerId(data);
+    final counts = jobPositionCounts(data);
+
+    debugPrint(
+      "POSITION CHECK jobId=${widget.job.id} "
+      "positions=${counts.positions} "
+      "filledPositions=${counts.filledPositions} "
+      "remainingPositions=${counts.remaining} "
+      "rawPositions=${data?["positions"]} "
+      "rawFilledPositions=${data?["filledPositions"]} "
+      "rawRemainingPositions=${data?["remainingPositions"]} "
+      "ownerId=$ownerId "
+      "moderationStatus=${data?["moderationStatus"]} "
+      "status=${data?["status"]}",
+    );
+
+    if (ownerId.isEmpty) {
       throw Exception("Job has no ownerId");
     }
 
-    return jobPositionCounts(data).remaining;
+    return counts.remaining;
   }
 
   Future<void> deleteJob() async {

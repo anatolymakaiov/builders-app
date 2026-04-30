@@ -211,6 +211,12 @@ class Job {
 
     /// 🔥 ВАЖНО: вычисляем ДО return
     final positionsRaw = safeInt(data["positions"]);
+    final ownerId = (data["ownerId"] ??
+            data["employerId"] ??
+            data["createdBy"] ??
+            data["userId"] ??
+            "unknown")
+        .toString();
 
     return Job(
       id: id,
@@ -245,7 +251,7 @@ class Job {
       startDate: safeDate(data["startDate"]),
       employmentType: data["employmentType"] ?? "",
 
-      ownerId: data["ownerId"] ?? "unknown",
+      ownerId: ownerId,
 
       applicantsCount: safeInt(data["applicantsCount"]),
       createdAt: safeDate(data["createdAt"]),
