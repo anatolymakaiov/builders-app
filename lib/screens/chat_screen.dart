@@ -37,6 +37,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<String> chatMembers = [];
   bool _preloaded = false;
   bool _isTyping = false;
+  bool _chatLoaded = false;
   bool isRecording = false;
   bool isUploadingMedia = false;
   final Set<String> _markedRead = {};
@@ -69,9 +70,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final data = chatDoc.data();
     if (data == null) return;
 
-    workerId = data["workerId"];
-    employerId = data["employerId"];
-    chatMembers = chatRecipientIds(data);
+    setChatData(data);
 
     final isWorker = user.uid == workerId;
 
@@ -82,6 +81,27 @@ class _ChatScreenState extends State<ChatScreen> {
       if (isWorker) "unreadCount_worker": 0 else "unreadCount_employer": 0,
       "unreadFor": FieldValue.arrayRemove([user.uid]),
     }, SetOptions(merge: true));
+  }
+
+  void setChatData(Map<String, dynamic> data) {
+    workerId = data["workerId"]?.toString();
+    employerId = data["employerId"]?.toString();
+    chatMembers = chatRecipientIds(data);
+    _chatLoaded = true;
+  }
+
+  Future<bool> ensureChatDataLoaded() async {
+    if (_chatLoaded && chatMembers.isNotEmpty) return true;
+
+    final chatDoc = await FirebaseFirestore.instance
+        .collection("chats")
+        .doc(widget.chatId)
+        .get();
+    final data = chatDoc.data();
+    if (data == null) return false;
+
+    setChatData(data);
+    return chatMembers.isNotEmpty;
   }
 
   List<String> chatRecipientIds(Map<String, dynamic> data) {
@@ -165,6 +185,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> sendMessage() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    if (!await ensureChatDataLoaded()) return;
 
     final text = controller.text.trim();
     if (text.isEmpty) return;
@@ -235,16 +256,42 @@ class _ChatScreenState extends State<ChatScreen> {
     return fallback;
   }
 
+  String mediaContentType(String type, String extension) {
+    final ext = extension.toLowerCase();
+
+    if (type == "image") {
+      if (ext == "jpg") return "image/jpeg";
+      if (ext == "heic" || ext == "heif") return "image/heic";
+      return "image/$ext";
+    }
+
+    if (type == "video") {
+      if (ext == "mov") return "video/quicktime";
+      if (ext == "m4v") return "video/x-m4v";
+      return "video/$ext";
+    }
+
+    return "application/octet-stream";
+  }
+
   Future<void> updateChatAfterMedia({
     required String lastMessage,
     required String lastMessageType,
     required bool isWorker,
     required String senderId,
   }) async {
+    if (!await ensureChatDataLoaded()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not open chat")),
+      );
+      return;
+    }
+
     await FirebaseFirestore.instance
         .collection("chats")
         .doc(widget.chatId)
-        .update({
+        .set({
       "lastMessage": lastMessage,
       "lastMessageType": lastMessageType,
       "updatedAt": FieldValue.serverTimestamp(),
@@ -254,7 +301,7 @@ class _ChatScreenState extends State<ChatScreen> {
       else
         "unreadCount_worker": FieldValue.increment(1),
       if (isWorker) "typing_worker": false else "typing_employer": false,
-    });
+    }, SetOptions(merge: true));
   }
 
   Future<void> sendPickedMedia({
@@ -264,6 +311,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     if (isUploadingMedia) return;
+    if (!await ensureChatDataLoaded()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not open chat")),
+      );
+      return;
+    }
 
     final file = File(picked.path);
     if (!file.existsSync()) {
@@ -285,10 +339,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       await ref.putFile(
         file,
-        SettableMetadata(
-          contentType:
-              type == "video" ? "video/$extension" : "image/$extension",
-        ),
+        SettableMetadata(contentType: mediaContentType(type, extension)),
       );
       final url = await ref.getDownloadURL();
 
@@ -331,15 +382,35 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> sendImage() async {
-    final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked == null) return;
+    XFile? picked;
+    try {
+      picked = await picker.pickImage(source: ImageSource.gallery);
+      if (picked == null) return;
+    } catch (e) {
+      debugPrint("PICK IMAGE ERROR: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not select photo")),
+      );
+      return;
+    }
 
     await sendPickedMedia(picked: picked, type: "image");
   }
 
   Future<void> sendVideo() async {
-    final picked = await picker.pickVideo(source: ImageSource.gallery);
-    if (picked == null) return;
+    XFile? picked;
+    try {
+      picked = await picker.pickVideo(source: ImageSource.gallery);
+      if (picked == null) return;
+    } catch (e) {
+      debugPrint("PICK VIDEO ERROR: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not select video")),
+      );
+      return;
+    }
 
     await sendPickedMedia(picked: picked, type: "video");
   }
@@ -354,6 +425,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> startRecording() async {
     try {
+      if (!await ensureChatDataLoaded()) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not open chat")),
+        );
+        return;
+      }
+
       final hasPermission = await audioRecorder.hasPermission();
       if (!hasPermission) {
         if (!mounted) return;
@@ -404,6 +483,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    if (!await ensureChatDataLoaded()) return;
 
     final file = File(path);
     if (!file.existsSync()) {
