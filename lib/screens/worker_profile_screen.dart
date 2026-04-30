@@ -475,9 +475,41 @@ class WorkerProfileScreen extends StatelessWidget {
     return urls;
   }
 
+  Stream<List<String>> portfolioUrlsStream() {
+    return FirebaseFirestore.instance
+        .collection("users")
+        .doc(userId)
+        .collection("portfolio")
+        .snapshots()
+        .asyncMap((nestedSnapshot) async {
+      final urls = <String>[];
+
+      for (final doc in nestedSnapshot.docs) {
+        final data = doc.data();
+        final url = data["imageUrl"] ?? data["image"];
+        if (url != null) urls.add(url.toString());
+      }
+
+      final flatSnapshot = await FirebaseFirestore.instance
+          .collection("portfolio")
+          .where("userId", isEqualTo: userId)
+          .get();
+
+      for (final doc in flatSnapshot.docs) {
+        final data = doc.data();
+        final url = data["imageUrl"] ?? data["image"];
+        if (url != null && !urls.contains(url.toString())) {
+          urls.add(url.toString());
+        }
+      }
+
+      return urls;
+    });
+  }
+
   Widget buildPortfolioGallery() {
-    return FutureBuilder<List<String>>(
-      future: loadPortfolioUrls(),
+    return StreamBuilder<List<String>>(
+      stream: portfolioUrlsStream(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Column(

@@ -154,6 +154,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return urls;
   }
 
+  Stream<List<String>> portfolioUrlsStream(String userId) {
+    return FirebaseFirestore.instance
+        .collection("users")
+        .doc(userId)
+        .collection("portfolio")
+        .snapshots()
+        .asyncMap((nestedSnapshot) async {
+      final urls = <String>[];
+
+      for (final doc in nestedSnapshot.docs) {
+        final data = doc.data();
+        final url = data["imageUrl"] ?? data["image"];
+        if (url != null) urls.add(url.toString());
+      }
+
+      final flatSnapshot = await FirebaseFirestore.instance
+          .collection("portfolio")
+          .where("userId", isEqualTo: userId)
+          .get();
+
+      for (final doc in flatSnapshot.docs) {
+        final data = doc.data();
+        final url = data["imageUrl"] ?? data["image"];
+        if (url != null && !urls.contains(url.toString())) {
+          urls.add(url.toString());
+        }
+      }
+
+      return urls;
+    });
+  }
+
   String textFromListOrString(dynamic value) {
     if (value == null) return "";
     if (value is List) {
@@ -449,27 +481,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
         const SizedBox(height: 10),
-        if (portfolio.isEmpty) const Text("No work photos yet"),
-        if (portfolio.isNotEmpty)
-          SizedBox(
-            height: 90,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: portfolio.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (_, index) {
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.network(
-                    portfolio[index],
-                    width: 90,
-                    height: 90,
-                    fit: BoxFit.cover,
-                  ),
-                );
-              },
-            ),
-          ),
+        StreamBuilder<List<String>>(
+          stream: portfolioUrlsStream(userId),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const LinearProgressIndicator();
+            }
+
+            final photos = snapshot.data!;
+            if (photos.isEmpty) return const Text("No work photos yet");
+
+            return SizedBox(
+              height: 90,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: photos.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (_, index) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      photos[index],
+                      width: 90,
+                      height: 90,
+                      fit: BoxFit.cover,
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
       ],
     );
   }
