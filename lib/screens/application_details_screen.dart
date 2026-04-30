@@ -537,9 +537,41 @@ class ApplicationDetailsScreen extends StatelessWidget {
     return urls;
   }
 
+  Stream<List<String>> portfolioUrlsStream(String userId) {
+    return FirebaseFirestore.instance
+        .collection("users")
+        .doc(userId)
+        .collection("portfolio")
+        .snapshots()
+        .asyncMap((nestedSnapshot) async {
+      final urls = <String>[];
+
+      for (final doc in nestedSnapshot.docs) {
+        final data = doc.data();
+        final url = data["imageUrl"] ?? data["image"];
+        if (url != null) urls.add(url.toString());
+      }
+
+      final flatSnapshot = await FirebaseFirestore.instance
+          .collection("portfolio")
+          .where("userId", isEqualTo: userId)
+          .get();
+
+      for (final doc in flatSnapshot.docs) {
+        final data = doc.data();
+        final url = data["imageUrl"] ?? data["image"];
+        if (url != null && !urls.contains(url.toString())) {
+          urls.add(url.toString());
+        }
+      }
+
+      return urls;
+    });
+  }
+
   Widget buildPortfolioGallery(String userId) {
-    return FutureBuilder<List<String>>(
-      future: loadPortfolioUrls(userId),
+    return StreamBuilder<List<String>>(
+      stream: portfolioUrlsStream(userId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Column(
@@ -656,11 +688,11 @@ class ApplicationDetailsScreen extends StatelessWidget {
     final teamId = data["teamId"];
     final memberIds = List<String>.from(data["members"] ?? []);
 
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
           .collection("teams")
           .doc(teamId ?? "__missing_team__")
-          .get(),
+          .snapshots(),
       builder: (context, snapshot) {
         final team = snapshot.data?.data() as Map<String, dynamic>?;
         final teamName = team?["name"] ?? data["teamName"] ?? "Team";
@@ -751,11 +783,11 @@ class ApplicationDetailsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             ...memberIds.map((memberId) {
-              return FutureBuilder<DocumentSnapshot>(
-                future: FirebaseFirestore.instance
+              return StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance
                     .collection("users")
                     .doc(memberId)
-                    .get(),
+                    .snapshots(),
                 builder: (context, snap) {
                   if (!snap.hasData || !snap.data!.exists) {
                     return const SizedBox();
@@ -843,11 +875,11 @@ class ApplicationDetailsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text("Application")),
       body: StroykaScreenBody(
-        child: FutureBuilder<DocumentSnapshot>(
-          future: FirebaseFirestore.instance
+        child: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
               .collection("users")
               .doc(workerId)
-              .get(),
+              .snapshots(),
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());

@@ -651,8 +651,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       return const SizedBox();
     }
 
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance.collection("users").doc(ownerId).get(),
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("users")
+          .doc(ownerId)
+          .snapshots(),
       builder: (context, snapshot) {
         /// ⏳ LOADING
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -1397,8 +1400,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       );
     }
 
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance.collection("users").doc(ownerId).get(),
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("users")
+          .doc(ownerId)
+          .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
