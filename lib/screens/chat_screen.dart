@@ -207,13 +207,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Uri? normalizeUrl(String text) {
-    final value = text.trim();
+    final match =
+        RegExp(r'(https?:\/\/[^\s]+|www\.[^\s]+)').firstMatch(text.trim());
+    if (match == null) return null;
+
+    final value = match.group(0)?.replaceAll(RegExp(r'[.,!?;:]+$'), '') ?? "";
     if (value.isEmpty) return null;
 
-    final normalized =
-        value.startsWith("http://") || value.startsWith("https://")
-            ? value
-            : "https://$value";
+    final normalized = value.startsWith("www.") ? "https://$value" : value;
 
     final uri = Uri.tryParse(normalized);
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) return null;
@@ -987,7 +988,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                               onTap: () async {
                                                 final raw =
                                                     data["url"] ?? data["text"];
-                                                final uri = Uri.tryParse(
+                                                final uri = normalizeUrl(
                                                     raw.toString());
                                                 if (uri == null) return;
                                                 await launchUrl(
