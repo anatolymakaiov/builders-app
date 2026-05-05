@@ -57,6 +57,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? headerImageUrl;
   File? headerImageFile;
   List<String> portfolio = [];
+  List<String> companyPhotos = [];
+  bool uploadingCompanyPhotos = false;
 
   String get userId => FirebaseAuth.instance.currentUser!.uid;
 
@@ -120,6 +122,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       headerImageUrl =
           (data["profileHeaderImage"] ?? data["headerImage"])?.toString();
       portfolio = portfolioUrls;
+      companyPhotos = List<String>.from(data["companyPhotos"] ?? []);
     });
   }
 
@@ -277,6 +280,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (picked == null) return;
 
     setState(() => headerImageFile = File(picked.path));
+  }
+
+  Future<void> pickAndUploadCompanyPhotos() async {
+    if (role != "employer" || uploadingCompanyPhotos) return;
+
+    try {
+      final picked = await picker.pickMultiImage();
+      if (picked.isEmpty) return;
+
+      setState(() => uploadingCompanyPhotos = true);
+
+      final uploadedUrls = <String>[];
+      for (final image in picked) {
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child("company_photos/$userId/${timestamp}_${image.name}");
+
+        await ref.putFile(File(image.path));
+        uploadedUrls.add(await ref.getDownloadURL());
+      }
+
+      if (uploadedUrls.isEmpty) return;
+
+      await FirebaseFirestore.instance.collection("users").doc(userId).set({
+        "companyPhotos": FieldValue.arrayUnion(uploadedUrls),
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (!mounted) return;
+      setState(() {
+        companyPhotos = [...companyPhotos, ...uploadedUrls];
+      });
+    } catch (e) {
+      debugPrint("Company gallery upload error: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not upload company photos")),
+      );
+    } finally {
+      if (mounted) setState(() => uploadingCompanyPhotos = false);
+    }
+  }
+
+  Future<void> removeCompanyPhoto(String photo) async {
+    if (role != "employer" || uploadingCompanyPhotos) return;
+
+    try {
+      setState(() {
+        companyPhotos.remove(photo);
+      });
+
+      await FirebaseFirestore.instance.collection("users").doc(userId).set({
+        "companyPhotos": FieldValue.arrayRemove([photo]),
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Company gallery remove error: $e");
+      if (!mounted) return;
+      setState(() {
+        if (!companyPhotos.contains(photo)) {
+          companyPhotos.add(photo);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not remove company photo")),
+      );
+    }
   }
 
   /// SAVE PROFILE
@@ -510,6 +581,87 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
           },
         ),
+      ],
+    );
+  }
+
+  Widget buildCompanyGalleryEditor() {
+    if (role != "employer") return const SizedBox();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                "Company gallery",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed:
+                  uploadingCompanyPhotos ? null : pickAndUploadCompanyPhotos,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: Text(uploadingCompanyPhotos ? "Uploading..." : "Add"),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (uploadingCompanyPhotos) ...[
+          const LinearProgressIndicator(),
+          const SizedBox(height: 12),
+        ],
+        if (companyPhotos.isEmpty)
+          const Text("No company photos yet")
+        else
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: companyPhotos.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
+            itemBuilder: (context, index) {
+              final photo = companyPhotos[index];
+
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.network(
+                      photo,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.grey.shade200,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.broken_image_outlined),
+                      ),
+                    ),
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Material(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          tooltip: "Remove photo",
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: uploadingCompanyPhotos
+                              ? null
+                              : () => removeCompanyPhoto(photo),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
       ],
     );
   }
@@ -834,6 +986,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             maxLines: 4,
             decoration: const InputDecoration(labelText: "Our history"),
           ),
+          buildCompanyGalleryEditor(),
         ],
 
         if (role == "worker") ...[
