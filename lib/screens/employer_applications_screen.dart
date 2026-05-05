@@ -75,9 +75,11 @@ class _EmployerApplicationsScreenState
         return const CircleAvatar(child: Icon(Icons.groups));
       }
 
-      return FutureBuilder<DocumentSnapshot>(
-        future:
-            FirebaseFirestore.instance.collection("teams").doc(teamId).get(),
+      return StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection("teams")
+            .doc(teamId)
+            .snapshots(),
         builder: (context, snapshot) {
           final team = snapshot.data?.data() as Map<String, dynamic>?;
           final avatar = team?["avatarUrl"] ?? team?["photo"] ?? team?["logo"];
@@ -96,9 +98,11 @@ class _EmployerApplicationsScreenState
       return const CircleAvatar(child: Icon(Icons.person));
     }
 
-    return FutureBuilder<DocumentSnapshot>(
-      future:
-          FirebaseFirestore.instance.collection("users").doc(workerId).get(),
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("users")
+          .doc(workerId)
+          .snapshots(),
       builder: (context, snapshot) {
         final user = snapshot.data?.data() as Map<String, dynamic>?;
         final photo = user?["photo"] ?? user?["avatarUrl"];

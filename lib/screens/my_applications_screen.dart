@@ -198,11 +198,11 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                       final status = data["status"] ?? "pending";
                       final jobId = data["jobId"];
 
-                      return FutureBuilder<DocumentSnapshot>(
-                        future: FirebaseFirestore.instance
+                      return StreamBuilder<DocumentSnapshot>(
+                        stream: FirebaseFirestore.instance
                             .collection("jobs")
                             .doc(jobId)
-                            .get(),
+                            .snapshots(),
                         builder: (context, jobSnapshot) {
                           if (!jobSnapshot.hasData) {
                             return const Padding(

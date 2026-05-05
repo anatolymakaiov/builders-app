@@ -607,11 +607,11 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
               return true;
             }).toList();
 
-            return FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance
+            return StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance
                   .collection("users")
                   .doc(ownerId)
-                  .get(),
+                  .snapshots(),
               builder: (context, employerSnapshot) {
                 final employerData =
                     employerSnapshot.data?.data() as Map<String, dynamic>?;

@@ -934,6 +934,188 @@ class WorkerProfileScreen extends StatelessWidget {
     );
   }
 
+  Widget buildLiveApplicationActions({
+    required BuildContext context,
+    required String applicationId,
+    required String employerId,
+    required String jobId,
+  }) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("applications")
+          .doc(applicationId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (!snapshot.data!.exists) {
+          return const Text("Application not found");
+        }
+
+        final applicationData =
+            snapshot.data!.data() as Map<String, dynamic>? ?? {};
+        final status = applicationData["status"]?.toString() ?? "pending";
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.green,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () async {
+                  if (status == "pending") {
+                    await ApplicationActivityService.updateStatus(
+                      applicationId: applicationId,
+                      status: "negotiation",
+                      unreadFor: ApplicationActivityService.workerRecipients(
+                        applicationData,
+                      ),
+                    );
+                  }
+                  final chatId = await ChatService.getOrCreateChat(
+                    workerId: userId,
+                    employerId: employerId,
+                    jobId: jobId,
+                    applicationId: applicationId,
+                  );
+
+                  if (!context.mounted) return;
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatScreen(chatId: chatId),
+                    ),
+                  );
+                },
+                child: const Text("Message / Negotiation"),
+              ),
+            ),
+            if (status == "offer_sent") ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.green.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Offer",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (applicationData["offer"] is Map<String, dynamic>)
+                      ...buildOfferDetails(
+                        applicationData["offer"] as Map<String, dynamic>,
+                      )
+                    else
+                      const Text("Offer details not provided"),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            if (status == "offer_accepted") ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.green.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  "Worker hired",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.greenDark,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.green.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                status.toUpperCase(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppColors.greenDark,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                if (status != "offer_accepted")
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        backgroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.red),
+                      ),
+                      onPressed: () async {
+                        await FirebaseFirestore.instance
+                            .collection("applications")
+                            .doc(applicationId)
+                            .set({
+                          "status": "rejected",
+                          "applicationActivityAt": FieldValue.serverTimestamp(),
+                          "updatedAt": FieldValue.serverTimestamp(),
+                          "unreadFor": FieldValue.arrayUnion(
+                            ApplicationActivityService.workerRecipients(
+                              applicationData,
+                            ),
+                          ),
+                        }, SetOptions(merge: true));
+                      },
+                      child: const Text("Reject"),
+                    ),
+                  ),
+                if (status != "offer_accepted") const SizedBox(width: 10),
+                if (status == "pending" || status == "negotiation")
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.green,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () => openExpandedOfferDialog(
+                        context,
+                        applicationId: applicationId,
+                        applicationData: applicationData,
+                      ),
+                      child: const Text("Make offer"),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -997,8 +1179,6 @@ class WorkerProfileScreen extends StatelessWidget {
           final userData = userSnap.data() ?? <String, dynamic>{};
 
           String? applicationId;
-          String status = "pending";
-          Map<String, dynamic>? applicationData;
 
           if (jobId != null && employerId != null) {
             final appQuery = await FirebaseFirestore.instance
@@ -1011,8 +1191,6 @@ class WorkerProfileScreen extends StatelessWidget {
             if (appQuery.docs.isNotEmpty) {
               final appDoc = appQuery.docs.first;
               applicationId = appDoc.id;
-              applicationData = appDoc.data();
-              status = applicationData["status"] ?? "pending";
             }
           }
 
@@ -1028,8 +1206,6 @@ class WorkerProfileScreen extends StatelessWidget {
           return {
             "user": userData,
             "applicationId": applicationId,
-            "applicationData": applicationData,
-            "status": status,
             "currentRole": currentRole,
           };
         }),
@@ -1041,9 +1217,6 @@ class WorkerProfileScreen extends StatelessWidget {
           final result = snapshot.data!;
           final data = result["user"] as Map<String, dynamic>;
           final String? applicationId = result["applicationId"];
-          final applicationData =
-              (result["applicationData"] as Map<String, dynamic>?) ?? {};
-          final String status = result["status"];
           final String? currentRole = result["currentRole"];
           final name = data["name"] ?? "Worker";
           final bio = data["bio"] ?? "";
@@ -1215,259 +1388,11 @@ class WorkerProfileScreen extends StatelessWidget {
                             children: [
                               StroykaSurface(
                                 padding: const EdgeInsets.all(18),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    SizedBox(
-                                      width: double.infinity,
-                                      height: 55,
-                                      child: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: AppColors.green,
-                                          foregroundColor: Colors.white,
-                                        ),
-                                        onPressed: () async {
-                                          if (status == "pending") {
-                                            await ApplicationActivityService
-                                                .updateStatus(
-                                              applicationId: applicationId,
-                                              status: "negotiation",
-                                              unreadFor:
-                                                  ApplicationActivityService
-                                                      .workerRecipients(
-                                                          applicationData),
-                                            );
-                                          }
-                                          final chatId =
-                                              await ChatService.getOrCreateChat(
-                                            workerId: userId,
-                                            employerId: employerId!,
-                                            jobId: jobId!,
-                                            applicationId: applicationId,
-                                          );
-
-                                          if (!context.mounted) return;
-
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  ChatScreen(chatId: chatId),
-                                            ),
-                                          );
-                                        },
-                                        child:
-                                            const Text("Message / Negotiation"),
-                                      ),
-                                    ),
-                                    if (status == "offer_sent") ...[
-                                      const SizedBox(height: 12),
-                                      Container(
-                                        padding: const EdgeInsets.all(14),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.green
-                                              .withValues(alpha: 0.12),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            const Text(
-                                              "Offer",
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 16,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            if (applicationData["offer"]
-                                                is Map<String, dynamic>)
-                                              ...buildOfferDetails(
-                                                applicationData["offer"]
-                                                    as Map<String, dynamic>,
-                                              )
-                                            else
-                                              const Text(
-                                                  "Offer details not provided"),
-                                            if (!isMyProfile) ...[
-                                              const SizedBox(height: 12),
-                                              SizedBox(
-                                                width: double.infinity,
-                                                child: ElevatedButton(
-                                                  onPressed: () async {
-                                                    await FirebaseFirestore
-                                                        .instance
-                                                        .collection(
-                                                            "applications")
-                                                        .doc(applicationId)
-                                                        .set({
-                                                      "status":
-                                                          "offer_accepted",
-                                                      "applicationActivityAt":
-                                                          FieldValue
-                                                              .serverTimestamp(),
-                                                      "updatedAt": FieldValue
-                                                          .serverTimestamp(),
-                                                      "unreadFor":
-                                                          FieldValue.arrayUnion(
-                                                        ApplicationActivityService
-                                                            .employerRecipients(
-                                                                applicationData),
-                                                      ),
-                                                    }, SetOptions(merge: true));
-
-                                                    if (!context.mounted) {
-                                                      return;
-                                                    }
-
-                                                    ScaffoldMessenger.of(
-                                                            context)
-                                                        .showSnackBar(
-                                                      const SnackBar(
-                                                        content: Text(
-                                                            "Offer accepted"),
-                                                      ),
-                                                    );
-                                                  },
-                                                  child: const Text(
-                                                      "Accept offer"),
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 12),
-                                    if (status == "offer_accepted") ...[
-                                      Container(
-                                        width: double.infinity,
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.green.withValues(
-                                            alpha: 0.14,
-                                          ),
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                        ),
-                                        child: const Text(
-                                          "Worker hired",
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            color: AppColors.greenDark,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                    ],
-                                    Container(
-                                      width: double.infinity,
-                                      margin: const EdgeInsets.only(bottom: 12),
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.green
-                                            .withValues(alpha: 0.10),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Text(
-                                        status.toUpperCase(),
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          color: AppColors.greenDark,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                    ),
-                                    Row(
-                                      children: [
-                                        if (status != "offer_accepted")
-                                          Expanded(
-                                            child: OutlinedButton(
-                                              style: OutlinedButton.styleFrom(
-                                                foregroundColor: Colors.red,
-                                                backgroundColor: Colors.white,
-                                                side: const BorderSide(
-                                                    color: Colors.red),
-                                              ),
-                                              onPressed: () async {
-                                                await FirebaseFirestore.instance
-                                                    .collection("applications")
-                                                    .doc(applicationId)
-                                                    .set({
-                                                  "status": "rejected",
-                                                  "applicationActivityAt":
-                                                      FieldValue
-                                                          .serverTimestamp(),
-                                                  "updatedAt": FieldValue
-                                                      .serverTimestamp(),
-                                                  "unreadFor":
-                                                      FieldValue.arrayUnion(
-                                                    ApplicationActivityService
-                                                        .workerRecipients(
-                                                            applicationData),
-                                                  ),
-                                                }, SetOptions(merge: true));
-                                              },
-                                              child: const Text("Reject"),
-                                            ),
-                                          ),
-                                        if (status != "offer_accepted")
-                                          const SizedBox(width: 10),
-                                        if (status == "pending" ||
-                                            status == "negotiation")
-                                          Expanded(
-                                            child: ElevatedButton(
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor:
-                                                    AppColors.green,
-                                                foregroundColor: Colors.white,
-                                              ),
-                                              onPressed: () =>
-                                                  openExpandedOfferDialog(
-                                                context,
-                                                applicationId: applicationId,
-                                                applicationData:
-                                                    applicationData,
-                                              ),
-                                              child: const Text("Make offer"),
-                                            ),
-                                          ),
-                                        if (status == "offer_sent")
-                                          Expanded(
-                                            child: ElevatedButton(
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor:
-                                                    AppColors.green,
-                                                foregroundColor: Colors.white,
-                                              ),
-                                              onPressed: () async {
-                                                await FirebaseFirestore.instance
-                                                    .collection("applications")
-                                                    .doc(applicationId)
-                                                    .set({
-                                                  "status": "offer_accepted",
-                                                  "applicationActivityAt":
-                                                      FieldValue
-                                                          .serverTimestamp(),
-                                                  "updatedAt": FieldValue
-                                                      .serverTimestamp(),
-                                                  "unreadFor":
-                                                      FieldValue.arrayUnion(
-                                                    ApplicationActivityService
-                                                        .employerRecipients(
-                                                            applicationData),
-                                                  ),
-                                                }, SetOptions(merge: true));
-                                              },
-                                              child: const Text("Hire"),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ],
+                                child: buildLiveApplicationActions(
+                                  context: context,
+                                  applicationId: applicationId,
+                                  employerId: employerId!,
+                                  jobId: jobId!,
                                 ),
                               ),
                             ],
