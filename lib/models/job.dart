@@ -11,6 +11,7 @@ class Job {
   final String street;
   final String city;
   final String postcode;
+  final String county;
 
   final double rate;
 
@@ -56,6 +57,7 @@ class Job {
     required this.street,
     required this.city,
     required this.postcode,
+    this.county = "",
     required this.rate,
     required this.lat,
     required this.lng,
@@ -163,7 +165,11 @@ class Job {
 
   /// 🔥 ADDRESS
   String get fullAddress {
-    return "$street, $city $postcode";
+    return [
+      street.trim(),
+      city.trim(),
+      postcode.trim(),
+    ].where((part) => part.isNotEmpty).join(", ");
   }
 
   String _formatDate(DateTime date) {
@@ -229,6 +235,7 @@ class Job {
       street: data["street"] ?? "",
       city: data["city"] ?? "",
       postcode: data["postcode"] ?? "",
+      county: (data["county"] ?? data["siteCounty"] ?? "").toString(),
 
       rate: safeDouble(data["rate"]),
 

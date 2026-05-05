@@ -106,6 +106,25 @@ class JobRepository {
     final workerName =
         (userDoc.data()?["name"] ?? userDoc.data()?["displayName"] ?? "Worker")
             .toString();
+    final siteStreet =
+        (jobData["siteStreet"] ?? jobData["street"] ?? "").toString().trim();
+    final siteCity =
+        (jobData["siteCity"] ?? jobData["city"] ?? "").toString().trim();
+    final sitePostcode = (jobData["sitePostcode"] ?? jobData["postcode"] ?? "")
+        .toString()
+        .trim();
+    final siteCounty =
+        (jobData["siteCounty"] ?? jobData["county"] ?? "").toString().trim();
+    final siteAddress = (jobData["siteAddress"] ??
+            jobData["fullAddress"] ??
+            jobData["location"] ??
+            [
+              siteStreet,
+              siteCity,
+              sitePostcode,
+            ].where((part) => part.isNotEmpty).join(", "))
+        .toString()
+        .trim();
 
     /// 3. создаем application
     await _db.collection('applications').add({
@@ -123,6 +142,12 @@ class JobRepository {
       "jobTitle": (jobData["title"] ?? jobData["trade"] ?? "").toString(),
       "jobTrade": jobData["trade"] ?? "",
       "jobSite": jobData["site"] ?? "",
+      "siteStreet": siteStreet,
+      "siteCity": siteCity,
+      "sitePostcode": sitePostcode,
+      "siteCounty": siteCounty,
+      "siteAddress": siteAddress,
+      "fullAddress": siteAddress,
 
       "createdAt": FieldValue.serverTimestamp(),
       ...ApplicationActivityService.createdForEmployer(employerId.toString()),

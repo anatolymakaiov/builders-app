@@ -144,7 +144,69 @@ class ApplicationDetailsScreen extends StatelessWidget {
     );
   }
 
+  String composePhysicalAddress({
+    required String street,
+    required String city,
+    required String postcode,
+  }) {
+    return [
+      street.trim(),
+      city.trim(),
+      postcode.trim(),
+    ].where((part) => part.isNotEmpty).join(", ");
+  }
+
+  Map<String, String> physicalAddressFieldsFrom(Map<String, dynamic> source) {
+    final street =
+        (source["siteStreet"] ?? source["street"] ?? "").toString().trim();
+    final city = (source["siteCity"] ?? source["city"] ?? "").toString().trim();
+    final postcode =
+        (source["sitePostcode"] ?? source["postcode"] ?? "").toString().trim();
+    final county =
+        (source["siteCounty"] ?? source["county"] ?? "").toString().trim();
+    final composedAddress = composePhysicalAddress(
+      street: street,
+      city: city,
+      postcode: postcode,
+    );
+    final storedAddress =
+        (source["siteAddress"] ?? source["fullAddress"] ?? source["location"])
+                ?.toString()
+                .trim() ??
+            "";
+
+    return {
+      "siteStreet": street,
+      "siteCity": city,
+      "sitePostcode": postcode,
+      "siteCounty": county,
+      "siteAddress": storedAddress.isNotEmpty ? storedAddress : composedAddress,
+      "fullAddress": storedAddress.isNotEmpty ? storedAddress : composedAddress,
+    };
+  }
+
+  Future<Map<String, String>> loadOfferPhysicalAddressFields() async {
+    final fromApplication = physicalAddressFieldsFrom(data);
+    if (fromApplication["siteAddress"]!.isNotEmpty &&
+        fromApplication["siteAddress"] != data["jobSite"]?.toString()) {
+      return fromApplication;
+    }
+
+    final jobId = data["jobId"]?.toString();
+    if (jobId == null || jobId.isEmpty) return fromApplication;
+
+    final jobDoc =
+        await FirebaseFirestore.instance.collection("jobs").doc(jobId).get();
+    final jobData = jobDoc.data();
+    if (jobData == null) return fromApplication;
+
+    return physicalAddressFieldsFrom(jobData);
+  }
+
   Future<void> openOfferDialog(BuildContext context) async {
+    final physicalAddressFields = await loadOfferPhysicalAddressFields();
+    if (!context.mounted) return;
+
     String jobType = "hourly";
     final rateController = TextEditingController();
     final workPeriodController = TextEditingController();
@@ -152,7 +214,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
     final scheduleController = TextEditingController();
     final startDateTimeController = TextEditingController();
     final siteAddressController = TextEditingController(
-      text: (data["jobSite"] ?? data["site"] ?? "").toString(),
+      text: physicalAddressFields["siteAddress"] ?? "",
     );
     final firstDayRequirementsController = TextEditingController();
     final descriptionController = TextEditingController();
@@ -315,7 +377,12 @@ class ApplicationDetailsScreen extends StatelessWidget {
         "weeklyHours": weeklyHoursController.text.trim(),
         "schedule": scheduleController.text.trim(),
         "startDateTime": startDateTimeController.text.trim(),
+        "siteStreet": physicalAddressFields["siteStreet"],
+        "siteCity": physicalAddressFields["siteCity"],
+        "sitePostcode": physicalAddressFields["sitePostcode"],
+        "siteCounty": physicalAddressFields["siteCounty"],
         "siteAddress": siteAddressController.text.trim(),
+        "fullAddress": siteAddressController.text.trim(),
         "firstDayRequirements": firstDayRequirementsController.text.trim(),
         "description": descriptionController.text.trim(),
         "validUntil": validUntilController.text.trim(),

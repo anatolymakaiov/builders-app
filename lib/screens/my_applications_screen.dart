@@ -264,13 +264,27 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       );
     }
 
+    String physicalAddressFromOffer() {
+      final street = offer["siteStreet"]?.toString().trim() ?? "";
+      final city = offer["siteCity"]?.toString().trim() ?? "";
+      final postcode = offer["sitePostcode"]?.toString().trim() ?? "";
+      final fromParts = [
+        street,
+        city,
+        postcode,
+      ].where((part) => part.isNotEmpty).join(", ");
+      if (fromParts.isNotEmpty) return fromParts;
+
+      return (offer["fullAddress"] ?? offer["siteAddress"])?.toString() ?? "";
+    }
+
     addRow("Work format", offer["workFormat"]);
     addRow("Rate / price", offer["rate"] == null ? null : "£${offer["rate"]}");
     addRow("Work period", offer["workPeriod"]);
     addRow("Hours per week", offer["weeklyHours"]);
     addRow("Schedule", offer["schedule"]);
     addRow("Start", offer["startDateTime"] ?? offer["startDate"]);
-    addRow("Site address", offer["siteAddress"]);
+    addRow("Site address", physicalAddressFromOffer());
     addRow("Required on first day", offer["firstDayRequirements"]);
     addRow("Description", offer["description"] ?? offer["message"]);
     addRow("Valid until", offer["validUntil"]);

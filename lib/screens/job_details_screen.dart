@@ -349,6 +349,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 .toString(),
             "jobTrade": jobData["trade"] ?? widget.job.trade,
             "jobSite": jobData["site"] ?? widget.job.site,
+            ...applicationPhysicalAddressFields(jobData),
             "type": "team",
             "teamId": teamId,
             "workerId": uid,
@@ -436,6 +437,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 .toString(),
             "jobTrade": jobData["trade"] ?? widget.job.trade,
             "jobSite": jobData["site"] ?? widget.job.site,
+            ...applicationPhysicalAddressFields(jobData),
             "workerId": uid,
             "applicantId": uid,
             "workerName": workerName,
@@ -613,6 +615,53 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
 
     return "";
+  }
+
+  String textFromJob(Map<String, dynamic> data, String primary, String legacy) {
+    final value = data[primary]?.toString().trim();
+    if (value != null && value.isNotEmpty) return value;
+    return data[legacy]?.toString().trim() ?? "";
+  }
+
+  String composePhysicalAddress({
+    required String street,
+    required String city,
+    required String postcode,
+  }) {
+    return [
+      street.trim(),
+      city.trim(),
+      postcode.trim(),
+    ].where((part) => part.isNotEmpty).join(", ");
+  }
+
+  Map<String, dynamic> applicationPhysicalAddressFields(
+    Map<String, dynamic> jobData,
+  ) {
+    final street = textFromJob(jobData, "siteStreet", "street");
+    final city = textFromJob(jobData, "siteCity", "city");
+    final postcode = textFromJob(jobData, "sitePostcode", "postcode");
+    final county = jobData["siteCounty"]?.toString().trim() ?? "";
+    final composedAddress = composePhysicalAddress(
+      street: street,
+      city: city,
+      postcode: postcode,
+    );
+    final address = (jobData["siteAddress"] ??
+            jobData["fullAddress"] ??
+            jobData["location"] ??
+            composedAddress)
+        .toString()
+        .trim();
+
+    return {
+      "siteStreet": street,
+      "siteCity": city,
+      "sitePostcode": postcode,
+      "siteCounty": county,
+      "siteAddress": address.isNotEmpty ? address : composedAddress,
+      "fullAddress": address.isNotEmpty ? address : composedAddress,
+    };
   }
 
   ({int positions, int filledPositions, int remaining}) jobPositionCounts(
@@ -1055,13 +1104,34 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       );
     }
 
+    String physicalAddressFromOffer() {
+      final street = offer["siteStreet"]?.toString().trim() ?? "";
+      final city = offer["siteCity"]?.toString().trim() ?? "";
+      final postcode = offer["sitePostcode"]?.toString().trim() ?? "";
+      final fromParts = composePhysicalAddress(
+        street: street,
+        city: city,
+        postcode: postcode,
+      );
+      if (fromParts.isNotEmpty) return fromParts;
+
+      final storedAddress =
+          (offer["fullAddress"] ?? offer["siteAddress"])?.toString().trim() ??
+              "";
+      if (storedAddress.isNotEmpty && storedAddress != widget.job.site) {
+        return storedAddress;
+      }
+
+      return widget.job.fullAddress;
+    }
+
     addRow("Work format", offer["workFormat"]);
     addRow("Rate / price", offer["rate"] == null ? null : "£${offer["rate"]}");
     addRow("Work period", offer["workPeriod"]);
     addRow("Hours per week", offer["weeklyHours"]);
     addRow("Schedule", offer["schedule"]);
     addRow("Start", offer["startDateTime"] ?? offer["startDate"]);
-    addRow("Site address", offer["siteAddress"]);
+    addRow("Site address", physicalAddressFromOffer());
     addRow("Required on first day", offer["firstDayRequirements"]);
     addRow("Description", offer["description"] ?? offer["message"]);
     addRow("Valid until", offer["validUntil"]);

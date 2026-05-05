@@ -316,6 +316,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
       lng = (result["longitude"] as num?)?.toDouble() ?? 0;
     }
 
+    final siteStreet = streetController.text.trim();
+    final siteCity = cityController.text.trim();
+    final siteCounty = (result?["admin_county"] ?? "").toString().trim();
+    final siteAddress = [
+      siteStreet,
+      siteCity,
+      postcode,
+    ].where((part) => part.isNotEmpty).join(", ");
+
     if (widget.existingJob == null) {
       try {
         await BillingService().assertEmployerCanPost(user.uid);
@@ -345,10 +354,16 @@ class _PostJobScreenState extends State<PostJobScreen> {
       "weeklyHours": weeklyHoursController.text.trim(),
       "positions": int.tryParse(positionsController.text) ?? 1,
       "filledPositions": widget.existingJob?.filledPositions ?? 0,
-      "street": streetController.text.trim(),
-      "city": cityController.text.trim(),
+      "street": siteStreet,
+      "city": siteCity,
       "postcode": postcode,
-      "location": "${streetController.text}, ${cityController.text} $postcode",
+      "location": siteAddress,
+      "siteStreet": siteStreet,
+      "siteCity": siteCity,
+      "sitePostcode": postcode,
+      "siteCounty": siteCounty,
+      "siteAddress": siteAddress,
+      "fullAddress": siteAddress,
       "rate": jobType == "negotiable"
           ? 0
           : double.tryParse(rateController.text) ?? 0,
