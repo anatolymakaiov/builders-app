@@ -99,13 +99,18 @@ class JobCard extends StatelessWidget {
                     ),
                   if (distanceText != null && distanceText!.isNotEmpty)
                     _MetaChip(label: distanceText!),
-                  if (statusText != null && statusText!.isNotEmpty)
-                    _MetaChip(
-                      label: statusText!,
-                      color: statusColor ?? AppColors.greenDark,
-                    ),
                 ],
               ),
+              if (statusText != null && statusText!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _MetaChip(
+                    label: statusText!,
+                    color: statusColor ?? AppColors.greenDark,
+                  ),
+                ),
+              ],
               if (bottomAction != null) ...[
                 const SizedBox(height: 10),
                 bottomAction!,

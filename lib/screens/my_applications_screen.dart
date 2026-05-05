@@ -291,17 +291,12 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     required bool isUnread,
     required String userId,
   }) {
-    final statusLine = [
-      statusLabel(status),
-      applicationDateText(appliedAt),
-    ].where((item) => item.trim().isNotEmpty).join(" • ");
-
     return JobCard(
       job: job,
       unread: isUnread,
       statusText: statusLabel(status),
       statusColor: getStatusColor(status),
-      detailText: statusLine,
+      detailText: applicationDateText(appliedAt),
       onTap: () async {
         await ApplicationActivityService.markRead(applicationId, userId);
         if (!mounted) return;

@@ -1185,6 +1185,24 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
+  ButtonStyle get compactPrimaryActionStyle => ElevatedButton.styleFrom(
+        minimumSize: const Size.fromHeight(42),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        textStyle: const TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 14,
+        ),
+      );
+
+  ButtonStyle get compactSecondaryActionStyle => OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(42),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        textStyle: const TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 14,
+        ),
+      );
+
   Widget buildYourOfferTab(Map<String, dynamic> appData) {
     final applicationId = widget.applicationId;
     if (applicationId == null) return const SizedBox();
@@ -1215,6 +1233,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
+                  style: compactSecondaryActionStyle,
                   onPressed: () => addOfferToCalendar(offer),
                   icon: const Icon(Icons.calendar_month),
                   label: const Text("Add to phone calendar"),
@@ -1222,10 +1241,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               ),
               if (canAccept)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.only(top: 6),
                   child: SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
+                      style: compactPrimaryActionStyle,
                       onPressed: () => acceptOffer(applicationId),
                       child: const Text("Accept offer"),
                     ),
@@ -1233,10 +1253,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 ),
               if (accepted)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.only(top: 6),
                   child: SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
+                      style: compactSecondaryActionStyle,
                       onPressed: () => withdrawOfferAcceptance(applicationId),
                       child: const Text("Withdraw acceptance"),
                     ),

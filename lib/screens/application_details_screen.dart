@@ -356,8 +356,33 @@ class ApplicationDetailsScreen extends StatelessWidget {
   ButtonStyle get primaryActionStyle => ElevatedButton.styleFrom(
         backgroundColor: AppColors.green,
         foregroundColor: Colors.white,
-        minimumSize: const Size.fromHeight(52),
-        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+        minimumSize: const Size.fromHeight(42),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        textStyle: const TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 14,
+        ),
+      );
+
+  ButtonStyle get dangerActionStyle => OutlinedButton.styleFrom(
+        foregroundColor: Colors.red,
+        backgroundColor: Colors.white,
+        minimumSize: const Size.fromHeight(42),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        side: const BorderSide(color: Colors.red),
+        textStyle: const TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 14,
+        ),
+      );
+
+  ButtonStyle get secondaryActionStyle => OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(42),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        textStyle: const TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 14,
+        ),
       );
 
   String _jobTypeLabel(String jobType) {
@@ -971,7 +996,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                     else ...[
                       buildPortfolioGallery(workerId),
                     ],
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 22),
 
                     /// 🔥 BUTTONS
                     /// 🔥 ACTIONS (НОВАЯ ЛОГИКА)
@@ -1042,7 +1067,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                                 ),
                               ),
 
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 6),
 
                               /// MAKE OFFER
                               SizedBox(
@@ -1054,17 +1079,13 @@ class ApplicationDetailsScreen extends StatelessWidget {
                                 ),
                               ),
 
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 6),
 
                               /// REJECT
                               SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton(
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.red,
-                                    backgroundColor: Colors.white,
-                                    side: const BorderSide(color: Colors.red),
-                                  ),
+                                  style: dangerActionStyle,
                                   onPressed: () async {
                                     if ((liveData["type"] ?? "single") ==
                                         "team") {
@@ -1096,7 +1117,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                                   child: const Text("Negotiation / Message"),
                                 ),
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 6),
                               SizedBox(
                                 width: double.infinity,
                                 child: ElevatedButton(
@@ -1105,15 +1126,11 @@ class ApplicationDetailsScreen extends StatelessWidget {
                                   child: const Text("Make offer"),
                                 ),
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 6),
                               SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton(
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.red,
-                                    backgroundColor: Colors.white,
-                                    side: const BorderSide(color: Colors.red),
-                                  ),
+                                  style: dangerActionStyle,
                                   onPressed: () async {
                                     if ((liveData["type"] ?? "single") ==
                                         "team") {
@@ -1140,21 +1157,18 @@ class ApplicationDetailsScreen extends StatelessWidget {
                               SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton(
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.red,
-                                    backgroundColor: Colors.white,
-                                    side: const BorderSide(color: Colors.red),
-                                  ),
+                                  style: dangerActionStyle,
                                   onPressed: () async {
                                     await updateStatus(context, "negotiation");
                                   },
                                   child: const Text("Withdraw offer"),
                                 ),
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 6),
                               SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton(
+                                  style: secondaryActionStyle,
                                   onPressed: () async {
                                     await ApplicationActivityService
                                         .updateStatus(
@@ -1174,7 +1188,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                             /// HIRED
                             /// =========================
                             if (status == "offer_accepted") ...[
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 6),
                               const Text(
                                 "Worker hired",
                                 style: TextStyle(
@@ -1185,7 +1199,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                             ],
 
                             if (status == "rejected") ...[
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 6),
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(12),

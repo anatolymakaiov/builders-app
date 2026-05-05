@@ -429,15 +429,6 @@ class _EmployerApplicationsScreenState
                                       ],
                                     ),
                                   ),
-                                  Text(
-                                    statusLabel(status),
-                                    style: TextStyle(
-                                      color: getStatusColor(status),
-                                      fontWeight: isUnread
-                                          ? FontWeight.w900
-                                          : FontWeight.bold,
-                                    ),
-                                  )
                                 ],
                               ),
                               const SizedBox(height: 8),
@@ -450,6 +441,35 @@ class _EmployerApplicationsScreenState
                                     color: Colors.grey,
                                   ),
                                 ),
+                              const SizedBox(height: 8),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 9,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: getStatusColor(status)
+                                        .withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: getStatusColor(status)
+                                          .withValues(alpha: 0.22),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    statusLabel(status),
+                                    style: TextStyle(
+                                      color: getStatusColor(status),
+                                      fontWeight: isUnread
+                                          ? FontWeight.w900
+                                          : FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),
