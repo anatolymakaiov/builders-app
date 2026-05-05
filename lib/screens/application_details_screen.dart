@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
+import 'job_list_screen.dart';
 import 'worker_profile_screen.dart';
 import '../services/application_activity_service.dart';
 import '../services/chat_service.dart';
@@ -104,6 +105,93 @@ class ApplicationDetailsScreen extends StatelessWidget {
         builder: (_) => ChatScreen(chatId: chatId),
       ),
     );
+  }
+
+  Future<void> updateWorkerActionStatus({
+    required String status,
+    required Map<String, dynamic> source,
+  }) async {
+    await ApplicationActivityService.updateStatus(
+      applicationId: applicationId,
+      status: status,
+      unreadFor: ApplicationActivityService.employerRecipients(source),
+    );
+  }
+
+  Future<void> acceptOfferFromWorker(
+    BuildContext context,
+    Map<String, dynamic> source,
+  ) async {
+    final jobId = source["jobId"]?.toString();
+    if (jobId == null || jobId.isEmpty) return;
+
+    try {
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final appRef = FirebaseFirestore.instance
+            .collection("applications")
+            .doc(applicationId);
+        final jobRef = FirebaseFirestore.instance.collection("jobs").doc(jobId);
+
+        final appSnap = await transaction.get(appRef);
+        final jobSnap = await transaction.get(jobRef);
+
+        if (!appSnap.exists || !jobSnap.exists) return;
+
+        final appData = appSnap.data() as Map<String, dynamic>;
+        final jobData = jobSnap.data() as Map<String, dynamic>;
+        final currentStatus = appData["status"]?.toString() ?? "";
+
+        if (currentStatus == "accepted" || currentStatus == "offer_accepted") {
+          return;
+        }
+
+        final workersCount = (appData["workersCount"] as num?)?.toInt() ?? 1;
+        final filled = (jobData["filledPositions"] as num?)?.toInt() ?? 0;
+
+        transaction.update(appRef, {
+          "status": "offer_accepted",
+          "applicationActivityAt": FieldValue.serverTimestamp(),
+          "updatedAt": FieldValue.serverTimestamp(),
+          "unreadFor": FieldValue.arrayUnion(
+            ApplicationActivityService.employerRecipients(appData),
+          ),
+        });
+
+        transaction.update(jobRef, {
+          "filledPositions": filled + workersCount,
+        });
+      });
+    } catch (e) {
+      debugPrint("ACCEPT OFFER ERROR: $e");
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not accept offer")),
+      );
+    }
+  }
+
+  Future<void> withdrawWorkerApplication(BuildContext context) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection("applications")
+          .doc(applicationId)
+          .delete();
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Application withdrawn")),
+      );
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const JobListScreen()),
+        (_) => false,
+      );
+    } catch (e) {
+      debugPrint("WITHDRAW APPLICATION DETAILS ERROR: $e");
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not withdraw application")),
+      );
+    }
   }
 
   Future<String?> chatIdForApplication(Map<String, dynamic> source) async {
@@ -1003,7 +1091,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
             final status = liveData["status"] ?? "pending";
             final selectedMembers = <String>{};
 
-            Widget statusBadge() {
+            Widget statusBadge({required bool forEmployer}) {
               Color color;
               String label;
               switch (status) {
@@ -1013,7 +1101,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                   break;
                 case "offer_sent":
                   color = AppColors.greenDark;
-                  label = "Offer Sent";
+                  label = forEmployer ? "Offer Sent" : "Offer Received";
                   break;
                 case "offer_withdrawn":
                   color = Colors.orange;
@@ -1118,7 +1206,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
               return Column(
                 children: [
-                  statusBadge(),
+                  statusBadge(forEmployer: true),
                   const SizedBox(height: 6),
                   if (canRestartNegotiation) ...[
                     actionButton(
@@ -1194,21 +1282,76 @@ class ApplicationDetailsScreen extends StatelessWidget {
             }
 
             Widget workerActions() {
+              Widget actionButton({
+                required String label,
+                required VoidCallback? onPressed,
+                bool danger = false,
+              }) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: danger
+                        ? OutlinedButton(
+                            style: dangerActionStyle,
+                            onPressed: onPressed,
+                            child: Text(label),
+                          )
+                        : ElevatedButton(
+                            style: primaryActionStyle,
+                            onPressed: onPressed,
+                            child: Text(label),
+                          ),
+                  ),
+                );
+              }
+
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  statusBadge(),
-                  const SizedBox(height: 8),
-                  if (status == "rejected")
-                    const Text(
-                      "This application was rejected",
-                      textAlign: TextAlign.center,
-                    )
-                  else if (status == "offer_accepted" || status == "accepted")
-                    const Text(
-                      "Offer accepted",
-                      textAlign: TextAlign.center,
+                  statusBadge(forEmployer: false),
+                  const SizedBox(height: 6),
+                  if (status == "pending") ...[
+                    actionButton(
+                      label: "Withdraw Application",
+                      onPressed: () => withdrawWorkerApplication(context),
                     ),
+                  ],
+                  if (status == "negotiation") ...[
+                    actionButton(
+                      label: "Message",
+                      onPressed: () => openChat(context, liveData),
+                    ),
+                  ],
+                  if (status == "offer_sent") ...[
+                    actionButton(
+                      label: "Accept Offer",
+                      onPressed: () => acceptOfferFromWorker(
+                        context,
+                        liveData,
+                      ),
+                    ),
+                    actionButton(
+                      label: "Reject Offer",
+                      onPressed: () => updateWorkerActionStatus(
+                        status: "offer_rejected",
+                        source: liveData,
+                      ),
+                      danger: true,
+                    ),
+                  ],
+                  if (status == "offer_accepted" || status == "accepted") ...[
+                    actionButton(
+                      label: "Message",
+                      onPressed: () => openChat(context, liveData),
+                    ),
+                  ],
+                  if (status == "offer_rejected") ...[
+                    actionButton(
+                      label: "Message",
+                      onPressed: () => openChat(context, liveData),
+                    ),
+                  ],
                 ],
               );
             }
