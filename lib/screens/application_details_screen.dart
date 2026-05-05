@@ -435,32 +435,34 @@ class ApplicationDetailsScreen extends StatelessWidget {
   ButtonStyle get primaryActionStyle => ElevatedButton.styleFrom(
         backgroundColor: AppColors.green,
         foregroundColor: Colors.white,
-        minimumSize: const Size.fromHeight(42),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        minimumSize: const Size.fromHeight(36),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         textStyle: const TextStyle(
           fontWeight: FontWeight.w800,
-          fontSize: 14,
+          fontSize: 13,
         ),
       );
 
   ButtonStyle get dangerActionStyle => OutlinedButton.styleFrom(
         foregroundColor: Colors.red,
         backgroundColor: Colors.white,
-        minimumSize: const Size.fromHeight(42),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        minimumSize: const Size.fromHeight(36),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         side: const BorderSide(color: Colors.red),
         textStyle: const TextStyle(
           fontWeight: FontWeight.w800,
-          fontSize: 14,
+          fontSize: 13,
         ),
       );
 
   ButtonStyle get secondaryActionStyle => OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(42),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        foregroundColor: AppColors.ink,
+        backgroundColor: Colors.white,
+        minimumSize: const Size.fromHeight(36),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         textStyle: const TextStyle(
           fontWeight: FontWeight.w800,
-          fontSize: 14,
+          fontSize: 13,
         ),
       );
 
@@ -1007,24 +1009,32 @@ class ApplicationDetailsScreen extends StatelessWidget {
               switch (status) {
                 case "negotiation":
                   color = Colors.purple;
-                  label = "NEGOTIATION";
+                  label = "Negotiation";
                   break;
                 case "offer_sent":
                   color = AppColors.greenDark;
-                  label = "OFFER";
+                  label = "Offer Sent";
+                  break;
+                case "offer_withdrawn":
+                  color = Colors.orange;
+                  label = "Offer Withdrawn";
                   break;
                 case "offer_accepted":
                 case "accepted":
                   color = Colors.green;
-                  label = "ACCEPTED";
+                  label = "Hired";
+                  break;
+                case "offer_rejected":
+                  color = Colors.deepOrange;
+                  label = "Offer Rejected";
                   break;
                 case "rejected":
                   color = Colors.red;
-                  label = "REJECTED";
+                  label = "Rejected";
                   break;
                 default:
                   color = AppColors.ink;
-                  label = "IN REVIEW";
+                  label = "Pending";
               }
 
               return Align(
@@ -1052,168 +1062,109 @@ class ApplicationDetailsScreen extends StatelessWidget {
             }
 
             Widget employerActions() {
+              Future<void> setStatus(String nextStatus) async {
+                if ((liveData["type"] ?? "single") == "team") {
+                  await ApplicationActivityService.updateStatus(
+                    applicationId: applicationId,
+                    status: nextStatus,
+                    unreadFor:
+                        ApplicationActivityService.workerRecipients(liveData),
+                  );
+                } else {
+                  await updateStatus(context, liveData, nextStatus);
+                }
+              }
+
+              Future<void> startNegotiationAndOpenChat() async {
+                await setStatus("negotiation");
+                if (!context.mounted) return;
+                await openChat(context, liveData);
+              }
+
+              Widget actionButton({
+                required String label,
+                required VoidCallback? onPressed,
+                bool outlined = false,
+                bool danger = false,
+              }) {
+                final style = danger
+                    ? dangerActionStyle
+                    : outlined
+                        ? secondaryActionStyle
+                        : primaryActionStyle;
+
+                return Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: outlined || danger
+                        ? OutlinedButton(
+                            style: style,
+                            onPressed: onPressed,
+                            child: Text(label),
+                          )
+                        : ElevatedButton(
+                            style: style,
+                            onPressed: onPressed,
+                            child: Text(label),
+                          ),
+                  ),
+                );
+              }
+
+              final canRestartNegotiation = status == "pending" ||
+                  status == "offer_withdrawn" ||
+                  status == "offer_rejected";
+
               return Column(
                 children: [
                   statusBadge(),
-                  const SizedBox(height: 12),
-                  if (status == "pending") ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        style: primaryActionStyle,
-                        onPressed: () async {
-                          if ((liveData["type"] ?? "single") == "team") {
-                            for (var memberId in selectedMembers) {
-                              await FirebaseFirestore.instance
-                                  .collection("applications")
-                                  .doc(applicationId)
-                                  .update({
-                                "membersStatus.$memberId": "negotiation",
-                              });
-                            }
-                            await ApplicationActivityService.updateStatus(
-                              applicationId: applicationId,
-                              status: "negotiation",
-                              unreadFor:
-                                  ApplicationActivityService.workerRecipients(
-                                liveData,
-                              ),
-                            );
-                          } else {
-                            await updateStatus(
-                              context,
-                              liveData,
-                              "negotiation",
-                            );
-                          }
-
-                          final chatId = await chatIdForApplication(liveData);
-                          if (chatId == null) return;
-
-                          if (context.mounted) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatScreen(chatId: chatId),
-                              ),
-                            );
-                          }
-                        },
-                        child: const Text("Start negotiation / Message"),
-                      ),
+                  const SizedBox(height: 6),
+                  if (canRestartNegotiation) ...[
+                    actionButton(
+                      label: "Message / Negotiation",
+                      onPressed: startNegotiationAndOpenChat,
                     ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        style: primaryActionStyle,
-                        onPressed: () => openOfferDialog(context, liveData),
-                        child: const Text("Make offer"),
-                      ),
+                    actionButton(
+                      label: "Make Offer",
+                      onPressed: () => openOfferDialog(context, liveData),
                     ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        style: dangerActionStyle,
-                        onPressed: () async {
-                          if ((liveData["type"] ?? "single") == "team") {
-                            await ApplicationActivityService.updateStatus(
-                              applicationId: applicationId,
-                              status: "rejected",
-                              unreadFor:
-                                  ApplicationActivityService.workerRecipients(
-                                liveData,
-                              ),
-                            );
-                          } else {
-                            await updateStatus(context, liveData, "rejected");
-                          }
-                        },
-                        child: const Text("Reject"),
-                      ),
+                    actionButton(
+                      label: "Reject",
+                      onPressed: () => setStatus("rejected"),
+                      danger: true,
                     ),
                   ],
                   if (status == "negotiation") ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        style: primaryActionStyle,
-                        onPressed: () => openChat(context, liveData),
-                        child: const Text("Negotiation / Message"),
-                      ),
+                    actionButton(
+                      label: "Message",
+                      onPressed: () => openChat(context, liveData),
                     ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        style: primaryActionStyle,
-                        onPressed: () => openOfferDialog(context, liveData),
-                        child: const Text("Make offer"),
-                      ),
+                    actionButton(
+                      label: "Make Offer",
+                      onPressed: () => openOfferDialog(context, liveData),
                     ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        style: dangerActionStyle,
-                        onPressed: () async {
-                          if ((liveData["type"] ?? "single") == "team") {
-                            await ApplicationActivityService.updateStatus(
-                              applicationId: applicationId,
-                              status: "rejected",
-                              unreadFor:
-                                  ApplicationActivityService.workerRecipients(
-                                liveData,
-                              ),
-                            );
-                          } else {
-                            await updateStatus(context, liveData, "rejected");
-                          }
-                        },
-                        child: const Text("Reject"),
-                      ),
+                    actionButton(
+                      label: "Reject",
+                      onPressed: () => setStatus("rejected"),
+                      danger: true,
                     ),
                   ],
                   if (status == "offer_sent") ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        style: dangerActionStyle,
-                        onPressed: () async {
-                          await updateStatus(context, liveData, "negotiation");
-                        },
-                        child: const Text("Withdraw offer"),
-                      ),
+                    actionButton(
+                      label: "Message",
+                      onPressed: () => openChat(context, liveData),
                     ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        style: secondaryActionStyle,
-                        onPressed: () async {
-                          await ApplicationActivityService.updateStatus(
-                            applicationId: applicationId,
-                            status: "negotiation",
-                            unreadFor:
-                                ApplicationActivityService.workerRecipients(
-                              liveData,
-                            ),
-                            extra: {"offer": FieldValue.delete()},
-                          );
-                        },
-                        child: const Text("Reject"),
-                      ),
+                    actionButton(
+                      label: "Withdraw Offer",
+                      onPressed: () => setStatus("offer_withdrawn"),
+                      danger: true,
                     ),
                   ],
-                  if (status == "offer_accepted") ...[
-                    const SizedBox(height: 6),
-                    const Text(
-                      "Worker hired",
-                      style: TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  if (status == "offer_accepted" || status == "accepted") ...[
+                    actionButton(
+                      label: "Message",
+                      onPressed: () => openChat(context, liveData),
                     ),
                   ],
                   if (status == "rejected") ...[
