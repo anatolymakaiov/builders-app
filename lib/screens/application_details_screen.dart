@@ -20,11 +20,15 @@ class ApplicationDetailsScreen extends StatelessWidget {
     required this.data,
   });
 
-  Future<void> updateStatus(BuildContext context, String status) async {
+  Future<void> updateStatus(
+    BuildContext context,
+    Map<String, dynamic> source,
+    String status,
+  ) async {
     final db = FirebaseFirestore.instance;
 
-    final employerId = data["employerId"];
-    final jobId = data["jobId"];
+    final employerId = source["employerId"];
+    final jobId = source["jobId"];
 
     if (employerId == null || jobId == null) return;
 
@@ -43,7 +47,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
         final filled = jobData["filledPositions"] ?? 0;
 
         /// 🔥 сколько людей в заявке
-        final workersCount = data["workersCount"] ?? 1;
+        final workersCount = source["workersCount"] ?? 1;
 
         /// ❌ если не хватает мест — стоп
         if (status == "accepted" && (filled + workersCount) > positions) {
@@ -58,7 +62,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
             "applicationActivityAt": FieldValue.serverTimestamp(),
             "updatedAt": FieldValue.serverTimestamp(),
             "unreadFor": FieldValue.arrayUnion(
-              ApplicationActivityService.workerRecipients(data),
+              ApplicationActivityService.workerRecipients(source),
             ),
           },
         );
@@ -73,7 +77,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
       await NotificationService().notifyApplicationStatus(
         applicationId: applicationId,
-        applicationData: data,
+        applicationData: source,
         status: status,
       );
 
@@ -87,8 +91,11 @@ class ApplicationDetailsScreen extends StatelessWidget {
     }
   }
 
-  Future<void> openChat(BuildContext context) async {
-    final chatId = await chatIdForApplication(data);
+  Future<void> openChat(
+    BuildContext context,
+    Map<String, dynamic> source,
+  ) async {
+    final chatId = await chatIdForApplication(source);
     if (chatId == null || !context.mounted) return;
 
     Navigator.push(
@@ -185,14 +192,16 @@ class ApplicationDetailsScreen extends StatelessWidget {
     };
   }
 
-  Future<Map<String, String>> loadOfferPhysicalAddressFields() async {
-    final fromApplication = physicalAddressFieldsFrom(data);
+  Future<Map<String, String>> loadOfferPhysicalAddressFields(
+    Map<String, dynamic> source,
+  ) async {
+    final fromApplication = physicalAddressFieldsFrom(source);
     if (fromApplication["siteAddress"]!.isNotEmpty &&
-        fromApplication["siteAddress"] != data["jobSite"]?.toString()) {
+        fromApplication["siteAddress"] != source["jobSite"]?.toString()) {
       return fromApplication;
     }
 
-    final jobId = data["jobId"]?.toString();
+    final jobId = source["jobId"]?.toString();
     if (jobId == null || jobId.isEmpty) return fromApplication;
 
     final jobDoc =
@@ -203,8 +212,11 @@ class ApplicationDetailsScreen extends StatelessWidget {
     return physicalAddressFieldsFrom(jobData);
   }
 
-  Future<void> openOfferDialog(BuildContext context) async {
-    final physicalAddressFields = await loadOfferPhysicalAddressFields();
+  Future<void> openOfferDialog(
+    BuildContext context,
+    Map<String, dynamic> source,
+  ) async {
+    final physicalAddressFields = await loadOfferPhysicalAddressFields(source);
     if (!context.mounted) return;
 
     String jobType = "hourly";
@@ -398,13 +410,13 @@ class ApplicationDetailsScreen extends StatelessWidget {
       await ApplicationActivityService.updateStatus(
         applicationId: applicationId,
         status: "offer_sent",
-        unreadFor: ApplicationActivityService.workerRecipients(data),
+        unreadFor: ApplicationActivityService.workerRecipients(source),
         extra: {"offer": offer},
       );
 
       await NotificationService().notifyOfferCreated(
         applicationId: applicationId,
-        applicationData: data,
+        applicationData: source,
         offer: notificationOffer,
       );
     } finally {
@@ -776,9 +788,10 @@ class ApplicationDetailsScreen extends StatelessWidget {
   Widget buildTeamProfile(
     BuildContext context,
     Set<String> selectedMembers,
+    Map<String, dynamic> source,
   ) {
-    final teamId = data["teamId"];
-    final memberIds = List<String>.from(data["members"] ?? []);
+    final teamId = source["teamId"];
+    final memberIds = List<String>.from(source["members"] ?? []);
 
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
@@ -787,9 +800,9 @@ class ApplicationDetailsScreen extends StatelessWidget {
           .snapshots(),
       builder: (context, snapshot) {
         final team = snapshot.data?.data() as Map<String, dynamic>?;
-        final teamName = team?["name"] ?? data["teamName"] ?? "Team";
+        final teamName = team?["name"] ?? source["teamName"] ?? "Team";
         final description =
-            team?["description"] ?? team?["bio"] ?? data["teamDescription"];
+            team?["description"] ?? team?["bio"] ?? source["teamDescription"];
         final avatar = team?["avatarUrl"] ?? team?["photo"] ?? team?["logo"];
 
         return Column(
@@ -945,355 +958,435 @@ class ApplicationDetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    if (currentUserId != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ApplicationActivityService.markRead(applicationId, currentUserId);
-      });
-    }
-
-    final Set<String> selectedMembers = {};
-    final workerId = data["workerId"] ??
-        data["userId"] ??
-        (data["members"] != null && data["members"].isNotEmpty
-            ? data["members"][0]
-            : null);
-
-    if (workerId == null) {
-      return const Scaffold(
-        body: Center(child: Text("No worker data")),
-      );
-    }
 
     return Scaffold(
       appBar: AppBar(title: const Text("Application")),
       body: StroykaScreenBody(
         child: StreamBuilder<DocumentSnapshot>(
           stream: FirebaseFirestore.instance
-              .collection("users")
-              .doc(workerId)
+              .collection("applications")
+              .doc(applicationId)
               .snapshots(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
+          builder: (context, applicationSnapshot) {
+            if (!applicationSnapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (!snapshot.data!.exists) {
-              return const Center(child: Text("User not found"));
+            if (!applicationSnapshot.data!.exists ||
+                applicationSnapshot.data!.data() == null) {
+              return const Center(child: Text("Application not found"));
             }
 
-            final user = snapshot.data!.data() as Map<String, dynamic>;
+            final liveData =
+                applicationSnapshot.data!.data() as Map<String, dynamic>;
 
-            final name = user["name"] ?? "Worker";
-            final trade = user["trade"] ?? "";
-            final bio = user["bio"] ?? "";
-            final location = user["location"] ?? "";
-            final photo = user["photo"];
-            final isTeam = (data["type"] ?? "single") == "team";
-            final phone = user["phone"];
-            final experience = user["experience"];
-            final experienceDuration = experienceDurationText(user);
-            final permits = user["permits"];
-            final qualifications = user["qualifications"];
-            final certifications = textFromListOrString(
-                user["certificationsText"] ?? user["certifications"]);
-            final education = user["education"];
-            final previousWork = user["previousWork"];
-            final references = user["references"];
+            if (currentUserId != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                ApplicationActivityService.markRead(
+                  applicationId,
+                  currentUserId,
+                );
+              });
+            }
 
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: StroykaSurface(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (!isTeam) ...[
-                      /// 👤 HEADER
-                      Center(
-                        child: Column(
-                          children: [
-                            CircleAvatar(
-                              radius: 45,
-                              backgroundColor: Colors.grey.shade300,
-                              backgroundImage:
-                                  photo != null ? NetworkImage(photo) : null,
-                              child: photo == null
-                                  ? const Icon(Icons.person, size: 40)
-                                  : null,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              name,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
+            final isTeam = (liveData["type"] ?? "single") == "team";
+            final workerId = liveData["workerId"] ??
+                liveData["userId"] ??
+                (liveData["members"] != null && liveData["members"].isNotEmpty
+                    ? liveData["members"][0]
+                    : null);
+            final employerId = liveData["employerId"]?.toString();
+            final isEmployerViewer =
+                currentUserId != null && currentUserId == employerId;
+            final status = liveData["status"] ?? "pending";
+            final selectedMembers = <String>{};
+
+            Widget statusBadge() {
+              Color color;
+              String label;
+              switch (status) {
+                case "negotiation":
+                  color = Colors.purple;
+                  label = "NEGOTIATION";
+                  break;
+                case "offer_sent":
+                  color = AppColors.greenDark;
+                  label = "OFFER";
+                  break;
+                case "offer_accepted":
+                case "accepted":
+                  color = Colors.green;
+                  label = "ACCEPTED";
+                  break;
+                case "rejected":
+                  color = Colors.red;
+                  label = "REJECTED";
+                  break;
+                default:
+                  color = AppColors.ink;
+                  label = "IN REVIEW";
+              }
+
+              return Align(
+                alignment: Alignment.centerRight,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: color.withValues(alpha: 0.24)),
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            Widget employerActions() {
+              return Column(
+                children: [
+                  statusBadge(),
+                  const SizedBox(height: 12),
+                  if (status == "pending") ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: primaryActionStyle,
+                        onPressed: () async {
+                          if ((liveData["type"] ?? "single") == "team") {
+                            for (var memberId in selectedMembers) {
+                              await FirebaseFirestore.instance
+                                  .collection("applications")
+                                  .doc(applicationId)
+                                  .update({
+                                "membersStatus.$memberId": "negotiation",
+                              });
+                            }
+                            await ApplicationActivityService.updateStatus(
+                              applicationId: applicationId,
+                              status: "negotiation",
+                              unreadFor:
+                                  ApplicationActivityService.workerRecipients(
+                                liveData,
                               ),
-                            ),
-                            if (trade.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                trade,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey,
-                                ),
+                            );
+                          } else {
+                            await updateStatus(
+                              context,
+                              liveData,
+                              "negotiation",
+                            );
+                          }
+
+                          final chatId = await chatIdForApplication(liveData);
+                          if (chatId == null) return;
+
+                          if (context.mounted) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatScreen(chatId: chatId),
                               ),
-                            ],
-                          ],
+                            );
+                          }
+                        },
+                        child: const Text("Start negotiation / Message"),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: primaryActionStyle,
+                        onPressed: () => openOfferDialog(context, liveData),
+                        child: const Text("Make offer"),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        style: dangerActionStyle,
+                        onPressed: () async {
+                          if ((liveData["type"] ?? "single") == "team") {
+                            await ApplicationActivityService.updateStatus(
+                              applicationId: applicationId,
+                              status: "rejected",
+                              unreadFor:
+                                  ApplicationActivityService.workerRecipients(
+                                liveData,
+                              ),
+                            );
+                          } else {
+                            await updateStatus(context, liveData, "rejected");
+                          }
+                        },
+                        child: const Text("Reject"),
+                      ),
+                    ),
+                  ],
+                  if (status == "negotiation") ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: primaryActionStyle,
+                        onPressed: () => openChat(context, liveData),
+                        child: const Text("Negotiation / Message"),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: primaryActionStyle,
+                        onPressed: () => openOfferDialog(context, liveData),
+                        child: const Text("Make offer"),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        style: dangerActionStyle,
+                        onPressed: () async {
+                          if ((liveData["type"] ?? "single") == "team") {
+                            await ApplicationActivityService.updateStatus(
+                              applicationId: applicationId,
+                              status: "rejected",
+                              unreadFor:
+                                  ApplicationActivityService.workerRecipients(
+                                liveData,
+                              ),
+                            );
+                          } else {
+                            await updateStatus(context, liveData, "rejected");
+                          }
+                        },
+                        child: const Text("Reject"),
+                      ),
+                    ),
+                  ],
+                  if (status == "offer_sent") ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        style: dangerActionStyle,
+                        onPressed: () async {
+                          await updateStatus(context, liveData, "negotiation");
+                        },
+                        child: const Text("Withdraw offer"),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        style: secondaryActionStyle,
+                        onPressed: () async {
+                          await ApplicationActivityService.updateStatus(
+                            applicationId: applicationId,
+                            status: "negotiation",
+                            unreadFor:
+                                ApplicationActivityService.workerRecipients(
+                              liveData,
+                            ),
+                            extra: {"offer": FieldValue.delete()},
+                          );
+                        },
+                        child: const Text("Reject"),
+                      ),
+                    ),
+                  ],
+                  if (status == "offer_accepted") ...[
+                    const SizedBox(height: 6),
+                    const Text(
+                      "Worker hired",
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                  if (status == "rejected") ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.red.withValues(alpha: 0.22),
                         ),
                       ),
-                      const SizedBox(height: 30),
-                      buildWorkerPhoneSection(phone),
-                      buildWorkerInfoSection("Location", location),
-                      buildWorkerInfoSection("About worker", bio),
-                      buildWorkerInfoSection(
-                          "Work experience", experienceDuration),
-                      buildWorkerInfoSection("Experience details", experience),
-                      buildWorkerInfoSection("Permits / licences", permits),
-                      buildWorkerInfoSection("Qualifications", qualifications),
-                      buildWorkerInfoSection("Certifications", certifications),
-                      buildWorkerInfoSection("Education (optional)", education),
-                      buildWorkerInfoSection("Previous work", previousWork),
-                      buildReferencesSection(references),
-                    ],
+                      child: const Text(
+                        "Application rejected",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              );
+            }
 
-                    if (isTeam)
-                      buildTeamProfile(context, selectedMembers)
-                    else ...[
-                      buildPortfolioGallery(workerId),
-                    ],
-                    const SizedBox(height: 22),
+            Widget workerActions() {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  statusBadge(),
+                  const SizedBox(height: 8),
+                  if (status == "rejected")
+                    const Text(
+                      "This application was rejected",
+                      textAlign: TextAlign.center,
+                    )
+                  else if (status == "offer_accepted" || status == "accepted")
+                    const Text(
+                      "Offer accepted",
+                      textAlign: TextAlign.center,
+                    ),
+                ],
+              );
+            }
 
-                    /// 🔥 BUTTONS
-                    /// 🔥 ACTIONS (НОВАЯ ЛОГИКА)
-                    StreamBuilder<DocumentSnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection("applications")
-                          .doc(applicationId)
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) return const SizedBox();
+            Widget profileBody(Map<String, dynamic> user) {
+              final name = user["name"] ?? "Worker";
+              final trade = user["trade"] ?? "";
+              final bio = user["bio"] ?? "";
+              final location = user["location"] ?? "";
+              final photo = user["photo"];
+              final phone = user["phone"];
+              final experience = user["experience"];
+              final experienceDuration = experienceDurationText(user);
+              final permits = user["permits"];
+              final qualifications = user["qualifications"];
+              final certifications = textFromListOrString(
+                user["certificationsText"] ?? user["certifications"],
+              );
+              final education = user["education"];
+              final previousWork = user["previousWork"];
+              final references = user["references"];
 
-                        final liveData =
-                            snapshot.data!.data() as Map<String, dynamic>;
-                        final status = liveData["status"] ?? "pending";
-
-                        return Column(
-                          children: [
-                            /// =========================
-                            /// PENDING
-                            /// =========================
-                            if (status == "pending") ...[
-                              /// NEGOTIATION
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  style: primaryActionStyle,
-                                  onPressed: () async {
-                                    if ((liveData["type"] ?? "single") ==
-                                        "team") {
-                                      for (var memberId in selectedMembers) {
-                                        await FirebaseFirestore.instance
-                                            .collection("applications")
-                                            .doc(applicationId)
-                                            .update({
-                                          "membersStatus.$memberId":
-                                              "negotiation",
-                                        });
-                                      }
-                                      await ApplicationActivityService
-                                          .updateStatus(
-                                        applicationId: applicationId,
-                                        status: "negotiation",
-                                        unreadFor: ApplicationActivityService
-                                            .workerRecipients(liveData),
-                                      );
-                                    } else {
-                                      await updateStatus(
-                                          context, "negotiation");
-                                    }
-
-                                    final chatId =
-                                        await chatIdForApplication(liveData);
-
-                                    if (chatId == null) return;
-
-                                    if (context.mounted) {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              ChatScreen(chatId: chatId),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                  child:
-                                      const Text("Start negotiation / Message"),
-                                ),
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: StroykaSurface(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!isTeam) ...[
+                        Center(
+                          child: Column(
+                            children: [
+                              CircleAvatar(
+                                radius: 45,
+                                backgroundColor: Colors.grey.shade300,
+                                backgroundImage:
+                                    photo != null ? NetworkImage(photo) : null,
+                                child: photo == null
+                                    ? const Icon(Icons.person, size: 40)
+                                    : null,
                               ),
-
-                              const SizedBox(height: 6),
-
-                              /// MAKE OFFER
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  style: primaryActionStyle,
-                                  onPressed: () => openOfferDialog(context),
-                                  child: const Text("Make offer"),
-                                ),
-                              ),
-
-                              const SizedBox(height: 6),
-
-                              /// REJECT
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton(
-                                  style: dangerActionStyle,
-                                  onPressed: () async {
-                                    if ((liveData["type"] ?? "single") ==
-                                        "team") {
-                                      await ApplicationActivityService
-                                          .updateStatus(
-                                        applicationId: applicationId,
-                                        status: "rejected",
-                                        unreadFor: ApplicationActivityService
-                                            .workerRecipients(liveData),
-                                      );
-                                    } else {
-                                      await updateStatus(context, "rejected");
-                                    }
-                                  },
-                                  child: const Text("Reject"),
-                                ),
-                              ),
-                            ],
-
-                            /// =========================
-                            /// NEGOTIATION
-                            /// =========================
-                            if (status == "negotiation") ...[
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  style: primaryActionStyle,
-                                  onPressed: () => openChat(context),
-                                  child: const Text("Negotiation / Message"),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  style: primaryActionStyle,
-                                  onPressed: () => openOfferDialog(context),
-                                  child: const Text("Make offer"),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton(
-                                  style: dangerActionStyle,
-                                  onPressed: () async {
-                                    if ((liveData["type"] ?? "single") ==
-                                        "team") {
-                                      await ApplicationActivityService
-                                          .updateStatus(
-                                        applicationId: applicationId,
-                                        status: "rejected",
-                                        unreadFor: ApplicationActivityService
-                                            .workerRecipients(liveData),
-                                      );
-                                    } else {
-                                      await updateStatus(context, "rejected");
-                                    }
-                                  },
-                                  child: const Text("Reject"),
-                                ),
-                              ),
-                            ],
-
-                            /// =========================
-                            /// OFFER SENT
-                            /// =========================
-                            if (status == "offer_sent") ...[
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton(
-                                  style: dangerActionStyle,
-                                  onPressed: () async {
-                                    await updateStatus(context, "negotiation");
-                                  },
-                                  child: const Text("Withdraw offer"),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton(
-                                  style: secondaryActionStyle,
-                                  onPressed: () async {
-                                    await ApplicationActivityService
-                                        .updateStatus(
-                                      applicationId: applicationId,
-                                      status: "negotiation",
-                                      unreadFor: ApplicationActivityService
-                                          .workerRecipients(liveData),
-                                      extra: {"offer": FieldValue.delete()},
-                                    );
-                                  },
-                                  child: const Text("Reject"),
-                                ),
-                              ),
-                            ],
-
-                            /// =========================
-                            /// HIRED
-                            /// =========================
-                            if (status == "offer_accepted") ...[
-                              const SizedBox(height: 6),
-                              const Text(
-                                "Worker hired",
-                                style: TextStyle(
-                                  color: Colors.green,
+                              const SizedBox(height: 12),
+                              Text(
+                                name,
+                                style: const TextStyle(
+                                  fontSize: 22,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ],
-
-                            if (status == "rejected") ...[
-                              const SizedBox(height: 6),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: Colors.red.withValues(alpha: 0.22),
+                              if (trade.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  trade,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey,
                                   ),
                                 ),
-                                child: const Text(
-                                  "Application rejected",
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.red,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ),
+                              ],
                             ],
-                          ],
-                        );
-                      },
-                    )
-                  ],
+                          ),
+                        ),
+                        const SizedBox(height: 30),
+                        buildWorkerPhoneSection(phone),
+                        buildWorkerInfoSection("Location", location),
+                        buildWorkerInfoSection("About worker", bio),
+                        buildWorkerInfoSection(
+                            "Work experience", experienceDuration),
+                        buildWorkerInfoSection(
+                            "Experience details", experience),
+                        buildWorkerInfoSection("Permits / licences", permits),
+                        buildWorkerInfoSection(
+                            "Qualifications", qualifications),
+                        buildWorkerInfoSection(
+                            "Certifications", certifications),
+                        buildWorkerInfoSection(
+                            "Education (optional)", education),
+                        buildWorkerInfoSection("Previous work", previousWork),
+                        buildReferencesSection(references),
+                      ],
+                      if (isTeam)
+                        buildTeamProfile(context, selectedMembers, liveData)
+                      else
+                        buildPortfolioGallery(workerId.toString()),
+                      const SizedBox(height: 22),
+                      isEmployerViewer ? employerActions() : workerActions(),
+                    ],
+                  ),
                 ),
-              ),
+              );
+            }
+
+            if (workerId == null) {
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: StroykaSurface(
+                  padding: const EdgeInsets.all(18),
+                  child: isEmployerViewer ? employerActions() : workerActions(),
+                ),
+              );
+            }
+
+            return StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection("users")
+                  .doc(workerId)
+                  .snapshots(),
+              builder: (context, userSnapshot) {
+                if (!userSnapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (!userSnapshot.data!.exists) {
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: StroykaSurface(
+                      padding: const EdgeInsets.all(18),
+                      child: isEmployerViewer
+                          ? employerActions()
+                          : workerActions(),
+                    ),
+                  );
+                }
+
+                final user = userSnapshot.data!.data() as Map<String, dynamic>;
+                return profileBody(user);
+              },
             );
           },
         ),
