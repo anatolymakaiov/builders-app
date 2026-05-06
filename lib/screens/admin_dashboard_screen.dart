@@ -487,6 +487,38 @@ class _SupportRequestCard extends StatelessWidget {
     "rejected",
   ];
 
+  String supportTypeLabel(Map<String, dynamic> data) {
+    final storedLabel = data["typeLabel"]?.toString().trim();
+    if (storedLabel != null && storedLabel.isNotEmpty) return storedLabel;
+
+    final type = data["type"]?.toString().trim() ?? "support";
+    switch (type) {
+      case "participant_complaint":
+        return "Complaint about another participant";
+      case "employer_complaint":
+        return "Complaint about employer/company";
+      case "technical_issue":
+        return "Technical issue with app/site";
+      case "job_ad_complaint":
+        return "Complaint about advertisement/job post";
+      case "payment":
+        return "Payment";
+      case "job_publishing":
+      case "job publishing":
+        return "Job publishing";
+      case "job_extension":
+      case "job extension":
+        return "Job extension";
+      case "job_pause_removal":
+      case "job pause/removal":
+        return "Job pause/removal";
+      case "other":
+        return "Other";
+      default:
+        return type;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final status = data["status"]?.toString();
@@ -495,12 +527,13 @@ class _SupportRequestCard extends StatelessWidget {
     final message = data["message"]?.toString().trim() ?? "";
 
     return _AdminStatusCard(
-      title: type,
+      title: supportTypeLabel(data),
       body: message,
       statuses: statuses,
       selectedStatus: selectedStatus,
       onStatusChanged: onStatusChanged,
       meta: [
+        _ReportMetaChip(label: "Type", value: type),
         _ReportMetaChip(label: "User", value: data["userId"]),
         _ReportMetaChip(label: "Role", value: data["userRole"]),
       ],

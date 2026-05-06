@@ -3,21 +3,38 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class SupportRequestService {
-  static const requestTypes = [
-    "payment",
-    "job publishing",
-    "job extension",
-    "job pause/removal",
-    "technical issue",
-    "other",
-  ];
+  static const workerRequestTypes = {
+    "participant_complaint": "Complaint about another participant",
+    "employer_complaint": "Complaint about employer/company",
+    "technical_issue": "Technical issue with app/site",
+    "job_ad_complaint": "Complaint about advertisement/job post",
+  };
+
+  static const employerRequestTypes = {
+    "payment": "Payment",
+    "job_publishing": "Job publishing",
+    "job_extension": "Job extension",
+    "job_pause_removal": "Job pause/removal",
+    "technical_issue": "Technical issue",
+    "other": "Other",
+  };
 
   static Future<void> showSupportDialog(BuildContext context) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    final userDoc = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(user.uid)
+        .get();
+    if (!context.mounted) return;
+
+    final userRole = userDoc.data()?["role"]?.toString().toLowerCase() ?? "";
+    final requestTypes =
+        userRole == "worker" ? workerRequestTypes : employerRequestTypes;
+
     final controller = TextEditingController();
-    var selectedType = requestTypes.first;
+    var selectedType = requestTypes.keys.first;
 
     final result = await showDialog<({String type, String message})>(
       context: context,
@@ -32,11 +49,11 @@ class SupportRequestService {
                   DropdownButtonFormField<String>(
                     initialValue: selectedType,
                     decoration: const InputDecoration(labelText: "Type"),
-                    items: requestTypes
+                    items: requestTypes.entries
                         .map(
-                          (type) => DropdownMenuItem(
-                            value: type,
-                            child: Text(type),
+                          (entry) => DropdownMenuItem(
+                            value: entry.key,
+                            child: Text(entry.value),
                           ),
                         )
                         .toList(),
@@ -81,16 +98,11 @@ class SupportRequestService {
     controller.dispose();
     if (result == null || result.message.isEmpty) return;
 
-    final userDoc = await FirebaseFirestore.instance
-        .collection("users")
-        .doc(user.uid)
-        .get();
-    final userRole = userDoc.data()?["role"]?.toString() ?? "";
-
     await FirebaseFirestore.instance.collection("support_requests").add({
       "userId": user.uid,
       "userRole": userRole,
       "type": result.type,
+      "typeLabel": requestTypes[result.type] ?? result.type,
       "message": result.message,
       "status": "open",
       "createdAt": FieldValue.serverTimestamp(),
