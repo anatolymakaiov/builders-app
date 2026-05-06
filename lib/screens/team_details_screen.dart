@@ -31,6 +31,7 @@ class TeamDetailsScreen extends StatefulWidget {
 class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
   final picker = ImagePicker();
   bool uploadingTeamPortfolio = false;
+  bool addingMember = false;
 
   String get currentUserId => FirebaseAuth.instance.currentUser!.uid;
 
@@ -219,11 +220,13 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
   }
 
   Future<void> addMember(List<String> currentMembers) async {
+    if (addingMember) return;
+
     final controller = TextEditingController();
 
     final query = await showDialog<String>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text("Add team member"),
           content: TextField(
@@ -236,11 +239,12 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.of(dialogContext).pop(null),
               child: const Text("Cancel"),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(controller.text.trim()),
               child: const Text("Add"),
             ),
           ],
@@ -249,42 +253,61 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
     );
 
     controller.dispose();
-    if (query == null || query.isEmpty) return;
+    final searchText = query?.trim() ?? "";
+    if (!mounted || searchText.isEmpty) return;
 
-    final worker = await findWorker(query);
-    if (!mounted) return;
+    setState(() => addingMember = true);
 
-    if (worker == null) {
+    try {
+      final worker = await findWorker(searchText);
+      if (!mounted) return;
+
+      if (worker == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Worker not found")),
+        );
+        return;
+      }
+
+      final workerId = worker["id"]?.toString() ?? "";
+      final workerData = worker["data"] as Map<String, dynamic>? ?? {};
+      if (workerId.isEmpty || workerData["role"] != "worker") {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Only workers can be added")),
+        );
+        return;
+      }
+
+      final teamRef =
+          FirebaseFirestore.instance.collection("teams").doc(widget.teamId);
+      final teamSnap = await teamRef.get();
+      if (!mounted) return;
+
+      final latestMembers = teamSnap.exists
+          ? memberIdsFrom(teamSnap.data()?["members"])
+          : currentMembers;
+
+      if (latestMembers.contains(workerId)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Worker is already in this team")),
+        );
+        return;
+      }
+
+      await teamRef.set({
+        "members": [...latestMembers, workerId],
+        "memberStatuses.$workerId": "active",
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("ADD TEAM MEMBER ERROR: $e");
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Worker not found")),
+        const SnackBar(content: Text("Could not add team member")),
       );
-      return;
+    } finally {
+      if (mounted) setState(() => addingMember = false);
     }
-
-    final workerId = worker["id"] as String;
-    final workerData = worker["data"] as Map<String, dynamic>;
-    if (workerData["role"] != "worker") {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Only workers can be added")),
-      );
-      return;
-    }
-
-    if (currentMembers.contains(workerId)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Worker is already in this team")),
-      );
-      return;
-    }
-
-    await FirebaseFirestore.instance
-        .collection("teams")
-        .doc(widget.teamId)
-        .set({
-      "members": [...currentMembers, workerId],
-      "memberStatuses.$workerId": "active",
-      "updatedAt": FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
   }
 
   Future<void> removeMember(String userId, String userName) async {
@@ -585,7 +608,7 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                 IconButton(
                   tooltip: "Add member",
                   icon: const Icon(Icons.person_add_alt),
-                  onPressed: () => addMember(members),
+                  onPressed: addingMember ? null : () => addMember(members),
                 ),
               if (canEdit)
                 IconButton(
@@ -719,7 +742,9 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                           ),
                           if (canEdit)
                             TextButton.icon(
-                              onPressed: () => addMember(members),
+                              onPressed: addingMember
+                                  ? null
+                                  : () => addMember(members),
                               icon: const Icon(Icons.person_add_alt),
                               label: const Text("Add"),
                             ),
