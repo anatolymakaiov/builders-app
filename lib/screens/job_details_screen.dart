@@ -334,7 +334,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       if (mounted) {
         setState(() => isApplying = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Could not check available positions")),
+          SnackBar(content: Text(positionCheckErrorMessage(e))),
         );
       }
       return;
@@ -418,7 +418,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           final jobData = jobSnap.data() as Map<String, dynamic>;
           final ownerId = jobOwnerId(jobData);
           final counts = jobPositionCounts(jobData);
-          if (ownerId.isEmpty) throw Exception("Job has no ownerId");
+          ensureValidPositionCounts(counts);
+          if (ownerId.isEmpty) throw Exception("missing_employer");
           if (members.length > counts.remaining) {
             throw Exception("not_enough_spots");
           }
@@ -508,7 +509,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           final jobData = jobSnap.data() as Map<String, dynamic>;
           final ownerId = jobOwnerId(jobData);
           final counts = jobPositionCounts(jobData);
-          if (ownerId.isEmpty) throw Exception("Job has no ownerId");
+          ensureValidPositionCounts(counts);
+          if (ownerId.isEmpty) throw Exception("missing_employer");
           if (counts.remaining <= 0) throw Exception("no_positions_left");
 
           transaction.set(applicationRef, {
@@ -551,12 +553,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       debugPrint("APPLY ERROR: $e");
       if (mounted) {
         setState(() => isApplying = false);
-        final message = e.toString().contains("not_enough_spots") ||
-                e.toString().contains("no_positions_left")
-            ? "No positions left"
-            : "Could not send application";
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
+          SnackBar(content: Text(applicationErrorMessage(e))),
         );
       }
     }
@@ -731,23 +729,65 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final rawPositions = readInt(data?["positions"]);
     final rawRemaining = readInt(data?["remainingPositions"]);
     final rawFilledPositions = readInt(data?["filledPositions"]);
-    final positions = rawPositions <= 0
-        ? (rawRemaining > 0
+    final fallbackPositions =
+        widget.job.positions > 0 ? widget.job.positions : 0;
+    final positions = rawPositions > 0
+        ? rawPositions
+        : rawRemaining > 0
             ? rawRemaining + rawFilledPositions
-            : widget.job.positions)
-        : rawPositions;
-    final safePositions = positions <= 0 ? 1 : positions;
-    final filledPositions = rawFilledPositions <= 0 && rawRemaining > 0
-        ? (safePositions - rawRemaining).clamp(0, safePositions).toInt()
-        : rawFilledPositions.clamp(0, safePositions).toInt();
-    final remaining =
-        (safePositions - filledPositions).clamp(0, safePositions).toInt();
+            : fallbackPositions;
+    final safePositions = positions <= 0 ? 0 : positions;
+    final filledPositions = safePositions <= 0
+        ? 0
+        : rawFilledPositions <= 0 && rawRemaining > 0
+            ? (safePositions - rawRemaining).clamp(0, safePositions).toInt()
+            : rawFilledPositions.clamp(0, safePositions).toInt();
+    final remaining = safePositions <= 0
+        ? 0
+        : (safePositions - filledPositions).clamp(0, safePositions).toInt();
 
     return (
       positions: safePositions,
       filledPositions: filledPositions,
       remaining: remaining,
     );
+  }
+
+  void ensureValidPositionCounts(
+    ({int positions, int filledPositions, int remaining}) counts,
+  ) {
+    if (counts.positions <= 0) {
+      throw Exception("invalid_positions");
+    }
+  }
+
+  String positionCheckErrorMessage(Object error) {
+    final text = error.toString();
+    if (text.contains("invalid_positions")) {
+      return "This job has invalid position data";
+    }
+    if (text.contains("Job not found")) {
+      return "Job is no longer available";
+    }
+    return "Could not check available positions";
+  }
+
+  String applicationErrorMessage(Object error) {
+    final text = error.toString();
+    if (text.contains("no_positions_left") ||
+        text.contains("not_enough_spots")) {
+      return "No positions left";
+    }
+    if (text.contains("invalid_positions")) {
+      return "This job has invalid position data";
+    }
+    if (text.contains("missing_employer")) {
+      return "This job is missing employer information";
+    }
+    if (text.contains("Job not found")) {
+      return "Job is no longer available";
+    }
+    return "Could not send application";
   }
 
   Future<int> loadRemainingPositions() async {
@@ -777,9 +817,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       "status=${data?["status"]}",
     );
 
-    if (ownerId.isEmpty) {
-      throw Exception("Job has no ownerId");
-    }
+    ensureValidPositionCounts(counts);
 
     return counts.remaining;
   }
