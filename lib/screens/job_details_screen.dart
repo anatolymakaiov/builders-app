@@ -868,8 +868,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     return SizedBox(
       width: double.infinity,
-      height: 52,
+      height: 42,
       child: ElevatedButton(
+        style: compactPrimaryActionStyle,
         onPressed: isApplying
             ? null
             : () async {
@@ -881,7 +882,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               },
         child: Text(
           isApplied ? "Withdraw application" : "Apply for this job",
-          style: const TextStyle(fontSize: 18),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
         ),
       ),
     );
@@ -896,8 +897,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     return SizedBox(
       width: double.infinity,
-      height: 52,
+      height: 42,
       child: OutlinedButton.icon(
+        style: compactSecondaryActionStyle,
         onPressed: () {
           Navigator.push(
             context,
@@ -924,7 +926,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     return SizedBox(
       width: double.infinity,
-      height: 52,
+      height: 42,
       child: OutlinedButton.icon(
         onPressed: deleteJob,
         icon: const Icon(Icons.delete, color: Colors.red),
@@ -1385,7 +1387,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final canAccept = status == "offer" || status == "offer_sent";
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       children: [
         StroykaSurface(
           padding: const EdgeInsets.all(18),
@@ -1442,8 +1444,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Widget buildMessageEmployerButton() {
     return SizedBox(
       width: double.infinity,
-      height: 52,
+      height: 42,
       child: OutlinedButton.icon(
+        style: compactSecondaryActionStyle,
         onPressed: () async {
           final uid = userId;
           if (uid == null) return;
@@ -1477,32 +1480,34 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final isOwner = userId == widget.job.ownerId;
 
     return StroykaSurface(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (!isOwner) ...[
             SizedBox(
               width: double.infinity,
-              height: 52,
+              height: 42,
               child: OutlinedButton.icon(
+                style: compactSecondaryActionStyle,
                 onPressed: openMaps,
                 icon: const Icon(Icons.map),
                 label: const Text("Show location on map"),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
             buildMessageEmployerButton(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
             buildApplyButton(),
           ] else ...[
             buildEditButton(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
             SizedBox(
               width: double.infinity,
-              height: 52,
+              height: 42,
               child: OutlinedButton.icon(
+                style: compactSecondaryActionStyle,
                 onPressed: () async {
                   await FirebaseFirestore.instance
                       .collection("jobs")
@@ -1820,7 +1825,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
 
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         crossAxisSpacing: 10,
@@ -1850,7 +1855,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
   Widget buildCompanyTab() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: buildEmbeddedCompanyProfile(),
     );
   }
