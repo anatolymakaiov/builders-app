@@ -125,25 +125,41 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     Future<void> addQuery(
       Query<Map<String, dynamic>> query,
+      String label,
     ) async {
-      final snap = await query.get();
-      for (final doc in snap.docs) {
-        if (seenIds.add(doc.id)) applications.add(doc);
+      try {
+        final snap = await query.get();
+        for (final doc in snap.docs) {
+          if (seenIds.add(doc.id)) applications.add(doc);
+        }
+      } on FirebaseException catch (e) {
+        debugPrint(
+          "APPLICATION CHECK QUERY SKIPPED [$label]: ${e.code} ${e.message}",
+        );
+        if (e.code != "permission-denied" && e.code != "failed-precondition") {
+          rethrow;
+        }
       }
     }
 
     final applicationsRef =
         FirebaseFirestore.instance.collection("applications");
 
-    await addQuery(applicationsRef
-        .where("jobId", isEqualTo: widget.job.id)
-        .where("workerId", isEqualTo: uid));
-    await addQuery(applicationsRef
-        .where("jobId", isEqualTo: widget.job.id)
-        .where("applicantId", isEqualTo: uid));
-    await addQuery(applicationsRef
-        .where("jobId", isEqualTo: widget.job.id)
-        .where("members", arrayContains: uid));
+    await addQuery(
+        applicationsRef
+            .where("jobId", isEqualTo: widget.job.id)
+            .where("workerId", isEqualTo: uid),
+        "workerId");
+    await addQuery(
+        applicationsRef
+            .where("jobId", isEqualTo: widget.job.id)
+            .where("applicantId", isEqualTo: uid),
+        "applicantId");
+    await addQuery(
+        applicationsRef
+            .where("jobId", isEqualTo: widget.job.id)
+            .where("members", arrayContains: uid),
+        "members");
 
     for (final doc in applications) {
       final data = doc.data();
