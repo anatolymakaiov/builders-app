@@ -124,6 +124,17 @@ class ApplicationDetailsScreen extends StatelessWidget {
       status: status,
       unreadFor: ApplicationActivityService.employerRecipients(source),
     );
+
+    if (status == "offer_rejected") {
+      await NotificationService().notifyEmployerOfferDecision(
+        applicationId: applicationId,
+        applicationData: {
+          ...source,
+          "status": status,
+        },
+        status: status,
+      );
+    }
   }
 
   Future<void> acceptOfferFromWorker(
@@ -169,6 +180,19 @@ class ApplicationDetailsScreen extends StatelessWidget {
           "filledPositions": filled + workersCount,
         });
       });
+
+      final updatedApplication = await FirebaseFirestore.instance
+          .collection("applications")
+          .doc(applicationId)
+          .get();
+      final updatedData = updatedApplication.data();
+      if (updatedData != null) {
+        await NotificationService().notifyEmployerOfferDecision(
+          applicationId: applicationId,
+          applicationData: updatedData,
+          status: "offer_accepted",
+        );
+      }
     } catch (e) {
       debugPrint("ACCEPT OFFER ERROR: $e");
       if (!context.mounted) return;

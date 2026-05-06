@@ -37,6 +37,10 @@ class NotificationsScreen extends StatelessWidget {
         return "Application status updated";
       case "offer":
         return "New offer received";
+      case "offer_accepted":
+        return "Offer accepted";
+      case "offer_rejected":
+        return "Offer rejected";
       case "offer_expiry":
         return "Offer expiry reminder";
       case "work_start":
@@ -159,9 +163,10 @@ class NotificationsScreen extends StatelessWidget {
                     (data["body"] ?? data["message"])?.toString();
 
                 final titleText = notificationTitle(data);
-                final canAddCalendar =
-                    (type == "work_start" || type == "offer") &&
-                        data["offer"] is Map;
+                final canAddCalendar = (type == "work_start" ||
+                        type == "offer" ||
+                        type == "offer_accepted") &&
+                    data["offer"] is Map;
 
                 return StroykaSurface(
                   margin:
@@ -281,6 +286,8 @@ class NotificationsScreen extends StatelessWidget {
 
                       if ((type == "application_status" ||
                               type == "offer" ||
+                              type == "offer_accepted" ||
+                              type == "offer_rejected" ||
                               type == "offer_expiry" ||
                               type == "work_start" ||
                               type == "job_status" ||

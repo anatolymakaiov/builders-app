@@ -126,6 +126,7 @@ class NotificationService {
     required String type,
     required String title,
     required String message,
+    String? applicationId,
     String? relatedJobId,
     String? relatedReportId,
     String? relatedPaymentRequestId,
@@ -138,6 +139,7 @@ class NotificationService {
       title: title,
       body: message,
       type: type,
+      applicationId: applicationId,
       jobId: relatedJobId,
       extra: {
         if (relatedJobId != null && relatedJobId.isNotEmpty)
@@ -150,6 +152,99 @@ class NotificationService {
         ...extra,
       },
     );
+  }
+
+  Future<void> notifyEmployerOfferDecision({
+    required String applicationId,
+    required Map<String, dynamic> applicationData,
+    required String status,
+  }) async {
+    final employerId = applicationData["employerId"]?.toString() ?? "";
+    if (employerId.trim().isEmpty) return;
+
+    final isAccepted = status == "offer_accepted" || status == "accepted";
+    final isRejected = status == "offer_rejected";
+    if (!isAccepted && !isRejected) return;
+
+    final offerRaw = applicationData["offer"];
+    final offer = offerRaw is Map<String, dynamic>
+        ? Map<String, dynamic>.from(offerRaw)
+        : offerRaw is Map
+            ? Map<String, dynamic>.from(offerRaw)
+            : <String, dynamic>{};
+    final jobId = applicationData["jobId"]?.toString();
+    final jobTitle =
+        applicationData["jobTitle"]?.toString().trim().isNotEmpty == true
+            ? applicationData["jobTitle"].toString().trim()
+            : "the job";
+    final workerId = applicationData["workerId"]?.toString() ??
+        (applicationData["members"] is List &&
+                (applicationData["members"] as List).isNotEmpty
+            ? (applicationData["members"] as List).first.toString()
+            : null);
+    final workerName =
+        applicationData["workerName"]?.toString().trim().isNotEmpty == true
+            ? applicationData["workerName"].toString().trim()
+            : applicationData["teamName"]?.toString().trim().isNotEmpty == true
+                ? applicationData["teamName"].toString().trim()
+                : "Worker";
+    final startDate =
+        (offer["startDateTime"] ?? offer["startDate"])?.toString().trim() ?? "";
+    final jobAddress = _offerAddress(offer, applicationData);
+
+    await sendEmployerNotification(
+      employerId: employerId,
+      type: isAccepted ? "offer_accepted" : "offer_rejected",
+      title: isAccepted ? "Offer accepted" : "Offer rejected",
+      message: isAccepted
+          ? startDate.isEmpty
+              ? "$workerName accepted the offer for $jobTitle."
+              : "$workerName accepted the offer for $jobTitle and starts on $startDate."
+          : "$workerName rejected the offer for $jobTitle.",
+      applicationId: applicationId,
+      relatedJobId: jobId,
+      extra: {
+        "status": status,
+        if (workerId != null && workerId.isNotEmpty) "workerId": workerId,
+        "workerName": workerName,
+        "applicationId": applicationId,
+        if (jobId != null && jobId.isNotEmpty) "jobId": jobId,
+        if (startDate.isNotEmpty) ...{
+          "offerStartDate": startDate,
+          "startDate": startDate,
+          "startDateTime": startDate,
+        },
+        if (jobTitle.isNotEmpty) "jobTitle": jobTitle,
+        if (jobAddress.isNotEmpty) "jobAddress": jobAddress,
+        if (offer.isNotEmpty) "offer": offer,
+      },
+    );
+  }
+
+  String _offerAddress(
+    Map<String, dynamic> offer,
+    Map<String, dynamic> applicationData,
+  ) {
+    final direct = (offer["fullAddress"] ??
+            offer["siteAddress"] ??
+            applicationData["fullAddress"] ??
+            applicationData["siteAddress"])
+        ?.toString()
+        .trim();
+    if (direct != null && direct.isNotEmpty) return direct;
+
+    final street =
+        (offer["siteStreet"] ?? applicationData["siteStreet"])?.toString() ??
+            "";
+    final city =
+        (offer["siteCity"] ?? applicationData["siteCity"])?.toString() ?? "";
+    final postcode = (offer["sitePostcode"] ?? applicationData["sitePostcode"])
+            ?.toString() ??
+        "";
+
+    return [street.trim(), city.trim(), postcode.trim()]
+        .where((part) => part.isNotEmpty)
+        .join(", ");
   }
 
   Future<void> notifyEmployerJobModeration({
