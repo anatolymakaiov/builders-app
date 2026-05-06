@@ -65,37 +65,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final uid = userId;
     if (uid == null) return;
 
-    final applications = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-    final seenIds = <String>{};
-
-    final workerSnap = await FirebaseFirestore.instance
-        .collection("applications")
-        .where("jobId", isEqualTo: widget.job.id)
-        .where("workerId", isEqualTo: uid)
-        .get();
-
-    for (final doc in workerSnap.docs) {
-      if (seenIds.add(doc.id)) applications.add(doc);
-    }
-
-    final teamMemberSnap = await FirebaseFirestore.instance
-        .collection("applications")
-        .where("jobId", isEqualTo: widget.job.id)
-        .where("members", arrayContains: uid)
-        .get();
-
-    for (final doc in teamMemberSnap.docs) {
-      if (seenIds.add(doc.id)) applications.add(doc);
-    }
-
-    QueryDocumentSnapshot<Map<String, dynamic>>? currentApplication;
-    for (final doc in applications) {
-      final data = doc.data();
-      if (isCurrentUserApplicationData(data, uid)) {
-        currentApplication = doc;
-        break;
-      }
-    }
+    final currentApplication = await findCurrentUserApplication(uid);
 
     if (mounted) {
       setState(() {
@@ -105,9 +75,57 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
   }
 
+  Future<QueryDocumentSnapshot<Map<String, dynamic>>?>
+      findCurrentUserApplication(String uid) async {
+    final applications = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    final seenIds = <String>{};
+
+    Future<void> addQuery(
+      Query<Map<String, dynamic>> query,
+    ) async {
+      final snap = await query.get();
+      for (final doc in snap.docs) {
+        if (seenIds.add(doc.id)) applications.add(doc);
+      }
+    }
+
+    final applicationsRef =
+        FirebaseFirestore.instance.collection("applications");
+
+    await addQuery(applicationsRef
+        .where("jobId", isEqualTo: widget.job.id)
+        .where("workerId", isEqualTo: uid));
+    await addQuery(applicationsRef
+        .where("jobId", isEqualTo: widget.job.id)
+        .where("applicantId", isEqualTo: uid));
+    await addQuery(applicationsRef
+        .where("jobId", isEqualTo: widget.job.id)
+        .where("members", arrayContains: uid));
+
+    for (final doc in applications) {
+      final data = doc.data();
+      if (applicationBelongsToJob(data) &&
+          isCurrentUserApplicationData(data, uid)) {
+        return doc;
+      }
+    }
+
+    return null;
+  }
+
   bool isActiveApplicationData(Map<String, dynamic> data) {
-    final status = data["status"]?.toString();
-    return status != "withdrawn";
+    final status = data["status"]?.toString().toLowerCase().trim();
+    return status != "withdrawn" &&
+        status != "cancelled" &&
+        status != "deleted";
+  }
+
+  bool applicationBelongsToJob(Map<String, dynamic> data) {
+    return data["jobId"]?.toString() == widget.job.id;
+  }
+
+  bool sameUserId(dynamic value, String uid) {
+    return value?.toString() == uid;
   }
 
   bool isSingleApplicationData(Map<String, dynamic> data) {
@@ -119,13 +137,16 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final type = data["type"]?.toString();
     if (type != "team" || !isActiveApplicationData(data)) return false;
 
-    return data["workerId"] == uid ||
-        data["applicantId"] == uid ||
+    return sameUserId(data["workerId"], uid) ||
+        sameUserId(data["applicantId"], uid) ||
         teamMemberIds(data["members"]).contains(uid);
   }
 
   bool isCurrentUserApplicationData(Map<String, dynamic> data, String uid) {
-    return isSingleApplicationData(data) && data["workerId"] == uid ||
+    return isSingleApplicationData(data) &&
+            (sameUserId(data["workerId"], uid) ||
+                sameUserId(data["applicantId"], uid) ||
+                teamMemberIds(data["members"]).contains(uid)) ||
         isTeamApplicationForUser(data, uid);
   }
 
@@ -231,6 +252,21 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     var remainingPositions = 0;
     try {
+      final existingApplication = await findCurrentUserApplication(uid);
+      if (existingApplication != null) {
+        if (mounted) {
+          setState(() {
+            isApplying = false;
+            isApplied = true;
+            currentApplicationId = existingApplication.id;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("You already applied")),
+          );
+        }
+        return;
+      }
+
       /// 🔥 CHECK AVAILABLE POSITIONS
       remainingPositions = await loadRemainingPositions();
       if (!mounted) return;
@@ -244,7 +280,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       }
 
       if (isApplied) {
-        setState(() => isApplying = false);
+        setState(() {
+          isApplying = false;
+          isApplied = true;
+        });
         return;
       }
     } catch (e) {
@@ -498,38 +537,17 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         final data = doc.data();
         if (doc.exists &&
             data != null &&
-            data["jobId"] == widget.job.id &&
+            applicationBelongsToJob(data) &&
             isCurrentUserApplicationData(data, uid)) {
           refs.add(doc.reference);
         }
       }
 
       if (refs.isEmpty) {
-        final snap = await FirebaseFirestore.instance
-            .collection("applications")
-            .where("jobId", isEqualTo: widget.job.id)
-            .where("workerId", isEqualTo: uid)
-            .get();
-
-        refs.addAll(
-          snap.docs
-              .where((doc) => isCurrentUserApplicationData(doc.data(), uid))
-              .map((doc) => doc.reference),
-        );
-      }
-
-      if (refs.isEmpty) {
-        final snap = await FirebaseFirestore.instance
-            .collection("applications")
-            .where("jobId", isEqualTo: widget.job.id)
-            .where("members", arrayContains: uid)
-            .get();
-
-        refs.addAll(
-          snap.docs
-              .where((doc) => isCurrentUserApplicationData(doc.data(), uid))
-              .map((doc) => doc.reference),
-        );
+        final currentApplication = await findCurrentUserApplication(uid);
+        if (currentApplication != null) {
+          refs.add(currentApplication.reference);
+        }
       }
 
       for (final ref in refs) {
