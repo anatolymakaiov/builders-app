@@ -248,12 +248,22 @@ class _ChatScreenState extends State<ChatScreen> {
     QueryDocumentSnapshot message,
     Map<String, dynamic> data,
   ) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final type = data["type"]?.toString() ?? "text";
+    final isSender = data["senderId"]?.toString() == user.uid;
+    final deletedForEveryone = data["deletedForEveryone"] == true;
+    if (!isSender || type != "text" || deletedForEveryone) return;
+
     final currentText = data["text"]?.toString() ?? "";
+    if (currentText.trim().isEmpty) return;
+
     final editController = TextEditingController(text: currentText);
 
     final editedText = await showDialog<String>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text("Edit message"),
           content: TextField(
@@ -267,11 +277,12 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.of(dialogContext).pop(null),
               child: const Text("Cancel"),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.pop(context, editController.text),
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(editController.text),
               child: const Text("Save"),
             ),
           ],
@@ -282,7 +293,23 @@ class _ChatScreenState extends State<ChatScreen> {
     editController.dispose();
 
     final text = editedText?.trim() ?? "";
-    if (text.isEmpty || text == currentText) return;
+    if (!mounted || editedText == null) return;
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Message cannot be empty")),
+      );
+      return;
+    }
+    if (text == currentText) return;
+
+    final latestMessage = await message.reference.get();
+    final latestData = latestMessage.data() as Map<String, dynamic>?;
+    if (latestData == null ||
+        latestData["senderId"]?.toString() != user.uid ||
+        (latestData["type"]?.toString() ?? "text") != "text" ||
+        latestData["deletedForEveryone"] == true) {
+      return;
+    }
 
     await message.reference.update({
       "text": text,
@@ -333,6 +360,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final isMe = data["senderId"] == uid;
     final type = data["type"]?.toString() ?? "text";
     final deletedForEveryone = data["deletedForEveryone"] == true;
+    final canEdit = isMe && type == "text" && !deletedForEveryone;
 
     if (deletedForEveryone) return;
 
@@ -343,12 +371,16 @@ class _ChatScreenState extends State<ChatScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (isMe && type == "text")
+              if (canEdit)
                 ListTile(
                   leading: const Icon(Icons.edit),
                   title: const Text("Edit message"),
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(context);
+                    await Future<void>.delayed(
+                      const Duration(milliseconds: 120),
+                    );
+                    if (!mounted) return;
                     editTextMessage(message, data);
                   },
                 ),
