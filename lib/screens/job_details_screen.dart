@@ -1620,14 +1620,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Widget buildCompanyTab() {
-    return ListView(
+    return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
-      children: [
-        SizedBox(
-          height: MediaQuery.of(context).size.height - 210,
-          child: buildEmbeddedCompanyProfile(),
-        ),
-      ],
+      child: buildEmbeddedCompanyProfile(),
     );
   }
 
