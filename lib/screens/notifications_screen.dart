@@ -41,6 +41,16 @@ class NotificationsScreen extends StatelessWidget {
         return "Offer expiry reminder";
       case "work_start":
         return "Work start reminder";
+      case "job_status":
+        return "Job status updated";
+      case "billing":
+        return "Billing update";
+      case "report":
+        return "Complaint update";
+      case "admin_message":
+        return "Admin message";
+      case "package_approval":
+        return "Package approval update";
       default:
         return "Notification";
     }
@@ -141,10 +151,12 @@ class NotificationsScreen extends StatelessWidget {
                 final bool read = data["read"] ?? false;
                 final String type = data["type"] ?? "";
 
-                final String? jobId = data["jobId"];
+                final String? jobId =
+                    (data["jobId"] ?? data["relatedJobId"])?.toString();
                 final String? applicationId = data["applicationId"];
                 final String? workerId = data["workerId"];
-                final String? body = data["body"];
+                final String? body =
+                    (data["body"] ?? data["message"])?.toString();
 
                 final titleText = notificationTitle(data);
                 final canAddCalendar =
@@ -270,7 +282,9 @@ class NotificationsScreen extends StatelessWidget {
                       if ((type == "application_status" ||
                               type == "offer" ||
                               type == "offer_expiry" ||
-                              type == "work_start") &&
+                              type == "work_start" ||
+                              type == "job_status" ||
+                              type == "package_approval") &&
                           jobId != null) {
                         await openJobNotification(
                           context,

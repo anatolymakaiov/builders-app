@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/job.dart';
 import '../services/billing_service.dart';
 import '../services/job_alert_service.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -20,6 +21,13 @@ class AdminDashboardScreen extends StatelessWidget {
     };
 
     await ref.set(data, SetOptions(merge: true));
+
+    await NotificationService().notifyEmployerJobModeration(
+      employerId: job.ownerId,
+      jobId: job.id,
+      jobTitle: job.displayTitle,
+      moderationStatus: "approved",
+    );
 
     await JobAlertService().notifyMatchingWorkers(
       jobId: job.id,
@@ -69,12 +77,24 @@ class AdminDashboardScreen extends StatelessWidget {
     controller.dispose();
     if (reason == null) return false;
 
+    final jobSnap = await ref.get();
+    final jobData = jobSnap.data() as Map<String, dynamic>? ?? {};
+    final job = Job.fromFirestore(ref.id, jobData);
+
     await ref.set({
       "moderationStatus": "rejected",
       "moderationReason": reason,
       "moderatedAt": FieldValue.serverTimestamp(),
       "updatedAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    await NotificationService().notifyEmployerJobModeration(
+      employerId: job.ownerId,
+      jobId: job.id,
+      jobTitle: job.displayTitle,
+      moderationStatus: "rejected",
+      reason: reason,
+    );
 
     return true;
   }
@@ -103,10 +123,30 @@ class AdminDashboardScreen extends StatelessWidget {
     DocumentReference ref,
     String status,
   ) async {
+    final reportSnap = await ref.get();
+    final reportData =
+        reportSnap.data() as Map<String, dynamic>? ?? <String, dynamic>{};
+
     await ref.set({
       "status": status,
       "updatedAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    final againstUserId = reportData["againstUserId"]?.toString() ?? "";
+    if (againstUserId.isNotEmpty) {
+      final targetSnap = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(againstUserId)
+          .get();
+      final targetRole = targetSnap.data()?["role"]?.toString() ?? "";
+      if (targetRole != "employer") return;
+
+      await NotificationService().notifyEmployerReportStatusChanged(
+        employerId: againstUserId,
+        reportId: ref.id,
+        status: status,
+      );
+    }
   }
 
   Future<void> updateSupportRequestStatus(

@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'notification_service.dart';
+
 class ReportService {
   static Future<void> showReportDialog(
     BuildContext context, {
@@ -46,7 +48,8 @@ class ReportService {
     controller.dispose();
     if (message == null || message.isEmpty) return;
 
-    await FirebaseFirestore.instance.collection("reports").add({
+    final reportRef =
+        await FirebaseFirestore.instance.collection("reports").add({
       "fromUserId": user.uid,
       if (againstUserId != null && againstUserId.isNotEmpty)
         "againstUserId": againstUserId,
@@ -60,6 +63,27 @@ class ReportService {
       "createdAt": FieldValue.serverTimestamp(),
       "updatedAt": FieldValue.serverTimestamp(),
     });
+
+    if (againstUserId != null && againstUserId.isNotEmpty) {
+      final targetSnap = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(againstUserId)
+          .get();
+      final targetRole = targetSnap.data()?["role"]?.toString() ?? "";
+      if (targetRole != "employer") {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Report submitted")),
+        );
+        return;
+      }
+
+      await NotificationService().notifyEmployerReportSubmitted(
+        employerId: againstUserId,
+        reportId: reportRef.id,
+        reportType: type,
+      );
+    }
 
     if (!context.mounted) return;
 

@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'notification_service.dart';
+
 class BillingLimitException implements Exception {
   final String message;
 
@@ -201,11 +203,15 @@ class BillingService {
     String status,
   ) async {
     final firestore = FirebaseFirestore.instance;
+    var employerId = "";
+    var planName = "";
 
     await firestore.runTransaction((transaction) async {
       final requestSnap = await transaction.get(ref);
       final requestData =
           requestSnap.data() as Map<String, dynamic>? ?? <String, dynamic>{};
+      employerId = requestData["employerId"]?.toString() ?? "";
+      planName = requestData["planName"]?.toString() ?? "";
 
       transaction.set(
         ref,
@@ -217,7 +223,6 @@ class BillingService {
         SetOptions(merge: true),
       );
 
-      final employerId = requestData["employerId"]?.toString() ?? "";
       final planId = requestData["planId"]?.toString() ?? "";
       if (employerId.isEmpty) return;
 
@@ -268,6 +273,15 @@ class BillingService {
         SetOptions(merge: true),
       );
     });
+
+    if (employerId.isNotEmpty) {
+      await NotificationService().notifyEmployerBillingEvent(
+        employerId: employerId,
+        paymentRequestId: ref.id,
+        status: status,
+        planName: planName,
+      );
+    }
   }
 
   Map<String, dynamic> _assertEmployerCanPostFromData(

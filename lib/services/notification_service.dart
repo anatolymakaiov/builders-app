@@ -105,6 +105,7 @@ class NotificationService {
     final payload = {
       "title": title,
       "body": body,
+      "message": body,
       "type": type,
       "applicationId": applicationId,
       "jobId": jobId,
@@ -118,6 +119,171 @@ class NotificationService {
         .doc(userId)
         .collection('notifications')
         .add(payload);
+  }
+
+  Future<void> sendEmployerNotification({
+    required String employerId,
+    required String type,
+    required String title,
+    required String message,
+    String? relatedJobId,
+    String? relatedReportId,
+    String? relatedPaymentRequestId,
+    Map<String, dynamic> extra = const {},
+  }) async {
+    if (employerId.trim().isEmpty) return;
+
+    await sendNotification(
+      userId: employerId,
+      title: title,
+      body: message,
+      type: type,
+      jobId: relatedJobId,
+      extra: {
+        if (relatedJobId != null && relatedJobId.isNotEmpty)
+          "relatedJobId": relatedJobId,
+        if (relatedReportId != null && relatedReportId.isNotEmpty)
+          "relatedReportId": relatedReportId,
+        if (relatedPaymentRequestId != null &&
+            relatedPaymentRequestId.isNotEmpty)
+          "relatedPaymentRequestId": relatedPaymentRequestId,
+        ...extra,
+      },
+    );
+  }
+
+  Future<void> notifyEmployerJobModeration({
+    required String employerId,
+    required String jobId,
+    required String jobTitle,
+    required String moderationStatus,
+    String? reason,
+  }) async {
+    final approved = moderationStatus == "approved";
+    await sendEmployerNotification(
+      employerId: employerId,
+      type: "job_status",
+      title: approved ? "Job approved" : "Job rejected",
+      message: approved
+          ? "$jobTitle has been approved and can be published."
+          : reason?.trim().isNotEmpty == true
+              ? "$jobTitle was rejected: ${reason!.trim()}"
+              : "$jobTitle was rejected by admin.",
+      relatedJobId: jobId,
+      extra: {
+        "status": moderationStatus,
+        if (reason != null && reason.trim().isNotEmpty)
+          "moderationReason": reason.trim(),
+      },
+    );
+  }
+
+  Future<void> notifyEmployerJobStatusChanged({
+    required String employerId,
+    required String jobId,
+    required String jobTitle,
+    required String status,
+  }) async {
+    final title = switch (status) {
+      "active" => "Job activated",
+      "inactive" || "closed" => "Job made inactive",
+      "paused" => "Job paused",
+      "expired" => "Job expired",
+      "publication_ended" => "Publication period ended",
+      _ => "Job status updated",
+    };
+
+    final message = switch (status) {
+      "active" => "$jobTitle is active.",
+      "inactive" || "closed" => "$jobTitle is inactive.",
+      "paused" => "$jobTitle has been paused.",
+      "expired" => "$jobTitle has expired.",
+      "publication_ended" => "$jobTitle publication period has ended.",
+      _ => "$jobTitle status changed to $status.",
+    };
+
+    await sendEmployerNotification(
+      employerId: employerId,
+      type: "job_status",
+      title: title,
+      message: message,
+      relatedJobId: jobId,
+      extra: {"status": status},
+    );
+  }
+
+  Future<void> notifyEmployerBillingEvent({
+    required String employerId,
+    required String paymentRequestId,
+    required String status,
+    String? planName,
+  }) async {
+    final plan = planName?.trim().isNotEmpty == true
+        ? planName!.trim()
+        : "Selected plan";
+    final title = switch (status) {
+      "paid" => "Plan approved",
+      "failed" => "Payment failed",
+      "cancelled" => "Plan request cancelled",
+      "rejected" => "Plan rejected",
+      "invoice_issued" => "Invoice issued",
+      "payment_received" => "Payment received",
+      "upcoming_direct_debit" => "Upcoming direct debit",
+      _ => "Billing request updated",
+    };
+
+    final message = switch (status) {
+      "paid" => "$plan has been approved and payment was received.",
+      "failed" => "Payment for $plan failed.",
+      "cancelled" => "$plan request was cancelled.",
+      "rejected" => "$plan request was rejected.",
+      "invoice_issued" => "An invoice has been issued for $plan.",
+      "payment_received" => "Payment for $plan was received.",
+      "upcoming_direct_debit" => "Direct debit for $plan is coming up.",
+      _ => "$plan billing status changed to $status.",
+    };
+
+    await sendEmployerNotification(
+      employerId: employerId,
+      type: "billing",
+      title: title,
+      message: message,
+      relatedPaymentRequestId: paymentRequestId,
+      extra: {
+        "status": status,
+        if (planName != null) "planName": planName,
+      },
+    );
+  }
+
+  Future<void> notifyEmployerReportSubmitted({
+    required String employerId,
+    required String reportId,
+    required String reportType,
+  }) async {
+    await sendEmployerNotification(
+      employerId: employerId,
+      type: "report",
+      title: "Complaint submitted",
+      message: "A $reportType complaint was submitted against your company.",
+      relatedReportId: reportId,
+      extra: {"status": "open", "reportType": reportType},
+    );
+  }
+
+  Future<void> notifyEmployerReportStatusChanged({
+    required String employerId,
+    required String reportId,
+    required String status,
+  }) async {
+    await sendEmployerNotification(
+      employerId: employerId,
+      type: "report",
+      title: "Complaint review result",
+      message: "Admin updated complaint status to $status.",
+      relatedReportId: reportId,
+      extra: {"status": status},
+    );
   }
 
   List<String> applicationRecipients(Map<String, dynamic> applicationData) {

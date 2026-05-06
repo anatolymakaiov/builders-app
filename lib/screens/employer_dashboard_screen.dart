@@ -6,6 +6,7 @@ import '../models/job.dart';
 import 'employer_applications_screen.dart';
 import 'job_details_screen.dart';
 import '../services/job_repository.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -193,10 +194,19 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   }
 
   Future<void> setJobActive(Job job, bool active) async {
+    final nextStatus = active ? "active" : "closed";
+
     await FirebaseFirestore.instance.collection("jobs").doc(job.id).set({
-      "status": active ? "active" : "closed",
+      "status": nextStatus,
       "updatedAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    await NotificationService().notifyEmployerJobStatusChanged(
+      employerId: job.ownerId,
+      jobId: job.id,
+      jobTitle: job.displayTitle,
+      status: nextStatus,
+    );
 
     if (!mounted) return;
 
