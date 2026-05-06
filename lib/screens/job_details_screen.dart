@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'employer_applications_screen.dart';
 import 'post_job_screen.dart';
 import 'chat_screen.dart';
 
@@ -1448,32 +1449,99 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Widget buildEmployerStats() {
     if (userId != widget.job.ownerId) return const SizedBox();
 
-    return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
+    void openApplicationsFor(String status) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EmployerApplicationsScreen(
+            initialJobId: widget.job.id,
+            initialStatus: status,
+          ),
+        ),
+      );
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
           .collection("applications")
           .where("jobId", isEqualTo: widget.job.id)
-          .get(),
+          .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox();
+        if (!snapshot.hasData) {
+          return const Padding(
+            padding: EdgeInsets.only(top: 12),
+            child: LinearProgressIndicator(),
+          );
+        }
 
         final docs = snapshot.data!.docs;
 
-        int pending = 0;
-        int negotiation = 0;
+        int inReview = 0;
         int offer = 0;
-        int hired = 0;
+        int acceptedSlots = 0;
         int rejected = 0;
 
         for (var doc in docs) {
           final status =
-              (doc.data() as Map<String, dynamic>)["status"] ?? "pending";
+              ((doc.data() as Map<String, dynamic>)["status"] ?? "pending")
+                  .toString();
 
-          if (status == "pending") pending++;
-          if (status == "negotiation") negotiation++;
+          if (status == "pending" ||
+              status == "applied" ||
+              status == "review" ||
+              status == "in_review") {
+            inReview++;
+          }
           if (status == "offer_sent") offer++;
-          if (status == "offer_accepted") hired++;
-          if (status == "rejected") rejected++;
+          if (status == "offer_accepted" || status == "accepted") {
+            acceptedSlots += applicationSlotCount(
+              doc.data() as Map<String, dynamic>,
+            );
+          }
+          if (status == "rejected" || status == "withdrawn") rejected++;
         }
+
+        final spotsLeft = (widget.job.positions - acceptedSlots)
+            .clamp(0, widget.job.positions);
+
+        final stats = [
+          (
+            label: "Applied",
+            value: docs.length,
+            color: AppColors.ink,
+            status: "all"
+          ),
+          (
+            label: "Review",
+            value: inReview,
+            color: AppColors.greenDark,
+            status: "pending"
+          ),
+          (
+            label: "Offers",
+            value: offer,
+            color: AppColors.green,
+            status: "offer_sent"
+          ),
+          (
+            label: "Accepted",
+            value: acceptedSlots,
+            color: Colors.green,
+            status: "offer_accepted"
+          ),
+          (
+            label: "Rejected",
+            value: rejected,
+            color: Colors.red,
+            status: "rejected"
+          ),
+          (
+            label: "Left",
+            value: spotsLeft,
+            color: Colors.deepPurple,
+            status: "all"
+          ),
+        ];
 
         return Padding(
           padding: const EdgeInsets.only(top: 12),
@@ -1490,17 +1558,80 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                Text("Total: ${docs.length}"),
-                Text("New: $pending"),
-                Text("Negotiation: $negotiation"),
-                Text("Offer sent: $offer"),
-                Text("Hired: $hired"),
-                Text("Rejected: $rejected"),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: stats.length,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                    mainAxisExtent: 42,
+                  ),
+                  itemBuilder: (context, index) {
+                    final stat = stats[index];
+                    return buildEmployerStatTile(
+                      label: stat.label,
+                      value: stat.value,
+                      color: stat.color,
+                      onTap: stat.label == "Left"
+                          ? null
+                          : () => openApplicationsFor(stat.status),
+                    );
+                  },
+                ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget buildEmployerStatTile({
+    required String label,
+    required int value,
+    required Color color,
+    VoidCallback? onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: value > 0 ? onTap : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withValues(alpha: 0.20)),
+          ),
+          child: Row(
+            children: [
+              Text(
+                value.toString(),
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

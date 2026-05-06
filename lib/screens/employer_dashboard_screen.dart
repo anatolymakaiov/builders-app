@@ -544,8 +544,6 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
               runSpacing: 8,
               children: buildJobChips(job),
             ),
-            const SizedBox(height: 12),
-            buildApplicationStats(job),
           ],
         ),
       ),
