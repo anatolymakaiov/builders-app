@@ -92,6 +92,14 @@ class ApplicationDetailsScreen extends StatelessWidget {
     }
   }
 
+  String canonicalStatus(dynamic value) {
+    final status = value?.toString().toLowerCase().trim() ?? "pending";
+    if (status == "review" || status == "in_review" || status == "applied") {
+      return "pending";
+    }
+    return status.isEmpty ? "pending" : status;
+  }
+
   Future<void> openChat(
     BuildContext context,
     Map<String, dynamic> source,
@@ -1088,7 +1096,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
             final employerId = liveData["employerId"]?.toString();
             final isEmployerViewer =
                 currentUserId != null && currentUserId == employerId;
-            final status = liveData["status"] ?? "pending";
+            final status = canonicalStatus(liveData["status"]);
             final selectedMembers = <String>{};
 
             Widget statusBadge({required bool forEmployer}) {
@@ -1151,16 +1159,19 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
             Widget employerActions() {
               Future<void> setStatus(String nextStatus) async {
-                if ((liveData["type"] ?? "single") == "team") {
-                  await ApplicationActivityService.updateStatus(
-                    applicationId: applicationId,
-                    status: nextStatus,
-                    unreadFor:
-                        ApplicationActivityService.workerRecipients(liveData),
-                  );
-                } else {
-                  await updateStatus(context, liveData, nextStatus);
-                }
+                await ApplicationActivityService.updateStatus(
+                  applicationId: applicationId,
+                  status: nextStatus,
+                  unreadFor: ApplicationActivityService.workerRecipients(
+                    liveData,
+                  ),
+                );
+
+                await NotificationService().notifyApplicationStatus(
+                  applicationId: applicationId,
+                  applicationData: liveData,
+                  status: nextStatus,
+                );
               }
 
               Future<void> startNegotiationAndOpenChat() async {

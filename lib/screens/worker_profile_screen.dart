@@ -940,6 +940,14 @@ class WorkerProfileScreen extends StatelessWidget {
     required String employerId,
     required String jobId,
   }) {
+    String canonicalStatus(dynamic value) {
+      final status = value?.toString().toLowerCase().trim() ?? "pending";
+      if (status == "review" || status == "in_review" || status == "applied") {
+        return "pending";
+      }
+      return status.isEmpty ? "pending" : status;
+    }
+
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection("applications")
@@ -956,7 +964,7 @@ class WorkerProfileScreen extends StatelessWidget {
 
         final applicationData =
             snapshot.data!.data() as Map<String, dynamic>? ?? {};
-        final status = applicationData["status"]?.toString() ?? "pending";
+        final status = canonicalStatus(applicationData["status"]);
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -970,7 +978,9 @@ class WorkerProfileScreen extends StatelessWidget {
                   foregroundColor: Colors.white,
                 ),
                 onPressed: () async {
-                  if (status == "pending") {
+                  if (status == "pending" ||
+                      status == "offer_withdrawn" ||
+                      status == "offer_rejected") {
                     await ApplicationActivityService.updateStatus(
                       applicationId: applicationId,
                       status: "negotiation",
@@ -1075,19 +1085,14 @@ class WorkerProfileScreen extends StatelessWidget {
                         side: const BorderSide(color: Colors.red),
                       ),
                       onPressed: () async {
-                        await FirebaseFirestore.instance
-                            .collection("applications")
-                            .doc(applicationId)
-                            .set({
-                          "status": "rejected",
-                          "applicationActivityAt": FieldValue.serverTimestamp(),
-                          "updatedAt": FieldValue.serverTimestamp(),
-                          "unreadFor": FieldValue.arrayUnion(
-                            ApplicationActivityService.workerRecipients(
-                              applicationData,
-                            ),
+                        await ApplicationActivityService.updateStatus(
+                          applicationId: applicationId,
+                          status: "rejected",
+                          unreadFor:
+                              ApplicationActivityService.workerRecipients(
+                            applicationData,
                           ),
-                        }, SetOptions(merge: true));
+                        );
                       },
                       child: const Text("Reject"),
                     ),
@@ -1181,15 +1186,35 @@ class WorkerProfileScreen extends StatelessWidget {
           String? applicationId;
 
           if (jobId != null && employerId != null) {
-            final appQuery = await FirebaseFirestore.instance
+            final workerQuery = await FirebaseFirestore.instance
                 .collection("applications")
                 .where("jobId", isEqualTo: jobId)
+                .where("employerId", isEqualTo: employerId)
                 .where("workerId", isEqualTo: userId)
-                .limit(1)
                 .get();
 
-            if (appQuery.docs.isNotEmpty) {
-              final appDoc = appQuery.docs.first;
+            final applicantQuery = await FirebaseFirestore.instance
+                .collection("applications")
+                .where("jobId", isEqualTo: jobId)
+                .where("employerId", isEqualTo: employerId)
+                .where("applicantId", isEqualTo: userId)
+                .get();
+
+            final appDocs = {
+              for (final doc in [...workerQuery.docs, ...applicantQuery.docs])
+                doc.id: doc,
+            }.values.toList();
+
+            appDocs.sort((a, b) {
+              final aData = a.data();
+              final bData = b.data();
+              final aTime = ApplicationActivityService.activityDate(aData);
+              final bTime = ApplicationActivityService.activityDate(bData);
+              return bTime.compareTo(aTime);
+            });
+
+            if (appDocs.isNotEmpty) {
+              final appDoc = appDocs.first;
               applicationId = appDoc.id;
             }
           }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -22,7 +24,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   String offerFilter = "all";
 
   Color getStatusColor(String status) {
-    switch (status) {
+    switch (canonicalStatus(status)) {
       case "accepted":
       case "offer_accepted":
         return Colors.green;
@@ -37,52 +39,63 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     }
   }
 
+  String canonicalStatus(dynamic value) {
+    final status = value?.toString().toLowerCase().trim() ?? "pending";
+    if (status == "review" || status == "in_review" || status == "applied") {
+      return "pending";
+    }
+    return status.isEmpty ? "pending" : status;
+  }
+
   bool matchesStatusFilter(String status) {
+    final normalizedStatus = canonicalStatus(status);
     switch (statusFilter) {
       case "sent":
-        return status == "pending" || status == "applied";
+        return normalizedStatus == "pending";
       case "review":
-        return status == "pending" || status == "review";
+        return normalizedStatus == "pending";
       case "negotiation":
-        return status == "negotiation";
+        return normalizedStatus == "negotiation";
       case "offer":
-        return status == "offer_sent";
+        return normalizedStatus == "offer_sent";
       case "rejected":
-        return status == "rejected";
+        return normalizedStatus == "rejected";
       default:
         return true;
     }
   }
 
   bool matchesJobFilter(String status) {
+    final normalizedStatus = canonicalStatus(status);
     switch (jobFilter) {
       case "new":
-        return status != "accepted" && status != "offer_accepted";
+        return normalizedStatus != "accepted" &&
+            normalizedStatus != "offer_accepted";
       case "current":
-        return status == "accepted" || status == "offer_accepted";
+        return normalizedStatus == "accepted" ||
+            normalizedStatus == "offer_accepted";
       default:
         return true;
     }
   }
 
   bool matchesOfferFilter(String status) {
+    final normalizedStatus = canonicalStatus(status);
     switch (offerFilter) {
       case "review":
-        return status == "offer_sent";
+        return normalizedStatus == "offer_sent";
       case "accepted":
-        return status == "accepted" || status == "offer_accepted";
+        return normalizedStatus == "accepted" ||
+            normalizedStatus == "offer_accepted";
       default:
         return true;
     }
   }
 
   String statusLabel(String status) {
-    switch (status) {
+    switch (canonicalStatus(status)) {
       case "pending":
-      case "applied":
         return "SENT";
-      case "review":
-        return "IN REVIEW";
       case "negotiation":
         return "NEGOTIATION";
       case "offer_sent":
@@ -122,12 +135,22 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         .where("members", arrayContains: userId)
         .snapshots();
 
-    return singleStream.asyncMap((singleSnap) async {
-      final teamSnap = await teamStream.first;
+    late final StreamSubscription<QuerySnapshot<Map<String, dynamic>>>
+        singleSub;
+    late final StreamSubscription<QuerySnapshot<Map<String, dynamic>>> teamSub;
+    QuerySnapshot<Map<String, dynamic>>? singleSnap;
+    QuerySnapshot<Map<String, dynamic>>? teamSnap;
+
+    final controller = StreamController<List<QueryDocumentSnapshot>>();
+
+    void emit() {
+      final single = singleSnap;
+      final team = teamSnap;
+      if (single == null || team == null || controller.isClosed) return;
 
       final allDocs = [
-        ...singleSnap.docs,
-        ...teamSnap.docs,
+        ...single.docs,
+        ...team.docs,
       ];
 
       /// 🔥 убираем дубликаты (на всякий случай)
@@ -139,8 +162,25 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         (a, b) => ApplicationActivityService.compareForUser(a, b, userId),
       );
 
-      return unique;
-    });
+      controller.add(unique);
+    }
+
+    singleSub = singleStream.listen((snapshot) {
+      singleSnap = snapshot;
+      emit();
+    }, onError: controller.addError);
+
+    teamSub = teamStream.listen((snapshot) {
+      teamSnap = snapshot;
+      emit();
+    }, onError: controller.addError);
+
+    controller.onCancel = () async {
+      await singleSub.cancel();
+      await teamSub.cancel();
+    };
+
+    return controller.stream;
   }
 
   @override
@@ -175,7 +215,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
 
                   final apps = snapshot.data!.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
-                    final status = (data["status"] ?? "pending").toString();
+                    final status = canonicalStatus(data["status"]);
 
                     return matchesStatusFilter(status) &&
                         matchesJobFilter(status) &&
@@ -195,7 +235,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                         user.uid,
                       );
 
-                      final status = data["status"] ?? "pending";
+                      final status = canonicalStatus(data["status"]);
                       final jobId = data["jobId"];
 
                       return StreamBuilder<DocumentSnapshot>(

@@ -33,32 +33,53 @@ class _EmployerApplicationsScreenState
   @override
   void initState() {
     super.initState();
-    selectedStatus = widget.initialStatus;
+    selectedStatus = widget.initialStatus == "all"
+        ? "all"
+        : canonicalStatus(widget.initialStatus);
   }
 
   Color getStatusColor(String status) {
-    switch (status) {
+    switch (canonicalStatus(status)) {
       case "accepted":
+      case "offer_accepted":
         return Colors.green;
       case "rejected":
         return Colors.red;
+      case "negotiation":
+        return Colors.purple;
+      case "offer_sent":
+        return AppColors.greenDark;
+      case "offer_withdrawn":
+      case "offer_rejected":
+        return Colors.orange;
       default:
         return AppColors.ink;
     }
   }
 
+  String canonicalStatus(dynamic value) {
+    final status = value?.toString().toLowerCase().trim() ?? "pending";
+    if (status == "review" || status == "in_review" || status == "applied") {
+      return "pending";
+    }
+    return status.isEmpty ? "pending" : status;
+  }
+
   String statusLabel(String status) {
-    switch (status) {
+    switch (canonicalStatus(status)) {
       case "pending":
-      case "applied":
         return "IN REVIEW";
       case "negotiation":
         return "NEGOTIATION";
       case "offer_sent":
-        return "OFFER";
+        return "OFFER SENT";
+      case "offer_withdrawn":
+        return "OFFER WITHDRAWN";
       case "offer_accepted":
       case "accepted":
         return "ACCEPTED";
+      case "offer_rejected":
+        return "OFFER REJECTED";
       case "rejected":
         return "REJECTED";
       default:
@@ -284,7 +305,7 @@ class _EmployerApplicationsScreenState
                   final apps = allApps.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
 
-                    final status = data["status"] ?? "pending";
+                    final status = canonicalStatus(data["status"]);
                     final trade = (data["jobTrade"] ?? "").toString().trim();
                     final site = (data["jobSite"] ?? "").toString().trim();
 
@@ -325,7 +346,7 @@ class _EmployerApplicationsScreenState
                       final workerName = data["workerName"] ?? "Worker";
                       final members = List<String>.from(data["members"] ?? []);
                       final jobTitle = data["jobTitle"] ?? "Job";
-                      final status = data["status"] ?? "pending";
+                      final status = canonicalStatus(data["status"]);
                       final Timestamp? createdAt = data["createdAt"];
 
                       final dateText = createdAt != null
