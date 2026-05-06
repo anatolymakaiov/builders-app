@@ -16,8 +16,8 @@ import '../services/notification_service.dart';
 import '../services/report_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/company_profile_sections.dart';
 import '../widgets/job_card.dart';
-import '../widgets/phone_link.dart';
 
 class JobDetailScreen extends StatefulWidget {
   final Job job;
@@ -1890,6 +1890,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         final extraPhones = List<String>.from(data["phones"] ?? []);
         final website = data["website"] ?? "";
         final email = data["email"] ?? "";
+        final companyGoals = data["companyGoals"]?.toString() ?? "";
+        final companyAdvantages = data["companyAdvantages"]?.toString() ?? "";
+        final companyClients = data["companyClients"]?.toString() ?? "";
+        final companyWhoWeAre = data["companyWhoWeAre"]?.toString() ?? "";
+        final companyHistory = data["companyHistory"]?.toString() ?? "";
+        final contacts = (data["contacts"] as List<dynamic>? ?? [])
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
         final logo = data["photo"] ?? data["companyLogo"] ?? data["avatarUrl"];
         final headerImage =
             (data["profileHeaderImage"] ?? data["headerImage"])?.toString();
@@ -2001,97 +2009,27 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     ListView(
                       padding: EdgeInsets.zero,
                       children: [
-                        StroykaSurface(
-                          padding: const EdgeInsets.all(18),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "About company",
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                description.toString().trim().isEmpty
-                                    ? "No company description yet"
-                                    : description.toString(),
-                              ),
-                              if (address.toString().trim().isNotEmpty) ...[
-                                const SizedBox(height: 18),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.location_on),
-                                    const SizedBox(width: 8),
-                                    Expanded(child: Text(address.toString())),
-                                  ],
-                                ),
-                              ],
-                            ],
-                          ),
+                        CompanyInfoWidget(
+                          description: description.toString(),
+                          address: address.toString(),
+                          companyGoals: companyGoals,
+                          companyAdvantages: companyAdvantages,
+                          companyClients: companyClients,
+                          companyWhoWeAre: companyWhoWeAre,
+                          companyHistory: companyHistory,
                         ),
                       ],
                     ),
                     ListView(
                       padding: EdgeInsets.zero,
                       children: [
-                        StroykaSurface(
-                          padding: const EdgeInsets.all(18),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (phone.toString().trim().isNotEmpty) ...[
-                                PhoneLink(phone: phone.toString()),
-                                const SizedBox(height: 16),
-                              ],
-                              if (contactPerson.toString().trim().isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 16),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.person),
-                                      const SizedBox(width: 8),
-                                      Text(contactPerson.toString()),
-                                    ],
-                                  ),
-                                ),
-                              ...extraPhones.map(
-                                (p) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: PhoneLink(
-                                    phone: p,
-                                    compact: true,
-                                  ),
-                                ),
-                              ),
-                              if (email.toString().trim().isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 16),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.email),
-                                      const SizedBox(width: 8),
-                                      Expanded(child: Text(email.toString())),
-                                    ],
-                                  ),
-                                ),
-                              if (website.toString().trim().isNotEmpty)
-                                Row(
-                                  children: [
-                                    const Icon(Icons.language),
-                                    const SizedBox(width: 8),
-                                    Expanded(child: Text(website.toString())),
-                                  ],
-                                ),
-                              if (phone.toString().trim().isEmpty &&
-                                  extraPhones.isEmpty &&
-                                  email.toString().trim().isEmpty &&
-                                  website.toString().trim().isEmpty)
-                                const Text("No contacts yet"),
-                            ],
-                          ),
+                        CompanyContactsWidget(
+                          phone: phone.toString(),
+                          contactPerson: contactPerson.toString(),
+                          extraPhones: extraPhones,
+                          email: email.toString(),
+                          website: website.toString(),
+                          contacts: contacts,
                         ),
                       ],
                     ),

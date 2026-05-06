@@ -8,13 +8,13 @@ import 'package:image_picker/image_picker.dart';
 import '../models/job.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'edit_profile_screen.dart';
-import '../widgets/phone_link.dart';
 import '../widgets/job_card.dart';
 import '../services/billing_service.dart';
 import '../services/report_service.dart';
 import '../services/support_request_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/company_profile_sections.dart';
 
 class EmployerProfileScreen extends StatefulWidget {
   final String userId;
@@ -328,137 +328,27 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                         ListView(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
                           children: [
-                            StroykaSurface(
-                              padding: const EdgeInsets.all(18),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    "About company",
-                                    style: TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    description.isEmpty
-                                        ? "No company description yet"
-                                        : description,
-                                  ),
-                                  _CompanyInfoBlock(
-                                    title: "Our goals and objectives",
-                                    text: companyGoals,
-                                  ),
-                                  _CompanyInfoBlock(
-                                    title: "Our advantages",
-                                    text: companyAdvantages,
-                                  ),
-                                  _CompanyInfoBlock(
-                                    title: "Our clients",
-                                    text: companyClients,
-                                  ),
-                                  _CompanyInfoBlock(
-                                    title: "Who we are",
-                                    text: companyWhoWeAre,
-                                  ),
-                                  _CompanyInfoBlock(
-                                    title: "Our history",
-                                    text: companyHistory,
-                                  ),
-                                  if (address.isNotEmpty) ...[
-                                    const SizedBox(height: 18),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.location_on),
-                                        const SizedBox(width: 8),
-                                        Expanded(child: Text(address)),
-                                      ],
-                                    ),
-                                  ],
-                                ],
-                              ),
+                            CompanyInfoWidget(
+                              description: description.toString(),
+                              address: address.toString(),
+                              companyGoals: companyGoals,
+                              companyAdvantages: companyAdvantages,
+                              companyClients: companyClients,
+                              companyWhoWeAre: companyWhoWeAre,
+                              companyHistory: companyHistory,
                             ),
                           ],
                         ),
                         ListView(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
                           children: [
-                            StroykaSurface(
-                              padding: const EdgeInsets.all(18),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (phone.isNotEmpty) ...[
-                                    PhoneLink(phone: phone),
-                                    const SizedBox(height: 16),
-                                  ],
-                                  if (contactPerson.isNotEmpty) ...[
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.person),
-                                        const SizedBox(width: 8),
-                                        Text(contactPerson),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 16),
-                                  ],
-                                  if (extraPhones.isNotEmpty) ...[
-                                    ...extraPhones.map(
-                                      (p) => Padding(
-                                        padding:
-                                            const EdgeInsets.only(bottom: 8),
-                                        child:
-                                            PhoneLink(phone: p, compact: true),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                  ],
-                                  if (email.isNotEmpty) ...[
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.email),
-                                        const SizedBox(width: 8),
-                                        Expanded(child: Text(email)),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 16),
-                                  ],
-                                  if (website.isNotEmpty) ...[
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.language),
-                                        const SizedBox(width: 8),
-                                        Expanded(child: Text(website)),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 16),
-                                  ],
-                                  if (contacts.isEmpty &&
-                                      phone.isEmpty &&
-                                      email.isEmpty &&
-                                      website.isEmpty)
-                                    const Text("No contacts yet"),
-                                  if (contacts.isNotEmpty) ...[
-                                    const Text(
-                                      "Team contacts",
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    ...contacts.map(
-                                      (c) => ListTile(
-                                        contentPadding: EdgeInsets.zero,
-                                        title: Text(c["name"] ?? ""),
-                                        subtitle: PhoneLink(
-                                          phone: c["phone"]?.toString(),
-                                          compact: true,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
+                            CompanyContactsWidget(
+                              phone: phone.toString(),
+                              contactPerson: contactPerson.toString(),
+                              extraPhones: extraPhones,
+                              email: email.toString(),
+                              website: website.toString(),
+                              contacts: contacts,
                             ),
                           ],
                         ),
@@ -557,41 +447,6 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _CompanyInfoBlock extends StatelessWidget {
-  final String title;
-  final String text;
-
-  const _CompanyInfoBlock({
-    required this.title,
-    required this.text,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cleanText = text.trim();
-    if (cleanText.isEmpty) return const SizedBox();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: AppColors.ink,
-              fontWeight: FontWeight.w900,
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(cleanText),
-        ],
       ),
     );
   }
