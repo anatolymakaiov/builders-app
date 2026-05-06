@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -36,6 +38,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   bool isApplied = false;
   String? currentApplicationId;
   String role = "worker";
+  final List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>
+      applyStateSubscriptions = [];
 
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
 
@@ -48,6 +52,44 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Future<void> init() async {
     await loadRole();
     await checkIfApplied();
+    watchApplyState();
+  }
+
+  @override
+  void dispose() {
+    for (final subscription in applyStateSubscriptions) {
+      subscription.cancel();
+    }
+    super.dispose();
+  }
+
+  void watchApplyState() {
+    final uid = userId;
+    if (uid == null || role != "worker" || applyStateSubscriptions.isNotEmpty) {
+      return;
+    }
+
+    final applicationsRef =
+        FirebaseFirestore.instance.collection("applications");
+
+    void addListener(Query<Map<String, dynamic>> query) {
+      applyStateSubscriptions.add(
+        query.snapshots().listen((_) {
+          if (!mounted || isApplying) return;
+          checkIfApplied();
+        }),
+      );
+    }
+
+    addListener(applicationsRef
+        .where("jobId", isEqualTo: widget.job.id)
+        .where("workerId", isEqualTo: uid));
+    addListener(applicationsRef
+        .where("jobId", isEqualTo: widget.job.id)
+        .where("applicantId", isEqualTo: uid));
+    addListener(applicationsRef
+        .where("jobId", isEqualTo: widget.job.id)
+        .where("members", arrayContains: uid));
   }
 
   Future<void> loadRole() async {
