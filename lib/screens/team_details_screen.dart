@@ -226,42 +226,10 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
     if (addingMember) return;
     if (!mounted) return;
 
-    final controller = TextEditingController();
-
-    String? query;
-    try {
-      query = await showDialog<String?>(
-        context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: const Text("Add team member"),
-            content: TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                labelText: "Nickname or phone",
-                hintText: "Worker nickname or phone number",
-              ),
-              autofocus: true,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(null),
-                child: const Text("Cancel"),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  final value = controller.text.trim();
-                  Navigator.of(dialogContext).pop(value.isEmpty ? null : value);
-                },
-                child: const Text("Add"),
-              ),
-            ],
-          );
-        },
-      );
-    } finally {
-      controller.dispose();
-    }
+    final query = await showDialog<String?>(
+      context: context,
+      builder: (_) => const _AddTeamMemberDialog(),
+    );
 
     final searchText = query?.trim() ?? "";
     if (!mounted || searchText.isEmpty) return;
@@ -792,6 +760,55 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+class _AddTeamMemberDialog extends StatefulWidget {
+  const _AddTeamMemberDialog();
+
+  @override
+  State<_AddTeamMemberDialog> createState() => _AddTeamMemberDialogState();
+}
+
+class _AddTeamMemberDialogState extends State<_AddTeamMemberDialog> {
+  final controller = TextEditingController();
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  void submit() {
+    final value = controller.text.trim();
+    Navigator.of(context).pop(value.isEmpty ? null : value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text("Add team member"),
+      content: TextField(
+        controller: controller,
+        decoration: const InputDecoration(
+          labelText: "Nickname or phone",
+          hintText: "Worker nickname or phone number",
+        ),
+        autofocus: true,
+        textInputAction: TextInputAction.search,
+        onSubmitted: (_) => submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(null),
+          child: const Text("Cancel"),
+        ),
+        ElevatedButton(
+          onPressed: submit,
+          child: const Text("Add"),
+        ),
+      ],
     );
   }
 }
