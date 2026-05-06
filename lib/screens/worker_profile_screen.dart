@@ -1503,6 +1503,7 @@ Future<void> showCreateTeamDialog(
                             source: ImageSource.gallery,
                           );
                           if (picked == null) return;
+                          if (!dialogContext.mounted) return;
 
                           setDialogState(() {
                             pickedAvatar = picked;
@@ -1574,6 +1575,7 @@ Future<void> showCreateTeamDialog(
 
                       try {
                         final duplicate = await teamAlreadyExists(name);
+                        if (!dialogContext.mounted) return;
                         if (duplicate) {
                           createRequestInProgress = false;
                           setDialogState(() {
@@ -1598,6 +1600,7 @@ Future<void> showCreateTeamDialog(
 
                           await ref.putFile(File(pickedAvatar!.path));
                           avatarUrl = await ref.getDownloadURL();
+                          if (!dialogContext.mounted) return;
                         }
 
                         await FirebaseFirestore.instance

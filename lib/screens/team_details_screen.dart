@@ -33,7 +33,7 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
   bool uploadingTeamPortfolio = false;
   bool addingMember = false;
 
-  String get currentUserId => FirebaseAuth.instance.currentUser!.uid;
+  String? get currentUserId => FirebaseAuth.instance.currentUser?.uid;
 
   List<String> memberIdsFrom(dynamic value) {
     if (value is! List) return [];
@@ -55,12 +55,15 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
   }
 
   bool isTeamLeader(Map<String, dynamic> team) {
-    return team["ownerId"] == currentUserId ||
-        team["createdBy"] == currentUserId;
+    final uid = currentUserId;
+    if (uid == null || uid.isEmpty) return false;
+    return team["ownerId"] == uid || team["createdBy"] == uid;
   }
 
   bool isTeamMember(List<String> members) {
-    return members.contains(currentUserId);
+    final uid = currentUserId;
+    if (uid == null || uid.isEmpty) return false;
+    return members.contains(uid);
   }
 
   Future<bool> confirmAction({
@@ -221,38 +224,45 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
 
   Future<void> addMember(List<String> currentMembers) async {
     if (addingMember) return;
+    if (!mounted) return;
 
     final controller = TextEditingController();
 
-    final query = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text("Add team member"),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              labelText: "Nickname or phone",
-              hintText: "Worker nickname or phone number",
+    String? query;
+    try {
+      query = await showDialog<String?>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text("Add team member"),
+            content: TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: "Nickname or phone",
+                hintText: "Worker nickname or phone number",
+              ),
+              autofocus: true,
             ),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(null),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () =>
-                  Navigator.of(dialogContext).pop(controller.text.trim()),
-              child: const Text("Add"),
-            ),
-          ],
-        );
-      },
-    );
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(null),
+                child: const Text("Cancel"),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final value = controller.text.trim();
+                  Navigator.of(dialogContext).pop(value.isEmpty ? null : value);
+                },
+                child: const Text("Add"),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      controller.dispose();
+    }
 
-    controller.dispose();
     final searchText = query?.trim() ?? "";
     if (!mounted || searchText.isEmpty) return;
 
@@ -334,6 +344,14 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
 
   Future<void> leaveTeam(
       Map<String, dynamic> team, List<String> members) async {
+    final uid = currentUserId;
+    if (uid == null || uid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Sign in again to manage this team")),
+      );
+      return;
+    }
+
     if (isTeamLeader(team)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -351,14 +369,14 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
     if (!confirmed) return;
 
     final updatedMembers = [...members]
-      ..removeWhere((memberId) => memberId == currentUserId);
+      ..removeWhere((memberId) => memberId == uid);
 
     await FirebaseFirestore.instance
         .collection("teams")
         .doc(widget.teamId)
         .set({
       "members": updatedMembers,
-      "memberStatuses.$currentUserId": FieldValue.delete(),
+      "memberStatuses.$uid": FieldValue.delete(),
       "updatedAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
