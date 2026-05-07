@@ -1124,7 +1124,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
               String label;
               switch (status) {
                 case "negotiation":
-                  color = Colors.purple;
+                  color = AppColors.purple;
                   label = "Negotiation";
                   break;
                 case "offer_sent":
@@ -1132,57 +1132,32 @@ class ApplicationDetailsScreen extends StatelessWidget {
                   label = forEmployer ? "Offer Sent" : "Offer Received";
                   break;
                 case "offer_withdrawn":
-                  color = Colors.orange;
+                  color = AppColors.warning;
                   label = "Offer Withdrawn";
                   break;
                 case "offer_accepted":
                 case "accepted":
-                  color = Colors.green;
+                  color = AppColors.success;
                   label = forEmployer ? "Hired" : "Offer Accepted";
                   break;
                 case "offer_rejected":
-                  color = Colors.deepOrange;
+                  color = AppColors.danger;
                   label = "Offer Rejected";
                   break;
                 case "rejected":
-                  color = Colors.red;
+                  color = AppColors.danger;
                   label = "Rejected";
                   break;
                 case "withdrawn":
-                  color = Colors.grey;
+                  color = AppColors.muted;
                   label = "Withdrawn";
                   break;
                 default:
-                  color = AppColors.ink;
+                  color = AppColors.greenDark;
                   label = "Pending";
               }
 
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.72),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: color.withValues(alpha: 0.28)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.ink.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 12,
-                  ),
-                ),
-              );
+              return AppChip.status(label, color: color);
             }
 
             Future<void> setEmployerStatus(String nextStatus) async {
@@ -1207,8 +1182,13 @@ class ApplicationDetailsScreen extends StatelessWidget {
               await openChat(context, liveData);
             }
 
-            List<({bool danger, String label, Future<void> Function() run})>
-                employerMenuActions() {
+            List<
+                ({
+                  bool danger,
+                  IconData icon,
+                  String label,
+                  Future<void> Function() run
+                })> employerMenuActions() {
               final canRestartNegotiation = status == "pending" ||
                   status == "offer_withdrawn" ||
                   status == "offer_rejected";
@@ -1217,16 +1197,19 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 return [
                   (
                     danger: false,
+                    icon: Icons.forum_outlined,
                     label: "Message / Negotiation",
                     run: startNegotiationAndOpenChat,
                   ),
                   (
                     danger: false,
+                    icon: Icons.local_offer_outlined,
                     label: "Make Offer",
                     run: () => openOfferDialog(context, liveData),
                   ),
                   (
                     danger: true,
+                    icon: Icons.close,
                     label: "Reject",
                     run: () => setEmployerStatus("rejected"),
                   ),
@@ -1237,16 +1220,19 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 return [
                   (
                     danger: false,
+                    icon: Icons.chat_bubble_outline,
                     label: "Message",
                     run: () => openChat(context, liveData),
                   ),
                   (
                     danger: false,
+                    icon: Icons.local_offer_outlined,
                     label: "Make Offer",
                     run: () => openOfferDialog(context, liveData),
                   ),
                   (
                     danger: true,
+                    icon: Icons.close,
                     label: "Reject",
                     run: () => setEmployerStatus("rejected"),
                   ),
@@ -1257,11 +1243,13 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 return [
                   (
                     danger: false,
+                    icon: Icons.chat_bubble_outline,
                     label: "Message",
                     run: () => openChat(context, liveData),
                   ),
                   (
                     danger: true,
+                    icon: Icons.undo,
                     label: "Withdraw Offer",
                     run: () => setEmployerStatus("offer_withdrawn"),
                   ),
@@ -1272,6 +1260,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 return [
                   (
                     danger: false,
+                    icon: Icons.chat_bubble_outline,
                     label: "Message",
                     run: () => openChat(context, liveData),
                   ),
@@ -1281,12 +1270,18 @@ class ApplicationDetailsScreen extends StatelessWidget {
               return [];
             }
 
-            List<({bool danger, String label, Future<void> Function() run})>
-                workerMenuActions() {
+            List<
+                ({
+                  bool danger,
+                  IconData icon,
+                  String label,
+                  Future<void> Function() run
+                })> workerMenuActions() {
               if (status == "pending") {
                 return [
                   (
                     danger: false,
+                    icon: Icons.undo,
                     label: "Withdraw Application",
                     run: () => withdrawWorkerApplication(context),
                   ),
@@ -1297,6 +1292,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 return [
                   (
                     danger: false,
+                    icon: Icons.chat_bubble_outline,
                     label: "Message",
                     run: () => openChat(context, liveData),
                   ),
@@ -1307,6 +1303,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 return [
                   (
                     danger: false,
+                    icon: Icons.check_circle_outline,
                     label: "Accept Offer",
                     run: () => acceptOfferFromWorker(
                           context,
@@ -1315,6 +1312,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                   ),
                   (
                     danger: true,
+                    icon: Icons.cancel_outlined,
                     label: "Reject Offer",
                     run: () => updateWorkerActionStatus(
                           status: "offer_rejected",
@@ -1333,6 +1331,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 return [
                   (
                     danger: false,
+                    icon: Icons.chat_bubble_outline,
                     label: "Message",
                     run: () => openChat(context, liveData),
                   ),
@@ -1360,36 +1359,67 @@ class ApplicationDetailsScreen extends StatelessWidget {
                   else
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.72),
-                        shape: BoxShape.circle,
+                        color: AppColors.surface.withValues(alpha: 0.88),
+                        borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: AppColors.ink.withValues(alpha: 0.08),
+                          color:
+                              AppColors.blueprintLine.withValues(alpha: 0.36),
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.glow.withValues(alpha: 0.12),
+                            blurRadius: 12,
+                          ),
+                        ],
                       ),
-                      child: PopupMenuButton<int>(
-                        tooltip: "Actions",
-                        icon: const Icon(Icons.more_vert),
-                        color: Colors.white,
-                        onSelected: (index) async {
-                          await actions[index].run();
-                        },
-                        itemBuilder: (context) {
-                          return [
-                            for (var i = 0; i < actions.length; i++)
-                              PopupMenuItem<int>(
-                                value: i,
-                                child: Text(
-                                  actions[i].label,
-                                  style: TextStyle(
-                                    color: actions[i].danger
-                                        ? Colors.red
-                                        : AppColors.ink,
-                                    fontWeight: FontWeight.w800,
+                      child: Theme(
+                        data: Theme.of(context).copyWith(
+                          splashColor:
+                              AppColors.blueprintLine.withValues(alpha: 0.08),
+                        ),
+                        child: PopupMenuButton<int>(
+                          tooltip: "Actions",
+                          icon: const Icon(
+                            Icons.more_horiz,
+                            color: AppColors.ink,
+                          ),
+                          onSelected: (index) async {
+                            await actions[index].run();
+                          },
+                          itemBuilder: (context) {
+                            return [
+                              for (var i = 0; i < actions.length; i++)
+                                PopupMenuItem<int>(
+                                  value: i,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        actions[i].icon,
+                                        size: 18,
+                                        color: actions[i].danger
+                                            ? AppColors.danger
+                                            : AppColors.greenDark,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Flexible(
+                                        child: Text(
+                                          actions[i].label,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: actions[i].danger
+                                                ? AppColors.danger
+                                                : AppColors.ink,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
-                          ];
-                        },
+                            ];
+                          },
+                        ),
                       ),
                     ),
                 ],
