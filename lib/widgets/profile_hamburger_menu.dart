@@ -2,7 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../models/job.dart';
+import '../screens/application_details_screen.dart';
 import '../screens/edit_profile_screen.dart';
+import '../screens/employer_profile_screen.dart';
+import '../screens/job_details_screen.dart';
 import '../services/billing_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -83,7 +87,10 @@ class ProfileHamburgerMenu extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => AdminInboxScreen(userId: uid),
+                          builder: (_) => AdminInboxScreen(
+                            userId: uid,
+                            role: role,
+                          ),
                         ),
                       );
                     },
@@ -296,11 +303,61 @@ class ProfileSettingsScreen extends StatelessWidget {
 
 class AdminInboxScreen extends StatelessWidget {
   final String userId;
+  final String role;
 
   const AdminInboxScreen({
     super.key,
     required this.userId,
+    required this.role,
   });
+
+  String? cleanId(dynamic value) {
+    final text = value?.toString().trim() ?? "";
+    if (text.isEmpty || text == "null") return null;
+    return text;
+  }
+
+  String formatCreatedAt(dynamic value) {
+    if (value is Timestamp) {
+      final date = value.toDate();
+      final day = date.day.toString().padLeft(2, "0");
+      final month = date.month.toString().padLeft(2, "0");
+      final hour = date.hour.toString().padLeft(2, "0");
+      final minute = date.minute.toString().padLeft(2, "0");
+      return "$day.$month.${date.year} $hour:$minute";
+    }
+    return "";
+  }
+
+  Future<void> markAsRead(
+    DocumentReference<Map<String, dynamic>> ref,
+  ) async {
+    await ref.set({
+      "read": true,
+      "readAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> openInboxMessage(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    await markAsRead(doc.reference);
+
+    if (!context.mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AdminInboxMessageScreen(
+          userId: userId,
+          role: role,
+          messageId: doc.id,
+          initialData: doc.data(),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -329,28 +386,269 @@ class AdminInboxScreen extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               itemCount: docs.length,
               itemBuilder: (context, index) {
+                final doc = docs[index];
                 final data = docs[index].data();
+                final read = data["read"] == true;
+                final message =
+                    (data["message"] ?? data["body"])?.toString() ?? "";
+                final createdAt = formatCreatedAt(data["createdAt"]);
+
                 return StroykaSurface(
                   margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(16),
+                  texture: read
+                      ? "assets/branding/texture_light_triangles.jpg"
+                      : "assets/branding/texture_light_dots.jpg",
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 10,
+                    ),
+                    title: Text(
+                      data["title"]?.toString() ?? "Admin message",
+                      style: TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: read ? FontWeight.w800 : FontWeight.w900,
+                      ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (message.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            message,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                        if (createdAt.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            createdAt,
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (!read)
+                          const Icon(
+                            Icons.circle,
+                            size: 10,
+                            color: AppColors.green,
+                          ),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.chevron_right),
+                      ],
+                    ),
+                    onTap: () => openInboxMessage(context, doc),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class AdminInboxMessageScreen extends StatelessWidget {
+  final String userId;
+  final String role;
+  final String messageId;
+  final Map<String, dynamic> initialData;
+
+  const AdminInboxMessageScreen({
+    super.key,
+    required this.userId,
+    required this.role,
+    required this.messageId,
+    required this.initialData,
+  });
+
+  String? cleanId(dynamic value) {
+    final text = value?.toString().trim() ?? "";
+    if (text.isEmpty || text == "null") return null;
+    return text;
+  }
+
+  String valueText(dynamic value) {
+    if (value == null) return "";
+    if (value is Timestamp) return value.toDate().toString();
+    return value.toString();
+  }
+
+  bool hasRelatedTarget(Map<String, dynamic> data) {
+    return cleanId(data["relatedTargetType"] ?? data["targetType"]) != null ||
+        cleanId(data["relatedTargetId"] ?? data["targetId"]) != null ||
+        cleanId(data["relatedApplicationId"] ?? data["applicationId"]) !=
+            null ||
+        cleanId(data["relatedJobId"] ?? data["jobId"]) != null ||
+        cleanId(data["relatedPaymentRequestId"]) != null;
+  }
+
+  Future<void> openRelatedTarget(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) async {
+    final targetType = cleanId(data["relatedTargetType"] ?? data["targetType"]);
+    final targetId = cleanId(data["relatedTargetId"] ?? data["targetId"]);
+    final applicationId =
+        cleanId(data["relatedApplicationId"] ?? data["applicationId"]);
+    final jobId = cleanId(data["relatedJobId"] ?? data["jobId"]);
+    final paymentRequestId = cleanId(data["relatedPaymentRequestId"]);
+
+    Future<void> showUnavailable() async {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Related item is no longer available")),
+      );
+    }
+
+    if (targetType == "application" || applicationId != null) {
+      final id = targetId ?? applicationId;
+      if (id == null) return showUnavailable();
+
+      final appDoc = await FirebaseFirestore.instance
+          .collection("applications")
+          .doc(id)
+          .get();
+
+      if (!appDoc.exists || appDoc.data() == null) return showUnavailable();
+
+      final appData = appDoc.data()!;
+      appData["id"] = appDoc.id;
+
+      if (!context.mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ApplicationDetailsScreen(
+            applicationId: id,
+            data: appData,
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (targetType == "job" || jobId != null) {
+      final id = targetId ?? jobId;
+      if (id == null) return showUnavailable();
+
+      final jobDoc =
+          await FirebaseFirestore.instance.collection("jobs").doc(id).get();
+
+      if (!jobDoc.exists || jobDoc.data() == null) return showUnavailable();
+
+      final job = Job.fromFirestore(jobDoc.id, jobDoc.data()!);
+      if (!context.mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => JobDetailScreen(job: job)),
+      );
+      return;
+    }
+
+    if (targetType == "billing" ||
+        targetType == "payment" ||
+        paymentRequestId != null) {
+      if (role != "employer") return showUnavailable();
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EmployerProfileScreen(
+            userId: userId,
+            initialTab: 4,
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showUnavailable();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ref = FirebaseFirestore.instance
+        .collection("users")
+        .doc(userId)
+        .collection("notifications")
+        .doc(messageId);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text("Admin message")),
+      body: StroykaScreenBody(
+        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: ref.snapshots(),
+          builder: (context, snapshot) {
+            final data = snapshot.data?.data() ?? initialData;
+            final title = data["title"]?.toString() ?? "Admin message";
+            final message = (data["message"] ?? data["body"])?.toString() ?? "";
+            final rows = [
+              ("Type", data["type"]),
+              ("Created", data["createdAt"]),
+              ("Related type", data["relatedTargetType"] ?? data["targetType"]),
+              ("Related id", data["relatedTargetId"] ?? data["targetId"]),
+            ];
+
+            return ListView(
+              padding: const EdgeInsets.all(12),
+              children: [
+                StroykaSurface(
+                  padding: const EdgeInsets.all(18),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        data["title"]?.toString() ?? "Admin message",
+                        title,
                         style: const TextStyle(
                           color: AppColors.ink,
+                          fontSize: 20,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        (data["message"] ?? data["body"])?.toString() ?? "",
-                      ),
+                      if (message.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        SelectableText(
+                          message,
+                          style: const TextStyle(
+                            color: AppColors.ink,
+                            height: 1.45,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+                      ...rows.map((row) {
+                        final value = valueText(row.$2);
+                        if (value.isEmpty) return const SizedBox();
+                        return _InfoRow(row.$1, value);
+                      }),
+                      if (hasRelatedTarget(data)) ...[
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => openRelatedTarget(context, data),
+                            icon: const Icon(Icons.open_in_new),
+                            label: const Text("Open related item"),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
-                );
-              },
+                ),
+              ],
             );
           },
         ),
