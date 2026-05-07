@@ -911,6 +911,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
     BuildContext context,
     Set<String> selectedMembers,
     Map<String, dynamic> source,
+    Widget headerControls,
   ) {
     final teamId = source["teamId"];
     final memberIds = List<String>.from(source["members"] ?? []);
@@ -939,6 +940,8 @@ class ApplicationDetailsScreen extends StatelessWidget {
               ),
               child: Column(
                 children: [
+                  headerControls,
+                  const SizedBox(height: 14),
                   CircleAvatar(
                     radius: 45,
                     backgroundColor: Colors.grey.shade300,
@@ -1162,236 +1165,238 @@ class ApplicationDetailsScreen extends StatelessWidget {
                   label = "Pending";
               }
 
-              return Align(
-                alignment: Alignment.centerRight,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: color.withValues(alpha: 0.24)),
-                  ),
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 12,
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.72),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: color.withValues(alpha: 0.28)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.ink.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
+                  ],
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12,
                   ),
                 ),
               );
             }
 
-            Widget employerActions() {
-              Future<void> setStatus(String nextStatus) async {
-                await ApplicationActivityService.updateStatus(
-                  applicationId: applicationId,
-                  status: nextStatus,
-                  unreadFor: ApplicationActivityService.workerRecipients(
-                    liveData,
-                  ),
-                );
+            Future<void> setEmployerStatus(String nextStatus) async {
+              await ApplicationActivityService.updateStatus(
+                applicationId: applicationId,
+                status: nextStatus,
+                unreadFor: ApplicationActivityService.workerRecipients(
+                  liveData,
+                ),
+              );
 
-                await NotificationService().notifyApplicationStatus(
-                  applicationId: applicationId,
-                  applicationData: liveData,
-                  status: nextStatus,
-                );
-              }
+              await NotificationService().notifyApplicationStatus(
+                applicationId: applicationId,
+                applicationData: liveData,
+                status: nextStatus,
+              );
+            }
 
-              Future<void> startNegotiationAndOpenChat() async {
-                await setStatus("negotiation");
-                if (!context.mounted) return;
-                await openChat(context, liveData);
-              }
+            Future<void> startNegotiationAndOpenChat() async {
+              await setEmployerStatus("negotiation");
+              if (!context.mounted) return;
+              await openChat(context, liveData);
+            }
 
-              Widget actionButton({
-                required String label,
-                required VoidCallback? onPressed,
-                bool outlined = false,
-                bool danger = false,
-              }) {
-                final style = danger
-                    ? dangerActionStyle
-                    : outlined
-                        ? secondaryActionStyle
-                        : primaryActionStyle;
-
-                return Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: outlined || danger
-                        ? OutlinedButton(
-                            style: style,
-                            onPressed: onPressed,
-                            child: Text(label),
-                          )
-                        : ElevatedButton(
-                            style: style,
-                            onPressed: onPressed,
-                            child: Text(label),
-                          ),
-                  ),
-                );
-              }
-
+            List<({bool danger, String label, Future<void> Function() run})>
+                employerMenuActions() {
               final canRestartNegotiation = status == "pending" ||
                   status == "offer_withdrawn" ||
                   status == "offer_rejected";
 
-              return Column(
-                children: [
-                  statusBadge(forEmployer: true),
-                  const SizedBox(height: 6),
-                  if (canRestartNegotiation) ...[
-                    actionButton(
-                      label: "Message / Negotiation",
-                      onPressed: startNegotiationAndOpenChat,
-                    ),
-                    actionButton(
-                      label: "Make Offer",
-                      onPressed: () => openOfferDialog(context, liveData),
-                    ),
-                    actionButton(
-                      label: "Reject",
-                      onPressed: () => setStatus("rejected"),
-                      danger: true,
-                    ),
-                  ],
-                  if (status == "negotiation") ...[
-                    actionButton(
-                      label: "Message",
-                      onPressed: () => openChat(context, liveData),
-                    ),
-                    actionButton(
-                      label: "Make Offer",
-                      onPressed: () => openOfferDialog(context, liveData),
-                    ),
-                    actionButton(
-                      label: "Reject",
-                      onPressed: () => setStatus("rejected"),
-                      danger: true,
-                    ),
-                  ],
-                  if (status == "offer_sent") ...[
-                    actionButton(
-                      label: "Message",
-                      onPressed: () => openChat(context, liveData),
-                    ),
-                    actionButton(
-                      label: "Withdraw Offer",
-                      onPressed: () => setStatus("offer_withdrawn"),
-                      danger: true,
-                    ),
-                  ],
-                  if (status == "offer_accepted" || status == "accepted") ...[
-                    actionButton(
-                      label: "Message",
-                      onPressed: () => openChat(context, liveData),
-                    ),
-                  ],
-                  if (status == "rejected") ...[
-                    const SizedBox(height: 6),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: Colors.red.withValues(alpha: 0.22),
-                        ),
-                      ),
-                      child: const Text(
-                        "Application rejected",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              );
-            }
-
-            Widget workerActions() {
-              Widget actionButton({
-                required String label,
-                required VoidCallback? onPressed,
-                bool danger = false,
-              }) {
-                return Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: danger
-                        ? OutlinedButton(
-                            style: dangerActionStyle,
-                            onPressed: onPressed,
-                            child: Text(label),
-                          )
-                        : ElevatedButton(
-                            style: primaryActionStyle,
-                            onPressed: onPressed,
-                            child: Text(label),
-                          ),
+              if (canRestartNegotiation) {
+                return [
+                  (
+                    danger: false,
+                    label: "Message / Negotiation",
+                    run: startNegotiationAndOpenChat,
                   ),
-                );
+                  (
+                    danger: false,
+                    label: "Make Offer",
+                    run: () => openOfferDialog(context, liveData),
+                  ),
+                  (
+                    danger: true,
+                    label: "Reject",
+                    run: () => setEmployerStatus("rejected"),
+                  ),
+                ];
               }
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              if (status == "negotiation") {
+                return [
+                  (
+                    danger: false,
+                    label: "Message",
+                    run: () => openChat(context, liveData),
+                  ),
+                  (
+                    danger: false,
+                    label: "Make Offer",
+                    run: () => openOfferDialog(context, liveData),
+                  ),
+                  (
+                    danger: true,
+                    label: "Reject",
+                    run: () => setEmployerStatus("rejected"),
+                  ),
+                ];
+              }
+
+              if (status == "offer_sent") {
+                return [
+                  (
+                    danger: false,
+                    label: "Message",
+                    run: () => openChat(context, liveData),
+                  ),
+                  (
+                    danger: true,
+                    label: "Withdraw Offer",
+                    run: () => setEmployerStatus("offer_withdrawn"),
+                  ),
+                ];
+              }
+
+              if (status == "offer_accepted" || status == "accepted") {
+                return [
+                  (
+                    danger: false,
+                    label: "Message",
+                    run: () => openChat(context, liveData),
+                  ),
+                ];
+              }
+
+              return [];
+            }
+
+            List<({bool danger, String label, Future<void> Function() run})>
+                workerMenuActions() {
+              if (status == "pending") {
+                return [
+                  (
+                    danger: false,
+                    label: "Withdraw Application",
+                    run: () => withdrawWorkerApplication(context),
+                  ),
+                ];
+              }
+
+              if (status == "negotiation") {
+                return [
+                  (
+                    danger: false,
+                    label: "Message",
+                    run: () => openChat(context, liveData),
+                  ),
+                ];
+              }
+
+              if (status == "offer_sent") {
+                return [
+                  (
+                    danger: false,
+                    label: "Accept Offer",
+                    run: () => acceptOfferFromWorker(
+                          context,
+                          liveData,
+                        ),
+                  ),
+                  (
+                    danger: true,
+                    label: "Reject Offer",
+                    run: () => updateWorkerActionStatus(
+                          status: "offer_rejected",
+                          source: liveData,
+                        ),
+                  ),
+                ];
+              }
+
+              if (status == "offer_accepted" ||
+                  status == "accepted" ||
+                  status == "offer_rejected") {
+                return [
+                  (
+                    danger: false,
+                    label: "Message",
+                    run: () => openChat(context, liveData),
+                  ),
+                ];
+              }
+
+              return [];
+            }
+
+            Widget headerControls({required bool forEmployer}) {
+              final actions =
+                  forEmployer ? employerMenuActions() : workerMenuActions();
+
+              return Row(
                 children: [
-                  statusBadge(forEmployer: false),
-                  const SizedBox(height: 6),
-                  if (status == "pending") ...[
-                    actionButton(
-                      label: "Withdraw Application",
-                      onPressed: () => withdrawWorkerApplication(context),
-                    ),
-                  ],
-                  if (status == "negotiation") ...[
-                    actionButton(
-                      label: "Message",
-                      onPressed: () => openChat(context, liveData),
-                    ),
-                  ],
-                  if (status == "offer_sent") ...[
-                    actionButton(
-                      label: "Accept Offer",
-                      onPressed: () => acceptOfferFromWorker(
-                        context,
-                        liveData,
+                  statusBadge(forEmployer: forEmployer),
+                  const Spacer(),
+                  if (actions.isEmpty)
+                    const IconButton(
+                      tooltip: "No actions available",
+                      onPressed: null,
+                      icon: Icon(Icons.more_vert),
+                      color: AppColors.ink,
+                    )
+                  else
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.72),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.ink.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: PopupMenuButton<int>(
+                        tooltip: "Actions",
+                        icon: const Icon(Icons.more_vert),
+                        color: Colors.white,
+                        onSelected: (index) async {
+                          await actions[index].run();
+                        },
+                        itemBuilder: (context) {
+                          return [
+                            for (var i = 0; i < actions.length; i++)
+                              PopupMenuItem<int>(
+                                value: i,
+                                child: Text(
+                                  actions[i].label,
+                                  style: TextStyle(
+                                    color: actions[i].danger
+                                        ? Colors.red
+                                        : AppColors.ink,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                          ];
+                        },
                       ),
                     ),
-                    actionButton(
-                      label: "Reject Offer",
-                      onPressed: () => updateWorkerActionStatus(
-                        status: "offer_rejected",
-                        source: liveData,
-                      ),
-                      danger: true,
-                    ),
-                  ],
-                  if (status == "offer_accepted" || status == "accepted") ...[
-                    actionButton(
-                      label: "Message",
-                      onPressed: () => openChat(context, liveData),
-                    ),
-                  ],
-                  if (status == "offer_rejected") ...[
-                    actionButton(
-                      label: "Message",
-                      onPressed: () => openChat(context, liveData),
-                    ),
-                  ],
                 ],
               );
             }
@@ -1422,6 +1427,8 @@ class ApplicationDetailsScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (!isTeam) ...[
+                        headerControls(forEmployer: isEmployerViewer),
+                        const SizedBox(height: 14),
                         Center(
                           child: Column(
                             children: [
@@ -1475,11 +1482,14 @@ class ApplicationDetailsScreen extends StatelessWidget {
                         buildReferencesSection(references),
                       ],
                       if (isTeam)
-                        buildTeamProfile(context, selectedMembers, liveData)
+                        buildTeamProfile(
+                          context,
+                          selectedMembers,
+                          liveData,
+                          headerControls(forEmployer: isEmployerViewer),
+                        )
                       else
                         buildPortfolioGallery(workerId.toString()),
-                      const SizedBox(height: 22),
-                      isEmployerViewer ? employerActions() : workerActions(),
                     ],
                   ),
                 ),
@@ -1491,7 +1501,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(20),
                 child: StroykaSurface(
                   padding: const EdgeInsets.all(18),
-                  child: isEmployerViewer ? employerActions() : workerActions(),
+                  child: headerControls(forEmployer: isEmployerViewer),
                 ),
               );
             }
@@ -1511,9 +1521,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                     padding: const EdgeInsets.all(20),
                     child: StroykaSurface(
                       padding: const EdgeInsets.all(18),
-                      child: isEmployerViewer
-                          ? employerActions()
-                          : workerActions(),
+                      child: headerControls(forEmployer: isEmployerViewer),
                     ),
                   );
                 }
