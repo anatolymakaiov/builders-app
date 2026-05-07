@@ -600,7 +600,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     builder: (_) => const PortfolioScreen(),
                   ),
                 );
-                await loadProfile();
               },
               child: const Text("Edit"),
             ),
