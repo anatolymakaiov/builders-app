@@ -99,7 +99,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       case "negotiation":
         return "NEGOTIATION";
       case "offer_sent":
-        return "OFFER";
+        return "OFFER RECEIVED";
       case "accepted":
       case "offer_accepted":
         return "ACCEPTED";

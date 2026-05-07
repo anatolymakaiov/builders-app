@@ -1614,7 +1614,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         return "Negotiation";
       case "offer":
       case "offer_sent":
-        return "Offer Sent";
+        return "Offer Received";
       case "offer_accepted":
       case "accepted":
         return "Hired";

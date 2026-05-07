@@ -504,9 +504,16 @@ class NotificationService {
 
     final jobId = applicationData["jobId"]?.toString();
     final jobTitle = applicationData["jobTitle"]?.toString() ?? "Job";
+    final employerId = applicationData["employerId"]?.toString() ??
+        applicationData["ownerId"]?.toString();
+    final workerId = applicationData["workerId"]?.toString() ??
+        applicationData["userId"]?.toString();
     final validUntil = offer["validUntil"]?.toString().trim() ?? "";
 
     for (final userId in recipients) {
+      final notificationWorkerId =
+          workerId?.isNotEmpty == true ? workerId : userId;
+
       await sendNotification(
         userId: userId,
         title: "New offer received",
@@ -515,6 +522,17 @@ class NotificationService {
         applicationId: applicationId,
         jobId: jobId,
         extra: {
+          "targetType": "application",
+          "targetId": applicationId,
+          "applicationId": applicationId,
+          "relatedApplicationId": applicationId,
+          if (jobId != null && jobId.isNotEmpty) ...{
+            "jobId": jobId,
+            "relatedJobId": jobId,
+          },
+          "workerId": notificationWorkerId,
+          if (employerId != null && employerId.isNotEmpty)
+            "employerId": employerId,
           "offer": offer,
           "jobTitle": jobTitle,
           "startDateTime": offer["startDateTime"] ?? offer["startDate"],
@@ -531,6 +549,17 @@ class NotificationService {
           applicationId: applicationId,
           jobId: jobId,
           extra: {
+            "targetType": "application",
+            "targetId": applicationId,
+            "applicationId": applicationId,
+            "relatedApplicationId": applicationId,
+            if (jobId != null && jobId.isNotEmpty) ...{
+              "jobId": jobId,
+              "relatedJobId": jobId,
+            },
+            "workerId": notificationWorkerId,
+            if (employerId != null && employerId.isNotEmpty)
+              "employerId": employerId,
             "offer": offer,
             "jobTitle": jobTitle,
             "validUntil": offer["validUntil"],

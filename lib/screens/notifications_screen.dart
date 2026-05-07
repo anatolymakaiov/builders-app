@@ -100,6 +100,8 @@ class NotificationsScreen extends StatelessWidget {
   Future<void> openApplicationNotification(
     BuildContext context, {
     required String applicationId,
+    bool openWorkerJobDetails = false,
+    String? fallbackJobId,
   }) async {
     final appDoc = await FirebaseFirestore.instance
         .collection("applications")
@@ -118,6 +120,27 @@ class NotificationsScreen extends StatelessWidget {
     final appData = appDoc.data()!;
     appData["id"] = appDoc.id;
 
+    if (openWorkerJobDetails) {
+      final jobId = cleanId(appData["jobId"] ?? fallbackJobId);
+      if (jobId == null) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("This offer is missing the related job details"),
+          ),
+        );
+        return;
+      }
+
+      if (!context.mounted) return;
+      await openJobNotification(
+        context,
+        jobId: jobId,
+        applicationId: applicationId,
+      );
+      return;
+    }
+
     if (!context.mounted) return;
 
     Navigator.push(
@@ -129,6 +152,20 @@ class NotificationsScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<String?> currentUserRole() async {
+    final uid = userId;
+    if (uid == null) return null;
+
+    final userDoc =
+        await FirebaseFirestore.instance.collection("users").doc(uid).get();
+    return userDoc.data()?["role"]?.toString().trim().toLowerCase();
+  }
+
+  bool isWorkerOfferNotification(Map<String, dynamic> data) {
+    final type = data["type"]?.toString().trim().toLowerCase() ?? "";
+    return type == "offer" || type == "offer_expiry" || type == "work_start";
   }
 
   Future<void> openChatNotification(
@@ -272,13 +309,21 @@ class NotificationsScreen extends StatelessWidget {
     );
     final jobId = cleanId(data["relatedJobId"] ?? data["jobId"]);
     final workerId = cleanId(data["workerId"]);
+    final role = await currentUserRole();
+    if (!context.mounted) return;
 
     switch (targetType) {
       case "application":
       case "offer":
         final id = targetId ?? applicationId;
         if (id != null) {
-          await openApplicationNotification(context, applicationId: id);
+          await openApplicationNotification(
+            context,
+            applicationId: id,
+            fallbackJobId: jobId,
+            openWorkerJobDetails:
+                role == "worker" && isWorkerOfferNotification(data),
+          );
           return;
         }
         break;
@@ -324,7 +369,13 @@ class NotificationsScreen extends StatelessWidget {
     if (!context.mounted) return;
 
     if (applicationId != null) {
-      await openApplicationNotification(context, applicationId: applicationId);
+      await openApplicationNotification(
+        context,
+        applicationId: applicationId,
+        fallbackJobId: jobId,
+        openWorkerJobDetails:
+            role == "worker" && isWorkerOfferNotification(data),
+      );
       return;
     }
     if (!context.mounted) return;
