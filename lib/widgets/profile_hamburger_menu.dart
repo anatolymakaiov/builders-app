@@ -351,11 +351,6 @@ class MyAccountScreen extends StatelessWidget {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 12),
-                      const _SectionTitle("Authentication settings"),
-                      const Text(
-                        "Password login, passwordless login, and biometric login are prepared for future setup.",
-                      ),
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
@@ -395,35 +390,172 @@ class MyAccountScreen extends StatelessWidget {
   }
 }
 
-class ProfileSettingsScreen extends StatelessWidget {
+class ProfileSettingsScreen extends StatefulWidget {
   const ProfileSettingsScreen({super.key});
 
   @override
+  State<ProfileSettingsScreen> createState() => _ProfileSettingsScreenState();
+}
+
+class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
+  bool savingLanguage = false;
+
+  String languageLabel(String value) {
+    switch (value) {
+      case "ru":
+        return "Russian";
+      case "en":
+      default:
+        return "English";
+    }
+  }
+
+  Future<void> saveLanguage(String language) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    setState(() => savingLanguage = true);
+    try {
+      await FirebaseFirestore.instance.collection("users").doc(uid).set({
+        "settings": {
+          "language": language,
+          "updatedAt": FieldValue.serverTimestamp(),
+        },
+        "language": language,
+      }, SetOptions(merge: true));
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Language saved: ${languageLabel(language)}. Full app localization is future-ready.",
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not save language setting")),
+      );
+    } finally {
+      if (mounted) setState(() => savingLanguage = false);
+    }
+  }
+
+  Widget buildAuthenticationOption({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, color: AppColors.greenDark),
+      title: Text(
+        title,
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+      subtitle: Text(subtitle),
+      trailing: const Chip(
+        label: Text("Future-ready"),
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
     return Scaffold(
       appBar: AppBar(title: const Text("Settings")),
       body: StroykaScreenBody(
-        child: ListView(
-          padding: const EdgeInsets.all(12),
-          children: const [
-            StroykaSurface(
-              padding: EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _SectionTitle("App language"),
-                  Text(
-                    "English is active now. English/Russian localization support is planned for a future release.",
+        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: uid == null
+              ? null
+              : FirebaseFirestore.instance
+                  .collection("users")
+                  .doc(uid)
+                  .snapshots(),
+          builder: (context, snapshot) {
+            final data = snapshot.data?.data() ?? {};
+            final settings = data["settings"] is Map
+                ? Map<String, dynamic>.from(data["settings"])
+                : <String, dynamic>{};
+            final language =
+                (settings["language"] ?? data["language"] ?? "en").toString();
+
+            return ListView(
+              padding: const EdgeInsets.all(12),
+              children: [
+                StroykaSurface(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _SectionTitle("App language"),
+                      Text("Current language: ${languageLabel(language)}"),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: language == "ru" ? "ru" : "en",
+                        decoration: const InputDecoration(
+                          labelText: "Change language",
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: "en",
+                            child: Text("English"),
+                          ),
+                          DropdownMenuItem(
+                            value: "ru",
+                            child: Text("Russian"),
+                          ),
+                        ],
+                        onChanged: savingLanguage || uid == null
+                            ? null
+                            : (value) {
+                                if (value == null || value == language) return;
+                                saveLanguage(value);
+                              },
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        "English remains active for the app interface now. Russian selection is stored for future localization support.",
+                      ),
+                    ],
                   ),
-                  SizedBox(height: 14),
-                  _SectionTitle("Authentication"),
-                  Text(
-                    "Password login, passwordless login, and biometric login are reserved for future setup.",
+                ),
+                const SizedBox(height: 12),
+                StroykaSurface(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _SectionTitle("Authentication settings"),
+                      buildAuthenticationOption(
+                        icon: Icons.lock_outline,
+                        title: "Password login",
+                        subtitle:
+                            "Current Firebase email/password sign-in remains active.",
+                      ),
+                      buildAuthenticationOption(
+                        icon: Icons.mark_email_read_outlined,
+                        title: "Passwordless login",
+                        subtitle:
+                            "Prepared for future email link or one-time-code sign-in.",
+                      ),
+                      buildAuthenticationOption(
+                        icon: Icons.fingerprint,
+                        title: "Biometric login",
+                        subtitle:
+                            "Prepared for Face ID / Touch ID when biometric package and secure token flow are added.",
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-          ],
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
