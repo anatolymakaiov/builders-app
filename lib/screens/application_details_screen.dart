@@ -919,46 +919,18 @@ class ApplicationDetailsScreen extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.90),
-                borderRadius: BorderRadius.circular(14),
+            applicationHeaderCard(
+              headerControls: headerControls,
+              avatar: CircleAvatar(
+                radius: 45,
+                backgroundColor: Colors.grey.shade300,
+                backgroundImage:
+                    avatar == null ? null : NetworkImage(avatar.toString()),
+                child:
+                    avatar == null ? const Icon(Icons.groups, size: 40) : null,
               ),
-              child: Column(
-                children: [
-                  headerControls,
-                  const SizedBox(height: 14),
-                  CircleAvatar(
-                    radius: 45,
-                    backgroundColor: Colors.grey.shade300,
-                    backgroundImage:
-                        avatar == null ? null : NetworkImage(avatar.toString()),
-                    child: avatar == null
-                        ? const Icon(Icons.groups, size: 40)
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    teamName.toString(),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "${memberIds.length} members",
-                    style: const TextStyle(
-                      color: AppColors.muted,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
+              title: teamName.toString(),
+              subtitle: "${memberIds.length} members",
             ),
             const SizedBox(height: 24),
             if (description != null &&
@@ -1065,6 +1037,64 @@ class ApplicationDetailsScreen extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  Widget applicationHeaderCard({
+    required Widget headerControls,
+    required Widget avatar,
+    required String title,
+    String? subtitle,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.90),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: headerControls,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 42),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  avatar,
+                  const SizedBox(height: 12),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AppColors.ink,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  if (subtitle != null && subtitle.trim().isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1452,41 +1482,20 @@ class ApplicationDetailsScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (!isTeam) ...[
-                        headerControls(forEmployer: isEmployerViewer),
-                        const SizedBox(height: 14),
-                        Center(
-                          child: Column(
-                            children: [
-                              CircleAvatar(
-                                radius: 45,
-                                backgroundColor: Colors.grey.shade300,
-                                backgroundImage:
-                                    photo != null ? NetworkImage(photo) : null,
-                                child: photo == null
-                                    ? const Icon(Icons.person, size: 40)
-                                    : null,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                name,
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (trade.isNotEmpty) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  trade,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ],
+                        applicationHeaderCard(
+                          headerControls:
+                              headerControls(forEmployer: isEmployerViewer),
+                          avatar: CircleAvatar(
+                            radius: 45,
+                            backgroundColor: Colors.grey.shade300,
+                            backgroundImage:
+                                photo != null ? NetworkImage(photo) : null,
+                            child: photo == null
+                                ? const Icon(Icons.person, size: 40)
+                                : null,
                           ),
+                          title: name.toString(),
+                          subtitle: trade.toString(),
                         ),
                         const SizedBox(height: 30),
                         buildWorkerPhoneSection(phone),
