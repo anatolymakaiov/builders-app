@@ -76,6 +76,11 @@ service cloud.firestore {
         allow read, update, delete: if isAdmin() || isSelf(userId);
       }
 
+      match /admin_inbox/{messageId} {
+        allow create, delete: if isAdmin();
+        allow read, update: if isAdmin() || isSelf(userId);
+      }
+
       match /portfolio/{portfolioId} {
         allow read: if signedIn();
         allow create, update, delete: if isAdmin() || isSelf(userId);

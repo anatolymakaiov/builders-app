@@ -629,11 +629,16 @@ class AdminInboxScreen extends StatelessWidget {
           stream: FirebaseFirestore.instance
               .collection("users")
               .doc(userId)
-              .collection("notifications")
-              .where("type", isEqualTo: "admin_message")
+              .collection("admin_inbox")
               .orderBy("createdAt", descending: true)
               .snapshots(),
           builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return const Center(
+                child: Text("Could not load admin inbox messages"),
+              );
+            }
+
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
@@ -843,7 +848,7 @@ class AdminInboxMessageScreen extends StatelessWidget {
     final ref = FirebaseFirestore.instance
         .collection("users")
         .doc(userId)
-        .collection("notifications")
+        .collection("admin_inbox")
         .doc(messageId);
 
     return Scaffold(

@@ -183,6 +183,7 @@ class AdminDashboardScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
           children: [
+            const _AdminInboxSenderSection(),
             _JobModerationSection(
               onApprove: approveJob,
               onReject: rejectJob,
@@ -199,6 +200,223 @@ class AdminDashboardScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AdminInboxSenderSection extends StatefulWidget {
+  const _AdminInboxSenderSection();
+
+  @override
+  State<_AdminInboxSenderSection> createState() =>
+      _AdminInboxSenderSectionState();
+}
+
+class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
+  final userIdController = TextEditingController();
+  final titleController = TextEditingController();
+  final messageController = TextEditingController();
+  String audience = "worker";
+  bool sending = false;
+
+  @override
+  void dispose() {
+    userIdController.dispose();
+    titleController.dispose();
+    messageController.dispose();
+    super.dispose();
+  }
+
+  String audienceLabel(String value) {
+    switch (value) {
+      case "employer":
+        return "Specific employer";
+      case "all_employers":
+        return "All employers";
+      case "all_workers":
+        return "All workers";
+      case "worker":
+      default:
+        return "Specific worker";
+    }
+  }
+
+  bool get requiresUserId => audience == "worker" || audience == "employer";
+
+  Future<List<String>> resolveRecipients() async {
+    if (requiresUserId) {
+      final id = userIdController.text.trim();
+      if (id.isEmpty) return [];
+      return [id];
+    }
+
+    final role = audience == "all_employers" ? "employer" : "worker";
+    final users = await FirebaseFirestore.instance
+        .collection("users")
+        .where("role", isEqualTo: role)
+        .get();
+
+    return users.docs
+        .where((doc) => doc.data()["accountDeleted"] != true)
+        .map((doc) => doc.id)
+        .toList();
+  }
+
+  Future<void> sendAdminMessage() async {
+    final title = titleController.text.trim();
+    final message = messageController.text.trim();
+
+    if (title.isEmpty || message.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter title and message")),
+      );
+      return;
+    }
+
+    setState(() => sending = true);
+    try {
+      final recipients = await resolveRecipients();
+      if (recipients.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No recipients found")),
+        );
+        return;
+      }
+
+      final batch = FirebaseFirestore.instance.batch();
+      for (final userId in recipients) {
+        final ref = FirebaseFirestore.instance
+            .collection("users")
+            .doc(userId)
+            .collection("admin_inbox")
+            .doc();
+        batch.set(ref, {
+          "userId": userId,
+          "title": title,
+          "message": message,
+          "type": "admin_message",
+          "audience": audience,
+          "read": false,
+          "createdAt": FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+
+      if (!mounted) return;
+      titleController.clear();
+      messageController.clear();
+      if (requiresUserId) userIdController.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Admin message sent to ${recipients.length}")),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not send admin message")),
+      );
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StroykaSurface(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: Color(0x297DB9D8),
+                child: Icon(
+                  Icons.mark_email_unread_outlined,
+                  color: AppColors.greenDark,
+                ),
+              ),
+              SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  "Admin inbox messages",
+                  style: TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            initialValue: audience,
+            decoration: const InputDecoration(labelText: "Send to"),
+            items: const [
+              DropdownMenuItem(value: "worker", child: Text("Specific worker")),
+              DropdownMenuItem(
+                value: "employer",
+                child: Text("Specific employer"),
+              ),
+              DropdownMenuItem(
+                value: "all_workers",
+                child: Text("All workers"),
+              ),
+              DropdownMenuItem(
+                value: "all_employers",
+                child: Text("All employers"),
+              ),
+            ],
+            onChanged: sending
+                ? null
+                : (value) {
+                    if (value == null) return;
+                    setState(() => audience = value);
+                  },
+          ),
+          if (requiresUserId) ...[
+            const SizedBox(height: 10),
+            TextField(
+              controller: userIdController,
+              enabled: !sending,
+              decoration: InputDecoration(
+                labelText: "${audienceLabel(audience)} user ID",
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          TextField(
+            controller: titleController,
+            enabled: !sending,
+            decoration: const InputDecoration(labelText: "Title"),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: messageController,
+            enabled: !sending,
+            maxLines: 4,
+            decoration: const InputDecoration(labelText: "Message"),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: sending ? null : sendAdminMessage,
+              icon: sending
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send),
+              label: Text(sending ? "Sending..." : "Send admin message"),
+            ),
+          ),
+        ],
       ),
     );
   }
