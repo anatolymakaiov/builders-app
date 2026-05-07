@@ -564,40 +564,6 @@ class ApplicationDetailsScreen extends StatelessWidget {
     }
   }
 
-  ButtonStyle get primaryActionStyle => ElevatedButton.styleFrom(
-        backgroundColor: AppColors.green,
-        foregroundColor: Colors.white,
-        minimumSize: const Size.fromHeight(36),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        textStyle: const TextStyle(
-          fontWeight: FontWeight.w800,
-          fontSize: 13,
-        ),
-      );
-
-  ButtonStyle get dangerActionStyle => OutlinedButton.styleFrom(
-        foregroundColor: Colors.red,
-        backgroundColor: Colors.white,
-        minimumSize: const Size.fromHeight(36),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        side: const BorderSide(color: Colors.red),
-        textStyle: const TextStyle(
-          fontWeight: FontWeight.w800,
-          fontSize: 13,
-        ),
-      );
-
-  ButtonStyle get secondaryActionStyle => OutlinedButton.styleFrom(
-        foregroundColor: AppColors.ink,
-        backgroundColor: Colors.white,
-        minimumSize: const Size.fromHeight(36),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        textStyle: const TextStyle(
-          fontWeight: FontWeight.w800,
-          fontSize: 13,
-        ),
-      );
-
   String _jobTypeLabel(String jobType) {
     switch (jobType) {
       case "hourly":
