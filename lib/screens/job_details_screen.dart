@@ -45,6 +45,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   @override
   void initState() {
     super.initState();
+    currentApplicationId = widget.applicationId;
+    isApplied =
+        widget.applicationId != null && widget.applicationId!.isNotEmpty;
     init();
   }
 
@@ -70,6 +73,16 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     final applicationsRef =
         FirebaseFirestore.instance.collection("applications");
+
+    final initialApplicationId = widget.applicationId;
+    if (initialApplicationId != null && initialApplicationId.isNotEmpty) {
+      applyStateSubscriptions.add(
+        applicationsRef.doc(initialApplicationId).snapshots().listen((_) {
+          if (!mounted || isApplying) return;
+          checkIfApplied();
+        }),
+      );
+    }
 
     void addListener(Query<Map<String, dynamic>> query) {
       applyStateSubscriptions.add(
@@ -136,6 +149,18 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     final applicationsRef =
         FirebaseFirestore.instance.collection("applications");
+
+    final initialApplicationId = widget.applicationId;
+    if (initialApplicationId != null && initialApplicationId.isNotEmpty) {
+      final appDoc = await applicationsRef.doc(initialApplicationId).get();
+      final appData = appDoc.data();
+      if (appDoc.exists &&
+          appData != null &&
+          applicationBelongsToJob(appData) &&
+          isCurrentUserApplicationData(appData, uid)) {
+        return appDoc;
+      }
+    }
 
     await addQuery(applicationsRef
         .where("jobId", isEqualTo: widget.job.id)
@@ -1721,7 +1746,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Widget buildWorkerJobActionHeader() {
     if (role != "worker") return const SizedBox();
 
-    final applicationId = currentApplicationId;
+    final applicationId = widget.applicationId ?? currentApplicationId;
     if (applicationId == null || applicationId.isEmpty) {
       return buildWorkerJobActionHeaderContent(null, null);
     }
