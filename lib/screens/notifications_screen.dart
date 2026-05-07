@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'application_details_screen.dart';
 import 'chat_screen.dart';
-import 'applicants_screen.dart';
+import 'employer_profile_screen.dart';
 import 'job_details_screen.dart';
 import 'worker_profile_screen.dart';
 import '../models/job.dart';
@@ -16,6 +16,12 @@ class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
 
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
+
+  String? cleanId(dynamic value) {
+    final text = value?.toString().trim() ?? "";
+    if (text.isEmpty || text == "null") return null;
+    return text;
+  }
 
   String notificationTitle(Map<String, dynamic> data) {
     final type = data["type"] ?? "";
@@ -68,7 +74,13 @@ class NotificationsScreen extends StatelessWidget {
     final jobDoc =
         await FirebaseFirestore.instance.collection("jobs").doc(jobId).get();
 
-    if (!jobDoc.exists) return;
+    if (!jobDoc.exists) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("This job is no longer available")),
+      );
+      return;
+    }
 
     final job = Job.fromFirestore(jobDoc.id, jobDoc.data()!);
 
@@ -83,6 +95,251 @@ class NotificationsScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> openApplicationNotification(
+    BuildContext context, {
+    required String applicationId,
+  }) async {
+    final appDoc = await FirebaseFirestore.instance
+        .collection("applications")
+        .doc(applicationId)
+        .get();
+
+    if (!appDoc.exists || appDoc.data() == null) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text("This application is no longer available")),
+      );
+      return;
+    }
+
+    final appData = appDoc.data()!;
+    appData["id"] = appDoc.id;
+
+    if (!context.mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ApplicationDetailsScreen(
+          applicationId: applicationId,
+          data: appData,
+        ),
+      ),
+    );
+  }
+
+  Future<void> openChatNotification(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) async {
+    final chatId = cleanId(data["chatId"] ?? data["targetId"]);
+    if (chatId != null) {
+      final chatDoc = await FirebaseFirestore.instance
+          .collection("chats")
+          .doc(chatId)
+          .get();
+      if (!chatDoc.exists) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("This chat is no longer available")),
+        );
+        return;
+      }
+
+      if (!context.mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ChatScreen(chatId: chatId)),
+      );
+      return;
+    }
+
+    final jobId = cleanId(data["jobId"] ?? data["relatedJobId"]);
+    if (jobId == null) {
+      openNotificationDetails(context, data);
+      return;
+    }
+
+    final chatQuery = await FirebaseFirestore.instance
+        .collection("chats")
+        .where("jobId", isEqualTo: jobId)
+        .limit(1)
+        .get();
+
+    if (!context.mounted) return;
+
+    if (chatQuery.docs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("This chat is no longer available")),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(chatId: chatQuery.docs.first.id),
+      ),
+    );
+  }
+
+  void openBillingNotification(BuildContext context) {
+    final uid = userId;
+    if (uid == null) {
+      openNotificationDetails(context, const {});
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EmployerProfileScreen(userId: uid, initialTab: 4),
+      ),
+    );
+  }
+
+  void openNotificationDetails(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NotificationDetailsScreen(data: data),
+      ),
+    );
+  }
+
+  String targetTypeFor(Map<String, dynamic> data) {
+    final explicit = cleanId(data["targetType"]);
+    if (explicit != null) return explicit;
+
+    final type = data["type"]?.toString() ?? "";
+    if (type == "message" || cleanId(data["chatId"]) != null) return "chat";
+    if (type == "billing" || cleanId(data["relatedPaymentRequestId"]) != null) {
+      return "billing";
+    }
+    if (type == "report" || cleanId(data["relatedReportId"]) != null) {
+      return "report";
+    }
+    if (type == "support" || cleanId(data["relatedSupportRequestId"]) != null) {
+      return "support_request";
+    }
+    if (type == "admin_message") return "notification";
+    if (type == "application" ||
+        type == "application_status" ||
+        type == "offer" ||
+        type == "offer_accepted" ||
+        type == "offer_rejected" ||
+        type == "offer_expiry" ||
+        type == "work_start") {
+      return "application";
+    }
+    if (type == "job_alert" ||
+        type == "job_status" ||
+        type == "package_approval") {
+      return "job";
+    }
+
+    if (cleanId(data["applicationId"] ?? data["relatedApplicationId"]) !=
+        null) {
+      return "application";
+    }
+    if (cleanId(data["jobId"] ?? data["relatedJobId"]) != null) return "job";
+
+    return "notification";
+  }
+
+  Future<void> handleNotificationTap(
+    BuildContext context,
+    DocumentReference reference,
+    Map<String, dynamic> data,
+  ) async {
+    await reference.set({
+      "read": true,
+      "readAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    if (!context.mounted) return;
+
+    final targetType = targetTypeFor(data);
+    final targetId = cleanId(data["targetId"]);
+    final applicationId = cleanId(
+      data["relatedApplicationId"] ?? data["applicationId"],
+    );
+    final jobId = cleanId(data["relatedJobId"] ?? data["jobId"]);
+    final workerId = cleanId(data["workerId"]);
+
+    switch (targetType) {
+      case "application":
+      case "offer":
+        final id = targetId ?? applicationId;
+        if (id != null) {
+          await openApplicationNotification(context, applicationId: id);
+          return;
+        }
+        break;
+      case "job":
+      case "inactive_job":
+      case "expired_job":
+        final id = targetId ?? jobId;
+        if (id != null) {
+          await openJobNotification(
+            context,
+            jobId: id,
+            applicationId: applicationId,
+          );
+          return;
+        }
+        break;
+      case "billing":
+      case "payment":
+      case "payment_request":
+        openBillingNotification(context);
+        return;
+      case "chat":
+        await openChatNotification(context, data);
+        return;
+      case "worker":
+        final id = targetId ?? workerId;
+        if (id != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => WorkerProfileScreen(userId: id)),
+          );
+          return;
+        }
+        break;
+      case "support_request":
+      case "report":
+      case "admin_message":
+      case "notification":
+        openNotificationDetails(context, data);
+        return;
+    }
+
+    if (!context.mounted) return;
+
+    if (applicationId != null) {
+      await openApplicationNotification(context, applicationId: applicationId);
+      return;
+    }
+    if (!context.mounted) return;
+
+    if (jobId != null) {
+      await openJobNotification(
+        context,
+        jobId: jobId,
+        applicationId: applicationId,
+      );
+      return;
+    }
+
+    if (!context.mounted) return;
+    openNotificationDetails(context, data);
   }
 
   Future<void> addNotificationOfferToCalendar(
@@ -155,10 +412,6 @@ class NotificationsScreen extends StatelessWidget {
                 final bool read = data["read"] ?? false;
                 final String type = data["type"] ?? "";
 
-                final String? jobId =
-                    (data["jobId"] ?? data["relatedJobId"])?.toString();
-                final String? applicationId = data["applicationId"];
-                final String? workerId = data["workerId"];
                 final String? body =
                     (data["body"] ?? data["message"])?.toString();
 
@@ -210,150 +463,111 @@ class NotificationsScreen extends StatelessWidget {
                             ],
                           )
                         : null,
-                    onTap: () async {
-                      /// ✅ mark as read
-                      await FirebaseFirestore.instance
-                          .collection("users")
-                          .doc(userId!)
-                          .collection("notifications")
-                          .doc(doc.id)
-                          .update({"read": true});
-
-                      if (!context.mounted) return;
-
-                      /// 🔥 1. APPLICATION → APPLICANTS LIST
-                      if (type == "application" && jobId != null) {
-                        if (!context.mounted) return;
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ApplicantsScreen(jobId: jobId),
-                          ),
-                        );
-
-                        return;
-                      }
-
-                      /// 🔥 2. ACCEPTED → CHAT
-                      if (type == "accepted" && jobId != null) {
-                        final chatQuery = await FirebaseFirestore.instance
-                            .collection("chats")
-                            .where("jobId", isEqualTo: jobId)
-                            .where("workerId", isEqualTo: userId)
-                            .limit(1)
-                            .get();
-
-                        if (chatQuery.docs.isNotEmpty) {
-                          final chatId = chatQuery.docs.first.id;
-
-                          if (!context.mounted) return;
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ChatScreen(chatId: chatId),
-                            ),
-                          );
-                        }
-
-                        return;
-                      }
-
-                      /// 🔥 3. MESSAGE → CHAT
-                      if (type == "message" && jobId != null) {
-                        final chatQuery = await FirebaseFirestore.instance
-                            .collection("chats")
-                            .where("jobId", isEqualTo: jobId)
-                            .limit(1)
-                            .get();
-
-                        if (chatQuery.docs.isNotEmpty) {
-                          final chatId = chatQuery.docs.first.id;
-
-                          if (!context.mounted) return;
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ChatScreen(chatId: chatId),
-                            ),
-                          );
-                        }
-
-                        return;
-                      }
-
-                      if ((type == "application_status" ||
-                              type == "offer" ||
-                              type == "offer_accepted" ||
-                              type == "offer_rejected" ||
-                              type == "offer_expiry" ||
-                              type == "work_start" ||
-                              type == "job_status" ||
-                              type == "package_approval") &&
-                          jobId != null) {
-                        await openJobNotification(
-                          context,
-                          jobId: jobId,
-                          applicationId: applicationId,
-                        );
-
-                        return;
-                      }
-
-                      /// 🔥 4. JOB ALERT → JOB DETAILS
-                      if (type == "job_alert" && jobId != null) {
-                        await openJobNotification(context, jobId: jobId);
-
-                        return;
-                      }
-
-                      /// 🔥 5. OPEN WORKER PROFILE (если есть)
-                      if (workerId != null) {
-                        if (!context.mounted) return;
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                WorkerProfileScreen(userId: workerId),
-                          ),
-                        );
-
-                        return;
-                      }
-
-                      /// 🔁 fallback → application details
-                      if (applicationId != null) {
-                        final appDoc = await FirebaseFirestore.instance
-                            .collection("applications")
-                            .doc(applicationId)
-                            .get();
-
-                        if (!appDoc.exists) return;
-
-                        final appData = appDoc.data()!;
-                        appData["id"] = appDoc.id;
-
-                        if (!context.mounted) return;
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ApplicationDetailsScreen(
-                              applicationId: applicationId,
-                              data: appData,
-                            ),
-                          ),
-                        );
-                      }
-                    },
+                    onTap: () => handleNotificationTap(
+                      context,
+                      doc.reference,
+                      data,
+                    ),
                   ),
                 );
               },
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+class NotificationDetailsScreen extends StatelessWidget {
+  final Map<String, dynamic> data;
+
+  const NotificationDetailsScreen({
+    super.key,
+    required this.data,
+  });
+
+  String valueText(dynamic value) {
+    if (value == null) return "";
+    if (value is Timestamp) return value.toDate().toString();
+    if (value is Map || value is List) return value.toString();
+    return value.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = data["title"]?.toString() ?? "Notification";
+    final message = (data["message"] ?? data["body"])?.toString() ?? "";
+    final rows = [
+      ("Type", data["type"]),
+      ("Status", data["status"]),
+      ("Job", data["jobId"] ?? data["relatedJobId"]),
+      ("Application", data["applicationId"] ?? data["relatedApplicationId"]),
+      ("Payment request", data["relatedPaymentRequestId"]),
+      ("Support request", data["relatedSupportRequestId"]),
+      ("Report", data["relatedReportId"]),
+      ("Created", data["createdAt"]),
+    ];
+
+    return Scaffold(
+      appBar: AppBar(title: const Text("Notification")),
+      body: StroykaScreenBody(
+        child: ListView(
+          padding: const EdgeInsets.all(12),
+          children: [
+            StroykaSurface(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: AppColors.ink,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  if (message.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(message),
+                  ],
+                  const SizedBox(height: 18),
+                  ...rows.map((row) {
+                    final value = valueText(row.$2);
+                    if (value.isEmpty) return const SizedBox();
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 130,
+                            child: Text(
+                              row.$1,
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              value,
+                              style: const TextStyle(
+                                color: AppColors.ink,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

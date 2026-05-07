@@ -102,13 +102,32 @@ class NotificationService {
     String? jobId,
     Map<String, dynamic>? extra,
   }) async {
+    final targetType = extra?["targetType"] ??
+        _defaultTargetType(
+          type: type,
+          applicationId: applicationId,
+          jobId: jobId,
+          extra: extra,
+        );
+    final targetId = extra?["targetId"] ??
+        _defaultTargetId(
+          targetType: targetType?.toString(),
+          applicationId: applicationId,
+          jobId: jobId,
+          extra: extra,
+        );
     final payload = {
+      "userId": userId,
       "title": title,
       "body": body,
       "message": body,
       "type": type,
+      if (targetType != null) "targetType": targetType,
+      if (targetId != null) "targetId": targetId,
       "applicationId": applicationId,
+      if (applicationId != null) "relatedApplicationId": applicationId,
       "jobId": jobId,
+      if (jobId != null) "relatedJobId": jobId,
       "createdAt": FieldValue.serverTimestamp(),
       "read": false,
       ...?extra,
@@ -119,6 +138,63 @@ class NotificationService {
         .doc(userId)
         .collection('notifications')
         .add(payload);
+  }
+
+  String? _defaultTargetType({
+    required String type,
+    String? applicationId,
+    String? jobId,
+    Map<String, dynamic>? extra,
+  }) {
+    if (extra?["chatId"] != null) return "chat";
+    if (extra?["relatedPaymentRequestId"] != null) return "billing";
+    if (extra?["relatedSupportRequestId"] != null) return "support_request";
+    if (extra?["relatedReportId"] != null) return "report";
+    if (applicationId != null ||
+        type == "application" ||
+        type == "application_status" ||
+        type == "offer" ||
+        type == "offer_accepted" ||
+        type == "offer_rejected" ||
+        type == "offer_expiry" ||
+        type == "work_start") {
+      return "application";
+    }
+    if (jobId != null ||
+        type == "job_alert" ||
+        type == "job_status" ||
+        type == "package_approval") {
+      return "job";
+    }
+    if (type == "billing") return "billing";
+    if (type == "report") return "report";
+    if (type == "support") return "support_request";
+    if (type == "admin_message") return "notification";
+    return null;
+  }
+
+  String? _defaultTargetId({
+    required String? targetType,
+    String? applicationId,
+    String? jobId,
+    Map<String, dynamic>? extra,
+  }) {
+    switch (targetType) {
+      case "application":
+        return applicationId ?? extra?["relatedApplicationId"]?.toString();
+      case "job":
+        return jobId ?? extra?["relatedJobId"]?.toString();
+      case "chat":
+        return extra?["chatId"]?.toString();
+      case "billing":
+        return extra?["relatedPaymentRequestId"]?.toString();
+      case "support_request":
+        return extra?["relatedSupportRequestId"]?.toString();
+      case "report":
+        return extra?["relatedReportId"]?.toString();
+      default:
+        return null;
+    }
   }
 
   Future<void> sendEmployerNotification({
