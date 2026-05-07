@@ -730,11 +730,20 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       city: city,
       postcode: postcode,
     );
-    final address = (jobData["siteAddress"] ??
-            jobData["fullAddress"] ??
-            jobData["location"] ??
-            composedAddress)
-        .toString()
+    final projectName =
+        (jobData["site"] ?? widget.job.site).toString().trim().toLowerCase();
+    final address = [
+      jobData["siteAddress"],
+      jobData["fullAddress"],
+      jobData["location"],
+      composedAddress,
+    ]
+        .map((value) => value?.toString().trim() ?? "")
+        .where((value) => value.isNotEmpty)
+        .firstWhere(
+          (value) => value.toLowerCase() != projectName,
+          orElse: () => composedAddress,
+        )
         .trim();
 
     return {

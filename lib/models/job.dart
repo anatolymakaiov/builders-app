@@ -165,11 +165,15 @@ class Job {
 
   /// 🔥 ADDRESS
   String get fullAddress {
-    return [
+    final fromParts = [
       street.trim(),
       city.trim(),
       postcode.trim(),
     ].where((part) => part.isNotEmpty).join(", ");
+
+    if (fromParts.isNotEmpty) return fromParts;
+
+    return location.trim();
   }
 
   String _formatDate(DateTime date) {
@@ -231,10 +235,12 @@ class Job {
       trade: data["trade"] ?? "",
       site: data["site"] ?? "",
 
-      location: data["location"] ?? "",
-      street: data["street"] ?? "",
-      city: data["city"] ?? "",
-      postcode: data["postcode"] ?? "",
+      location:
+          (data["location"] ?? data["siteAddress"] ?? data["fullAddress"] ?? "")
+              .toString(),
+      street: (data["street"] ?? data["siteStreet"] ?? "").toString(),
+      city: (data["city"] ?? data["siteCity"] ?? "").toString(),
+      postcode: (data["postcode"] ?? data["sitePostcode"] ?? "").toString(),
       county: (data["county"] ?? data["siteCounty"] ?? "").toString(),
 
       rate: safeDouble(data["rate"]),

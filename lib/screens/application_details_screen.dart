@@ -296,11 +296,23 @@ class ApplicationDetailsScreen extends StatelessWidget {
       city: city,
       postcode: postcode,
     );
-    final storedAddress =
-        (source["siteAddress"] ?? source["fullAddress"] ?? source["location"])
-                ?.toString()
-                .trim() ??
-            "";
+    final projectNames = {
+      source["jobSite"]?.toString().trim().toLowerCase(),
+      source["site"]?.toString().trim().toLowerCase(),
+    }..removeWhere((value) => value == null || value.isEmpty);
+    final addressCandidates = [
+      source["siteAddress"],
+      source["fullAddress"],
+      source["location"],
+    ];
+    final storedAddress = addressCandidates
+        .map((value) => value?.toString().trim() ?? "")
+        .where((value) => value.isNotEmpty)
+        .firstWhere(
+          (value) => !projectNames.contains(value.toLowerCase()),
+          orElse: () => "",
+        )
+        .trim();
 
     return {
       "siteStreet": street,
