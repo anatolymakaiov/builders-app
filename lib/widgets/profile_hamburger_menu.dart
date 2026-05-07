@@ -23,7 +23,7 @@ class ProfileHamburgerMenu extends StatelessWidget {
 
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
 
-  Future<bool> _confirmDeleteAccount(BuildContext context) async {
+  static Future<bool> _confirmDeleteAccount(BuildContext context) async {
     final first = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -70,7 +70,7 @@ class ProfileHamburgerMenu extends StatelessWidget {
     return second == true;
   }
 
-  Future<void> _deletePortfolioDocuments(String uid) async {
+  static Future<void> _deletePortfolioDocuments(String uid) async {
     final portfolio = await FirebaseFirestore.instance
         .collection("users")
         .doc(uid)
@@ -85,7 +85,7 @@ class ProfileHamburgerMenu extends StatelessWidget {
     await batch.commit();
   }
 
-  Future<void> _softDeleteAccount(BuildContext context) async {
+  static Future<void> _softDeleteAccount(BuildContext context) async {
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid;
     if (uid == null) return;
@@ -317,6 +317,11 @@ class MyAccountScreen extends StatelessWidget {
             final email = FirebaseAuth.instance.currentUser?.email ?? "";
             final billing = BillingService.billingFromUserData(data);
             final isEmployer = role == "employer";
+            final accountType = isEmployer ? "Employer" : "Worker";
+            final displayName = isEmployer
+                ? data["companyName"]?.toString()
+                : data["name"]?.toString();
+            final phone = data["phone"]?.toString() ?? "";
 
             return ListView(
               padding: const EdgeInsets.all(12),
@@ -328,9 +333,15 @@ class MyAccountScreen extends StatelessWidget {
                     children: [
                       _SectionTitle(
                           isEmployer ? "Employer account" : "Worker account"),
-                      _InfoRow("Name", data["name"] ?? data["companyName"]),
-                      _InfoRow("Email", email),
-                      _InfoRow("Role", role),
+                      _InfoRow("Account type", accountType),
+                      _InfoRow(
+                        isEmployer ? "Company name" : "Name",
+                        displayName,
+                      ),
+                      if (!isEmployer && phone.isNotEmpty)
+                        _InfoRow("Phone", phone),
+                      if (!isEmployer && email.isNotEmpty)
+                        _InfoRow("Email", email),
                       if (isEmployer) ...[
                         const SizedBox(height: 12),
                         const _SectionTitle("Billing"),
@@ -350,6 +361,7 @@ class MyAccountScreen extends StatelessWidget {
                             billing["paymentMode"]?.toString() ?? "not_set",
                           ),
                         ),
+                        if (email.isNotEmpty) _InfoRow("Email", email),
                       ],
                       const SizedBox(height: 16),
                       SizedBox(
@@ -376,6 +388,23 @@ class MyAccountScreen extends StatelessWidget {
                           },
                           icon: const Icon(Icons.logout),
                           label: const Text("Logout"),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                          ),
+                          onPressed: () async {
+                            await ProfileHamburgerMenu._softDeleteAccount(
+                              context,
+                            );
+                          },
+                          icon: const Icon(Icons.delete_forever_outlined),
+                          label: const Text("Delete account"),
                         ),
                       ),
                     ],
