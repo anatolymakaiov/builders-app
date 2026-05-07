@@ -1583,37 +1583,48 @@ class WorkerProfileScreen extends StatelessWidget {
                                         jobId: jobId!,
                                       ),
                                     ),
-                                  Padding(
-                                    padding: EdgeInsets.only(
-                                      top: canShowActions ? 38 : 0,
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        CircleAvatar(
-                                          radius: 32,
-                                          backgroundColor: Colors.grey.shade300,
-                                          backgroundImage: photo is String
-                                              ? NetworkImage(photo)
-                                              : null,
-                                          child: photo == null
-                                              ? const Icon(
-                                                  Icons.person,
-                                                  size: 30,
-                                                )
-                                              : null,
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          name,
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.w900,
-                                            color: AppColors.ink,
+                                  SizedBox(
+                                    height: canShowActions ? 118 : null,
+                                    child: Align(
+                                      alignment: canShowActions
+                                          ? Alignment.bottomCenter
+                                          : Alignment.center,
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          CircleAvatar(
+                                            radius: canShowActions ? 26 : 32,
+                                            backgroundColor:
+                                                Colors.grey.shade300,
+                                            backgroundImage: photo is String
+                                                ? NetworkImage(photo)
+                                                : null,
+                                            child: photo == null
+                                                ? Icon(
+                                                    Icons.person,
+                                                    size: canShowActions
+                                                        ? 24
+                                                        : 30,
+                                                  )
+                                                : null,
                                           ),
-                                        ),
-                                      ],
+                                          SizedBox(
+                                            height: canShowActions ? 3 : 6,
+                                          ),
+                                          Text(
+                                            name,
+                                            textAlign: TextAlign.center,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize:
+                                                  canShowActions ? 18 : 20,
+                                              fontWeight: FontWeight.w900,
+                                              color: AppColors.ink,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ],
