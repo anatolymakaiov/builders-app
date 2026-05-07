@@ -1138,6 +1138,10 @@ class ApplicationDetailsScreen extends StatelessWidget {
                   color = Colors.red;
                   label = "Rejected";
                   break;
+                case "withdrawn":
+                  color = Colors.grey;
+                  label = "Withdrawn";
+                  break;
                 default:
                   color = AppColors.ink;
                   label = "Pending";
@@ -1312,7 +1316,10 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
               if (status == "offer_accepted" ||
                   status == "accepted" ||
-                  status == "offer_rejected") {
+                  status == "offer_rejected" ||
+                  status == "offer_withdrawn" ||
+                  status == "rejected" ||
+                  status == "withdrawn") {
                 return [
                   (
                     danger: false,
