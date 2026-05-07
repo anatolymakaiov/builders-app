@@ -128,29 +128,31 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     final singleStream = FirebaseFirestore.instance
         .collection("applications")
         .where("workerId", isEqualTo: userId)
-        .snapshots();
+        .snapshots(includeMetadataChanges: true);
 
     final teamStream = FirebaseFirestore.instance
         .collection("applications")
         .where("members", arrayContains: userId)
-        .snapshots();
+        .snapshots(includeMetadataChanges: true);
 
     late final StreamSubscription<QuerySnapshot<Map<String, dynamic>>>
         singleSub;
     late final StreamSubscription<QuerySnapshot<Map<String, dynamic>>> teamSub;
-    QuerySnapshot<Map<String, dynamic>>? singleSnap;
-    QuerySnapshot<Map<String, dynamic>>? teamSnap;
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> singleDocs = [];
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> teamDocs = [];
+    var hasSingleSnapshot = false;
+    var hasTeamSnapshot = false;
 
     final controller = StreamController<List<QueryDocumentSnapshot>>();
 
     void emit() {
-      final single = singleSnap;
-      final team = teamSnap;
-      if (single == null || team == null || controller.isClosed) return;
+      if ((!hasSingleSnapshot && !hasTeamSnapshot) || controller.isClosed) {
+        return;
+      }
 
       final allDocs = [
-        ...single.docs,
-        ...team.docs,
+        ...singleDocs,
+        ...teamDocs,
       ];
 
       /// 🔥 убираем дубликаты (на всякий случай)
@@ -166,14 +168,26 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     }
 
     singleSub = singleStream.listen((snapshot) {
-      singleSnap = snapshot;
+      hasSingleSnapshot = true;
+      singleDocs = snapshot.docs;
       emit();
-    }, onError: controller.addError);
+    }, onError: (error) {
+      debugPrint("MY APPLICATIONS SINGLE STREAM SKIPPED: $error");
+      hasSingleSnapshot = true;
+      singleDocs = [];
+      emit();
+    });
 
     teamSub = teamStream.listen((snapshot) {
-      teamSnap = snapshot;
+      hasTeamSnapshot = true;
+      teamDocs = snapshot.docs;
       emit();
-    }, onError: controller.addError);
+    }, onError: (error) {
+      debugPrint("MY APPLICATIONS TEAM STREAM SKIPPED: $error");
+      hasTeamSnapshot = true;
+      teamDocs = [];
+      emit();
+    });
 
     controller.onCancel = () async {
       await singleSub.cancel();
