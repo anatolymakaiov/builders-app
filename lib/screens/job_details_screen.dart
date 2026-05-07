@@ -266,6 +266,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               onTap: () {
                 Navigator.pop(context, {
                   "teamId": doc.id,
+                  "teamName": data["name"]?.toString() ?? "Team",
+                  "teamAvatarUrl": avatarUrl?.toString(),
                   "members": members,
                 });
               },
@@ -383,6 +385,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
         final members = List<String>.from(team["members"]);
         final teamId = team["teamId"]?.toString() ?? "";
+        final teamName = team["teamName"]?.toString() ?? "Team";
+        final teamAvatarUrl = team["teamAvatarUrl"]?.toString() ?? "";
 
         final existingTeamApplication = await FirebaseFirestore.instance
             .collection("applications")
@@ -451,12 +455,15 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             ...applicationPhysicalAddressFields(jobData),
             "type": "team",
             "teamId": teamId,
+            "teamName": teamName,
+            if (teamAvatarUrl.isNotEmpty) "teamAvatarUrl": teamAvatarUrl,
             "workerId": uid,
             "applicantId": uid,
             "members": members,
             "workersCount": members.length,
             "membersStatus": {for (var id in members) id: "pending"},
             "employerId": ownerId,
+            "ownerId": ownerId,
             "status": "pending",
             "createdAt": FieldValue.serverTimestamp(),
             ...ApplicationActivityService.createdForEmployer(ownerId),
@@ -546,6 +553,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             "workersCount": 1,
             "membersStatus": {uid: "pending"},
             "employerId": ownerId,
+            "ownerId": ownerId,
             "status": "pending",
             "createdAt": FieldValue.serverTimestamp(),
             ...ApplicationActivityService.createdForEmployer(ownerId),

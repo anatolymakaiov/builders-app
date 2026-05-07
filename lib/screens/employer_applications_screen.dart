@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -151,6 +153,63 @@ class _EmployerApplicationsScreenState
     );
   }
 
+  Stream<List<QueryDocumentSnapshot>> employerApplicationsStream(
+    String employerId,
+  ) {
+    final controller = StreamController<List<QueryDocumentSnapshot>>();
+    final applicationsRef =
+        FirebaseFirestore.instance.collection("applications");
+
+    List<QueryDocumentSnapshot>? employerDocs;
+    List<QueryDocumentSnapshot>? ownerDocs;
+    late final StreamSubscription employerSub;
+    late final StreamSubscription ownerSub;
+
+    void emit() {
+      final byEmployer = employerDocs;
+      final byOwner = ownerDocs;
+      if (byEmployer == null || byOwner == null || controller.isClosed) return;
+
+      final seen = <String>{};
+      final merged = <QueryDocumentSnapshot>[];
+      for (final doc in [...byEmployer, ...byOwner]) {
+        if (seen.add(doc.id)) merged.add(doc);
+      }
+
+      merged.sort(
+        (a, b) => ApplicationActivityService.compareForUser(a, b, employerId),
+      );
+      controller.add(merged);
+    }
+
+    employerSub = applicationsRef
+        .where("employerId", isEqualTo: employerId)
+        .snapshots()
+        .listen((snapshot) {
+      employerDocs = snapshot.docs;
+      emit();
+    }, onError: controller.addError);
+
+    ownerSub = applicationsRef
+        .where("ownerId", isEqualTo: employerId)
+        .snapshots()
+        .listen((snapshot) {
+      ownerDocs = snapshot.docs;
+      emit();
+    }, onError: (error) {
+      debugPrint("OWNER APPLICATIONS STREAM SKIPPED: $error");
+      ownerDocs = const [];
+      emit();
+    });
+
+    controller.onCancel = () async {
+      await employerSub.cancel();
+      await ownerSub.cancel();
+    };
+
+    return controller.stream;
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -266,24 +325,14 @@ class _EmployerApplicationsScreenState
               ),
             ),
             Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection("applications")
-                    .where("employerId", isEqualTo: employerId)
-                    .orderBy("createdAt", descending: true)
-                    .snapshots(),
+              child: StreamBuilder<List<QueryDocumentSnapshot>>(
+                stream: employerApplicationsStream(employerId),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  final allApps = [...snapshot.data!.docs]..sort(
-                      (a, b) => ApplicationActivityService.compareForUser(
-                        a,
-                        b,
-                        employerId,
-                      ),
-                    );
+                  final allApps = snapshot.data!;
 
                   trades = {"all"};
                   sites = {"all"};

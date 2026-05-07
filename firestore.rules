@@ -106,12 +106,14 @@ service cloud.firestore {
           isAdmin()
           || request.resource.data.workerId == uid()
           || request.resource.data.employerId == uid()
+          || request.resource.data.ownerId == uid()
           || isJobOwner(request.resource.data.jobId)
           || (request.resource.data.members is list && uid() in request.resource.data.members)
         );
       allow read, update, delete: if isAdmin()
         || resource.data.workerId == uid()
         || resource.data.employerId == uid()
+        || resource.data.ownerId == uid()
         || isJobOwner(resource.data.jobId)
         || (resource.data.members is list && uid() in resource.data.members);
     }
