@@ -1,12 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../screens/edit_profile_screen.dart';
 import '../services/billing_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import 'legal_documents.dart';
 
 class ProfileHamburgerMenu extends StatelessWidget {
   final String role;
@@ -362,29 +362,6 @@ class AdminInboxScreen extends StatelessWidget {
 class AboutAppScreen extends StatelessWidget {
   const AboutAppScreen({super.key});
 
-  static const docs = [
-    LegalDocument("Privacy Policy", "assets/legal/privacy_policy.md"),
-    LegalDocument("Terms of Use", "assets/legal/terms_of_use.md"),
-    LegalDocument("Code of Conduct", "assets/legal/code_of_conduct.md"),
-    LegalDocument("Worker Terms", "assets/legal/worker_terms.md"),
-    LegalDocument(
-      "Employer Posting Policy",
-      "assets/legal/employer_posting_policy.md",
-    ),
-    LegalDocument("Refund Policy", "assets/legal/refund_policy.md"),
-    LegalDocument("Complaints Policy", "assets/legal/complaints_policy.md"),
-    LegalDocument("Cookie Policy", "assets/legal/cookie_policy.md"),
-    LegalDocument(
-      "Data Retention Policy",
-      "assets/legal/data_retention_policy.md",
-    ),
-    LegalDocument("UK Privacy Notice", "assets/legal/uk_privacy_notice.md"),
-    LegalDocument(
-      "Company Information",
-      "assets/legal/company_information.md",
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -392,9 +369,9 @@ class AboutAppScreen extends StatelessWidget {
       body: StroykaScreenBody(
         child: ListView.builder(
           padding: const EdgeInsets.all(12),
-          itemCount: docs.length,
+          itemCount: LegalDocuments.all.length,
           itemBuilder: (context, index) {
-            final doc = docs[index];
+            final doc = LegalDocuments.all[index];
             return StroykaSurface(
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
@@ -414,137 +391,6 @@ class AboutAppScreen extends StatelessWidget {
               ),
             );
           },
-        ),
-      ),
-    );
-  }
-}
-
-class LegalDocument {
-  final String title;
-  final String assetPath;
-
-  const LegalDocument(this.title, this.assetPath);
-}
-
-class LegalDocumentScreen extends StatelessWidget {
-  final LegalDocument document;
-
-  const LegalDocumentScreen({
-    super.key,
-    required this.document,
-  });
-
-  Map<String, String> parseMetadata(String content) {
-    final metadata = <String, String>{};
-    for (final line in content.split("\n").take(3)) {
-      final separatorIndex = line.indexOf(":");
-      if (separatorIndex <= 0) continue;
-      metadata[line.substring(0, separatorIndex).trim()] =
-          line.substring(separatorIndex + 1).trim();
-    }
-    return metadata;
-  }
-
-  String bodyWithoutMetadata(String content) {
-    final lines = content.split("\n");
-    if (lines.length <= 4) return content;
-    return lines.skip(4).join("\n").trim();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(document.title)),
-      body: StroykaScreenBody(
-        child: FutureBuilder<String>(
-          future: rootBundle.loadString(document.assetPath),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final content = snapshot.data!;
-            final metadata = parseMetadata(content);
-            final body = bodyWithoutMetadata(content);
-
-            return ListView(
-              padding: const EdgeInsets.all(12),
-              children: [
-                StroykaSurface(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        metadata["Title"] ?? document.title,
-                        style: const TextStyle(
-                          color: AppColors.ink,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _LegalMetaChip(
-                            label: "Version",
-                            value: metadata["Version"] ?? "Draft",
-                          ),
-                          _LegalMetaChip(
-                            label: "Updated",
-                            value: metadata["UpdatedAt"] ?? "",
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        body,
-                        style: const TextStyle(
-                          color: AppColors.ink,
-                          height: 1.45,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _LegalMetaChip extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _LegalMetaChip({
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (value.trim().isEmpty) return const SizedBox();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.green.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        "$label: $value",
-        style: const TextStyle(
-          color: AppColors.ink,
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
         ),
       ),
     );

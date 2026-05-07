@@ -7,6 +7,7 @@ import 'dart:io';
 
 import 'portfolio_screen.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/legal_documents.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -59,6 +60,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<String> portfolio = [];
   List<String> companyPhotos = [];
   bool uploadingCompanyPhotos = false;
+  bool firstProfileCreation = false;
+  bool legalAcceptedForCurrentVersion = false;
 
   String get userId => FirebaseAuth.instance.currentUser!.uid;
 
@@ -79,8 +82,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final portfolioUrls = await loadPortfolioUrls(userId);
 
+    final existingRole = data["role"]?.toString() ?? "worker";
+    final hasWorkerProfile = (data["name"]?.toString().trim() ?? "").isNotEmpty;
+    final hasEmployerProfile =
+        (data["companyName"]?.toString().trim() ?? "").isNotEmpty;
+    final acceptedDocuments =
+        Map<String, dynamic>.from(data["acceptedDocuments"] ?? {});
+    final acceptedCurrentVersion = data["legalAccepted"] == true &&
+        data["acceptedPolicyVersion"] == LegalDocuments.policyVersion;
+
     setState(() {
-      role = data["role"] ?? "worker";
+      role = existingRole;
+      firstProfileCreation = !hasWorkerProfile && !hasEmployerProfile;
+      legalAcceptedForCurrentVersion = acceptedCurrentVersion &&
+          LegalDocuments.requiredForRole(existingRole).every(
+            (doc) => acceptedDocuments[doc.key] == true,
+          );
 
       nameController.text = data["name"] ?? "";
       phoneController.text = data["phone"] ?? "";
@@ -371,6 +388,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
 
+    final shouldRequestLegalAcceptance =
+        firstProfileCreation && !legalAcceptedForCurrentVersion;
+
+    if (shouldRequestLegalAcceptance) {
+      final accepted = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LegalAcceptanceScreen(role: role),
+        ),
+      );
+
+      if (accepted != true) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Please accept required legal documents"),
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() => loading = true);
 
     try {
@@ -435,6 +474,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         profileData["profileHeaderImage"] = savedHeaderImageUrl;
       }
 
+      if (firstProfileCreation) {
+        profileData.addAll({
+          "profileCreated": true,
+          if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
+            "legalAccepted": true,
+          if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
+            "legalAcceptedAt": FieldValue.serverTimestamp(),
+          if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
+            "acceptedPolicyVersion": LegalDocuments.policyVersion,
+          if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
+            "acceptedDocuments": LegalDocuments.acceptedMapForRole(role),
+        });
+      }
+
       await FirebaseFirestore.instance
           .collection('users')
           .doc(userId)
@@ -447,6 +500,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         headerImageUrl = savedHeaderImageUrl;
         headerImageFile = null;
         extraPhones = cleanedPhones;
+        firstProfileCreation = false;
+        if (shouldRequestLegalAcceptance) {
+          legalAcceptedForCurrentVersion = true;
+        }
       });
 
       Navigator.pop(context, true);
@@ -684,7 +741,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             DropdownMenuItem(value: "worker", child: Text("Worker")),
             DropdownMenuItem(value: "employer", child: Text("Employer")),
           ],
-          onChanged: (value) => setState(() => role = value!),
+          onChanged: (value) => setState(() {
+            role = value!;
+            if (firstProfileCreation) {
+              legalAcceptedForCurrentVersion = false;
+            }
+          }),
         ),
 
         const SizedBox(height: 20),
