@@ -383,21 +383,35 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           return;
         }
 
-        final members = List<String>.from(team["members"]);
+        final members = List<String>.from(team["members"] ?? [])
+            .where((id) => id.trim().isNotEmpty)
+            .toSet()
+            .toList();
         final teamId = team["teamId"]?.toString() ?? "";
         final teamName = team["teamName"]?.toString() ?? "Team";
         final teamAvatarUrl = team["teamAvatarUrl"]?.toString() ?? "";
 
+        if (teamId.isEmpty) {
+          throw Exception("missing_team");
+        }
+        if (members.isEmpty) {
+          throw Exception("team_has_no_members");
+        }
+        if (!members.contains(uid)) {
+          members.add(uid);
+        }
+
         final existingTeamApplication = await FirebaseFirestore.instance
             .collection("applications")
-            .where("jobId", isEqualTo: widget.job.id)
             .where("teamId", isEqualTo: teamId)
             .get();
 
         final duplicateTeamApplication =
             existingTeamApplication.docs.where((doc) {
           final data = doc.data();
-          return isTeamApplicationForUser(data, uid);
+          return applicationBelongsToJob(data) &&
+              isActiveApplicationData(data) &&
+              data["type"]?.toString() == "team";
         }).toList();
 
         if (duplicateTeamApplication.isNotEmpty) {
@@ -425,15 +439,23 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           return;
         }
 
-        final applicationRef =
-            FirebaseFirestore.instance.collection("applications").doc();
+        final applicationRef = FirebaseFirestore.instance
+            .collection("applications")
+            .doc("team_${widget.job.id}_$teamId");
 
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           final jobRef =
               FirebaseFirestore.instance.collection("jobs").doc(widget.job.id);
+          final existingAppSnap = await transaction.get(applicationRef);
           final jobSnap = await transaction.get(jobRef);
 
           if (!jobSnap.exists) throw Exception("Job not found");
+          if (existingAppSnap.exists) {
+            final existingAppData = existingAppSnap.data() ?? {};
+            if (isActiveApplicationData(existingAppData)) {
+              throw Exception("duplicate_team_application");
+            }
+          }
 
           final jobData = jobSnap.data() as Map<String, dynamic>;
           final ownerId = jobOwnerId(jobData);
@@ -444,30 +466,35 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             throw Exception("not_enough_spots");
           }
 
-          transaction.set(applicationRef, {
-            "jobId": widget.job.id,
-            "jobTitle": (jobData["title"] ??
-                    jobData["trade"] ??
-                    widget.job.displayTitle)
-                .toString(),
-            "jobTrade": jobData["trade"] ?? widget.job.trade,
-            "jobSite": jobData["site"] ?? widget.job.site,
-            ...applicationPhysicalAddressFields(jobData),
-            "type": "team",
-            "teamId": teamId,
-            "teamName": teamName,
-            if (teamAvatarUrl.isNotEmpty) "teamAvatarUrl": teamAvatarUrl,
-            "workerId": uid,
-            "applicantId": uid,
-            "members": members,
-            "workersCount": members.length,
-            "membersStatus": {for (var id in members) id: "pending"},
-            "employerId": ownerId,
-            "ownerId": ownerId,
-            "status": "pending",
-            "createdAt": FieldValue.serverTimestamp(),
-            ...ApplicationActivityService.createdForEmployer(ownerId),
-          });
+          transaction.set(
+              applicationRef,
+              {
+                "jobId": widget.job.id,
+                "jobTitle": (jobData["title"] ??
+                        jobData["trade"] ??
+                        widget.job.displayTitle)
+                    .toString(),
+                "jobTrade": jobData["trade"] ?? widget.job.trade,
+                "jobSite": jobData["site"] ?? widget.job.site,
+                ...applicationPhysicalAddressFields(jobData),
+                "type": "team",
+                "teamId": teamId,
+                "teamName": teamName,
+                if (teamAvatarUrl.isNotEmpty) "teamAvatarUrl": teamAvatarUrl,
+                "workerId": uid,
+                "applicantId": uid,
+                "members": members,
+                "workersCount": members.length,
+                "membersStatus": {for (var id in members) id: "pending"},
+                "employerId": ownerId,
+                "ownerId": ownerId,
+                "status": "pending",
+                "viewedByEmployer": false,
+                "createdAt": FieldValue.serverTimestamp(),
+                "updatedAt": FieldValue.serverTimestamp(),
+                ...ApplicationActivityService.createdForEmployer(ownerId),
+              },
+              SetOptions(merge: true));
         });
 
         if (mounted) {
@@ -809,7 +836,16 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final text = error.toString();
     if (text.contains("no_positions_left") ||
         text.contains("not_enough_spots")) {
-      return "No positions left";
+      return "Not enough positions available";
+    }
+    if (text.contains("duplicate_team_application")) {
+      return "This team already applied for this job";
+    }
+    if (text.contains("team_has_no_members")) {
+      return "Team has no members";
+    }
+    if (text.contains("missing_team")) {
+      return "Team information is missing";
     }
     if (text.contains("invalid_positions")) {
       return "This job has invalid position data";
