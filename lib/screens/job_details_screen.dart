@@ -77,19 +77,28 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final initialApplicationId = widget.applicationId;
     if (initialApplicationId != null && initialApplicationId.isNotEmpty) {
       applyStateSubscriptions.add(
-        applicationsRef.doc(initialApplicationId).snapshots().listen((_) {
-          if (!mounted || isApplying) return;
-          checkIfApplied();
-        }),
+        applicationsRef.doc(initialApplicationId).snapshots().listen(
+          (_) {
+            if (!mounted || isApplying) return;
+            checkIfApplied();
+          },
+          onError: (_) {
+            if (!mounted || isApplying) return;
+            checkIfApplied();
+          },
+        ),
       );
     }
 
     void addListener(Query<Map<String, dynamic>> query) {
       applyStateSubscriptions.add(
-        query.snapshots().listen((_) {
-          if (!mounted || isApplying) return;
-          checkIfApplied();
-        }),
+        query.snapshots().listen(
+          (_) {
+            if (!mounted || isApplying) return;
+            checkIfApplied();
+          },
+          onError: (_) {},
+        ),
       );
     }
 
@@ -101,10 +110,13 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     for (final teamDoc in teams) {
       final applicationId = teamApplicationDocumentId(teamDoc.id);
       applyStateSubscriptions.add(
-        applicationsRef.doc(applicationId).snapshots().listen((_) {
-          if (!mounted || isApplying) return;
-          checkIfApplied();
-        }),
+        applicationsRef.doc(applicationId).snapshots().listen(
+          (_) {
+            if (!mounted || isApplying) return;
+            checkIfApplied();
+          },
+          onError: (_) {},
+        ),
       );
     }
   }
@@ -139,22 +151,41 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       String uid) async {
     final applications = <DocumentSnapshot<Map<String, dynamic>>>[];
     final seenIds = <String>{};
-
-    Future<void> addQuery(Query<Map<String, dynamic>> query) async {
-      final snap = await query.get();
-      for (final doc in snap.docs) {
-        if (seenIds.add(doc.id)) applications.add(doc);
-      }
-    }
-
     final applicationsRef =
         FirebaseFirestore.instance.collection("applications");
 
+    Future<void> addQuery(Query<Map<String, dynamic>> query) async {
+      try {
+        final snap = await query.get();
+        for (final doc in snap.docs) {
+          if (seenIds.add(doc.id)) applications.add(doc);
+        }
+      } on FirebaseException catch (e) {
+        if (e.code != "permission-denied" && e.code != "failed-precondition") {
+          rethrow;
+        }
+      }
+    }
+
+    Future<DocumentSnapshot<Map<String, dynamic>>?> safeApplicationDoc(
+      String id,
+    ) async {
+      try {
+        return await applicationsRef.doc(id).get();
+      } on FirebaseException catch (e) {
+        if (e.code == "permission-denied" || e.code == "failed-precondition") {
+          return null;
+        }
+        rethrow;
+      }
+    }
+
     final initialApplicationId = widget.applicationId;
     if (initialApplicationId != null && initialApplicationId.isNotEmpty) {
-      final appDoc = await applicationsRef.doc(initialApplicationId).get();
-      final appData = appDoc.data();
-      if (appDoc.exists &&
+      final appDoc = await safeApplicationDoc(initialApplicationId);
+      final appData = appDoc?.data();
+      if (appDoc != null &&
+          appDoc.exists &&
           appData != null &&
           applicationBelongsToJob(appData) &&
           isCurrentUserApplicationData(appData, uid)) {
@@ -168,10 +199,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     final teams = await loadMyTeams();
     for (final teamDoc in teams) {
-      final appDoc = await applicationsRef
-          .doc(teamApplicationDocumentId(teamDoc.id))
-          .get();
-      if (appDoc.exists && seenIds.add(appDoc.id)) {
+      final appDoc =
+          await safeApplicationDoc(teamApplicationDocumentId(teamDoc.id));
+      if (appDoc != null && appDoc.exists && seenIds.add(appDoc.id)) {
         applications.add(appDoc);
       }
     }

@@ -130,26 +130,55 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         .where("workerId", isEqualTo: userId)
         .snapshots(includeMetadataChanges: true);
 
-    final teamStream = FirebaseFirestore.instance
-        .collection("applications")
-        .where("members", arrayContains: userId)
-        .snapshots(includeMetadataChanges: true);
-
     late final StreamSubscription<QuerySnapshot<Map<String, dynamic>>>
         singleSub;
-    late final StreamSubscription<QuerySnapshot<Map<String, dynamic>>> teamSub;
+    late final StreamSubscription<QuerySnapshot<Map<String, dynamic>>> teamsSub;
+    final teamApplicationSubs =
+        <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
     List<QueryDocumentSnapshot<Map<String, dynamic>>> singleDocs = [];
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> teamDocs = [];
+    final teamDocsByTeam =
+        <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
     var hasSingleSnapshot = false;
     var hasTeamSnapshot = false;
 
     final controller = StreamController<List<QueryDocumentSnapshot>>();
+
+    List<String> memberIds(dynamic value) {
+      if (value is! List) return [];
+      return value
+          .map((item) {
+            if (item is String) return item;
+            if (item is Map) return item["userId"]?.toString();
+            return null;
+          })
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+    }
+
+    bool isUserTeam(Map<String, dynamic> data) {
+      return data["ownerId"] == userId ||
+          data["createdBy"] == userId ||
+          memberIds(data["members"]).contains(userId);
+    }
+
+    bool isRelevantTeamApplication(Map<String, dynamic> data, String teamId) {
+      final type = data["type"]?.toString();
+      final status = data["status"]?.toString().toLowerCase().trim();
+      return type == "team" &&
+          data["teamId"]?.toString() == teamId &&
+          status != "withdrawn" &&
+          status != "cancelled" &&
+          status != "deleted";
+    }
 
     void emit() {
       if ((!hasSingleSnapshot && !hasTeamSnapshot) || controller.isClosed) {
         return;
       }
 
+      final teamDocs = teamDocsByTeam.values.expand((docs) => docs).toList();
       final allDocs = [
         ...singleDocs,
         ...teamDocs,
@@ -172,26 +201,71 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       singleDocs = snapshot.docs;
       emit();
     }, onError: (error) {
-      debugPrint("MY APPLICATIONS SINGLE STREAM SKIPPED: $error");
       hasSingleSnapshot = true;
       singleDocs = [];
       emit();
     });
 
-    teamSub = teamStream.listen((snapshot) {
-      hasTeamSnapshot = true;
-      teamDocs = snapshot.docs;
-      emit();
-    }, onError: (error) {
-      debugPrint("MY APPLICATIONS TEAM STREAM SKIPPED: $error");
-      hasTeamSnapshot = true;
-      teamDocs = [];
-      emit();
-    });
+    void clearTeamApplicationSubscriptions() {
+      for (final sub in teamApplicationSubs) {
+        sub.cancel();
+      }
+      teamApplicationSubs.clear();
+      teamDocsByTeam.clear();
+    }
+
+    teamsSub =
+        FirebaseFirestore.instance.collection("teams").snapshots().listen(
+      (snapshot) {
+        final teamIds = snapshot.docs
+            .where((doc) => isUserTeam(doc.data()))
+            .map((doc) => doc.id)
+            .toSet()
+            .toList();
+
+        clearTeamApplicationSubscriptions();
+
+        if (teamIds.isEmpty) {
+          hasTeamSnapshot = true;
+          emit();
+          return;
+        }
+
+        hasTeamSnapshot = false;
+        var received = 0;
+
+        for (final teamId in teamIds) {
+          final sub = FirebaseFirestore.instance
+              .collection("applications")
+              .where("teamId", isEqualTo: teamId)
+              .snapshots(includeMetadataChanges: true)
+              .listen((appSnapshot) {
+            received++;
+            teamDocsByTeam[teamId] = appSnapshot.docs.where((doc) {
+              return isRelevantTeamApplication(doc.data(), teamId);
+            }).toList();
+            hasTeamSnapshot = received >= teamIds.length;
+            emit();
+          }, onError: (_) {
+            received++;
+            teamDocsByTeam[teamId] = [];
+            hasTeamSnapshot = received >= teamIds.length;
+            emit();
+          });
+          teamApplicationSubs.add(sub);
+        }
+      },
+      onError: (_) {
+        clearTeamApplicationSubscriptions();
+        hasTeamSnapshot = true;
+        emit();
+      },
+    );
 
     controller.onCancel = () async {
       await singleSub.cancel();
-      await teamSub.cancel();
+      await teamsSub.cancel();
+      clearTeamApplicationSubscriptions();
     };
 
     return controller.stream;

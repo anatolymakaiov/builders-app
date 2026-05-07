@@ -48,6 +48,24 @@ service cloud.firestore {
         && get(jobPath(jobId)).data.ownerId == uid();
     }
 
+    function teamPath(teamId) {
+      return /databases/$(database)/documents/teams/$(teamId);
+    }
+
+    function isTeamMember(teamId) {
+      return signedIn()
+        && teamId is string
+        && exists(teamPath(teamId))
+        && (
+          get(teamPath(teamId)).data.ownerId == uid()
+          || get(teamPath(teamId)).data.createdBy == uid()
+          || (
+            get(teamPath(teamId)).data.members is list
+            && uid() in get(teamPath(teamId)).data.members
+          )
+        );
+    }
+
     function isChatParticipant(chatId) {
       return signedIn()
         && exists(/databases/$(database)/documents/chats/$(chatId))
@@ -120,7 +138,8 @@ service cloud.firestore {
         || resource.data.employerId == uid()
         || resource.data.ownerId == uid()
         || isJobOwner(resource.data.jobId)
-        || (resource.data.members is list && uid() in resource.data.members);
+        || (resource.data.members is list && uid() in resource.data.members)
+        || isTeamMember(resource.data.teamId);
     }
 
     match /chats/{chatId} {
