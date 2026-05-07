@@ -1122,6 +1122,251 @@ class WorkerProfileScreen extends StatelessWidget {
     );
   }
 
+  Widget buildLiveApplicationHeaderControls({
+    required BuildContext context,
+    required String applicationId,
+    required String employerId,
+    required String jobId,
+  }) {
+    String canonicalStatus(dynamic value) {
+      final status = value?.toString().toLowerCase().trim() ?? "pending";
+      if (status == "review" || status == "in_review" || status == "applied") {
+        return "pending";
+      }
+      return status.isEmpty ? "pending" : status;
+    }
+
+    Widget statusBadge(String status) {
+      switch (status) {
+        case "negotiation":
+          return AppChip.status("Negotiation", color: AppColors.purple);
+        case "offer_sent":
+          return AppChip.status("Offer Sent", color: AppColors.greenDark);
+        case "offer_withdrawn":
+          return AppChip.status("Offer Withdrawn", color: AppColors.warning);
+        case "offer_accepted":
+        case "accepted":
+          return AppChip.status("Hired", color: AppColors.success);
+        case "offer_rejected":
+          return AppChip.status("Offer Rejected", color: AppColors.danger);
+        case "rejected":
+          return AppChip.status("Rejected", color: AppColors.danger);
+        case "withdrawn":
+          return AppChip.status("Withdrawn", color: AppColors.muted);
+        default:
+          return AppChip.status("Pending", color: AppColors.greenDark);
+      }
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("applications")
+          .doc(applicationId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return Row(
+            children: [
+              AppChip.status("Pending", color: AppColors.greenDark),
+              const Spacer(),
+              const SizedBox(width: 42, height: 42),
+            ],
+          );
+        }
+
+        final applicationData =
+            snapshot.data!.data() as Map<String, dynamic>? ?? {};
+        final status = canonicalStatus(applicationData["status"]);
+
+        Future<void> updateStatus(String nextStatus) async {
+          await ApplicationActivityService.updateStatus(
+            applicationId: applicationId,
+            status: nextStatus,
+            unreadFor: ApplicationActivityService.workerRecipients(
+              applicationData,
+            ),
+          );
+        }
+
+        Future<void> openMessage({required bool startNegotiation}) async {
+          if (startNegotiation) {
+            await updateStatus("negotiation");
+          }
+
+          final chatId = await ChatService.getOrCreateChat(
+            workerId: userId,
+            employerId: employerId,
+            jobId: jobId,
+            applicationId: applicationId,
+          );
+
+          if (!context.mounted) return;
+
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatScreen(chatId: chatId),
+            ),
+          );
+        }
+
+        List<
+            ({
+              bool danger,
+              IconData icon,
+              String label,
+              Future<void> Function() run
+            })> actions() {
+          final canStartNegotiation = status == "pending" ||
+              status == "offer_withdrawn" ||
+              status == "offer_rejected";
+
+          if (canStartNegotiation) {
+            return [
+              (
+                danger: false,
+                icon: Icons.forum_outlined,
+                label: "Message / Negotiation",
+                run: () => openMessage(startNegotiation: true),
+              ),
+              (
+                danger: false,
+                icon: Icons.local_offer_outlined,
+                label: "Make Offer",
+                run: () => openExpandedOfferDialog(
+                      context,
+                      applicationId: applicationId,
+                      applicationData: applicationData,
+                    ),
+              ),
+              (
+                danger: true,
+                icon: Icons.close,
+                label: "Reject",
+                run: () => updateStatus("rejected"),
+              ),
+            ];
+          }
+
+          if (status == "negotiation") {
+            return [
+              (
+                danger: false,
+                icon: Icons.chat_bubble_outline,
+                label: "Message",
+                run: () => openMessage(startNegotiation: false),
+              ),
+              (
+                danger: false,
+                icon: Icons.local_offer_outlined,
+                label: "Make Offer",
+                run: () => openExpandedOfferDialog(
+                      context,
+                      applicationId: applicationId,
+                      applicationData: applicationData,
+                    ),
+              ),
+              (
+                danger: true,
+                icon: Icons.close,
+                label: "Reject",
+                run: () => updateStatus("rejected"),
+              ),
+            ];
+          }
+
+          if (status == "offer_sent") {
+            return [
+              (
+                danger: false,
+                icon: Icons.chat_bubble_outline,
+                label: "Message",
+                run: () => openMessage(startNegotiation: false),
+              ),
+              (
+                danger: true,
+                icon: Icons.undo,
+                label: "Withdraw Offer",
+                run: () => updateStatus("offer_withdrawn"),
+              ),
+            ];
+          }
+
+          return [
+            (
+              danger: false,
+              icon: Icons.chat_bubble_outline,
+              label: "Message",
+              run: () => openMessage(startNegotiation: false),
+            ),
+          ];
+        }
+
+        final menuActions = actions();
+
+        return Row(
+          children: [
+            statusBadge(status),
+            const Spacer(),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.surface.withValues(alpha: 0.88),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: AppColors.blueprintLine.withValues(alpha: 0.36),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.glow.withValues(alpha: 0.12),
+                    blurRadius: 12,
+                  ),
+                ],
+              ),
+              child: PopupMenuButton<int>(
+                tooltip: "Actions",
+                icon: const Icon(Icons.more_horiz, color: AppColors.ink),
+                onSelected: (index) async {
+                  await menuActions[index].run();
+                },
+                itemBuilder: (context) => [
+                  for (var i = 0; i < menuActions.length; i++)
+                    PopupMenuItem<int>(
+                      value: i,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            menuActions[i].icon,
+                            size: 18,
+                            color: menuActions[i].danger
+                                ? AppColors.danger
+                                : AppColors.greenDark,
+                          ),
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(
+                              menuActions[i].label,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: menuActions[i].danger
+                                    ? AppColors.danger
+                                    : AppColors.ink,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -1277,7 +1522,7 @@ class WorkerProfileScreen extends StatelessWidget {
               jobId != null;
 
           return DefaultTabController(
-            length: canShowActions ? 4 : 3,
+            length: 3,
             child: StroykaScreenBody(
               child: Column(
                 children: [
@@ -1324,27 +1569,51 @@ class WorkerProfileScreen extends StatelessWidget {
                                   width: 1,
                                 ),
                               ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
+                              child: Stack(
                                 children: [
-                                  CircleAvatar(
-                                    radius: 32,
-                                    backgroundColor: Colors.grey.shade300,
-                                    backgroundImage: photo is String
-                                        ? NetworkImage(photo)
-                                        : null,
-                                    child: photo == null
-                                        ? const Icon(Icons.person, size: 30)
-                                        : null,
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    name,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w900,
-                                      color: AppColors.ink,
+                                  if (canShowActions)
+                                    Positioned(
+                                      left: 0,
+                                      right: 0,
+                                      top: 0,
+                                      child: buildLiveApplicationHeaderControls(
+                                        context: context,
+                                        applicationId: applicationId,
+                                        employerId: employerId!,
+                                        jobId: jobId!,
+                                      ),
+                                    ),
+                                  Padding(
+                                    padding: EdgeInsets.only(
+                                      top: canShowActions ? 38 : 0,
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 32,
+                                          backgroundColor: Colors.grey.shade300,
+                                          backgroundImage: photo is String
+                                              ? NetworkImage(photo)
+                                              : null,
+                                          child: photo == null
+                                              ? const Icon(
+                                                  Icons.person,
+                                                  size: 30,
+                                                )
+                                              : null,
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          name,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w900,
+                                            color: AppColors.ink,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
@@ -1359,21 +1628,20 @@ class WorkerProfileScreen extends StatelessWidget {
                     margin: const EdgeInsets.symmetric(horizontal: 12),
                     padding: const EdgeInsets.all(4),
                     borderRadius: BorderRadius.circular(999),
-                    child: TabBar(
+                    child: const TabBar(
                       dividerColor: Colors.transparent,
-                      indicator: const BoxDecoration(
+                      indicator: BoxDecoration(
                         color: AppColors.green,
                         borderRadius: BorderRadius.all(Radius.circular(999)),
                       ),
                       indicatorSize: TabBarIndicatorSize.tab,
                       labelColor: Colors.white,
                       unselectedLabelColor: AppColors.ink,
-                      labelStyle: const TextStyle(fontWeight: FontWeight.w800),
+                      labelStyle: TextStyle(fontWeight: FontWeight.w800),
                       tabs: [
-                        const Tab(text: "Info"),
-                        if (canShowActions) const Tab(text: "Actions"),
-                        const Tab(text: "Photos"),
-                        const Tab(text: "Teams"),
+                        Tab(text: "Info"),
+                        Tab(text: "Photos"),
+                        Tab(text: "Teams"),
                       ],
                     ),
                   ),
@@ -1418,21 +1686,6 @@ class WorkerProfileScreen extends StatelessWidget {
                             ),
                           ],
                         ),
-                        if (canShowActions)
-                          ListView(
-                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
-                            children: [
-                              StroykaSurface(
-                                padding: const EdgeInsets.all(18),
-                                child: buildLiveApplicationActions(
-                                  context: context,
-                                  applicationId: applicationId,
-                                  employerId: employerId!,
-                                  jobId: jobId!,
-                                ),
-                              ),
-                            ],
-                          ),
                         ListView(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
                           children: [
