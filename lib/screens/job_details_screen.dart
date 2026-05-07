@@ -38,8 +38,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   bool isApplied = false;
   String? currentApplicationId;
   String role = "worker";
-  final List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>
-      applyStateSubscriptions = [];
+  final List<StreamSubscription> applyStateSubscriptions = [];
 
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
 
@@ -52,7 +51,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Future<void> init() async {
     await loadRole();
     await checkIfApplied();
-    watchApplyState();
+    await watchApplyState();
   }
 
   @override
@@ -63,7 +62,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     super.dispose();
   }
 
-  void watchApplyState() {
+  Future<void> watchApplyState() async {
     final uid = userId;
     if (uid == null || role != "worker" || applyStateSubscriptions.isNotEmpty) {
       return;
@@ -84,12 +83,17 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     addListener(applicationsRef
         .where("jobId", isEqualTo: widget.job.id)
         .where("workerId", isEqualTo: uid));
-    addListener(applicationsRef
-        .where("jobId", isEqualTo: widget.job.id)
-        .where("applicantId", isEqualTo: uid));
-    addListener(applicationsRef
-        .where("jobId", isEqualTo: widget.job.id)
-        .where("members", arrayContains: uid));
+
+    final teams = await loadMyTeams();
+    for (final teamDoc in teams) {
+      final applicationId = teamApplicationDocumentId(teamDoc.id);
+      applyStateSubscriptions.add(
+        applicationsRef.doc(applicationId).snapshots().listen((_) {
+          if (!mounted || isApplying) return;
+          checkIfApplied();
+        }),
+      );
+    }
   }
 
   Future<void> loadRole() async {
@@ -118,52 +122,39 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
   }
 
-  Future<QueryDocumentSnapshot<Map<String, dynamic>>?>
-      findCurrentUserApplication(String uid) async {
-    final applications = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+  Future<DocumentSnapshot<Map<String, dynamic>>?> findCurrentUserApplication(
+      String uid) async {
+    final applications = <DocumentSnapshot<Map<String, dynamic>>>[];
     final seenIds = <String>{};
 
-    Future<void> addQuery(
-      Query<Map<String, dynamic>> query,
-      String label,
-    ) async {
-      try {
-        final snap = await query.get();
-        for (final doc in snap.docs) {
-          if (seenIds.add(doc.id)) applications.add(doc);
-        }
-      } on FirebaseException catch (e) {
-        debugPrint(
-          "APPLICATION CHECK QUERY SKIPPED [$label]: ${e.code} ${e.message}",
-        );
-        if (e.code != "permission-denied" && e.code != "failed-precondition") {
-          rethrow;
-        }
+    Future<void> addQuery(Query<Map<String, dynamic>> query) async {
+      final snap = await query.get();
+      for (final doc in snap.docs) {
+        if (seenIds.add(doc.id)) applications.add(doc);
       }
     }
 
     final applicationsRef =
         FirebaseFirestore.instance.collection("applications");
 
-    await addQuery(
-        applicationsRef
-            .where("jobId", isEqualTo: widget.job.id)
-            .where("workerId", isEqualTo: uid),
-        "workerId");
-    await addQuery(
-        applicationsRef
-            .where("jobId", isEqualTo: widget.job.id)
-            .where("applicantId", isEqualTo: uid),
-        "applicantId");
-    await addQuery(
-        applicationsRef
-            .where("jobId", isEqualTo: widget.job.id)
-            .where("members", arrayContains: uid),
-        "members");
+    await addQuery(applicationsRef
+        .where("jobId", isEqualTo: widget.job.id)
+        .where("workerId", isEqualTo: uid));
+
+    final teams = await loadMyTeams();
+    for (final teamDoc in teams) {
+      final appDoc = await applicationsRef
+          .doc(teamApplicationDocumentId(teamDoc.id))
+          .get();
+      if (appDoc.exists && seenIds.add(appDoc.id)) {
+        applications.add(appDoc);
+      }
+    }
 
     for (final doc in applications) {
       final data = doc.data();
-      if (applicationBelongsToJob(data) &&
+      if (data != null &&
+          applicationBelongsToJob(data) &&
           isCurrentUserApplicationData(data, uid)) {
         return doc;
       }
@@ -236,6 +227,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         .where((id) => id.isNotEmpty)
         .toSet()
         .toList();
+  }
+
+  String teamApplicationDocumentId(String teamId) {
+    return "team_${widget.job.id}_$teamId";
   }
 
   /// 🔥 PICK TEAM
@@ -441,7 +436,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
         final applicationRef = FirebaseFirestore.instance
             .collection("applications")
-            .doc("team_${widget.job.id}_$teamId");
+            .doc(teamApplicationDocumentId(teamId));
 
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           final jobRef =
