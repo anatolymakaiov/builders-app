@@ -14,6 +14,7 @@ import '../services/report_service.dart';
 import '../services/support_request_service.dart';
 import 'chat_screen.dart';
 import '../widgets/phone_link.dart';
+import '../widgets/profile_hamburger_menu.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -1127,7 +1128,17 @@ class WorkerProfileScreen extends StatelessWidget {
     final isMyProfile = currentUser?.uid == userId;
 
     return Scaffold(
+      drawer: isMyProfile ? const ProfileHamburgerMenu(role: "worker") : null,
       appBar: AppBar(
+        leading: isMyProfile
+            ? Builder(
+                builder: (context) => IconButton(
+                  tooltip: "Menu",
+                  icon: const Icon(Icons.menu),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                ),
+              )
+            : null,
         title: const Text("Worker Profile"),
         actions: [
           if (isMyProfile) ...[

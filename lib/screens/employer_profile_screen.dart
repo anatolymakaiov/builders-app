@@ -15,6 +15,7 @@ import '../services/support_request_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/company_profile_sections.dart';
+import '../widgets/profile_hamburger_menu.dart';
 
 class EmployerProfileScreen extends StatefulWidget {
   final String userId;
@@ -128,11 +129,23 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isMyCompany = FirebaseAuth.instance.currentUser?.uid == widget.userId;
+
     return Scaffold(
+      drawer: isMyCompany ? const ProfileHamburgerMenu(role: "employer") : null,
       appBar: AppBar(
+        leading: isMyCompany
+            ? Builder(
+                builder: (context) => IconButton(
+                  tooltip: "Menu",
+                  icon: const Icon(Icons.menu),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                ),
+              )
+            : null,
         title: const Text("Company Profile"),
         actions: [
-          if (FirebaseAuth.instance.currentUser?.uid == widget.userId) ...[
+          if (isMyCompany) ...[
             IconButton(
               tooltip: "Support",
               icon: const Icon(Icons.support_agent_outlined),
@@ -212,8 +225,6 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
           final headerImage =
               (data["profileHeaderImage"] ?? data["headerImage"])?.toString();
           final photos = List<String>.from(data["companyPhotos"] ?? []);
-          final isMyCompany =
-              FirebaseAuth.instance.currentUser?.uid == widget.userId;
           final showBilling = isMyCompany && role == "employer";
           final tabCount = showBilling ? 5 : 4;
           final initialTab = widget.initialTab.clamp(0, tabCount - 1).toInt();
