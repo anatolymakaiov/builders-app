@@ -102,7 +102,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         return "OFFER RECEIVED";
       case "accepted":
       case "offer_accepted":
-        return "ACCEPTED";
+        return "OFFER ACCEPTED";
       case "rejected":
         return "REJECTED";
       default:

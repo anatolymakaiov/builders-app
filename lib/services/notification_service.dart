@@ -3,6 +3,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import 'calendar_service.dart';
+
 class NotificationService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
@@ -597,6 +599,69 @@ class NotificationService {
           "startDateTime": start,
         },
       );
+    }
+  }
+
+  Future<void> scheduleWorkerStartReminders({
+    required String applicationId,
+    required Map<String, dynamic> applicationData,
+    required Map<String, dynamic> offer,
+  }) async {
+    final recipients = applicationRecipients(applicationData);
+    if (recipients.isEmpty) return;
+
+    final start = CalendarService.parseOfferDate(
+      offer["startDateTime"] ?? offer["startDate"],
+    );
+    if (start == null) return;
+
+    final now = DateTime.now();
+    final jobId = applicationData["jobId"]?.toString();
+    final jobTitle = applicationData["jobTitle"]?.toString().trim();
+    final companyName = applicationData["companyName"]?.toString().trim() ??
+        applicationData["employerName"]?.toString().trim() ??
+        "";
+    final displayTitle =
+        jobTitle == null || jobTitle.isEmpty ? "your job" : jobTitle;
+    final startText =
+        (offer["startDateTime"] ?? offer["startDate"])?.toString() ??
+            start.toString();
+
+    for (final daysBefore in const [7, 2]) {
+      final reminderAt = start.subtract(Duration(days: daysBefore));
+      if (!reminderAt.isAfter(now)) continue;
+
+      for (final userId in recipients) {
+        final ref = _db
+            .collection("users")
+            .doc(userId)
+            .collection("notifications")
+            .doc("work_start_${applicationId}_${daysBefore}d");
+        await ref.set({
+          "userId": userId,
+          "type": "work_start_reminder",
+          "title": "Work starts soon",
+          "message": companyName.isEmpty
+              ? "$displayTitle starts on $startText."
+              : "$displayTitle with $companyName starts on $startText.",
+          "targetType": "application",
+          "targetId": applicationId,
+          "applicationId": applicationId,
+          "relatedApplicationId": applicationId,
+          if (jobId != null && jobId.isNotEmpty) ...{
+            "jobId": jobId,
+            "relatedJobId": jobId,
+          },
+          "jobTitle": displayTitle,
+          if (companyName.isNotEmpty) "companyName": companyName,
+          "startDateTime": startText,
+          "reminderDaysBefore": daysBefore,
+          "reminderAt": Timestamp.fromDate(reminderAt),
+          "read": false,
+          "createdAt": FieldValue.serverTimestamp(),
+          "offer": offer,
+        }, SetOptions(merge: true));
+      }
     }
   }
 

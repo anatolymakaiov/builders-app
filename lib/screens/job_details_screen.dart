@@ -1339,6 +1339,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
       transaction.update(appRef, {
         "status": "offer_accepted",
+        "offerAcceptedAt": FieldValue.serverTimestamp(),
+        "acceptedByWorkerId": userId,
         "applicationActivityAt": FieldValue.serverTimestamp(),
         "updatedAt": FieldValue.serverTimestamp(),
         "unreadFor": FieldValue.arrayUnion(
@@ -1358,7 +1360,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final offer = appData?["offer"];
 
     if (appData != null && offer is Map<String, dynamic>) {
-      await NotificationService().notifyWorkStartReminder(
+      await NotificationService().notifyEmployerOfferDecision(
+        applicationId: applicationId,
+        applicationData: appData,
+        status: "offer_accepted",
+      );
+      await NotificationService().scheduleWorkerStartReminders(
         applicationId: applicationId,
         applicationData: appData,
         offer: offer,
@@ -1430,6 +1437,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       title: widget.job.displayTitle,
       offer: offer,
       fallbackLocation: widget.job.fullAddress,
+      employerName: widget.job.companyName,
     );
 
     if (!mounted) return;
@@ -1490,15 +1498,16 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               const SizedBox(height: 10),
               ...buildOfferDetails(offer),
               const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  style: compactSecondaryActionStyle,
-                  onPressed: () => addOfferToCalendar(offer),
-                  icon: const Icon(Icons.calendar_month),
-                  label: const Text("Add to phone calendar"),
+              if (accepted)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: compactSecondaryActionStyle,
+                    onPressed: () => addOfferToCalendar(offer),
+                    icon: const Icon(Icons.calendar_month),
+                    label: const Text("Add to phone calendar"),
+                  ),
                 ),
-              ),
               if (canAccept)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
@@ -1512,14 +1521,13 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                   ),
                 ),
               if (accepted)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      style: compactSecondaryActionStyle,
-                      onPressed: () => withdrawOfferAcceptance(applicationId),
-                      child: const Text("Withdraw acceptance"),
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    "Offer accepted",
+                    style: TextStyle(
+                      color: AppColors.greenDark,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
@@ -1653,7 +1661,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         return "Offer Received";
       case "offer_accepted":
       case "accepted":
-        return "Hired";
+        return "Offer Accepted";
       case "offer_rejected":
         return "Offer Rejected";
       case "rejected":
@@ -1744,26 +1752,30 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final canHandleOffer = activeApplication &&
         (status == "offer" || status == "offer_sent") &&
         appData != null;
+    final canWithdrawApplication =
+        activeApplication && (status == "pending" || status == "in_review");
+    final acceptedOffer = status == "offer_accepted" || status == "accepted";
 
     final actions =
         <({bool danger, String label, Future<void> Function() run})>[
       (
         danger: false,
-        label: "Show location on map",
-        run: () async => openMaps(),
-      ),
-      (
-        danger: false,
         label: "Message employer",
         run: openEmployerChat,
       ),
+      if (!acceptedOffer)
+        (
+          danger: false,
+          label: "Show location on map",
+          run: () async => openMaps(),
+        ),
       if (!activeApplication)
         (
           danger: false,
           label: "Apply for this job",
           run: apply,
         )
-      else
+      else if (canWithdrawApplication)
         (
           danger: true,
           label: "Withdraw application",

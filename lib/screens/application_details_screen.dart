@@ -169,6 +169,8 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
         transaction.update(appRef, {
           "status": "offer_accepted",
+          "offerAcceptedAt": FieldValue.serverTimestamp(),
+          "acceptedByWorkerId": FirebaseAuth.instance.currentUser?.uid,
           "applicationActivityAt": FieldValue.serverTimestamp(),
           "updatedAt": FieldValue.serverTimestamp(),
           "unreadFor": FieldValue.arrayUnion(
@@ -187,11 +189,19 @@ class ApplicationDetailsScreen extends StatelessWidget {
           .get();
       final updatedData = updatedApplication.data();
       if (updatedData != null) {
+        final offer = updatedData["offer"];
         await NotificationService().notifyEmployerOfferDecision(
           applicationId: applicationId,
           applicationData: updatedData,
           status: "offer_accepted",
         );
+        if (offer is Map<String, dynamic>) {
+          await NotificationService().scheduleWorkerStartReminders(
+            applicationId: applicationId,
+            applicationData: updatedData,
+            offer: offer,
+          );
+        }
       }
     } catch (e) {
       debugPrint("ACCEPT OFFER ERROR: $e");
@@ -1128,7 +1138,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 case "offer_accepted":
                 case "accepted":
                   color = Colors.green;
-                  label = "Hired";
+                  label = forEmployer ? "Hired" : "Offer Accepted";
                   break;
                 case "offer_rejected":
                   color = Colors.deepOrange;

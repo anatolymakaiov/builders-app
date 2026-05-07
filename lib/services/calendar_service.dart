@@ -42,6 +42,8 @@ class CalendarService {
     required String title,
     required Map<String, dynamic> offer,
     String? fallbackLocation,
+    String? employerName,
+    String? workerName,
   }) async {
     final start = parseOfferDate(offer["startDateTime"] ?? offer["startDate"]);
     if (start == null) return false;
@@ -53,7 +55,11 @@ class CalendarService {
 
     final event = Event(
       title: title,
-      description: _description(offer),
+      description: _description(
+        offer,
+        employerName: employerName,
+        workerName: workerName,
+      ),
       location:
           location == null || location.isEmpty ? fallbackLocation : location,
       startDate: start,
@@ -64,7 +70,11 @@ class CalendarService {
     return Add2Calendar.addEvent2Cal(event);
   }
 
-  static String _description(Map<String, dynamic> offer) {
+  static String _description(
+    Map<String, dynamic> offer, {
+    String? employerName,
+    String? workerName,
+  }) {
     final rows = <String>[];
 
     void add(String label, dynamic value) {
@@ -72,6 +82,8 @@ class CalendarService {
       if (text.isNotEmpty) rows.add("$label: $text");
     }
 
+    add("Employer / company", employerName);
+    add("Worker", workerName);
     add("Work format", offer["workFormat"]);
     add("Rate / price", offer["rate"]);
     add("Work period", offer["workPeriod"]);
