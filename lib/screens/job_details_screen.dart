@@ -1360,6 +1360,26 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     });
   }
 
+  Future<void> rejectOffer(
+    String applicationId,
+    Map<String, dynamic> appData,
+  ) async {
+    await ApplicationActivityService.updateStatus(
+      applicationId: applicationId,
+      status: "offer_rejected",
+      unreadFor: ApplicationActivityService.employerRecipients(appData),
+    );
+
+    await NotificationService().notifyEmployerOfferDecision(
+      applicationId: applicationId,
+      applicationData: {
+        ...appData,
+        "status": "offer_rejected",
+      },
+      status: "offer_rejected",
+    );
+  }
+
   Future<void> addOfferToCalendar(Map<String, dynamic> offer) async {
     final added = await CalendarService.addOfferToCalendar(
       title: widget.job.displayTitle,
@@ -1500,8 +1520,34 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
+  Future<void> openEmployerChat() async {
+    final uid = userId;
+    if (uid == null) return;
+
+    final employerId = widget.job.ownerId;
+    if (employerId.isEmpty) return;
+
+    final chatId = await ChatService.getOrCreateChat(
+      workerId: uid,
+      employerId: employerId,
+      jobId: widget.job.id,
+      jobTitle: widget.job.displayTitle,
+    );
+
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(chatId: chatId),
+      ),
+    );
+  }
+
   Widget buildActionPanel() {
     final isOwner = userId == widget.job.ownerId;
+
+    if (!isOwner) return const SizedBox();
 
     return StroykaSurface(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -1509,47 +1555,229 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (!isOwner) ...[
-            SizedBox(
-              width: double.infinity,
-              height: 42,
-              child: OutlinedButton.icon(
-                style: compactSecondaryActionStyle,
-                onPressed: openMaps,
-                icon: const Icon(Icons.map),
-                label: const Text("Show location on map"),
-              ),
-            ),
-            const SizedBox(height: 6),
-            buildMessageEmployerButton(),
-            const SizedBox(height: 6),
-            buildApplyButton(),
-          ] else ...[
-            buildEditButton(),
-            const SizedBox(height: 6),
-            SizedBox(
-              width: double.infinity,
-              height: 42,
-              child: OutlinedButton.icon(
-                style: compactSecondaryActionStyle,
-                onPressed: () async {
-                  await FirebaseFirestore.instance
-                      .collection("jobs")
-                      .doc(widget.job.id)
-                      .update({
-                    "status": "completed",
-                  });
+          buildEditButton(),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            height: 42,
+            child: OutlinedButton.icon(
+              style: compactSecondaryActionStyle,
+              onPressed: () async {
+                await FirebaseFirestore.instance
+                    .collection("jobs")
+                    .doc(widget.job.id)
+                    .update({
+                  "status": "completed",
+                });
 
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Job completed")),
-                  );
-                },
-                icon: const Icon(Icons.check_circle),
-                label: const Text("Complete job"),
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Job completed")),
+                );
+              },
+              icon: const Icon(Icons.check_circle),
+              label: const Text("Complete job"),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String workerApplicationStatus(Map<String, dynamic>? appData) {
+    if (appData == null || !isActiveApplicationData(appData)) {
+      return "not_applied";
+    }
+
+    final status =
+        appData["status"]?.toString().toLowerCase().trim() ?? "pending";
+    if (status == "review" || status == "applied") return "pending";
+    return status.isEmpty ? "pending" : status;
+  }
+
+  String workerApplicationStatusLabel(String status) {
+    switch (status) {
+      case "not_applied":
+        return "Not Applied";
+      case "in_review":
+        return "In Review";
+      case "negotiation":
+        return "Negotiation";
+      case "offer":
+      case "offer_sent":
+        return "Offer Sent";
+      case "offer_accepted":
+      case "accepted":
+        return "Hired";
+      case "offer_rejected":
+        return "Offer Rejected";
+      case "rejected":
+        return "Rejected";
+      case "withdrawn":
+        return "Withdrawn";
+      default:
+        return "Applied";
+    }
+  }
+
+  Color workerApplicationStatusColor(String status) {
+    switch (status) {
+      case "not_applied":
+        return AppColors.muted;
+      case "negotiation":
+        return Colors.purple;
+      case "offer":
+      case "offer_sent":
+        return AppColors.greenDark;
+      case "offer_accepted":
+      case "accepted":
+        return Colors.green;
+      case "offer_rejected":
+        return Colors.deepOrange;
+      case "rejected":
+      case "withdrawn":
+        return Colors.red;
+      default:
+        return AppColors.ink;
+    }
+  }
+
+  Widget buildWorkerStatusBadge(String status) {
+    final color = workerApplicationStatusColor(status);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.74),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ink.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Text(
+        workerApplicationStatusLabel(status),
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+
+  Widget buildWorkerJobActionHeader() {
+    if (role != "worker") return const SizedBox();
+
+    final applicationId = currentApplicationId;
+    if (applicationId == null || applicationId.isEmpty) {
+      return buildWorkerJobActionHeaderContent(null, null);
+    }
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection("applications")
+          .doc(applicationId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final appData = snapshot.data?.data();
+        return buildWorkerJobActionHeaderContent(applicationId, appData);
+      },
+    );
+  }
+
+  Widget buildWorkerJobActionHeaderContent(
+    String? applicationId,
+    Map<String, dynamic>? appData,
+  ) {
+    final status = workerApplicationStatus(appData);
+    final activeApplication = applicationId != null && status != "not_applied";
+    final canHandleOffer = activeApplication &&
+        (status == "offer" || status == "offer_sent") &&
+        appData != null;
+
+    final actions =
+        <({bool danger, String label, Future<void> Function() run})>[
+      (
+        danger: false,
+        label: "Show location on map",
+        run: () async => openMaps(),
+      ),
+      (
+        danger: false,
+        label: "Message employer",
+        run: openEmployerChat,
+      ),
+      if (!activeApplication)
+        (
+          danger: false,
+          label: "Apply for this job",
+          run: apply,
+        )
+      else
+        (
+          danger: true,
+          label: "Withdraw application",
+          run: withdrawApplication,
+        ),
+      if (canHandleOffer)
+        (
+          danger: false,
+          label: "Accept offer",
+          run: () => acceptOffer(applicationId),
+        ),
+      if (canHandleOffer)
+        (
+          danger: true,
+          label: "Reject offer",
+          run: () => rejectOffer(applicationId, appData),
+        ),
+    ];
+
+    return StroykaSurface(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          buildWorkerStatusBadge(status),
+          const Spacer(),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.72),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppColors.ink.withValues(alpha: 0.08),
               ),
             ),
-          ],
+            child: PopupMenuButton<int>(
+              tooltip: "Actions",
+              icon: const Icon(Icons.more_vert),
+              color: Colors.white,
+              enabled: !isApplying,
+              onSelected: (index) async {
+                await actions[index].run();
+              },
+              itemBuilder: (context) {
+                return [
+                  for (var i = 0; i < actions.length; i++)
+                    PopupMenuItem<int>(
+                      value: i,
+                      child: Text(
+                        actions[i].label,
+                        style: TextStyle(
+                          color: actions[i].danger ? Colors.red : AppColors.ink,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                ];
+              },
+            ),
+          ),
         ],
       ),
     );
@@ -2231,6 +2459,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                   ],
                 ),
               ),
+              buildWorkerJobActionHeader(),
               Expanded(
                 child: TabBarView(
                   children: [
@@ -2244,9 +2473,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             ],
           ),
         ),
-        bottomNavigationBar: SafeArea(
-          child: buildActionPanel(),
-        ),
+        bottomNavigationBar: userId == widget.job.ownerId
+            ? SafeArea(
+                child: buildActionPanel(),
+              )
+            : null,
       ),
     );
   }
