@@ -1120,6 +1120,11 @@ class ApplicationDetailsScreen extends StatelessWidget {
             final employerId = liveData["employerId"]?.toString();
             final isEmployerViewer =
                 currentUserId != null && currentUserId == employerId;
+            if (isEmployerViewer && liveData["viewedByEmployer"] != true) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                ApplicationActivityService.markViewedByEmployer(applicationId);
+              });
+            }
             final status = canonicalStatus(liveData["status"]);
             final selectedMembers = <String>{};
 

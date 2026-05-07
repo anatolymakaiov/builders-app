@@ -411,6 +411,10 @@ class _EmployerApplicationsScreenState
                             doc.id,
                             employerId,
                           );
+                          if (data["viewedByEmployer"] != true) {
+                            await ApplicationActivityService
+                                .markViewedByEmployer(doc.id);
+                          }
                           if (!context.mounted) return;
 
                           final workerId = data["workerId"]?.toString();

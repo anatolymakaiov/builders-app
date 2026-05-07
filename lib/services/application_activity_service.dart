@@ -72,6 +72,16 @@ class ApplicationActivityService {
     }, SetOptions(merge: true));
   }
 
+  static Future<void> markViewedByEmployer(String applicationId) async {
+    await FirebaseFirestore.instance
+        .collection("applications")
+        .doc(applicationId)
+        .set({
+      "viewedByEmployer": true,
+      "viewedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   static Future<void> updateStatus({
     required String applicationId,
     required String status,

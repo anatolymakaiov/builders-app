@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -107,11 +109,69 @@ class _HomeScreenState extends State<HomeScreen> {
   Stream<int> getUnreadApplications() {
     if (userId == null) return const Stream.empty();
 
+    if (role == "employer") {
+      return getUnviewedEmployerApplications(userId!);
+    }
+
     return FirebaseFirestore.instance
         .collection("applications")
         .where("unreadFor", arrayContains: userId)
         .snapshots()
         .map((snap) => snap.docs.length);
+  }
+
+  Stream<int> getUnviewedEmployerApplications(String employerId) {
+    final controller = StreamController<int>();
+    final applicationsRef =
+        FirebaseFirestore.instance.collection("applications");
+
+    List<QueryDocumentSnapshot<Map<String, dynamic>>>? employerDocs;
+    List<QueryDocumentSnapshot<Map<String, dynamic>>>? ownerDocs;
+    late final StreamSubscription employerSub;
+    late final StreamSubscription ownerSub;
+
+    void emit() {
+      final byEmployer = employerDocs;
+      final byOwner = ownerDocs;
+      if (byEmployer == null || byOwner == null || controller.isClosed) return;
+
+      final seen = <String>{};
+      var count = 0;
+      for (final doc in [...byEmployer, ...byOwner]) {
+        if (!seen.add(doc.id)) continue;
+        final data = doc.data();
+        if (data["viewedByEmployer"] != true) count++;
+      }
+
+      controller.add(count);
+    }
+
+    employerSub = applicationsRef
+        .where("employerId", isEqualTo: employerId)
+        .snapshots()
+        .listen((snapshot) {
+      employerDocs = snapshot.docs;
+      emit();
+    }, onError: controller.addError);
+
+    ownerSub = applicationsRef
+        .where("ownerId", isEqualTo: employerId)
+        .snapshots()
+        .listen((snapshot) {
+      ownerDocs = snapshot.docs;
+      emit();
+    }, onError: (error) {
+      debugPrint("OWNER APPLICATION BADGE STREAM SKIPPED: $error");
+      ownerDocs = const [];
+      emit();
+    });
+
+    controller.onCancel = () async {
+      await employerSub.cancel();
+      await ownerSub.cancel();
+    };
+
+    return controller.stream;
   }
 
   /// 📱 SCREENS
