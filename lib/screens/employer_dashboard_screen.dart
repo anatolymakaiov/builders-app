@@ -56,27 +56,10 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     required String label,
     Color? color,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: (color ?? Colors.grey).withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: color ?? Colors.grey.shade700),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              color: color ?? Colors.grey.shade800,
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
+    return AppChip(
+      icon: icon,
+      label: label,
+      color: color ?? AppColors.greenDark,
     );
   }
 
@@ -225,12 +208,10 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     return DropdownButtonFormField<String>(
       initialValue: items.contains(value) ? value : "All",
       isExpanded: true,
-      decoration: const InputDecoration(
-        border: OutlineInputBorder(),
+      decoration: AppInputFields.decoration().copyWith(
         isDense: true,
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       ),
       style: const TextStyle(
         color: AppColors.ink,
@@ -280,20 +261,9 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
 
   Widget buildStatusBadge(Job job) {
     final isClosed = job.isClosed;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: isClosed ? Colors.grey.shade700 : AppColors.green,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        isClosed ? "INACTIVE" : "ACTIVE",
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+    return AppChip.status(
+      isClosed ? "INACTIVE" : "ACTIVE",
+      color: isClosed ? AppColors.warning : AppColors.success,
     );
   }
 
@@ -448,23 +418,10 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
           ),
         );
       },
-      child: Container(
+      child: AppCard(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isClosed ? Colors.grey.shade100 : AppColors.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isClosed ? Colors.grey.shade400 : AppColors.surface,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
+        dimmed: isClosed,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

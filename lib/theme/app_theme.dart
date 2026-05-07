@@ -1,43 +1,26 @@
 import 'package:flutter/material.dart';
 
-class AppColors {
-  static const navy = Color(0xFF062E34);
-  static const deep = Color(0xFF021B21);
-  static const ink = Color(0xFF123238);
-  static const muted = Color(0xFF6B7C80);
-  static const canvas = Color(0xFFF7FAF8);
-  static const surface = Color(0xFFF2F7F4);
-  static const surfaceAlt = Color(0xFFE7F1EB);
-  static const green = Color(0xFF7DB9D8);
-  static const greenDark = Color(0xFF2F6E92);
-  static const danger = Color(0xFFF04465);
-}
+import 'app_buttons.dart';
+import 'app_colors.dart';
+import 'app_input_fields.dart';
+import 'app_typography.dart';
 
-class AppAssets {
-  static const logo = "assets/branding/stroyka_logo.svg";
-
-  static const darkBackgrounds = [
-    "assets/branding/bg_dark_workspace.jpg",
-    "assets/branding/bg_dark_office.jpg",
-    "assets/branding/bg_dark_tech.jpg",
-    "assets/branding/bg_dark_pattern.jpg",
-  ];
-
-  static const lightTextures = [
-    "assets/branding/texture_light_triangles.jpg",
-    "assets/branding/texture_light_cloud.jpg",
-    "assets/branding/texture_light_dots.jpg",
-  ];
-}
+export 'app_buttons.dart';
+export 'app_cards.dart';
+export 'app_chips.dart';
+export 'app_colors.dart';
+export 'app_input_fields.dart';
+export 'app_spacing.dart';
+export 'app_typography.dart';
 
 class AppTheme {
   static ThemeData get light {
     final base = ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: AppColors.green,
+        seedColor: AppColors.blueprintLine,
         brightness: Brightness.light,
-        primary: AppColors.green,
+        primary: AppColors.blueprintLine,
         secondary: AppColors.navy,
         surface: AppColors.canvas,
       ),
@@ -46,7 +29,7 @@ class AppTheme {
 
     return base.copyWith(
       scaffoldBackgroundColor: Colors.transparent,
-      primaryColor: AppColors.green,
+      primaryColor: AppColors.blueprintLine,
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
@@ -54,7 +37,7 @@ class AppTheme {
         centerTitle: true,
         titleTextStyle: TextStyle(
           color: Colors.white,
-          fontSize: 22,
+          fontSize: 24,
           fontWeight: FontWeight.w800,
           letterSpacing: 0,
         ),
@@ -66,52 +49,44 @@ class AppTheme {
         elevation: 0,
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: AppColors.green,
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: AppColors.navy,
         foregroundColor: Colors.white,
         elevation: 0,
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: const Color(0xFFFDFEFD),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade200),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.green, width: 1.4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(6),
+          side: BorderSide(
+            color: AppColors.blueprintLine.withValues(alpha: 0.64),
+          ),
         ),
       ),
+      inputDecorationTheme: AppInputFields.theme(),
       elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.green,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(999),
-          ),
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 16,
-          ),
-        ),
+        style: AppButtonStyles.primary(),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.ink,
-          side: BorderSide(color: Colors.grey.shade300),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(999),
+        style: AppButtonStyles.secondary(),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: AppButtonStyles.text(),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: AppColors.surface,
+        elevation: 14,
+        shadowColor: Colors.black.withValues(alpha: 0.32),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: AppColors.blueprintLine.withValues(alpha: 0.35),
           ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        textStyle: AppTypography.body.copyWith(
+          fontSize: 14,
+          fontWeight: FontWeight.w800,
         ),
       ),
       textTheme: base.textTheme.apply(
@@ -120,7 +95,7 @@ class AppTheme {
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: AppColors.deep,
-        selectedItemColor: AppColors.green,
+        selectedItemColor: AppColors.blueprintLine,
         unselectedItemColor: Colors.white,
         selectedLabelStyle: TextStyle(
           fontWeight: FontWeight.w800,

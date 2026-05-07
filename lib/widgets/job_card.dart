@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../models/job.dart';
 import '../screens/job_details_screen.dart';
-import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../theme/app_theme.dart';
 
 class JobCard extends StatelessWidget {
   final Job job;
@@ -40,7 +40,7 @@ class JobCard extends StatelessWidget {
       margin: margin,
       padding: EdgeInsets.zero,
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         onTap: onTap ??
             () {
               Navigator.push(
@@ -70,17 +70,25 @@ class JobCard extends StatelessWidget {
                     ),
                   ],
                   Expanded(
-                    child: _CompanyHeader(
-                      job: job,
-                      detailText: detailText,
-                    ),
-                  ),
+                      child: _CompanyHeader(job: job, detailText: detailText)),
                   const SizedBox(width: 12),
-                  _CompanyLogo(job: job),
-                  if (trailingAction != null) ...[
-                    const SizedBox(width: 4),
-                    trailingAction!,
-                  ],
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _CompanyLogo(job: job),
+                      if (statusText != null && statusText!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        AppChip.status(
+                          statusText!,
+                          color: statusColor ?? AppColors.status(statusText!),
+                        ),
+                      ],
+                      if (trailingAction != null) ...[
+                        const SizedBox(height: 6),
+                        trailingAction!,
+                      ],
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -89,28 +97,19 @@ class JobCard extends StatelessWidget {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  _MetaChip(label: job.workFormatText),
+                  AppChip(icon: Icons.work_outline, label: job.workFormatText),
                   if (job.duration.trim().isNotEmpty)
-                    _MetaChip(label: job.duration.trim()),
+                    AppChip(icon: Icons.schedule, label: job.duration.trim()),
                   if (job.listRateText.isNotEmpty)
-                    _MetaChip(
+                    AppChip(
+                      icon: Icons.payments_outlined,
                       label: job.listRateText,
                       color: AppColors.greenDark,
                     ),
                   if (distanceText != null && distanceText!.isNotEmpty)
-                    _MetaChip(label: distanceText!),
+                    AppChip(icon: Icons.place_outlined, label: distanceText!),
                 ],
               ),
-              if (statusText != null && statusText!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: _MetaChip(
-                    label: statusText!,
-                    color: statusColor ?? AppColors.greenDark,
-                  ),
-                ),
-              ],
               if (bottomAction != null) ...[
                 const SizedBox(height: 10),
                 bottomAction!,
@@ -189,11 +188,7 @@ class _TitleBlock extends StatelessWidget {
           job.displayTitle,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: AppColors.ink,
-            fontWeight: FontWeight.w900,
-            fontSize: 19,
-          ),
+          style: AppTypography.cardTitle,
         ),
         if (companyName.isNotEmpty) ...[
           const SizedBox(height: 4),
@@ -275,39 +270,16 @@ class _Logo extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasPhoto = photo != null && photo!.trim().isNotEmpty;
     return CircleAvatar(
-      radius: 32,
-      backgroundColor: Colors.grey.shade300,
+      radius: 31,
+      backgroundColor: AppColors.surfaceAlt,
       backgroundImage: hasPhoto ? NetworkImage(photo!) : null,
-      child: hasPhoto ? null : const Icon(Icons.business, size: 30),
-    );
-  }
-}
-
-class _MetaChip extends StatelessWidget {
-  final String label;
-  final Color color;
-
-  const _MetaChip({
-    required this.label,
-    this.color = AppColors.ink,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
-        ),
-      ),
+      child: hasPhoto
+          ? null
+          : const Icon(
+              Icons.business,
+              size: 30,
+              color: AppColors.greenDark,
+            ),
     );
   }
 }

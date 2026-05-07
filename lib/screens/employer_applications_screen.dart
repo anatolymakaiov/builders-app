@@ -448,22 +448,11 @@ class _EmployerApplicationsScreenState
                             ),
                           );
                         },
-                        child: Container(
+                        child: AppCard(
                           margin: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 10),
                           padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: isUnread
-                                ? AppColors.surfaceAlt
-                                : AppColors.surface,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: isUnread
-                                  ? AppColors.green
-                                  : Colors.transparent,
-                              width: 1.2,
-                            ),
-                          ),
+                          dimmed: isUnread,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -488,31 +477,9 @@ class _EmployerApplicationsScreenState
                                       children: [
                                         Align(
                                           alignment: Alignment.centerLeft,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 9,
-                                              vertical: 5,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: getStatusColor(status)
-                                                  .withValues(alpha: 0.12),
-                                              borderRadius:
-                                                  BorderRadius.circular(999),
-                                              border: Border.all(
-                                                color: getStatusColor(status)
-                                                    .withValues(alpha: 0.22),
-                                              ),
-                                            ),
-                                            child: Text(
-                                              statusLabel(status),
-                                              style: TextStyle(
-                                                color: getStatusColor(status),
-                                                fontWeight: isUnread
-                                                    ? FontWeight.w900
-                                                    : FontWeight.bold,
-                                                fontSize: 12,
-                                              ),
-                                            ),
+                                          child: AppChip.status(
+                                            statusLabel(status),
+                                            color: getStatusColor(status),
                                           ),
                                         ),
                                         const SizedBox(height: 7),

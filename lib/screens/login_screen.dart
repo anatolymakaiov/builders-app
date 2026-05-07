@@ -61,101 +61,124 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: StroykaSurface(
-            margin: const EdgeInsets.all(20),
-            padding: const EdgeInsets.fromLTRB(22, 28, 22, 24),
-            texture: "assets/branding/texture_light_cloud.jpg",
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  "STROYKA",
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontSize: 34,
-                    fontWeight: FontWeight.w900,
-                  ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 34, 24, 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - 58,
                 ),
-
-                const SizedBox(height: 6),
-
-                const Text(
-                  "Construction work platform",
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "STROYKA",
+                      textAlign: TextAlign.center,
+                      style: AppTypography.title.copyWith(
+                        fontSize: 46,
+                        letterSpacing: 3.2,
+                        shadows: [
+                          Shadow(
+                            color: AppColors.glow.withValues(alpha: 0.46),
+                            blurRadius: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      "Construction work platform",
+                      textAlign: TextAlign.center,
+                      style: AppTypography.body.copyWith(
+                        color: AppColors.blueprintLine,
+                        fontSize: 18,
+                      ),
+                    ),
+                    const SizedBox(height: 42),
+                    StroykaSurface(
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                      texture: "assets/branding/texture_light_cloud.jpg",
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextField(
+                            controller: emailController,
+                            decoration: AppInputFields.decoration(
+                              label: "Email",
+                              icon: Icons.mail_outline,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: passwordController,
+                            decoration: AppInputFields.decoration(
+                              label: "Password",
+                              icon: Icons.lock_outline,
+                            ),
+                            obscureText: true,
+                          ),
+                          if (!isLogin) ...[
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
+                              initialValue: role,
+                              decoration: AppInputFields.decoration(
+                                label: "Account type",
+                                icon: Icons.account_circle_outlined,
+                              ),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: "worker",
+                                  child: Text("Worker"),
+                                ),
+                                DropdownMenuItem(
+                                  value: "employer",
+                                  child: Text("Employer"),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setState(() => role = value);
+                              },
+                            ),
+                          ],
+                          const SizedBox(height: 22),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: loading ? null : submit,
+                              child: loading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Text(
+                                      isLogin ? "Sign in" : "Create account"),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          TextButton(
+                            onPressed: () {
+                              setState(() => isLogin = !isLogin);
+                            },
+                            child: Text(
+                              isLogin
+                                  ? "No account? Create one"
+                                  : "Already have an account? Sign in",
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-
-                const SizedBox(height: 32),
-
-                /// EMAIL
-                TextField(
-                  controller: emailController,
-                  decoration: const InputDecoration(labelText: "Email"),
-                ),
-
-                const SizedBox(height: 10),
-
-                /// PASSWORD
-                TextField(
-                  controller: passwordController,
-                  decoration: const InputDecoration(labelText: "Password"),
-                  obscureText: true,
-                ),
-
-                const SizedBox(height: 20),
-
-                if (!isLogin)
-                  DropdownButton<String>(
-                    value: role,
-                    items: const [
-                      DropdownMenuItem(value: "worker", child: Text("Worker")),
-                      DropdownMenuItem(
-                          value: "employer", child: Text("Employer")),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        role = value!;
-                      });
-                    },
-                  ),
-
-                const SizedBox(height: 30),
-
-                /// BUTTON
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: loading ? null : submit,
-                    child: loading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : Text(isLogin ? "Sign in" : "Create account"),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                /// SWITCH LOGIN / REGISTER
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      isLogin = !isLogin;
-                    });
-                  },
-                  child: Text(
-                    isLogin
-                        ? "No account? Create one"
-                        : "Already have an account? Sign in",
-                  ),
-                )
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

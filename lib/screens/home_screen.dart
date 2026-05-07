@@ -219,10 +219,10 @@ class _HomeScreenState extends State<HomeScreen> {
             right: -6,
             top: -4,
             child: Container(
-              padding: const EdgeInsets.all(4),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               decoration: const BoxDecoration(
-                color: Colors.red,
-                shape: BoxShape.circle,
+                color: AppColors.danger,
+                borderRadius: BorderRadius.all(Radius.circular(999)),
               ),
               constraints: const BoxConstraints(
                 minWidth: 16,
@@ -386,11 +386,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         )
                       : null,
                   bottomNavigationBar: Container(
-                    decoration: const BoxDecoration(
-                      color: AppColors.navy,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(8),
+                    margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.deep.withValues(alpha: 0.92),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: AppColors.blueprintLine.withValues(alpha: 0.25),
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.34),
+                          blurRadius: 24,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
                     ),
                     child: SafeArea(
                       top: false,
@@ -399,8 +408,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         items: items,
                         type: BottomNavigationBarType.fixed,
                         backgroundColor: Colors.transparent,
-                        selectedItemColor: AppColors.green,
-                        unselectedItemColor: Colors.white,
+                        selectedItemColor: AppColors.blueprintLine,
+                        unselectedItemColor:
+                            Colors.white.withValues(alpha: 0.82),
                         showUnselectedLabels: true,
                         onTap: (index) {
                           setState(() {
