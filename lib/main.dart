@@ -115,6 +115,14 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
               );
             }
 
+            final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
+            if (userData?["accountDeleted"] == true) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                FirebaseAuth.instance.signOut();
+              });
+              return const LoginScreen();
+            }
+
             return const HomeScreen();
           },
         );
