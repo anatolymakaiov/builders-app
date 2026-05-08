@@ -60,110 +60,96 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 34, 24, 24),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight - 58,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "STROYKA",
-                      textAlign: TextAlign.center,
-                      style: AppTypography.title.copyWith(
-                        fontSize: 46,
-                        letterSpacing: 3.2,
-                        shadows: [
-                          Shadow(
-                            color: AppColors.glow.withValues(alpha: 0.46),
-                            blurRadius: 18,
-                          ),
-                        ],
-                      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            "assets/branding/login_background_stroyka.png",
+            fit: BoxFit.cover,
+          ),
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 34, 24, 24),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight - 58,
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      "Construction work platform",
-                      textAlign: TextAlign.center,
-                      style: AppTypography.body.copyWith(
-                        color: AppColors.blueprintLine,
-                        fontSize: 18,
-                      ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        StroykaSurface(
+                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                          texture: "assets/branding/texture_light_cloud.jpg",
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              StroykaInputField(
+                                controller: emailController,
+                                hintText: "Email",
+                                prefixIcon: Icons.mail_outline,
+                              ),
+                              const SizedBox(height: 12),
+                              StroykaInputField(
+                                controller: passwordController,
+                                hintText: "Password",
+                                prefixIcon: Icons.lock_outline,
+                                isPassword: true,
+                              ),
+                              if (!isLogin) ...[
+                                const SizedBox(height: 12),
+                                StroykaDropdown(
+                                  value: role,
+                                  items: const ["worker", "employer"],
+                                  onChanged: (value) {
+                                    if (value == null) return;
+                                    setState(() => role = value);
+                                  },
+                                ),
+                              ],
+                              const SizedBox(height: 22),
+                              SizedBox(
+                                width: double.infinity,
+                                child: StroykaButton(
+                                  onPressed: loading ? null : submit,
+                                  width: double.infinity,
+                                  child: loading
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : Text(isLogin
+                                          ? "Sign in"
+                                          : "Create account"),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              TextButton(
+                                onPressed: () {
+                                  setState(() => isLogin = !isLogin);
+                                },
+                                child: Text(
+                                  isLogin
+                                      ? "No account? Create one"
+                                      : "Already have an account? Sign in",
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 42),
-                    StroykaSurface(
-                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-                      texture: "assets/branding/texture_light_cloud.jpg",
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          StroykaInputField(
-                            controller: emailController,
-                            hintText: "Email",
-                            prefixIcon: Icons.mail_outline,
-                          ),
-                          const SizedBox(height: 12),
-                          StroykaInputField(
-                            controller: passwordController,
-                            hintText: "Password",
-                            prefixIcon: Icons.lock_outline,
-                            isPassword: true,
-                          ),
-                          if (!isLogin) ...[
-                            const SizedBox(height: 12),
-                            StroykaDropdown(
-                              value: role,
-                              items: const ["worker", "employer"],
-                              onChanged: (value) {
-                                if (value == null) return;
-                                setState(() => role = value);
-                              },
-                            ),
-                          ],
-                          const SizedBox(height: 22),
-                          SizedBox(
-                            width: double.infinity,
-                            child: StroykaButton(
-                              onPressed: loading ? null : submit,
-                              width: double.infinity,
-                              child: loading
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : Text(
-                                      isLogin ? "Sign in" : "Create account"),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          TextButton(
-                            onPressed: () {
-                              setState(() => isLogin = !isLogin);
-                            },
-                            child: Text(
-                              isLogin
-                                  ? "No account? Create one"
-                                  : "Already have an account? Sign in",
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
