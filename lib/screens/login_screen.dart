@@ -79,67 +79,70 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        StroykaSurface(
-                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-                          texture: "assets/branding/texture_light_cloud.jpg",
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              StroykaInputField(
-                                controller: emailController,
-                                hintText: "Email",
-                                prefixIcon: Icons.mail_outline,
-                              ),
-                              const SizedBox(height: 12),
-                              StroykaInputField(
-                                controller: passwordController,
-                                hintText: "Password",
-                                prefixIcon: Icons.lock_outline,
-                                isPassword: true,
-                              ),
-                              if (!isLogin) ...[
+                        Transform.translate(
+                          offset: const Offset(0, 18),
+                          child: StroykaSurface(
+                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                            texture: "assets/branding/texture_light_cloud.jpg",
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                StroykaInputField(
+                                  controller: emailController,
+                                  hintText: "Email",
+                                  prefixIcon: Icons.mail_outline,
+                                ),
                                 const SizedBox(height: 12),
-                                StroykaDropdown(
-                                  value: role,
-                                  items: const ["worker", "employer"],
-                                  onChanged: (value) {
-                                    if (value == null) return;
-                                    setState(() => role = value);
+                                StroykaInputField(
+                                  controller: passwordController,
+                                  hintText: "Password",
+                                  prefixIcon: Icons.lock_outline,
+                                  isPassword: true,
+                                ),
+                                if (!isLogin) ...[
+                                  const SizedBox(height: 12),
+                                  StroykaDropdown(
+                                    value: role,
+                                    items: const ["worker", "employer"],
+                                    onChanged: (value) {
+                                      if (value == null) return;
+                                      setState(() => role = value);
+                                    },
+                                  ),
+                                ],
+                                const SizedBox(height: 22),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: StroykaButton(
+                                    onPressed: loading ? null : submit,
+                                    width: double.infinity,
+                                    child: loading
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              color: Colors.white,
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : Text(isLogin
+                                            ? "Sign in"
+                                            : "Create account"),
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                TextButton(
+                                  onPressed: () {
+                                    setState(() => isLogin = !isLogin);
                                   },
+                                  child: Text(
+                                    isLogin
+                                        ? "No account? Create one"
+                                        : "Already have an account? Sign in",
+                                  ),
                                 ),
                               ],
-                              const SizedBox(height: 22),
-                              SizedBox(
-                                width: double.infinity,
-                                child: StroykaButton(
-                                  onPressed: loading ? null : submit,
-                                  width: double.infinity,
-                                  child: loading
-                                      ? const SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : Text(isLogin
-                                          ? "Sign in"
-                                          : "Create account"),
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              TextButton(
-                                onPressed: () {
-                                  setState(() => isLogin = !isLogin);
-                                },
-                                child: Text(
-                                  isLogin
-                                      ? "No account? Create one"
-                                      : "Already have an account? Sign in",
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
                       ],

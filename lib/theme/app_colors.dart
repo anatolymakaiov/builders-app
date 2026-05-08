@@ -55,10 +55,10 @@ class AppAssets {
   static const logo = "assets/branding/stroyka_logo.svg";
 
   static const darkBackgrounds = [
-    "assets/branding/bg_dark_workspace.jpg",
-    "assets/branding/bg_dark_office.jpg",
-    "assets/branding/bg_dark_tech.jpg",
-    "assets/branding/bg_dark_pattern.jpg",
+    "assets/branding/bg_stroyka_cranes_building.png",
+    "assets/branding/bg_stroyka_city_cranes.png",
+    "assets/branding/bg_stroyka_workers_cranes.png",
+    "assets/branding/bg_stroyka_excavator.png",
   ];
 
   static const lightTextures = [
