@@ -245,7 +245,7 @@ class _JobListScreenState extends State<JobListScreen> {
                 decoration: InputDecoration(
                   hintText: "Search jobs",
                   prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(
+                  border: StroykaInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),

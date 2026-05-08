@@ -528,7 +528,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                         initialValue: language == "ru" ? "ru" : "en",
                         decoration: const InputDecoration(
                           labelText: "Change language",
-                          border: OutlineInputBorder(),
+                          border: StroykaInputBorder(),
                         ),
                         items: const [
                           DropdownMenuItem(

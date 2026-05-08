@@ -125,6 +125,105 @@ class _ButtonFramePainter extends CustomPainter {
   }
 }
 
+class StroykaButtonBorder extends RoundedRectangleBorder {
+  const StroykaButtonBorder({
+    super.side = const BorderSide(color: AppButtonStyles.frameColor),
+    super.borderRadius = const BorderRadius.all(Radius.circular(2)),
+  });
+
+  @override
+  RoundedRectangleBorder copyWith({
+    BorderSide? side,
+    BorderRadiusGeometry? borderRadius,
+  }) {
+    return StroykaButtonBorder(
+      side: side ?? this.side,
+      borderRadius: borderRadius ?? this.borderRadius,
+    );
+  }
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    super.paint(canvas, rect, textDirection: textDirection);
+
+    final paint = Paint()
+      ..color = side.color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = side.width == 0 ? 1.0 : side.width;
+
+    final safeRect = rect.deflate(paint.strokeWidth / 2);
+    const t = 8.0;
+    const d = 4.0;
+
+    canvas.drawRect(safeRect, paint);
+
+    canvas.drawLine(
+      Offset(safeRect.left, safeRect.top),
+      Offset(safeRect.left + t, safeRect.top),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(safeRect.left, safeRect.top),
+      Offset(safeRect.left, safeRect.top + t),
+      paint,
+    );
+
+    canvas.drawLine(
+      Offset(safeRect.right - t, safeRect.top),
+      Offset(safeRect.right, safeRect.top),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(safeRect.right, safeRect.top),
+      Offset(safeRect.right, safeRect.top + t),
+      paint,
+    );
+
+    canvas.drawLine(
+      Offset(safeRect.left, safeRect.bottom - t),
+      Offset(safeRect.left, safeRect.bottom),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(safeRect.left, safeRect.bottom),
+      Offset(safeRect.left + t, safeRect.bottom),
+      paint,
+    );
+
+    canvas.drawLine(
+      Offset(safeRect.right - t, safeRect.bottom),
+      Offset(safeRect.right, safeRect.bottom),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(safeRect.right, safeRect.bottom - t),
+      Offset(safeRect.right, safeRect.bottom),
+      paint,
+    );
+
+    canvas.drawLine(
+      Offset(safeRect.left + d, safeRect.top),
+      Offset(safeRect.left, safeRect.top + d),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(safeRect.right - d, safeRect.top),
+      Offset(safeRect.right, safeRect.top + d),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(safeRect.left, safeRect.bottom - d),
+      Offset(safeRect.left + d, safeRect.bottom),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(safeRect.right, safeRect.bottom - d),
+      Offset(safeRect.right - d, safeRect.bottom),
+      paint,
+    );
+  }
+}
+
 class AppButtonStyles {
   static const primaryFill = Color(0xFF0D1B2A);
   static const frameColor = Color(0xFF5890FF);
@@ -143,9 +242,7 @@ class AppButtonStyles {
       ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(2),
-        side: BorderSide(
-          color: frameColor.withValues(alpha: 0.82),
-        ),
+        side: BorderSide(color: frameColor.withValues(alpha: 0.82)),
       ),
       textStyle: const TextStyle(
         fontWeight: FontWeight.w900,
@@ -153,6 +250,12 @@ class AppButtonStyles {
         letterSpacing: 0,
       ),
       shadowColor: frameColor.withValues(alpha: 0.28),
+    ).copyWith(
+      shape: WidgetStatePropertyAll(
+        StroykaButtonBorder(
+          side: BorderSide(color: frameColor.withValues(alpha: 0.82)),
+        ),
+      ),
     );
   }
 
@@ -175,6 +278,12 @@ class AppButtonStyles {
         fontSize: 14,
         letterSpacing: 0,
       ),
+    ).copyWith(
+      shape: WidgetStatePropertyAll(
+        StroykaButtonBorder(
+          side: BorderSide(color: buttonColor.withValues(alpha: 0.76)),
+        ),
+      ),
     );
   }
 
@@ -185,6 +294,12 @@ class AppButtonStyles {
       textStyle: const TextStyle(
         fontWeight: FontWeight.w800,
         letterSpacing: 0,
+      ),
+    ).copyWith(
+      shape: WidgetStatePropertyAll(
+        StroykaButtonBorder(
+          side: BorderSide(color: frameColor.withValues(alpha: 0.45)),
+        ),
       ),
     );
   }

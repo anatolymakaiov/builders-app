@@ -239,7 +239,7 @@ class _EmployerApplicationsScreenState
                       isExpanded: true,
                       decoration: const InputDecoration(
                         hintText: "Status",
-                        border: OutlineInputBorder(),
+                        border: StroykaInputBorder(),
                         isDense: true,
                         filled: true,
                         fillColor: Colors.white,
@@ -275,7 +275,7 @@ class _EmployerApplicationsScreenState
                       isExpanded: true,
                       decoration: const InputDecoration(
                         hintText: "Trade",
-                        border: OutlineInputBorder(),
+                        border: StroykaInputBorder(),
                         isDense: true,
                         filled: true,
                         fillColor: Colors.white,
@@ -303,7 +303,7 @@ class _EmployerApplicationsScreenState
                       isExpanded: true,
                       decoration: const InputDecoration(
                         hintText: "Site",
-                        border: OutlineInputBorder(),
+                        border: StroykaInputBorder(),
                         isDense: true,
                         filled: true,
                         fillColor: Colors.white,

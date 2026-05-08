@@ -217,6 +217,83 @@ class _DropdownFramePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+class StroykaInputBorder extends OutlineInputBorder {
+  const StroykaInputBorder({
+    super.borderSide = const BorderSide(
+      color: Color(0xFFABB2BF),
+      width: 0.5,
+    ),
+    super.borderRadius = const BorderRadius.all(Radius.circular(4)),
+  });
+
+  @override
+  OutlineInputBorder copyWith({
+    BorderSide? borderSide,
+    BorderRadius? borderRadius,
+    double? gapPadding,
+  }) {
+    return StroykaInputBorder(
+      borderSide: borderSide ?? this.borderSide,
+      borderRadius: borderRadius ?? this.borderRadius,
+    );
+  }
+
+  @override
+  void paint(
+    Canvas canvas,
+    Rect rect, {
+    double? gapStart,
+    double gapExtent = 0.0,
+    double gapPercentage = 0.0,
+    TextDirection? textDirection,
+  }) {
+    final gridPaint = Paint()
+      ..color = const Color(0xFF5890FF).withValues(alpha: 0.08)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5;
+
+    const step = 8.0;
+    for (double x = rect.left; x < rect.right; x += step) {
+      canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), gridPaint);
+    }
+    for (double y = rect.top; y < rect.bottom; y += step) {
+      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), gridPaint);
+    }
+
+    final framePaint = Paint()
+      ..color = borderSide.color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = borderSide.width == 0 ? 0.5 : borderSide.width;
+
+    final safeRect = rect.deflate(framePaint.strokeWidth / 2);
+    canvas.drawRect(safeRect, framePaint);
+
+    final markPaint = Paint()
+      ..color = borderSide.color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    const t = 6.0;
+
+    void corner(Offset center) {
+      canvas.drawLine(
+        Offset(center.dx - t, center.dy),
+        Offset(center.dx + t, center.dy),
+        markPaint,
+      );
+      canvas.drawLine(
+        Offset(center.dx, center.dy - t),
+        Offset(center.dx, center.dy + t),
+        markPaint,
+      );
+    }
+
+    corner(safeRect.topLeft);
+    corner(safeRect.topRight);
+    corner(safeRect.bottomLeft);
+    corner(safeRect.bottomRight);
+  }
+}
+
 class AppInputFields {
   static InputDecoration decoration({
     String? label,
@@ -232,9 +309,8 @@ class AppInputFields {
   }
 
   static InputDecorationTheme theme() {
-    OutlineInputBorder border(Color color, {double width = 1}) {
-      return OutlineInputBorder(
-        borderRadius: BorderRadius.circular(4),
+    StroykaInputBorder border(Color color, {double width = 1}) {
+      return StroykaInputBorder(
         borderSide: BorderSide(color: color, width: width),
       );
     }

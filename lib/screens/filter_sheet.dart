@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 class FilterResult {
   final String trade;
   final String jobType;
@@ -146,7 +148,7 @@ class _FilterSheetState extends State<FilterSheet> {
                 });
               },
               decoration: const InputDecoration(
-                border: OutlineInputBorder(),
+                border: StroykaInputBorder(),
               ),
             ),
 
@@ -180,7 +182,7 @@ class _FilterSheetState extends State<FilterSheet> {
                 });
               },
               decoration: const InputDecoration(
-                border: OutlineInputBorder(),
+                border: StroykaInputBorder(),
               ),
             ),
 

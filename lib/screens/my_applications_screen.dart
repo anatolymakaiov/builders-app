@@ -563,7 +563,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       items: items,
       isExpanded: true,
       decoration: const InputDecoration(
-        border: OutlineInputBorder(),
+        border: StroykaInputBorder(),
         contentPadding: EdgeInsets.symmetric(
           horizontal: 10,
           vertical: 8,

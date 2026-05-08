@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../services/chat_service.dart';
 import '../widgets/phone_link.dart';
+import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import 'chat_screen.dart';
 import 'worker_profile_screen.dart';
@@ -113,7 +114,7 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
             decoration: const InputDecoration(
               labelText: "Description",
               hintText: "Team skills, trades, availability, typical projects",
-              border: OutlineInputBorder(),
+              border: StroykaInputBorder(),
             ),
           ),
           actions: [

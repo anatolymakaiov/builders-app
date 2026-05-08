@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
 
 import 'portfolio_screen.dart';
+import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/legal_documents.dart';
 
@@ -734,7 +735,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           initialValue: role,
           decoration: const InputDecoration(
             labelText: "Account type",
-            border: OutlineInputBorder(),
+            border: StroykaInputBorder(),
           ),
           items: const [
             DropdownMenuItem(value: "worker", child: Text("Worker")),

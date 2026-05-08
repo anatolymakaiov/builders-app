@@ -388,7 +388,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
-          border: const OutlineInputBorder(),
+          border: const StroykaInputBorder(),
         ),
       );
     }
@@ -411,7 +411,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                         decoration: const InputDecoration(
                           labelText: "Work format",
                           hintText: "Daywork, price, negotiable",
-                          border: OutlineInputBorder(),
+                          border: StroykaInputBorder(),
                         ),
                         items: const [
                           DropdownMenuItem(

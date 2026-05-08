@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/job.dart';
+import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
 class ReviewWorkerScreen extends StatefulWidget {
@@ -77,7 +78,7 @@ class _ReviewWorkerScreenState extends State<ReviewWorkerScreen> {
                 maxLines: 4,
                 decoration: const InputDecoration(
                   labelText: "Leave a review",
-                  border: OutlineInputBorder(),
+                  border: StroykaInputBorder(),
                 ),
               ),
               const SizedBox(height: 30),

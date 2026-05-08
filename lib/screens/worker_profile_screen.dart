@@ -149,7 +149,7 @@ class WorkerProfileScreen extends StatelessWidget {
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
-          border: const OutlineInputBorder(),
+          border: const StroykaInputBorder(),
         ),
       );
     }
@@ -172,7 +172,7 @@ class WorkerProfileScreen extends StatelessWidget {
                         decoration: const InputDecoration(
                           labelText: "Work format",
                           hintText: "Daywork, price, negotiable",
-                          border: OutlineInputBorder(),
+                          border: StroykaInputBorder(),
                         ),
                         items: const [
                           DropdownMenuItem(
@@ -660,7 +660,7 @@ class WorkerProfileScreen extends StatelessWidget {
                     decoration: const InputDecoration(
                       labelText: "Review",
                       hintText: "Quality of work, reliability, communication",
-                      border: OutlineInputBorder(),
+                      border: StroykaInputBorder(),
                     ),
                   ),
                 ],
