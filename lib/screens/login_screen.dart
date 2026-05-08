@@ -116,22 +116,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           if (!isLogin) ...[
                             const SizedBox(height: 12),
-                            DropdownButtonFormField<String>(
-                              initialValue: role,
-                              decoration: AppInputFields.decoration(
-                                label: "Account type",
-                                icon: Icons.account_circle_outlined,
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: "worker",
-                                  child: Text("Worker"),
-                                ),
-                                DropdownMenuItem(
-                                  value: "employer",
-                                  child: Text("Employer"),
-                                ),
-                              ],
+                            StroykaDropdown(
+                              value: role,
+                              items: const ["worker", "employer"],
                               onChanged: (value) {
                                 if (value == null) return;
                                 setState(() => role = value);
