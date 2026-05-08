@@ -235,7 +235,6 @@ class _MenuFramePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.5;
 
-    const t = 8.0;
     const step = 12.0;
 
     for (double i = 0; i < size.width; i += step) {
@@ -246,29 +245,6 @@ class _MenuFramePainter extends CustomPainter {
     }
 
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paintFrame);
-
-    final markPaint = Paint()
-      ..color = const Color(0xFFABB2BF).withValues(alpha: 0.8)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    _drawCross(canvas, Offset.zero, t, markPaint);
-    _drawCross(canvas, Offset(size.width, 0), t, markPaint);
-    _drawCross(canvas, Offset(0, size.height), t, markPaint);
-    _drawCross(canvas, Offset(size.width, size.height), t, markPaint);
-  }
-
-  void _drawCross(Canvas canvas, Offset center, double t, Paint paint) {
-    canvas.drawLine(
-      Offset(center.dx - t, center.dy),
-      Offset(center.dx + t, center.dy),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(center.dx, center.dy - t),
-      Offset(center.dx, center.dy + t),
-      paint,
-    );
   }
 
   @override

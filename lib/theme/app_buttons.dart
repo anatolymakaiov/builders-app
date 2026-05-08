@@ -104,31 +104,6 @@ class _ActionButtonPainter extends CustomPainter {
       ..strokeWidth = 1.0;
 
     canvas.drawRect(rect, framePaint);
-
-    final markPaint = Paint()
-      ..color = const Color(0xFFABB2BF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-
-    const t = 10.0;
-
-    void drawCorner(Offset p) {
-      canvas.drawLine(
-        Offset(p.dx - t, p.dy),
-        Offset(p.dx + t, p.dy),
-        markPaint,
-      );
-      canvas.drawLine(
-        Offset(p.dx, p.dy - t),
-        Offset(p.dx, p.dy + t),
-        markPaint,
-      );
-    }
-
-    drawCorner(Offset.zero);
-    drawCorner(Offset(size.width, 0));
-    drawCorner(Offset(0, size.height));
-    drawCorner(Offset(size.width, size.height));
   }
 
   @override
@@ -178,58 +153,8 @@ class StroykaButtonBorder extends RoundedRectangleBorder {
       ..strokeWidth = side.width == 0 ? 1.0 : side.width;
 
     final safeRect = rect.deflate(paint.strokeWidth / 2);
-    const t = 10.0;
 
     canvas.drawRect(safeRect, paint);
-
-    canvas.drawLine(
-      Offset(safeRect.left - t, safeRect.top),
-      Offset(safeRect.left + t, safeRect.top),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(safeRect.left, safeRect.top),
-      Offset(safeRect.left, safeRect.top + t),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(safeRect.left, safeRect.top - t),
-      Offset(safeRect.left, safeRect.top),
-      paint,
-    );
-
-    canvas.drawLine(
-      Offset(safeRect.right - t, safeRect.top),
-      Offset(safeRect.right + t, safeRect.top),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(safeRect.right, safeRect.top - t),
-      Offset(safeRect.right, safeRect.top + t),
-      paint,
-    );
-
-    canvas.drawLine(
-      Offset(safeRect.left, safeRect.bottom - t),
-      Offset(safeRect.left, safeRect.bottom + t),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(safeRect.left - t, safeRect.bottom),
-      Offset(safeRect.left + t, safeRect.bottom),
-      paint,
-    );
-
-    canvas.drawLine(
-      Offset(safeRect.right - t, safeRect.bottom),
-      Offset(safeRect.right + t, safeRect.bottom),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(safeRect.right, safeRect.bottom - t),
-      Offset(safeRect.right, safeRect.bottom + t),
-      paint,
-    );
   }
 }
 

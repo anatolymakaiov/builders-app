@@ -68,7 +68,6 @@ class _InputFramePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.5;
 
-    const t = 6.0;
     const step = 10.0;
 
     for (double i = 0; i < size.width; i += step) {
@@ -79,29 +78,6 @@ class _InputFramePainter extends CustomPainter {
     }
 
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paintFrame);
-
-    final markPaint = Paint()
-      ..color = const Color(0xFFABB2BF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    _drawCorner(canvas, Offset.zero, t, markPaint);
-    _drawCorner(canvas, Offset(size.width, 0), t, markPaint);
-    _drawCorner(canvas, Offset(0, size.height), t, markPaint);
-    _drawCorner(canvas, Offset(size.width, size.height), t, markPaint);
-  }
-
-  void _drawCorner(Canvas canvas, Offset center, double t, Paint paint) {
-    canvas.drawLine(
-      Offset(center.dx - t, center.dy),
-      Offset(center.dx + t, center.dy),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(center.dx, center.dy - t),
-      Offset(center.dx, center.dy + t),
-      paint,
-    );
   }
 
   @override
@@ -178,7 +154,6 @@ class _DropdownFramePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.5;
 
-    const t = 6.0;
     const step = 8.0;
     for (double i = 0; i < size.width; i += step) {
       canvas.drawLine(Offset(i, 0), Offset(i, size.height), paintGrid);
@@ -188,29 +163,6 @@ class _DropdownFramePainter extends CustomPainter {
     }
 
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paintFrame);
-
-    final markPaint = Paint()
-      ..color = const Color(0xFFABB2BF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-
-    _drawTechCorner(canvas, Offset.zero, t, markPaint);
-    _drawTechCorner(canvas, Offset(size.width, 0), t, markPaint);
-    _drawTechCorner(canvas, Offset(0, size.height), t, markPaint);
-    _drawTechCorner(canvas, Offset(size.width, size.height), t, markPaint);
-  }
-
-  void _drawTechCorner(Canvas canvas, Offset center, double t, Paint paint) {
-    canvas.drawLine(
-      Offset(center.dx - t, center.dy),
-      Offset(center.dx + t, center.dy),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(center.dx, center.dy - t),
-      Offset(center.dx, center.dy + t),
-      paint,
-    );
   }
 
   @override
@@ -267,30 +219,6 @@ class StroykaInputBorder extends OutlineInputBorder {
 
     final safeRect = rect.deflate(framePaint.strokeWidth / 2);
     canvas.drawRect(safeRect, framePaint);
-
-    final markPaint = Paint()
-      ..color = borderSide.color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-    const t = 6.0;
-
-    void corner(Offset center) {
-      canvas.drawLine(
-        Offset(center.dx - t, center.dy),
-        Offset(center.dx + t, center.dy),
-        markPaint,
-      );
-      canvas.drawLine(
-        Offset(center.dx, center.dy - t),
-        Offset(center.dx, center.dy + t),
-        markPaint,
-      );
-    }
-
-    corner(safeRect.topLeft);
-    corner(safeRect.topRight);
-    corner(safeRect.bottomLeft);
-    corner(safeRect.bottomRight);
   }
 }
 
