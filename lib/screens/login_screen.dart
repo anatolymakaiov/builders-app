@@ -102,21 +102,17 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          TextField(
+                          StroykaInputField(
                             controller: emailController,
-                            decoration: AppInputFields.decoration(
-                              label: "Email",
-                              icon: Icons.mail_outline,
-                            ),
+                            hintText: "Email",
+                            prefixIcon: Icons.mail_outline,
                           ),
                           const SizedBox(height: 12),
-                          TextField(
+                          StroykaInputField(
                             controller: passwordController,
-                            decoration: AppInputFields.decoration(
-                              label: "Password",
-                              icon: Icons.lock_outline,
-                            ),
-                            obscureText: true,
+                            hintText: "Password",
+                            prefixIcon: Icons.lock_outline,
+                            isPassword: true,
                           ),
                           if (!isLogin) ...[
                             const SizedBox(height: 12),

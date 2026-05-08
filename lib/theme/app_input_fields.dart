@@ -3,6 +3,111 @@ import 'package:flutter/material.dart';
 import 'app_colors.dart';
 import 'app_spacing.dart';
 
+class StroykaInputField extends StatelessWidget {
+  final TextEditingController? controller;
+  final String hintText;
+  final IconData? prefixIcon;
+  final bool isPassword;
+
+  const StroykaInputField({
+    super.key,
+    this.controller,
+    required this.hintText,
+    this.prefixIcon,
+    this.isPassword = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: const _InputFramePainter(),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: TextField(
+          controller: controller,
+          obscureText: isPassword,
+          style: const TextStyle(
+            color: Color(0xFF1A2B3C),
+            fontSize: 16,
+          ),
+          decoration: InputDecoration(
+            hintText: hintText,
+            hintStyle: TextStyle(
+              color: const Color(0xFF1A2B3C).withValues(alpha: 0.5),
+            ),
+            prefixIcon: prefixIcon != null
+                ? Icon(prefixIcon, color: const Color(0xFF1A2B3C))
+                : null,
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InputFramePainter extends CustomPainter {
+  const _InputFramePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paintFrame = Paint()
+      ..color = const Color(0xFFABB2BF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5;
+
+    final paintGrid = Paint()
+      ..color = const Color(0xFF5890FF).withValues(alpha: 0.1)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5;
+
+    const t = 6.0;
+    const step = 10.0;
+
+    for (double i = 0; i < size.width; i += step) {
+      canvas.drawLine(Offset(i, 0), Offset(i, size.height), paintGrid);
+    }
+    for (double i = 0; i < size.height; i += step) {
+      canvas.drawLine(Offset(0, i), Offset(size.width, i), paintGrid);
+    }
+
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paintFrame);
+
+    final markPaint = Paint()
+      ..color = const Color(0xFFABB2BF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    _drawCorner(canvas, Offset.zero, t, markPaint);
+    _drawCorner(canvas, Offset(size.width, 0), t, markPaint);
+    _drawCorner(canvas, Offset(0, size.height), t, markPaint);
+    _drawCorner(canvas, Offset(size.width, size.height), t, markPaint);
+  }
+
+  void _drawCorner(Canvas canvas, Offset center, double t, Paint paint) {
+    canvas.drawLine(
+      Offset(center.dx - t, center.dy),
+      Offset(center.dx + t, center.dy),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(center.dx, center.dy - t),
+      Offset(center.dx, center.dy + t),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class AppInputFields {
   static InputDecoration decoration({
     String? label,
@@ -20,28 +125,31 @@ class AppInputFields {
   static InputDecorationTheme theme() {
     OutlineInputBorder border(Color color, {double width = 1}) {
       return OutlineInputBorder(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(4),
         borderSide: BorderSide(color: color, width: width),
       );
     }
 
     return InputDecorationTheme(
       filled: true,
-      fillColor: AppColors.surface.withValues(alpha: 0.92),
-      contentPadding: AppSpacing.field,
+      fillColor: Colors.white.withValues(alpha: 0.9),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 14,
+      ),
       labelStyle: const TextStyle(
-        color: AppColors.muted,
+        color: Color(0xFF1A2B3C),
         fontWeight: FontWeight.w700,
       ),
-      hintStyle: TextStyle(
-        color: AppColors.muted.withValues(alpha: 0.74),
+      hintStyle: const TextStyle(
+        color: Color(0x801A2B3C),
         fontWeight: FontWeight.w600,
       ),
-      prefixIconColor: AppColors.ink,
-      suffixIconColor: AppColors.ink,
-      border: border(AppColors.blueprintLine.withValues(alpha: 0.28)),
-      enabledBorder: border(AppColors.blueprintLine.withValues(alpha: 0.34)),
-      focusedBorder: border(AppColors.blueprintLine, width: 1.4),
+      prefixIconColor: const Color(0xFF1A2B3C),
+      suffixIconColor: const Color(0xFF1A2B3C),
+      border: border(const Color(0xFFABB2BF), width: 0.5),
+      enabledBorder: border(const Color(0xFFABB2BF), width: 0.5),
+      focusedBorder: border(const Color(0xFF5890FF), width: 1.0),
       errorBorder: border(AppColors.danger.withValues(alpha: 0.72)),
       focusedErrorBorder: border(AppColors.danger, width: 1.4),
     );
