@@ -20,108 +20,121 @@ class StroykaButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
 
-    return GestureDetector(
-      onTap: onPressed,
+    return SizedBox(
+      width: width,
+      height: height ?? 48,
       child: Opacity(
         opacity: enabled ? 1 : 0.48,
-        child: CustomPaint(
-          painter: _ButtonFramePainter(
-            color: enabled
-                ? AppButtonStyles.frameColor
-                : Colors.white.withValues(alpha: 0.34),
-          ),
-          child: Container(
-            width: width,
-            height: height,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppButtonStyles.primaryFill.withValues(alpha: 0.8),
-            ),
-            child: Center(
-              child: DefaultTextStyle(
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _ActionButtonPainter(
+                  fillColor: AppButtonStyles.primaryFill,
+                  frameColor: enabled
+                      ? AppButtonStyles.frameColor
+                      : Colors.white.withValues(alpha: 0.34),
                 ),
-                child: child,
               ),
             ),
-          ),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onPressed,
+                splashColor: AppButtonStyles.frameColor.withValues(alpha: 0.3),
+                highlightColor: Colors.transparent,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  child: Center(
+                    child: DefaultTextStyle(
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.1,
+                      ),
+                      child: child,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _ButtonFramePainter extends CustomPainter {
-  final Color color;
+class _ActionButtonPainter extends CustomPainter {
+  final Color fillColor;
+  final Color frameColor;
 
-  const _ButtonFramePainter({
-    this.color = AppButtonStyles.frameColor,
+  const _ActionButtonPainter({
+    required this.fillColor,
+    required this.frameColor,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+
+    final bgPaint = Paint()..color = fillColor.withValues(alpha: 0.92);
+    canvas.drawRect(rect, bgPaint);
+
+    final gridPaint = Paint()
+      ..color = AppButtonStyles.frameColor.withValues(alpha: 0.15)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5;
+
+    const step = 10.0;
+    for (double i = 0; i < size.width; i += step) {
+      canvas.drawLine(Offset(i, 0), Offset(i, size.height), gridPaint);
+    }
+    for (double i = 0; i < size.height; i += step) {
+      canvas.drawLine(Offset(0, i), Offset(size.width, i), gridPaint);
+    }
+
+    final framePaint = Paint()
+      ..color = frameColor.withValues(alpha: 0.6)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
-    const t = 8.0;
+    canvas.drawRect(rect, framePaint);
 
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+    final markPaint = Paint()
+      ..color = const Color(0xFFABB2BF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
 
-    canvas.drawLine(const Offset(-t, 0), const Offset(t, 0), paint);
-    canvas.drawLine(const Offset(0, -t), const Offset(0, t), paint);
+    const t = 10.0;
 
-    canvas.drawLine(
-      Offset(size.width - t, 0),
-      Offset(size.width + t, 0),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(size.width, -t),
-      Offset(size.width, t),
-      paint,
-    );
+    void drawCorner(Offset p) {
+      canvas.drawLine(
+        Offset(p.dx - t, p.dy),
+        Offset(p.dx + t, p.dy),
+        markPaint,
+      );
+      canvas.drawLine(
+        Offset(p.dx, p.dy - t),
+        Offset(p.dx, p.dy + t),
+        markPaint,
+      );
+    }
 
-    canvas.drawLine(
-      Offset(-t, size.height),
-      Offset(t, size.height),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(0, size.height - t),
-      Offset(0, size.height + t),
-      paint,
-    );
-
-    canvas.drawLine(
-      Offset(size.width - t, size.height),
-      Offset(size.width + t, size.height),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(size.width, size.height - t),
-      Offset(size.width, size.height + t),
-      paint,
-    );
-
-    const d = 4.0;
-    canvas.drawLine(const Offset(d, 0), const Offset(0, d), paint);
-    canvas.drawLine(Offset(size.width - d, 0), Offset(size.width, d), paint);
-    canvas.drawLine(Offset(0, size.height - d), Offset(d, size.height), paint);
-    canvas.drawLine(
-      Offset(size.width, size.height - d),
-      Offset(size.width - d, size.height),
-      paint,
-    );
+    drawCorner(Offset.zero);
+    drawCorner(Offset(size.width, 0));
+    drawCorner(Offset(0, size.height));
+    drawCorner(Offset(size.width, size.height));
   }
 
   @override
-  bool shouldRepaint(covariant _ButtonFramePainter oldDelegate) {
-    return oldDelegate.color != color;
+  bool shouldRepaint(covariant _ActionButtonPainter oldDelegate) {
+    return oldDelegate.fillColor != fillColor ||
+        oldDelegate.frameColor != frameColor;
   }
 }
 
@@ -146,19 +159,31 @@ class StroykaButtonBorder extends RoundedRectangleBorder {
   void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
     super.paint(canvas, rect, textDirection: textDirection);
 
+    final gridPaint = Paint()
+      ..color = AppButtonStyles.frameColor.withValues(alpha: 0.15)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5;
+
+    const step = 10.0;
+    for (double x = rect.left; x < rect.right; x += step) {
+      canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), gridPaint);
+    }
+    for (double y = rect.top; y < rect.bottom; y += step) {
+      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), gridPaint);
+    }
+
     final paint = Paint()
       ..color = side.color
       ..style = PaintingStyle.stroke
       ..strokeWidth = side.width == 0 ? 1.0 : side.width;
 
     final safeRect = rect.deflate(paint.strokeWidth / 2);
-    const t = 8.0;
-    const d = 4.0;
+    const t = 10.0;
 
     canvas.drawRect(safeRect, paint);
 
     canvas.drawLine(
-      Offset(safeRect.left, safeRect.top),
+      Offset(safeRect.left - t, safeRect.top),
       Offset(safeRect.left + t, safeRect.top),
       paint,
     );
@@ -167,58 +192,42 @@ class StroykaButtonBorder extends RoundedRectangleBorder {
       Offset(safeRect.left, safeRect.top + t),
       paint,
     );
+    canvas.drawLine(
+      Offset(safeRect.left, safeRect.top - t),
+      Offset(safeRect.left, safeRect.top),
+      paint,
+    );
 
     canvas.drawLine(
       Offset(safeRect.right - t, safeRect.top),
-      Offset(safeRect.right, safeRect.top),
+      Offset(safeRect.right + t, safeRect.top),
       paint,
     );
     canvas.drawLine(
-      Offset(safeRect.right, safeRect.top),
+      Offset(safeRect.right, safeRect.top - t),
       Offset(safeRect.right, safeRect.top + t),
       paint,
     );
 
     canvas.drawLine(
       Offset(safeRect.left, safeRect.bottom - t),
-      Offset(safeRect.left, safeRect.bottom),
+      Offset(safeRect.left, safeRect.bottom + t),
       paint,
     );
     canvas.drawLine(
-      Offset(safeRect.left, safeRect.bottom),
+      Offset(safeRect.left - t, safeRect.bottom),
       Offset(safeRect.left + t, safeRect.bottom),
       paint,
     );
 
     canvas.drawLine(
       Offset(safeRect.right - t, safeRect.bottom),
-      Offset(safeRect.right, safeRect.bottom),
+      Offset(safeRect.right + t, safeRect.bottom),
       paint,
     );
     canvas.drawLine(
       Offset(safeRect.right, safeRect.bottom - t),
-      Offset(safeRect.right, safeRect.bottom),
-      paint,
-    );
-
-    canvas.drawLine(
-      Offset(safeRect.left + d, safeRect.top),
-      Offset(safeRect.left, safeRect.top + d),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(safeRect.right - d, safeRect.top),
-      Offset(safeRect.right, safeRect.top + d),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(safeRect.left, safeRect.bottom - d),
-      Offset(safeRect.left + d, safeRect.bottom),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(safeRect.right, safeRect.bottom - d),
-      Offset(safeRect.right - d, safeRect.bottom),
+      Offset(safeRect.right, safeRect.bottom + t),
       paint,
     );
   }

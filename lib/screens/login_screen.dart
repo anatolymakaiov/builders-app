@@ -77,7 +77,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       minHeight: constraints.maxHeight - 58,
                     ),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         StroykaSurface(
                           padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
