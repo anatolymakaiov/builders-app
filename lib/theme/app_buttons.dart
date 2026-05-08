@@ -2,12 +2,138 @@ import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
 
+class StroykaButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final Widget child;
+  final double? width;
+  final double? height;
+
+  const StroykaButton({
+    super.key,
+    required this.onPressed,
+    required this.child,
+    this.width,
+    this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+
+    return GestureDetector(
+      onTap: onPressed,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.48,
+        child: CustomPaint(
+          painter: _ButtonFramePainter(
+            color: enabled
+                ? AppButtonStyles.frameColor
+                : Colors.white.withValues(alpha: 0.34),
+          ),
+          child: Container(
+            width: width,
+            height: height,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppButtonStyles.primaryFill.withValues(alpha: 0.8),
+            ),
+            child: Center(
+              child: DefaultTextStyle(
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                ),
+                child: child,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ButtonFramePainter extends CustomPainter {
+  final Color color;
+
+  const _ButtonFramePainter({
+    this.color = AppButtonStyles.frameColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    const t = 8.0;
+
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+
+    canvas.drawLine(const Offset(-t, 0), const Offset(t, 0), paint);
+    canvas.drawLine(const Offset(0, -t), const Offset(0, t), paint);
+
+    canvas.drawLine(
+      Offset(size.width - t, 0),
+      Offset(size.width + t, 0),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(size.width, -t),
+      Offset(size.width, t),
+      paint,
+    );
+
+    canvas.drawLine(
+      Offset(-t, size.height),
+      Offset(t, size.height),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(0, size.height - t),
+      Offset(0, size.height + t),
+      paint,
+    );
+
+    canvas.drawLine(
+      Offset(size.width - t, size.height),
+      Offset(size.width + t, size.height),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(size.width, size.height - t),
+      Offset(size.width, size.height + t),
+      paint,
+    );
+
+    const d = 4.0;
+    canvas.drawLine(const Offset(d, 0), const Offset(0, d), paint);
+    canvas.drawLine(Offset(size.width - d, 0), Offset(size.width, d), paint);
+    canvas.drawLine(Offset(0, size.height - d), Offset(d, size.height), paint);
+    canvas.drawLine(
+      Offset(size.width, size.height - d),
+      Offset(size.width - d, size.height),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ButtonFramePainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
+}
+
 class AppButtonStyles {
+  static const primaryFill = Color(0xFF0D1B2A);
+  static const frameColor = Color(0xFF5890FF);
+
   static ButtonStyle primary({bool compact = true}) {
     return ElevatedButton.styleFrom(
-      backgroundColor: AppColors.navy,
+      backgroundColor: primaryFill.withValues(alpha: 0.88),
       foregroundColor: Colors.white,
-      disabledBackgroundColor: AppColors.navy.withValues(alpha: 0.38),
+      disabledBackgroundColor: primaryFill.withValues(alpha: 0.42),
       disabledForegroundColor: Colors.white70,
       elevation: 0,
       minimumSize: Size(0, compact ? 42 : 48),
@@ -16,9 +142,9 @@ class AppButtonStyles {
         vertical: compact ? 9 : 12,
       ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(2),
         side: BorderSide(
-          color: AppColors.blueprintLine.withValues(alpha: 0.55),
+          color: frameColor.withValues(alpha: 0.82),
         ),
       ),
       textStyle: const TextStyle(
@@ -26,22 +152,23 @@ class AppButtonStyles {
         fontSize: 15,
         letterSpacing: 0,
       ),
-      shadowColor: AppColors.glow.withValues(alpha: 0.25),
+      shadowColor: frameColor.withValues(alpha: 0.28),
     );
   }
 
   static ButtonStyle secondary({bool compact = true, Color? color}) {
-    final buttonColor = color ?? AppColors.ink;
+    final buttonColor = color ?? frameColor;
     return OutlinedButton.styleFrom(
       foregroundColor: buttonColor,
-      side: BorderSide(color: buttonColor.withValues(alpha: 0.36)),
+      backgroundColor: Colors.white.withValues(alpha: 0.78),
+      side: BorderSide(color: buttonColor.withValues(alpha: 0.76)),
       minimumSize: Size(0, compact ? 40 : 46),
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 14 : 18,
         vertical: compact ? 8 : 11,
       ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(2),
       ),
       textStyle: const TextStyle(
         fontWeight: FontWeight.w900,
