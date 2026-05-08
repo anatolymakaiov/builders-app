@@ -1322,43 +1322,20 @@ class WorkerProfileScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              child: PopupMenuButton<int>(
+              child: StroykaPopupMenuButton<int>(
                 tooltip: "Actions",
-                icon: const Icon(Icons.more_horiz, color: AppColors.ink),
+                actions: [
+                  for (var i = 0; i < menuActions.length; i++)
+                    StroykaMenuAction<int>(
+                      value: i,
+                      label: menuActions[i].label,
+                      icon: menuActions[i].icon,
+                      danger: menuActions[i].danger,
+                    ),
+                ],
                 onSelected: (index) async {
                   await menuActions[index].run();
                 },
-                itemBuilder: (context) => [
-                  for (var i = 0; i < menuActions.length; i++)
-                    PopupMenuItem<int>(
-                      value: i,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            menuActions[i].icon,
-                            size: 18,
-                            color: menuActions[i].danger
-                                ? AppColors.danger
-                                : AppColors.greenDark,
-                          ),
-                          const SizedBox(width: 10),
-                          Flexible(
-                            child: Text(
-                              menuActions[i].label,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: menuActions[i].danger
-                                    ? AppColors.danger
-                                    : AppColors.ink,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
               ),
             ),
           ],

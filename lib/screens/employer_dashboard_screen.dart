@@ -458,7 +458,20 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                     ],
                   ),
                 ),
-                PopupMenuButton<String>(
+                StroykaPopupMenuButton<String>(
+                  actions: [
+                    StroykaMenuAction<String>(
+                      value: "toggle",
+                      label: isClosed ? "Make active" : "Make inactive",
+                      icon: isClosed ? Icons.play_circle : Icons.pause_circle,
+                    ),
+                    const StroykaMenuAction<String>(
+                      value: "delete",
+                      label: "Delete vacancy",
+                      icon: Icons.delete_outline,
+                      danger: true,
+                    ),
+                  ],
                   onSelected: (value) {
                     if (value == "delete") {
                       deleteJob(context, job);
@@ -466,32 +479,6 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                       setJobActive(job, isClosed);
                     }
                   },
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: "toggle",
-                      child: Row(
-                        children: [
-                          Icon(
-                            isClosed ? Icons.play_circle : Icons.pause_circle,
-                            color:
-                                isClosed ? AppColors.greenDark : Colors.orange,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(isClosed ? "Make active" : "Make inactive"),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: "delete",
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete_outline, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text("Delete vacancy"),
-                        ],
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),

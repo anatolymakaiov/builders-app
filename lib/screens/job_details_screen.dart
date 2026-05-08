@@ -1860,28 +1860,20 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 color: AppColors.ink.withValues(alpha: 0.08),
               ),
             ),
-            child: PopupMenuButton<int>(
+            child: StroykaPopupMenuButton<int>(
               tooltip: "Actions",
-              icon: const Icon(Icons.more_vert),
-              color: Colors.white,
               enabled: !isApplying,
+              icon: const Icon(Icons.more_vert, color: AppColors.ink),
+              actions: [
+                for (var i = 0; i < actions.length; i++)
+                  StroykaMenuAction<int>(
+                    value: i,
+                    label: actions[i].label,
+                    danger: actions[i].danger,
+                  ),
+              ],
               onSelected: (index) async {
                 await actions[index].run();
-              },
-              itemBuilder: (context) {
-                return [
-                  for (var i = 0; i < actions.length; i++)
-                    PopupMenuItem<int>(
-                      value: i,
-                      child: Text(
-                        actions[i].label,
-                        style: TextStyle(
-                          color: actions[i].danger ? Colors.red : AppColors.ink,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                ];
               },
             ),
           ),

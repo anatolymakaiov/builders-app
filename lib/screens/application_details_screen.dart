@@ -1402,54 +1402,20 @@ class ApplicationDetailsScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: Theme(
-                        data: Theme.of(context).copyWith(
-                          splashColor:
-                              AppColors.blueprintLine.withValues(alpha: 0.08),
-                        ),
-                        child: PopupMenuButton<int>(
-                          tooltip: "Actions",
-                          icon: const Icon(
-                            Icons.more_horiz,
-                            color: AppColors.ink,
-                          ),
-                          onSelected: (index) async {
-                            await actions[index].run();
-                          },
-                          itemBuilder: (context) {
-                            return [
-                              for (var i = 0; i < actions.length; i++)
-                                PopupMenuItem<int>(
-                                  value: i,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        actions[i].icon,
-                                        size: 18,
-                                        color: actions[i].danger
-                                            ? AppColors.danger
-                                            : AppColors.greenDark,
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Flexible(
-                                        child: Text(
-                                          actions[i].label,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: actions[i].danger
-                                                ? AppColors.danger
-                                                : AppColors.ink,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ];
-                          },
-                        ),
+                      child: StroykaPopupMenuButton<int>(
+                        tooltip: "Actions",
+                        actions: [
+                          for (var i = 0; i < actions.length; i++)
+                            StroykaMenuAction<int>(
+                              value: i,
+                              label: actions[i].label,
+                              icon: actions[i].icon,
+                              danger: actions[i].danger,
+                            ),
+                        ],
+                        onSelected: (index) async {
+                          await actions[index].run();
+                        },
                       ),
                     ),
                 ],
