@@ -6,6 +6,7 @@ import 'app_input_fields.dart';
 import 'app_typography.dart';
 
 export 'app_buttons.dart';
+export 'blueprint_frame.dart';
 export 'app_cards.dart';
 export 'app_chips.dart';
 export 'app_colors.dart';

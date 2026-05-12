@@ -113,21 +113,32 @@ class _LoginScreenState extends State<LoginScreen> {
                                 const SizedBox(height: 22),
                                 SizedBox(
                                   width: double.infinity,
-                                  child: StroykaButton(
-                                    onPressed: loading ? null : submit,
-                                    width: double.infinity,
-                                    child: loading
-                                        ? const SizedBox(
-                                            width: 20,
-                                            height: 20,
-                                            child: CircularProgressIndicator(
-                                              color: Colors.white,
-                                              strokeWidth: 2,
+                                  child: Opacity(
+                                    opacity: loading ? 0.48 : 1,
+                                    child: BlueprintFrame(
+                                      height: 48,
+                                      onTap: loading ? null : submit,
+                                      child: loading
+                                          ? const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                color: Colors.white,
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : Text(
+                                              isLogin
+                                                  ? "Sign in"
+                                                  : "Create account",
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                letterSpacing: 1.1,
+                                              ),
                                             ),
-                                          )
-                                        : Text(isLogin
-                                            ? "Sign in"
-                                            : "Create account"),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 14),
