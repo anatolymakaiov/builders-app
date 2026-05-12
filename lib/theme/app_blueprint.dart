@@ -15,7 +15,7 @@ class BlueprintDecorationPainter extends CustomPainter {
     required this.gridColor,
     this.radius = 8,
     this.drawGrid = true,
-    this.drawCorners = true,
+    this.drawCorners = false,
     this.subtle = false,
   });
 
@@ -46,10 +46,6 @@ class BlueprintDecorationPainter extends CustomPainter {
       RRect.fromRectAndRadius(safeRect, Radius.circular(radius)),
       borderPaint,
     );
-
-    if (drawCorners) {
-      _drawCorners(canvas, size);
-    }
   }
 
   void _drawGrid(Canvas canvas, Size size) {
@@ -74,44 +70,6 @@ class BlueprintDecorationPainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
       index++;
     }
-  }
-
-  void _drawCorners(Canvas canvas, Size size) {
-    final cornerPaint = Paint()
-      ..color = lineColor.withValues(alpha: subtle ? 0.48 : 0.74)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = subtle ? 0.85 : 1.15
-      ..strokeCap = StrokeCap.square;
-
-    final w = size.width;
-    final h = size.height;
-    final long = (h * 0.42).clamp(10.0, 20.0);
-    final short = (h * 0.28).clamp(7.0, 14.0);
-    final inset = (h * 0.12).clamp(4.0, 8.0);
-    final diagonal = (h * 0.24).clamp(7.0, 13.0);
-
-    void drawCorner({
-      required bool right,
-      required bool bottom,
-    }) {
-      final x = right ? w - inset : inset;
-      final y = bottom ? h - inset : inset;
-      final sx = right ? -1.0 : 1.0;
-      final sy = bottom ? -1.0 : 1.0;
-
-      canvas.drawLine(Offset(x, y), Offset(x + sx * long, y), cornerPaint);
-      canvas.drawLine(Offset(x, y), Offset(x, y + sy * long), cornerPaint);
-      canvas.drawLine(
-        Offset(x + sx * short, y + sy * short),
-        Offset(x + sx * (short + diagonal), y + sy * (short - diagonal)),
-        cornerPaint,
-      );
-    }
-
-    drawCorner(right: false, bottom: false);
-    drawCorner(right: true, bottom: false);
-    drawCorner(right: false, bottom: true);
-    drawCorner(right: true, bottom: true);
   }
 
   @override
