@@ -38,88 +38,110 @@ class _BlueprintPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
+    const designWidth = 2048.0;
+    const designHeight = 512.0;
 
     final backgroundPaint = Paint()
       ..shader = const LinearGradient(
         colors: [
-          Color(0xFF003B73),
-          Color(0xFF00315F),
+          Color(0xFF062E4B),
+          Color(0xFF052238),
         ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-      ).createShader(rect);
+      ).createShader(const Rect.fromLTWH(0, 0, designWidth, designHeight));
 
-    final borderPaint = Paint()
-      ..color = const Color(0xFFE7EAF2)
-      ..strokeWidth = 2
+    final gridMinor = Paint()
+      ..color = const Color(0xFF2F86BE).withValues(alpha: 0.26)
+      ..strokeWidth = 1.2;
+
+    final gridMajor = Paint()
+      ..color = const Color(0xFF2F86BE).withValues(alpha: 0.46)
+      ..strokeWidth = 2.0;
+
+    final panelPaint = Paint()
+      ..color = const Color(0xFF073F67).withValues(alpha: 0.78);
+
+    final panelEdgePaint = Paint()
+      ..color = const Color(0xFF0D5D8D).withValues(alpha: 0.76)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 8.0;
+
+    final framePaint = Paint()
+      ..color = const Color(0xFFE6ECF4)
+      ..strokeWidth = 5.0
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.square;
 
-    final gridMinor = Paint()
-      ..color = const Color(0x143A82C5)
-      ..strokeWidth = 0.6;
+    canvas.save();
+    canvas.scale(size.width / designWidth, size.height / designHeight);
 
-    final gridMajor = Paint()
-      ..color = const Color(0x223A82C5)
-      ..strokeWidth = 1;
-
-    final rrect = RRect.fromRectAndRadius(
-      rect,
-      const Radius.circular(8),
+    canvas.drawRect(
+      const Rect.fromLTWH(0, 0, designWidth, designHeight),
+      backgroundPaint,
     );
 
-    canvas.drawRRect(rrect, backgroundPaint);
+    final panel = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(75, 58, 1898, 438),
+      const Radius.circular(10),
+    );
+    canvas.drawRRect(panel, panelPaint);
+    canvas.drawRRect(panel, panelEdgePaint);
 
     canvas.save();
-    canvas.clipRRect(rrect);
+    canvas.clipRRect(panel);
 
-    const grid = 18.0;
-
-    for (double x = 0; x < size.width; x += grid) {
-      final isMajor = ((x / grid).round() % 4) == 0;
+    const grid = 56.0;
+    for (double x = 83; x <= 1968; x += grid) {
+      final isMajor = (((x - 83) / grid).round() % 4) == 0;
       canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
+        Offset(x, 63),
+        Offset(x, 490),
         isMajor ? gridMajor : gridMinor,
       );
     }
 
-    for (double y = 0; y < size.height; y += grid) {
-      final isMajor = ((y / grid).round() % 4) == 0;
+    for (double y = 87; y <= 480; y += grid) {
+      final isMajor = (((y - 87) / grid).round() % 4) == 0;
       canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
+        Offset(82, y),
+        Offset(1966, y),
         isMajor ? gridMajor : gridMinor,
       );
     }
 
     canvas.restore();
 
-    final w = size.width;
-    final h = size.height;
-
-    canvas.drawLine(const Offset(28, 5), Offset(w - 28, 5), borderPaint);
-    canvas.drawLine(Offset(28, h - 5), Offset(w - 28, h - 5), borderPaint);
-    canvas.drawLine(const Offset(5, 30), Offset(5, h - 30), borderPaint);
-    canvas.drawLine(Offset(w - 5, 30), Offset(w - 5, h - 30), borderPaint);
-
-    canvas.drawLine(const Offset(24, -6), const Offset(24, 44), borderPaint);
-    canvas.drawLine(const Offset(24, 24), const Offset(72, 24), borderPaint);
-    canvas.drawLine(const Offset(-8, 48), const Offset(48, -8), borderPaint);
-
-    canvas.drawLine(Offset(w - 24, -6), Offset(w - 24, 44), borderPaint);
-    canvas.drawLine(Offset(w - 72, 24), Offset(w - 24, 24), borderPaint);
-    canvas.drawLine(Offset(w + 8, 48), Offset(w - 48, -8), borderPaint);
-
-    canvas.drawLine(Offset(24, h + 6), Offset(24, h - 44), borderPaint);
-    canvas.drawLine(Offset(24, h - 24), Offset(72, h - 24), borderPaint);
-    canvas.drawLine(Offset(-8, h - 48), Offset(48, h + 8), borderPaint);
-
-    canvas.drawLine(Offset(w - 24, h + 6), Offset(w - 24, h - 44), borderPaint);
+    canvas.drawLine(const Offset(125, 68), const Offset(1924, 68), framePaint);
     canvas.drawLine(
-        Offset(w - 72, h - 24), Offset(w - 24, h - 24), borderPaint);
-    canvas.drawLine(Offset(w + 8, h - 48), Offset(w - 48, h + 8), borderPaint);
+        const Offset(125, 488), const Offset(1924, 488), framePaint);
+    canvas.drawLine(const Offset(92, 114), const Offset(92, 397), framePaint);
+    canvas.drawLine(
+        const Offset(1924, 114), const Offset(1924, 397), framePaint);
+
+    canvas.drawLine(const Offset(125, 40), const Offset(125, 165), framePaint);
+    canvas.drawLine(const Offset(125, 108), const Offset(218, 108), framePaint);
+    canvas.drawLine(const Offset(52, 162), const Offset(179, 36), framePaint);
+
+    canvas.drawLine(
+        const Offset(1922, 36), const Offset(1922, 165), framePaint);
+    canvas.drawLine(
+        const Offset(1830, 108), const Offset(1922, 108), framePaint);
+    canvas.drawLine(
+        const Offset(1868, 36), const Offset(1995, 162), framePaint);
+
+    canvas.drawLine(const Offset(125, 391), const Offset(125, 515), framePaint);
+    canvas.drawLine(const Offset(125, 449), const Offset(218, 449), framePaint);
+    canvas.drawLine(const Offset(52, 394), const Offset(179, 520), framePaint);
+
+    canvas.drawLine(
+        const Offset(1922, 391), const Offset(1922, 515), framePaint);
+    canvas.drawLine(
+        const Offset(1830, 449), const Offset(1922, 449), framePaint);
+    canvas.drawLine(
+        const Offset(1868, 520), const Offset(1995, 394), framePaint);
+
+    canvas.restore();
   }
 
   @override
