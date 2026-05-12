@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_blueprint.dart';
 import 'app_colors.dart';
 import 'app_spacing.dart';
 
@@ -20,10 +21,16 @@ class StroykaInputField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: const _InputFramePainter(),
+      painter: BlueprintDecorationPainter(
+        fillColor: Colors.white.withValues(alpha: 0.9),
+        lineColor: const Color(0xFF9FB4C1),
+        gridColor: const Color(0xFF5890FF),
+        radius: 6,
+        subtle: true,
+      ),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.9),
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(4),
         ),
         child: TextField(
@@ -53,37 +60,6 @@ class StroykaInputField extends StatelessWidget {
   }
 }
 
-class _InputFramePainter extends CustomPainter {
-  const _InputFramePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paintFrame = Paint()
-      ..color = const Color(0xFFABB2BF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.5;
-
-    final paintGrid = Paint()
-      ..color = const Color(0xFF5890FF).withValues(alpha: 0.1)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.5;
-
-    const step = 10.0;
-
-    for (double i = 0; i < size.width; i += step) {
-      canvas.drawLine(Offset(i, 0), Offset(i, size.height), paintGrid);
-    }
-    for (double i = 0; i < size.height; i += step) {
-      canvas.drawLine(Offset(0, i), Offset(size.width, i), paintGrid);
-    }
-
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paintFrame);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 class StroykaDropdown extends StatefulWidget {
   final List<String> items;
   final String value;
@@ -104,11 +80,17 @@ class _StroykaDropdownState extends State<StroykaDropdown> {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: const _DropdownFramePainter(),
+      painter: BlueprintDecorationPainter(
+        fillColor: Colors.white.withValues(alpha: 0.9),
+        lineColor: const Color(0xFF9FB4C1),
+        gridColor: const Color(0xFF5890FF),
+        radius: 6,
+        subtle: true,
+      ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.9),
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(2),
         ),
         child: DropdownButtonHideUnderline(
@@ -137,36 +119,6 @@ class _StroykaDropdownState extends State<StroykaDropdown> {
       ),
     );
   }
-}
-
-class _DropdownFramePainter extends CustomPainter {
-  const _DropdownFramePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paintFrame = Paint()
-      ..color = const Color(0xFFABB2BF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.5;
-
-    final paintGrid = Paint()
-      ..color = const Color(0xFF5890FF).withValues(alpha: 0.08)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.5;
-
-    const step = 8.0;
-    for (double i = 0; i < size.width; i += step) {
-      canvas.drawLine(Offset(i, 0), Offset(i, size.height), paintGrid);
-    }
-    for (double i = 0; i < size.height; i += step) {
-      canvas.drawLine(Offset(0, i), Offset(size.width, i), paintGrid);
-    }
-
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paintFrame);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class StroykaInputBorder extends OutlineInputBorder {
@@ -199,26 +151,17 @@ class StroykaInputBorder extends OutlineInputBorder {
     double gapPercentage = 0.0,
     TextDirection? textDirection,
   }) {
-    final gridPaint = Paint()
-      ..color = const Color(0xFF5890FF).withValues(alpha: 0.08)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.5;
-
-    const step = 8.0;
-    for (double x = rect.left; x < rect.right; x += step) {
-      canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), gridPaint);
-    }
-    for (double y = rect.top; y < rect.bottom; y += step) {
-      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), gridPaint);
-    }
-
-    final framePaint = Paint()
-      ..color = borderSide.color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = borderSide.width == 0 ? 0.5 : borderSide.width;
-
-    final safeRect = rect.deflate(framePaint.strokeWidth / 2);
-    canvas.drawRect(safeRect, framePaint);
+    final painter = BlueprintDecorationPainter(
+      fillColor: Colors.white.withValues(alpha: 0.04),
+      lineColor: borderSide.color,
+      gridColor: const Color(0xFF5890FF),
+      radius: 6,
+      subtle: true,
+    );
+    canvas.save();
+    canvas.translate(rect.left, rect.top);
+    painter.paint(canvas, rect.size);
+    canvas.restore();
   }
 }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_blueprint.dart';
 import 'app_colors.dart';
 
 class StroykaDropdownMenu extends StatelessWidget {
@@ -15,11 +16,17 @@ class StroykaDropdownMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: const _MenuFramePainter(),
+      painter: BlueprintDecorationPainter(
+        fillColor: Colors.white.withValues(alpha: 0.96),
+        lineColor: AppColors.blueprintLine,
+        gridColor: AppColors.blueprintLine,
+        radius: 8,
+        subtle: true,
+      ),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 250),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.95),
+          color: Colors.transparent,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.2),
@@ -150,11 +157,17 @@ class _StroykaActionMenu<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: const _MenuFramePainter(),
+      painter: BlueprintDecorationPainter(
+        fillColor: Colors.white.withValues(alpha: 0.96),
+        lineColor: AppColors.blueprintLine,
+        gridColor: AppColors.blueprintLine,
+        radius: 8,
+        subtle: true,
+      ),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 250),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.95),
+          color: Colors.transparent,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.2),
@@ -218,35 +231,4 @@ class _StroykaActionMenu<T> extends StatelessWidget {
       ),
     );
   }
-}
-
-class _MenuFramePainter extends CustomPainter {
-  const _MenuFramePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paintFrame = Paint()
-      ..color = const Color(0xFFABB2BF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.5;
-
-    final paintGrid = Paint()
-      ..color = const Color(0xFF5890FF).withValues(alpha: 0.05)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.5;
-
-    const step = 12.0;
-
-    for (double i = 0; i < size.width; i += step) {
-      canvas.drawLine(Offset(i, 0), Offset(i, size.height), paintGrid);
-    }
-    for (double i = 0; i < size.height; i += step) {
-      canvas.drawLine(Offset(0, i), Offset(size.width, i), paintGrid);
-    }
-
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paintFrame);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

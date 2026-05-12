@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_blueprint.dart';
 import 'app_colors.dart';
 
 class AppCard extends StatelessWidget {
@@ -50,6 +51,17 @@ class AppCard extends StatelessWidget {
                   fit: BoxFit.cover,
                   opacity: 0.48,
                 ),
+              ),
+            ),
+          ),
+          const Positioned.fill(
+            child: CustomPaint(
+              painter: BlueprintDecorationPainter(
+                fillColor: Colors.transparent,
+                lineColor: AppColors.blueprintLine,
+                gridColor: AppColors.blueprintLine,
+                radius: 12,
+                subtle: true,
               ),
             ),
           ),

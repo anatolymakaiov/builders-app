@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_blueprint.dart';
 import 'app_colors.dart';
 
 class StroykaButton extends StatelessWidget {
@@ -29,11 +30,14 @@ class StroykaButton extends StatelessWidget {
           children: [
             Positioned.fill(
               child: CustomPaint(
-                painter: _ActionButtonPainter(
+                painter: BlueprintDecorationPainter(
                   fillColor: AppButtonStyles.primaryFill,
-                  frameColor: enabled
+                  lineColor: enabled
                       ? AppButtonStyles.frameColor
                       : Colors.white.withValues(alpha: 0.34),
+                  gridColor: AppButtonStyles.frameColor,
+                  radius: 6,
+                  subtle: false,
                 ),
               ),
             ),
@@ -69,50 +73,6 @@ class StroykaButton extends StatelessWidget {
   }
 }
 
-class _ActionButtonPainter extends CustomPainter {
-  final Color fillColor;
-  final Color frameColor;
-
-  const _ActionButtonPainter({
-    required this.fillColor,
-    required this.frameColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-
-    final bgPaint = Paint()..color = fillColor.withValues(alpha: 0.92);
-    canvas.drawRect(rect, bgPaint);
-
-    final gridPaint = Paint()
-      ..color = AppButtonStyles.frameColor.withValues(alpha: 0.15)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.5;
-
-    const step = 10.0;
-    for (double i = 0; i < size.width; i += step) {
-      canvas.drawLine(Offset(i, 0), Offset(i, size.height), gridPaint);
-    }
-    for (double i = 0; i < size.height; i += step) {
-      canvas.drawLine(Offset(0, i), Offset(size.width, i), gridPaint);
-    }
-
-    final framePaint = Paint()
-      ..color = frameColor.withValues(alpha: 0.6)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    canvas.drawRect(rect, framePaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _ActionButtonPainter oldDelegate) {
-    return oldDelegate.fillColor != fillColor ||
-        oldDelegate.frameColor != frameColor;
-  }
-}
-
 class StroykaButtonBorder extends RoundedRectangleBorder {
   const StroykaButtonBorder({
     super.side = const BorderSide(color: AppButtonStyles.frameColor),
@@ -132,29 +92,17 @@ class StroykaButtonBorder extends RoundedRectangleBorder {
 
   @override
   void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
-    super.paint(canvas, rect, textDirection: textDirection);
-
-    final gridPaint = Paint()
-      ..color = AppButtonStyles.frameColor.withValues(alpha: 0.15)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.5;
-
-    const step = 10.0;
-    for (double x = rect.left; x < rect.right; x += step) {
-      canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), gridPaint);
-    }
-    for (double y = rect.top; y < rect.bottom; y += step) {
-      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), gridPaint);
-    }
-
-    final paint = Paint()
-      ..color = side.color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = side.width == 0 ? 1.0 : side.width;
-
-    final safeRect = rect.deflate(paint.strokeWidth / 2);
-
-    canvas.drawRect(safeRect, paint);
+    final painter = BlueprintDecorationPainter(
+      fillColor: Colors.transparent,
+      lineColor: side.color,
+      gridColor: side.color,
+      radius: 6,
+      subtle: true,
+    );
+    canvas.save();
+    canvas.translate(rect.left, rect.top);
+    painter.paint(canvas, rect.size);
+    canvas.restore();
   }
 }
 
