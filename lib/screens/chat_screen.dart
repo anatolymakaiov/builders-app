@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
@@ -141,7 +140,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (data["type"] == "image" && data["imageUrl"] != null) {
         precacheImage(
-          CachedNetworkImageProvider(data["imageUrl"]),
+          NetworkImage(data["imageUrl"].toString()),
           context,
         );
         count++;
@@ -1192,34 +1191,51 @@ class _ChatScreenState extends State<ChatScreen> {
                                                 child: ClipRRect(
                                                   borderRadius:
                                                       BorderRadius.circular(10),
-                                                  child: CachedNetworkImage(
-                                                    imageUrl: (data[
-                                                                "imageUrl"] ??
+                                                  child: Image.network(
+                                                    (data["imageUrl"] ??
                                                             data["mediaUrl"])
                                                         .toString(),
                                                     width: 200,
+                                                    height: 150,
                                                     fit: BoxFit.cover,
-                                                    placeholder:
-                                                        (context, url) =>
-                                                            Container(
+                                                    gaplessPlayback: true,
+                                                    loadingBuilder: (
+                                                      context,
+                                                      child,
+                                                      loadingProgress,
+                                                    ) {
+                                                      if (loadingProgress ==
+                                                          null) {
+                                                        return child;
+                                                      }
+                                                      return Container(
+                                                        width: 200,
+                                                        height: 150,
+                                                        alignment:
+                                                            Alignment.center,
+                                                        color: AppColors
+                                                            .surfaceAlt,
+                                                        child: const Icon(
+                                                          Icons.image_outlined,
+                                                          color:
+                                                              AppColors.muted,
+                                                        ),
+                                                      );
+                                                    },
+                                                    errorBuilder: (context,
+                                                            error,
+                                                            stackTrace) =>
+                                                        Container(
                                                       width: 200,
                                                       height: 150,
                                                       alignment:
                                                           Alignment.center,
-                                                      child:
-                                                          const CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                      ),
-                                                    ),
-                                                    errorWidget:
-                                                        (context, url, error) =>
-                                                            Container(
-                                                      width: 200,
-                                                      height: 150,
-                                                      alignment:
-                                                          Alignment.center,
+                                                      color:
+                                                          AppColors.surfaceAlt,
                                                       child: const Icon(
-                                                          Icons.broken_image),
+                                                        Icons.broken_image,
+                                                        color: AppColors.muted,
+                                                      ),
                                                     ),
                                                   ),
                                                 ),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'chat_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -63,23 +62,32 @@ class MyChatsScreen extends StatelessWidget {
     required bool isOnline,
     required IconData fallbackIcon,
   }) {
+    final fallback = Icon(
+      fallbackIcon,
+      color: AppColors.greenDark,
+      size: 28,
+    );
+
     return Stack(
       children: [
         CircleAvatar(
           radius: 26,
-          backgroundColor: Colors.grey.shade200,
+          backgroundColor: AppColors.surfaceAlt,
           child: ClipOval(
             child: avatarUrl != null
-                ? CachedNetworkImage(
-                    imageUrl: avatarUrl,
+                ? Image.network(
+                    avatarUrl,
                     width: 52,
                     height: 52,
                     fit: BoxFit.cover,
-                    placeholder: (context, url) =>
-                        const CircularProgressIndicator(strokeWidth: 2),
-                    errorWidget: (context, url, error) => Icon(fallbackIcon),
+                    gaplessPlayback: true,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return fallback;
+                    },
+                    errorBuilder: (context, error, stackTrace) => fallback,
                   )
-                : Icon(fallbackIcon),
+                : fallback,
           ),
         ),
         if (isOnline)
