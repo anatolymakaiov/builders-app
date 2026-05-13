@@ -12,6 +12,7 @@ export 'app_chips.dart';
 export 'app_colors.dart';
 export 'app_dropdown_menu.dart';
 export 'app_input_fields.dart';
+export 'app_profile_widgets.dart';
 export 'app_spacing.dart';
 export 'app_typography.dart';
 

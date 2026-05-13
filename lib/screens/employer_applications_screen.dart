@@ -95,7 +95,10 @@ class _EmployerApplicationsScreenState
     if (type == "team") {
       final teamId = data["teamId"];
       if (teamId == null) {
-        return const CircleAvatar(child: Icon(Icons.groups));
+        return const StroykaAvatar(
+          fallbackIcon: Icons.groups,
+          size: 64,
+        );
       }
 
       return StreamBuilder<DocumentSnapshot>(
@@ -107,10 +110,10 @@ class _EmployerApplicationsScreenState
           final team = snapshot.data?.data() as Map<String, dynamic>?;
           final avatar = team?["avatarUrl"] ?? team?["photo"] ?? team?["logo"];
 
-          return CircleAvatar(
-            backgroundImage:
-                avatar == null ? null : NetworkImage(avatar.toString()),
-            child: avatar == null ? const Icon(Icons.groups) : null,
+          return StroykaAvatar(
+            imageUrl: avatar?.toString(),
+            fallbackIcon: Icons.groups,
+            size: 64,
           );
         },
       );
@@ -118,7 +121,10 @@ class _EmployerApplicationsScreenState
 
     final workerId = data["workerId"] ?? data["userId"];
     if (workerId == null) {
-      return const CircleAvatar(child: Icon(Icons.person));
+      return const StroykaAvatar(
+        fallbackIcon: Icons.person,
+        size: 64,
+      );
     }
 
     return StreamBuilder<DocumentSnapshot>(
@@ -130,10 +136,10 @@ class _EmployerApplicationsScreenState
         final user = snapshot.data?.data() as Map<String, dynamic>?;
         final photo = user?["photo"] ?? user?["avatarUrl"];
 
-        return CircleAvatar(
-          backgroundImage:
-              photo == null ? null : NetworkImage(photo.toString()),
-          child: photo == null ? const Icon(Icons.person) : null,
+        return StroykaAvatar(
+          imageUrl: photo?.toString(),
+          fallbackIcon: Icons.person,
+          size: 64,
         );
       },
     );

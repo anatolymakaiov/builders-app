@@ -28,26 +28,10 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
         employerData?["companyLogo"] ??
         employerData?["photo"] ??
         employerData?["avatarUrl"];
-    final name = job.companyName.isNotEmpty
-        ? job.companyName
-        : (employerData?["companyName"] ?? employerData?["name"] ?? "Company")
-            .toString();
-
-    return CircleAvatar(
-      radius: 24,
-      backgroundColor: Colors.green.shade100,
-      backgroundImage: avatarUrl == null || avatarUrl.toString().isEmpty
-          ? null
-          : NetworkImage(avatarUrl.toString()),
-      child: avatarUrl == null || avatarUrl.toString().isEmpty
-          ? Text(
-              name.characters.first.toUpperCase(),
-              style: TextStyle(
-                color: Colors.green.shade900,
-                fontWeight: FontWeight.bold,
-              ),
-            )
-          : null,
+    return StroykaAvatar(
+      imageUrl: avatarUrl?.toString(),
+      fallbackIcon: Icons.business,
+      size: 58,
     );
   }
 

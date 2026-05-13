@@ -235,102 +235,20 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
             child: StroykaScreenBody(
               child: Column(
                 children: [
-                  StroykaSurface(
-                    margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                    padding: EdgeInsets.zero,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: SizedBox(
-                        height: 168,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            image: headerImage != null && headerImage.isNotEmpty
-                                ? DecorationImage(
-                                    image: NetworkImage(headerImage),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                          ),
-                          child: Container(
-                            alignment: Alignment.bottomCenter,
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.black.withValues(alpha: 0.08),
-                                  Colors.black.withValues(alpha: 0.16),
-                                ],
-                              ),
-                            ),
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.82),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.92),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  CircleAvatar(
-                                    radius: 32,
-                                    backgroundColor: Colors.grey.shade300,
-                                    backgroundImage: logo is String
-                                        ? NetworkImage(logo)
-                                        : null,
-                                    child: logo == null
-                                        ? const Icon(Icons.business, size: 30)
-                                        : null,
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    name,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w900,
-                                      color: AppColors.ink,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                  StroykaProfileHeader(
+                    title: name,
+                    avatarUrl: logo is String ? logo : null,
+                    headerImageUrl: headerImage,
+                    fallbackIcon: Icons.business,
                   ),
-                  StroykaSurface(
-                    margin: const EdgeInsets.symmetric(horizontal: 12),
-                    padding: const EdgeInsets.all(4),
-                    borderRadius: BorderRadius.circular(999),
-                    child: TabBar(
-                      dividerColor: Colors.transparent,
-                      indicator: const BoxDecoration(
-                        color: AppColors.green,
-                        borderRadius: BorderRadius.all(Radius.circular(999)),
-                      ),
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      labelColor: Colors.white,
-                      unselectedLabelColor: AppColors.ink,
-                      labelStyle: const TextStyle(fontWeight: FontWeight.w800),
-                      tabs: [
-                        const Tab(text: "Info"),
-                        const Tab(text: "Contacts"),
-                        const Tab(text: "Vacancies"),
-                        const Tab(text: "Photos"),
-                        if (showBilling) const Tab(text: "Billing"),
-                      ],
-                    ),
+                  StroykaTabBar(
+                    labels: [
+                      "Info",
+                      "Contacts",
+                      "Vacancies",
+                      "Photos",
+                      if (showBilling) "Billing",
+                    ],
                   ),
                   const SizedBox(height: 10),
                   Expanded(

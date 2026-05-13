@@ -922,12 +922,12 @@ class ApplicationDetailsScreen extends StatelessWidget {
             applicationHeaderCard(
               headerControls: headerControls,
               avatar: CircleAvatar(
-                radius: 45,
+                radius: 44,
                 backgroundColor: Colors.grey.shade300,
                 backgroundImage:
                     avatar == null ? null : NetworkImage(avatar.toString()),
                 child:
-                    avatar == null ? const Icon(Icons.groups, size: 40) : null,
+                    avatar == null ? const Icon(Icons.groups, size: 38) : null,
               ),
               title: teamName.toString(),
               subtitle: "${memberIds.length} members",
@@ -1048,7 +1048,8 @@ class ApplicationDetailsScreen extends StatelessWidget {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      constraints: const BoxConstraints(minHeight: 172),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.90),
         borderRadius: BorderRadius.circular(14),
@@ -1061,36 +1062,37 @@ class ApplicationDetailsScreen extends StatelessWidget {
             right: 0,
             child: headerControls,
           ),
-          Padding(
-            padding: const EdgeInsets.only(top: 42),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  avatar,
-                  const SizedBox(height: 12),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                avatar,
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                if (subtitle != null && subtitle.trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
                   Text(
-                    title,
+                    subtitle,
                     textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: AppColors.ink,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  if (subtitle != null && subtitle.trim().isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
                 ],
-              ),
+              ],
             ),
           ),
         ],
@@ -1452,12 +1454,12 @@ class ApplicationDetailsScreen extends StatelessWidget {
                           headerControls:
                               headerControls(forEmployer: isEmployerViewer),
                           avatar: CircleAvatar(
-                            radius: 45,
+                            radius: 44,
                             backgroundColor: Colors.grey.shade300,
                             backgroundImage:
                                 photo != null ? NetworkImage(photo) : null,
                             child: photo == null
-                                ? const Icon(Icons.person, size: 40)
+                                ? const Icon(Icons.person, size: 38)
                                 : null,
                           ),
                           title: name.toString(),

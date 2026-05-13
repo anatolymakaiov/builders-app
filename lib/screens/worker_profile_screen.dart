@@ -891,15 +891,10 @@ class WorkerProfileScreen extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        CircleAvatar(
-                          radius: 24,
-                          backgroundColor: Colors.grey.shade300,
-                          backgroundImage: avatarUrl is String
-                              ? NetworkImage(avatarUrl)
-                              : null,
-                          child: avatarUrl is String
-                              ? null
-                              : const Icon(Icons.groups),
+                        StroykaAvatar(
+                          imageUrl: avatarUrl is String ? avatarUrl : null,
+                          fallbackIcon: Icons.groups,
+                          size: 58,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -1503,136 +1498,21 @@ class WorkerProfileScreen extends StatelessWidget {
             child: StroykaScreenBody(
               child: Column(
                 children: [
-                  StroykaSurface(
-                    margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                    padding: EdgeInsets.zero,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: SizedBox(
-                        height: 168,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            image: headerImage != null && headerImage.isNotEmpty
-                                ? DecorationImage(
-                                    image: NetworkImage(headerImage),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                          ),
-                          child: Container(
-                            alignment: Alignment.bottomCenter,
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.black.withValues(alpha: 0.08),
-                                  Colors.black.withValues(alpha: 0.16),
-                                ],
-                              ),
-                            ),
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.82),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.92),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Stack(
-                                children: [
-                                  if (canShowActions)
-                                    Positioned(
-                                      left: 0,
-                                      right: 0,
-                                      top: 0,
-                                      child: buildLiveApplicationHeaderControls(
-                                        context: context,
-                                        applicationId: applicationId,
-                                        employerId: employerId!,
-                                        jobId: jobId!,
-                                      ),
-                                    ),
-                                  SizedBox(
-                                    height: canShowActions ? 118 : null,
-                                    child: Align(
-                                      alignment: canShowActions
-                                          ? Alignment.bottomCenter
-                                          : Alignment.center,
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          CircleAvatar(
-                                            radius: canShowActions ? 26 : 32,
-                                            backgroundColor:
-                                                Colors.grey.shade300,
-                                            backgroundImage: photo is String
-                                                ? NetworkImage(photo)
-                                                : null,
-                                            child: photo == null
-                                                ? Icon(
-                                                    Icons.person,
-                                                    size: canShowActions
-                                                        ? 24
-                                                        : 30,
-                                                  )
-                                                : null,
-                                          ),
-                                          SizedBox(
-                                            height: canShowActions ? 3 : 6,
-                                          ),
-                                          Text(
-                                            name,
-                                            textAlign: TextAlign.center,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize:
-                                                  canShowActions ? 18 : 20,
-                                              fontWeight: FontWeight.w900,
-                                              color: AppColors.ink,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                  StroykaProfileHeader(
+                    title: name.toString(),
+                    avatarUrl: photo is String ? photo : null,
+                    headerImageUrl: headerImage,
+                    fallbackIcon: Icons.person,
+                    headerControls: canShowActions
+                        ? buildLiveApplicationHeaderControls(
+                            context: context,
+                            applicationId: applicationId,
+                            employerId: employerId!,
+                            jobId: jobId!,
+                          )
+                        : null,
                   ),
-                  StroykaSurface(
-                    margin: const EdgeInsets.symmetric(horizontal: 12),
-                    padding: const EdgeInsets.all(4),
-                    borderRadius: BorderRadius.circular(999),
-                    child: const TabBar(
-                      dividerColor: Colors.transparent,
-                      indicator: BoxDecoration(
-                        color: AppColors.green,
-                        borderRadius: BorderRadius.all(Radius.circular(999)),
-                      ),
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      labelColor: Colors.white,
-                      unselectedLabelColor: AppColors.ink,
-                      labelStyle: TextStyle(fontWeight: FontWeight.w800),
-                      tabs: [
-                        Tab(text: "Info"),
-                        Tab(text: "Photos"),
-                        Tab(text: "Teams"),
-                      ],
-                    ),
-                  ),
+                  const StroykaTabBar(labels: ["Info", "Photos", "Teams"]),
                   const SizedBox(height: 10),
                   Expanded(
                     child: TabBarView(

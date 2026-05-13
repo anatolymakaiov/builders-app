@@ -520,9 +520,10 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
             ],
           ),
           child: ListTile(
-            leading: CircleAvatar(
-              backgroundImage: photo != null ? NetworkImage(photo) : null,
-              child: photo == null ? const Icon(Icons.person) : null,
+            leading: StroykaAvatar(
+              imageUrl: photo?.toString(),
+              fallbackIcon: Icons.person,
+              size: 54,
             ),
             title: Text(userName),
             subtitle: Column(
@@ -609,39 +610,14 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                StroykaSurface(
-                  padding: const EdgeInsets.all(18),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        GestureDetector(
-                          onTap: canEdit ? updateTeamAvatar : null,
-                          child: CircleAvatar(
-                            radius: 46,
-                            backgroundColor: Colors.grey.shade300,
-                            backgroundImage: avatar == null
-                                ? null
-                                : NetworkImage(avatar.toString()),
-                            child: avatar == null
-                                ? const Icon(Icons.groups, size: 40)
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          name,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          "${members.length} members",
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
+                GestureDetector(
+                  onTap: canEdit ? updateTeamAvatar : null,
+                  child: StroykaProfileHeader(
+                    title: name,
+                    subtitle: "${members.length} members",
+                    avatarUrl: avatar?.toString(),
+                    fallbackIcon: Icons.groups,
+                    margin: EdgeInsets.zero,
                   ),
                 ),
                 const SizedBox(height: 18),

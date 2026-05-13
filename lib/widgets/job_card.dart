@@ -270,14 +270,14 @@ class _Logo extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasPhoto = photo != null && photo!.trim().isNotEmpty;
     return CircleAvatar(
-      radius: 31,
+      radius: 34,
       backgroundColor: AppColors.surfaceAlt,
       backgroundImage: hasPhoto ? NetworkImage(photo!) : null,
       child: hasPhoto
           ? null
           : const Icon(
               Icons.business,
-              size: 30,
+              size: 32,
               color: AppColors.greenDark,
             ),
     );
