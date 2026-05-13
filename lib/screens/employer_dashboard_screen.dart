@@ -76,16 +76,6 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
       );
     }
 
-    if (job.weeklyHours.isNotEmpty) {
-      chips.add(
-        buildMetaChip(
-          icon: Icons.schedule,
-          label: "${job.weeklyHours} hrs/week",
-          color: Colors.deepPurple,
-        ),
-      );
-    }
-
     return chips;
   }
 

@@ -2102,11 +2102,23 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  metaPill(widget.job.workFormatText),
+                  metaPill(
+                    widget.job.workFormatText,
+                    icon: Icons.work_outline,
+                    color: AppColors.ink,
+                  ),
                   if (widget.job.duration.isNotEmpty)
-                    metaPill(widget.job.duration),
+                    metaPill(
+                      widget.job.duration,
+                      icon: Icons.schedule,
+                      color: AppColors.greenDark,
+                    ),
                   if (widget.job.listRateText.isNotEmpty)
-                    metaPill(widget.job.listRateText),
+                    metaPill(
+                      widget.job.listRateText,
+                      icon: Icons.payments_outlined,
+                      color: AppColors.greenDark,
+                    ),
                 ],
               ),
               buildPositionsInfo(),
@@ -2152,21 +2164,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
-  Widget metaPill(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.ink,
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
-        ),
-      ),
+  Widget metaPill(String label, {IconData? icon, Color? color}) {
+    return AppChip(
+      icon: icon,
+      label: label,
+      color: color ?? AppColors.greenDark,
     );
   }
 
