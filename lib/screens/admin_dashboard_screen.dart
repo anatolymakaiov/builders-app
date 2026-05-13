@@ -6,6 +6,7 @@ import '../models/job.dart';
 import '../services/billing_service.dart';
 import '../services/job_alert_service.dart';
 import '../services/notification_service.dart';
+import 'employer_profile_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -703,53 +704,171 @@ class _AdminSentInboxMessagesSection extends StatelessWidget {
                       ? (data["createdAt"] as Timestamp).toDate()
                       : null;
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.72),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.9),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          data["title"]?.toString() ?? "Admin message",
-                          style: const TextStyle(
-                            color: AppColors.ink,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
+                  return _AdminUserRequestCard(
+                    userId: targetUserId,
+                    fallbackTitle: data["title"]?.toString() ?? "Admin message",
+                    fallbackRole: audience,
+                    subtitle: data["message"]?.toString() ?? "",
+                    status: "sent",
+                    chips: [
+                      _ReportMetaChip(label: "Subject", value: data["title"]),
+                      _ReportMetaChip(label: "Audience", value: audience),
+                      _ReportMetaChip(
+                          label: "Recipients", value: recipientCount),
+                      _ReportMetaChip(
+                          label: "Last", value: _formatAdminDate(createdAt)),
+                    ],
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => _AdminInboxThreadScreen(
+                            data: data,
+                            createdAt: createdAt,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Text(data["message"]?.toString() ?? ""),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          children: [
-                            _ReportMetaChip(label: "Audience", value: audience),
-                            _ReportMetaChip(
-                              label: "Recipients",
-                              value: recipientCount,
-                            ),
-                            _ReportMetaChip(label: "User", value: targetUserId),
-                            _ReportMetaChip(
-                              label: "Sent",
-                              value: _formatAdminDate(createdAt),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   );
                 }).toList(),
               );
             },
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminInboxThreadScreen extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final DateTime? createdAt;
+
+  const _AdminInboxThreadScreen({
+    required this.data,
+    required this.createdAt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final title = data["title"]?.toString() ?? "Admin message";
+    final message = data["message"]?.toString() ?? "";
+    final audience = data["audience"]?.toString() ?? "";
+
+    return Scaffold(
+      appBar: AppBar(title: const Text("Inbox thread")),
+      body: StroykaScreenBody(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
+          children: [
+            StroykaSurface(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: AppColors.ink,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      _ReportMetaChip(label: "Audience", value: audience),
+                      _ReportMetaChip(
+                        label: "Last",
+                        value: _formatAdminDate(createdAt),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            _AdminMailBubble(
+              sender: "Admin",
+              role: "admin",
+              date: createdAt,
+              title: title,
+              message: message,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminMailBubble extends StatelessWidget {
+  final String sender;
+  final String role;
+  final DateTime? date;
+  final String title;
+  final String message;
+
+  const _AdminMailBubble({
+    required this.sender,
+    required this.role,
+    required this.date,
+    required this.title,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StroykaSurface(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const CircleAvatar(
+                radius: 22,
+                backgroundColor: Color(0x297DB9D8),
+                child: Icon(Icons.admin_panel_settings_outlined),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      sender,
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      "${BillingService.formatLabel(role)} • ${_formatAdminDate(date)}",
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.ink,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(message),
         ],
       ),
     );
@@ -875,6 +994,10 @@ class _PaymentRequestCard extends StatelessWidget {
           title: companyName,
           subtitle: "$planName • ${BillingService.formatLabel(paymentMode)}",
           status: selectedStatus,
+          leading: _AdminAvatar(
+            data: employerData,
+            fallbackIcon: Icons.business_outlined,
+          ),
           chips: [
             _ReportMetaChip(label: "Plan", value: data["planId"]),
             _ReportMetaChip(label: "Employer", value: employerId),
@@ -1022,12 +1145,31 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          companyName,
-                          style: const TextStyle(
-                            color: AppColors.ink,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
+                        child: TextButton(
+                          style: TextButton.styleFrom(
+                            alignment: Alignment.centerLeft,
+                            padding: EdgeInsets.zero,
+                          ),
+                          onPressed: employerId.isEmpty
+                              ? null
+                              : () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => EmployerProfileScreen(
+                                        userId: employerId,
+                                      ),
+                                    ),
+                                  );
+                                },
+                          child: Text(
+                            companyName,
+                            style: const TextStyle(
+                              color: AppColors.greenDark,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              decoration: TextDecoration.underline,
+                            ),
                           ),
                         ),
                       ),
@@ -1058,6 +1200,7 @@ class _AdminRequestListCard extends StatelessWidget {
   final String subtitle;
   final String status;
   final List<Widget> chips;
+  final Widget? leading;
   final VoidCallback onTap;
 
   const _AdminRequestListCard({
@@ -1065,6 +1208,7 @@ class _AdminRequestListCard extends StatelessWidget {
     required this.subtitle,
     required this.status,
     required this.chips,
+    this.leading,
     required this.onTap,
   });
 
@@ -1086,6 +1230,10 @@ class _AdminRequestListCard extends StatelessWidget {
           children: [
             Row(
               children: [
+                if (leading != null) ...[
+                  leading!,
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: Text(
                     title,
@@ -1144,6 +1292,104 @@ class _AdminStatusPill extends StatelessWidget {
           fontWeight: FontWeight.w900,
         ),
       ),
+    );
+  }
+}
+
+class _AdminAvatar extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final IconData fallbackIcon;
+
+  const _AdminAvatar({
+    required this.data,
+    this.fallbackIcon = Icons.person_outline,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final url = (data["photoUrl"] ??
+            data["avatarUrl"] ??
+            data["profileImageUrl"] ??
+            data["logoUrl"] ??
+            data["companyLogoUrl"] ??
+            "")
+        .toString()
+        .trim();
+    final fallback = Icon(fallbackIcon, color: AppColors.greenDark);
+
+    return ClipOval(
+      child: Container(
+        width: 48,
+        height: 48,
+        color: AppColors.green.withValues(alpha: 0.12),
+        child: url.isEmpty
+            ? fallback
+            : Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => fallback,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return fallback;
+                },
+              ),
+      ),
+    );
+  }
+}
+
+class _AdminUserRequestCard extends StatelessWidget {
+  final String userId;
+  final String fallbackTitle;
+  final String fallbackRole;
+  final String subtitle;
+  final String status;
+  final List<Widget> chips;
+  final VoidCallback onTap;
+
+  const _AdminUserRequestCard({
+    required this.userId,
+    required this.fallbackTitle,
+    required this.fallbackRole,
+    required this.subtitle,
+    required this.status,
+    required this.chips,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<DocumentSnapshot>(
+      future: userId.trim().isEmpty
+          ? null
+          : FirebaseFirestore.instance.collection("users").doc(userId).get(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
+        final role = (data["role"] ?? fallbackRole).toString();
+        final title = (role == "employer"
+                ? data["companyName"] ?? data["name"]
+                : data["name"] ?? data["displayName"])
+            ?.toString()
+            .trim();
+        final displayTitle =
+            title == null || title.isEmpty ? fallbackTitle : title;
+
+        return _AdminRequestListCard(
+          title: displayTitle,
+          subtitle: subtitle,
+          status: status,
+          leading: _AdminAvatar(
+            data: data,
+            fallbackIcon:
+                role == "employer" ? Icons.business_outlined : Icons.person,
+          ),
+          chips: [
+            _ReportMetaChip(label: "Role", value: role),
+            ...chips,
+          ],
+          onTap: onTap,
+        );
+      },
     );
   }
 }
@@ -1430,14 +1676,15 @@ class _SupportRequestCard extends StatelessWidget {
     final type = data["type"]?.toString().trim() ?? "support";
     final message = data["message"]?.toString().trim() ?? "";
 
-    return _AdminRequestListCard(
-      title: supportTypeLabel(data),
+    return _AdminUserRequestCard(
+      userId: data["userId"]?.toString() ?? "",
+      fallbackTitle: supportTypeLabel(data),
+      fallbackRole: data["userRole"]?.toString() ?? "",
       subtitle: message,
       status: selectedStatus,
       chips: [
+        _ReportMetaChip(label: "Topic", value: supportTypeLabel(data)),
         _ReportMetaChip(label: "Type", value: type),
-        _ReportMetaChip(label: "User", value: data["userId"]),
-        _ReportMetaChip(label: "Role", value: data["userRole"]),
       ],
       onTap: () {
         Navigator.push(
@@ -1815,11 +2062,14 @@ class _ReportCard extends StatelessWidget {
     final message = data["message"]?.toString().trim() ?? "";
     final type = data["type"]?.toString().trim() ?? "report";
 
-    return _AdminRequestListCard(
-      title: type,
+    return _AdminUserRequestCard(
+      userId: data["fromUserId"]?.toString() ?? "",
+      fallbackTitle: type,
+      fallbackRole: "user",
       subtitle: message,
       status: selectedStatus,
       chips: [
+        _ReportMetaChip(label: "Topic", value: type),
         _ReportMetaChip(label: "From", value: data["fromUserId"]),
         _ReportMetaChip(label: "Against", value: data["againstUserId"]),
         _ReportMetaChip(label: "Job", value: data["jobId"]),
@@ -1999,8 +2249,8 @@ class _PendingJobCard extends StatelessWidget {
       onTap: onOpen,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.78),
           borderRadius: BorderRadius.circular(12),
@@ -2015,16 +2265,39 @@ class _PendingJobCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    job.displayTitle,
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                    ),
+                const CircleAvatar(
+                  radius: 24,
+                  backgroundColor: Color(0x297DB9D8),
+                  child: Icon(
+                    Icons.work_outline,
+                    color: AppColors.greenDark,
                   ),
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        job.displayTitle,
+                        style: const TextStyle(
+                          color: AppColors.ink,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        job.companyName,
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _AdminStatusPill(job.moderationStatus),
                 const Icon(
                   Icons.chevron_right,
                   color: AppColors.muted,
@@ -2032,17 +2305,18 @@ class _PendingJobCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            _AdminMetaLine(label: "Trade", value: job.trade),
-            _AdminMetaLine(label: "Site", value: job.site),
-            _AdminMetaLine(label: "Location", value: location),
-            _AdminMetaLine(label: "Employer", value: job.companyName),
-            _AdminMetaLine(
-              label: "Created",
-              value: _formatAdminDate(job.createdAt),
-            ),
-            _AdminMetaLine(
-              label: "Status",
-              value: job.moderationLabel,
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _ReportMetaChip(label: "Trade", value: job.trade),
+                _ReportMetaChip(label: "Site", value: job.site),
+                _ReportMetaChip(label: "Location", value: location),
+                _ReportMetaChip(
+                  label: "Created",
+                  value: _formatAdminDate(job.createdAt),
+                ),
+              ],
             ),
           ],
         ),
