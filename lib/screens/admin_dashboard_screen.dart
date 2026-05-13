@@ -9,8 +9,15 @@ import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
-class AdminDashboardScreen extends StatelessWidget {
+class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
+
+  @override
+  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  int selectedIndex = 0;
 
   Future<void> approveJob(DocumentReference ref, Job job) async {
     final data = {
@@ -172,6 +179,26 @@ class AdminDashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      const _AdminInboxTab(),
+      _JobModerationSection(
+        onApprove: approveJob,
+        onReject: rejectJob,
+        onOpen: openJobModerationDetail,
+      ),
+      _SupportRequestsSection(
+        onStatusChanged: updateSupportRequestStatus,
+      ),
+      _PaymentRequestsSection(
+        onStatusChanged: updatePaymentRequestStatus,
+      ),
+      _FinancialReportsSection(
+        complaintsSection: _ReportsSection(
+          onStatusChanged: updateReportStatus,
+        ),
+      ),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Admin"),
@@ -185,32 +212,88 @@ class AdminDashboardScreen extends StatelessWidget {
       ),
       body: StroykaScreenBody(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-          children: [
-            const _AdminInboxSenderSection(),
-            _JobModerationSection(
-              onApprove: approveJob,
-              onReject: rejectJob,
-              onOpen: openJobModerationDetail,
-            ),
-            _ReportsSection(
-              onStatusChanged: updateReportStatus,
-            ),
-            _SupportRequestsSection(
-              onStatusChanged: updateSupportRequestStatus,
-            ),
-            _PaymentRequestsSection(
-              onStatusChanged: updatePaymentRequestStatus,
-            ),
-          ],
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+          children: [pages[selectedIndex]],
         ),
+      ),
+      floatingActionButton: selectedIndex == 0
+          ? FloatingActionButton(
+              tooltip: "New admin message",
+              onPressed: () => _showAdminMessageComposer(context),
+              child: const Icon(Icons.mark_email_unread_outlined),
+            )
+          : null,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) => setState(() => selectedIndex = index),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.mark_email_unread_outlined),
+            label: "Inbox",
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.fact_check_outlined),
+            label: "Jobs",
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.support_agent_outlined),
+            label: "Support",
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.payments_outlined),
+            label: "Billing",
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.analytics_outlined),
+            label: "Reports",
+          ),
+        ],
       ),
     );
   }
 }
 
+Future<void> _showAdminMessageComposer(BuildContext context) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) {
+      return Padding(
+        padding: EdgeInsets.only(
+          left: 12,
+          right: 12,
+          top: 12,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
+        ),
+        child: const SingleChildScrollView(
+          child: _AdminInboxSenderSection(compact: true),
+        ),
+      );
+    },
+  );
+}
+
+class _AdminInboxTab extends StatelessWidget {
+  const _AdminInboxTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        _AdminInboxSenderSection(),
+        _AdminSentInboxMessagesSection(),
+      ],
+    );
+  }
+}
+
 class _AdminInboxSenderSection extends StatefulWidget {
-  const _AdminInboxSenderSection();
+  final bool compact;
+
+  const _AdminInboxSenderSection({
+    this.compact = false,
+  });
 
   @override
   State<_AdminInboxSenderSection> createState() =>
@@ -290,6 +373,8 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
       }
 
       final batch = FirebaseFirestore.instance.batch();
+      final sentRef =
+          FirebaseFirestore.instance.collection("admin_inbox_messages").doc();
       for (final userId in recipients) {
         final ref = FirebaseFirestore.instance
             .collection("users")
@@ -306,12 +391,24 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
           "createdAt": FieldValue.serverTimestamp(),
         });
       }
+      batch.set(sentRef, {
+        "title": title,
+        "message": message,
+        "type": "admin_message",
+        "audience": audience,
+        "recipientCount": recipients.length,
+        if (requiresUserId) "targetUserId": recipients.first,
+        "createdAt": FieldValue.serverTimestamp(),
+      });
       await batch.commit();
 
       if (!mounted) return;
       titleController.clear();
       messageController.clear();
       if (requiresUserId) userIdController.clear();
+      if (widget.compact && context.mounted) {
+        Navigator.pop(context);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Admin message sent to ${recipients.length}")),
       );
@@ -329,7 +426,7 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
   Widget build(BuildContext context) {
     return StroykaSurface(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(widget.compact ? 14 : 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -419,6 +516,118 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
                   : const Icon(Icons.send),
               label: Text(sending ? "Sending..." : "Send admin message"),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminSentInboxMessagesSection extends StatelessWidget {
+  const _AdminSentInboxMessagesSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return StroykaSurface(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: Color(0x297DB9D8),
+                child: Icon(
+                  Icons.outbox_outlined,
+                  color: AppColors.greenDark,
+                ),
+              ),
+              SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  "Sent admin inbox messages",
+                  style: TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection("admin_inbox_messages")
+                .orderBy("createdAt", descending: true)
+                .limit(50)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const LinearProgressIndicator();
+
+              final docs = snapshot.data!.docs;
+              if (docs.isEmpty) {
+                return const Text("No admin inbox messages sent yet");
+              }
+
+              return Column(
+                children: docs.map((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final audience = data["audience"]?.toString() ?? "";
+                  final recipientCount = data["recipientCount"]?.toString();
+                  final targetUserId = data["targetUserId"]?.toString() ?? "";
+                  final createdAt = data["createdAt"] is Timestamp
+                      ? (data["createdAt"] as Timestamp).toDate()
+                      : null;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          data["title"]?.toString() ?? "Admin message",
+                          style: const TextStyle(
+                            color: AppColors.ink,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(data["message"]?.toString() ?? ""),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            _ReportMetaChip(label: "Audience", value: audience),
+                            _ReportMetaChip(
+                              label: "Recipients",
+                              value: recipientCount,
+                            ),
+                            _ReportMetaChip(label: "User", value: targetUserId),
+                            _ReportMetaChip(
+                              label: "Sent",
+                              value: _formatAdminDate(createdAt),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            },
           ),
         ],
       ),
@@ -759,6 +968,275 @@ class _SupportRequestCard extends StatelessWidget {
         _ReportMetaChip(label: "User", value: data["userId"]),
         _ReportMetaChip(label: "Role", value: data["userRole"]),
       ],
+    );
+  }
+}
+
+class _FinancialReportsSection extends StatelessWidget {
+  final Widget complaintsSection;
+
+  const _FinancialReportsSection({
+    required this.complaintsSection,
+  });
+
+  double readMoney(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value.replaceAll(RegExp(r"[^0-9.]"), "")) ?? 0;
+    }
+    return 0;
+  }
+
+  bool isThisMonth(dynamic value) {
+    if (value is! Timestamp) return false;
+    final date = value.toDate();
+    final now = DateTime.now();
+    return date.year == now.year && date.month == now.month;
+  }
+
+  Map<String, dynamic> billingFromUser(Map<String, dynamic> data) {
+    return BillingService.billingFromUserData(data);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection("plans").snapshots(),
+      builder: (context, plansSnapshot) {
+        final planPrices = <String, double>{};
+        final planCurrency = <String, String>{};
+        if (plansSnapshot.hasData) {
+          for (final doc in plansSnapshot.data!.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            planPrices[doc.id] = readMoney(data["price"]);
+            planCurrency[doc.id] = data["currency"]?.toString() ?? "GBP";
+          }
+        }
+
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection("users").snapshots(),
+          builder: (context, usersSnapshot) {
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection("payment_requests")
+                  .orderBy("createdAt", descending: true)
+                  .snapshots(),
+              builder: (context, paymentsSnapshot) {
+                if (!usersSnapshot.hasData || !paymentsSnapshot.hasData) {
+                  return const LinearProgressIndicator();
+                }
+
+                final users = usersSnapshot.data!.docs
+                    .map((doc) => doc.data() as Map<String, dynamic>)
+                    .where((data) => data["accountDeleted"] != true)
+                    .toList();
+                final payments = paymentsSnapshot.data!.docs
+                    .map((doc) => doc.data() as Map<String, dynamic>)
+                    .toList();
+
+                final workers = users
+                    .where((data) => data["role"]?.toString() == "worker")
+                    .length;
+                final employers = users
+                    .where((data) => data["role"]?.toString() == "employer")
+                    .toList();
+                final payingEmployers = employers.where((data) {
+                  final billing = billingFromUser(data);
+                  final status = billing["status"]?.toString() ?? "";
+                  final planId = billing["planId"]?.toString() ?? "";
+                  return planId.isNotEmpty &&
+                      (status == "active" || status == "payment_pending");
+                }).toList();
+
+                double expectedMonthlyRevenue = 0;
+                var currency = "GBP";
+                for (final employer in payingEmployers) {
+                  final billing = billingFromUser(employer);
+                  final planId = billing["planId"]?.toString() ?? "";
+                  expectedMonthlyRevenue += planPrices[planId] ?? 0;
+                  currency = planCurrency[planId] ?? currency;
+                }
+
+                final currentMonthPayments = payments
+                    .where((data) =>
+                        isThisMonth(data["paidAt"]) ||
+                        (data["paidAt"] == null &&
+                            isThisMonth(data["updatedAt"])))
+                    .toList();
+                final paidThisMonth = currentMonthPayments
+                    .where((data) => data["status"]?.toString() == "paid")
+                    .toList();
+                final pendingRequests = payments
+                    .where((data) => data["status"]?.toString() == "pending")
+                    .length;
+
+                final revenueByMode = <String, double>{};
+                for (final payment in paidThisMonth) {
+                  final mode =
+                      payment["paymentMode"]?.toString() ?? "manual_invoice";
+                  final planId = payment["planId"]?.toString() ?? "";
+                  revenueByMode[mode] =
+                      (revenueByMode[mode] ?? 0) + (planPrices[planId] ?? 0);
+                }
+                final receivedThisMonth = revenueByMode.values.fold<double>(
+                  0,
+                  (total, value) => total + value,
+                );
+
+                return Column(
+                  children: [
+                    StroykaSurface(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 24,
+                                backgroundColor: Color(0x297DB9D8),
+                                child: Icon(
+                                  Icons.analytics_outlined,
+                                  color: AppColors.greenDark,
+                                ),
+                              ),
+                              SizedBox(width: 14),
+                              Expanded(
+                                child: Text(
+                                  "Financial reports",
+                                  style: TextStyle(
+                                    color: AppColors.ink,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              _AdminMetricTile(
+                                label: "All users",
+                                value: users.length.toString(),
+                                icon: Icons.people_outline,
+                              ),
+                              _AdminMetricTile(
+                                label: "Workers",
+                                value: workers.toString(),
+                                icon: Icons.engineering_outlined,
+                              ),
+                              _AdminMetricTile(
+                                label: "Employers",
+                                value: employers.length.toString(),
+                                icon: Icons.business_outlined,
+                              ),
+                              _AdminMetricTile(
+                                label: "Paying clients",
+                                value: payingEmployers.length.toString(),
+                                icon: Icons.verified_outlined,
+                              ),
+                              _AdminMetricTile(
+                                label: "Expected / month",
+                                value:
+                                    "$currency ${expectedMonthlyRevenue.toStringAsFixed(2)}",
+                                icon: Icons.request_quote_outlined,
+                              ),
+                              _AdminMetricTile(
+                                label: "Received this month",
+                                value:
+                                    "$currency ${receivedThisMonth.toStringAsFixed(2)}",
+                                icon: Icons.payments_outlined,
+                              ),
+                              _AdminMetricTile(
+                                label: "Pending payment requests",
+                                value: pendingRequests.toString(),
+                                icon: Icons.pending_actions_outlined,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          const Text(
+                            "Received by payment method",
+                            style: TextStyle(
+                              color: AppColors.ink,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (revenueByMode.isEmpty)
+                            const Text("No received payments this month yet")
+                          else
+                            ...revenueByMode.entries.map(
+                              (entry) => _AdminMetaLine(
+                                label: BillingService.formatLabel(entry.key),
+                                value:
+                                    "$currency ${entry.value.toStringAsFixed(2)}",
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    complaintsSection,
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _AdminMetricTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _AdminMetricTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 155,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.74),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppColors.greenDark),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppColors.ink,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
