@@ -2343,6 +2343,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                             return JobCard(
                               job: job,
                               margin: const EdgeInsets.only(bottom: 10),
+                              statusText: canViewAllCompanyJobs
+                                  ? _companyJobStatusLabel(job)
+                                  : null,
+                              statusColor: canViewAllCompanyJobs
+                                  ? _companyJobStatusColor(job)
+                                  : null,
                             );
                           },
                         );
@@ -2396,6 +2402,20 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         status.isEmpty || status == "active" || status == "published";
 
     return job.moderationStatus == "approved" && isPublished;
+  }
+
+  String _companyJobStatusLabel(Job job) {
+    if (job.moderationStatus == "pending_review") return "ON ADMIN REVIEW";
+    if (job.moderationStatus == "rejected") return "REJECTED";
+    return job.isClosed ? "INACTIVE" : "ACTIVE";
+  }
+
+  Color _companyJobStatusColor(Job job) {
+    if (job.moderationStatus == "pending_review") {
+      return AppColors.blueprintLine;
+    }
+    if (job.moderationStatus == "rejected") return AppColors.danger;
+    return job.isClosed ? AppColors.warning : AppColors.success;
   }
 
   @override

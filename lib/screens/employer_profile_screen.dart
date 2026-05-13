@@ -87,6 +87,20 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
     return job.moderationStatus == "approved" && isPublished;
   }
 
+  String _companyJobStatusLabel(Job job) {
+    if (job.moderationStatus == "pending_review") return "ON ADMIN REVIEW";
+    if (job.moderationStatus == "rejected") return "REJECTED";
+    return job.isClosed ? "INACTIVE" : "ACTIVE";
+  }
+
+  Color _companyJobStatusColor(Job job) {
+    if (job.moderationStatus == "pending_review") {
+      return AppColors.blueprintLine;
+    }
+    if (job.moderationStatus == "rejected") return AppColors.danger;
+    return job.isClosed ? AppColors.warning : AppColors.success;
+  }
+
   Future<void> addCompanyPhoto() async {
     if (uploadingCompanyPhotos) return;
 
@@ -305,6 +319,14 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                                 return JobCard(
                                   job: job,
                                   margin: const EdgeInsets.only(bottom: 10),
+                                  statusText:
+                                      isMyCompany || viewerRole == "admin"
+                                          ? _companyJobStatusLabel(job)
+                                          : null,
+                                  statusColor:
+                                      isMyCompany || viewerRole == "admin"
+                                          ? _companyJobStatusColor(job)
+                                          : null,
                                 );
                               },
                             );

@@ -121,25 +121,61 @@ class BillingService {
       final role = userData["role"]?.toString() ?? "";
 
       if (role == "employer") {
-        final billing = _assertEmployerCanPostFromData(userData);
-        final usedJobPosts = readInt(billing["usedJobPosts"]);
-
-        transaction.set(
-          userRef,
-          {
-            "billing": {
-              "usedJobPosts": usedJobPosts + 1,
-              "updatedAt": FieldValue.serverTimestamp(),
-            },
-          },
-          SetOptions(merge: true),
-        );
+        _assertEmployerCanPostFromData(userData);
       }
 
       transaction.set(jobRef, {
         ...jobData,
+        "billingCounted": false,
         "createdAt": FieldValue.serverTimestamp(),
       });
+    });
+  }
+
+  Future<void> approveJobAndCountSlot({
+    required DocumentReference jobRef,
+    required String employerId,
+    required Map<String, dynamic> moderationData,
+  }) async {
+    final firestore = FirebaseFirestore.instance;
+    final userRef = firestore.collection("users").doc(employerId);
+
+    await firestore.runTransaction((transaction) async {
+      final jobSnap = await transaction.get(jobRef);
+      final jobData = jobSnap.data() as Map<String, dynamic>? ?? {};
+      final wasApproved = jobData["moderationStatus"]?.toString() == "approved";
+      final alreadyCounted = jobData["billingCounted"] == true;
+
+      if (!wasApproved && !alreadyCounted && employerId.isNotEmpty) {
+        final userSnap = await transaction.get(userRef);
+        final userData = userSnap.data() ?? {};
+        final role = userData["role"]?.toString() ?? "";
+
+        if (role == "employer") {
+          final billing = _assertEmployerCanPostFromData(userData);
+          final usedJobPosts = readInt(billing["usedJobPosts"]);
+
+          transaction.set(
+            userRef,
+            {
+              "billing": {
+                "usedJobPosts": usedJobPosts + 1,
+                "updatedAt": FieldValue.serverTimestamp(),
+              },
+            },
+            SetOptions(merge: true),
+          );
+        }
+      }
+
+      transaction.set(
+        jobRef,
+        {
+          ...moderationData,
+          "billingCounted": true,
+        },
+        SetOptions(merge: true),
+      );
     });
   }
 

@@ -153,7 +153,7 @@ class Job {
   String get moderationLabel {
     switch (moderationStatus) {
       case "pending_review":
-        return "Pending review";
+        return "On admin review";
       case "approved":
         return "Approved";
       case "rejected":

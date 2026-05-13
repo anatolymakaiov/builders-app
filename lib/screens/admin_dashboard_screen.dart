@@ -20,7 +20,11 @@ class AdminDashboardScreen extends StatelessWidget {
       "updatedAt": FieldValue.serverTimestamp(),
     };
 
-    await ref.set(data, SetOptions(merge: true));
+    await BillingService().approveJobAndCountSlot(
+      jobRef: ref,
+      employerId: job.ownerId,
+      moderationData: data,
+    );
 
     await NotificationService().notifyEmployerJobModeration(
       employerId: job.ownerId,
