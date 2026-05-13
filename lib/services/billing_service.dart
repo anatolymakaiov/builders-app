@@ -104,7 +104,10 @@ class BillingService {
         .doc(employerId)
         .get();
     final userData = userSnap.data() ?? {};
-    _assertEmployerCanPostFromData(userData);
+    final usedJobPosts = await countPublishedJobSlots(employerId);
+    _assertEmployerCanPostFromData(
+      _userDataWithUsedJobPosts(userData, usedJobPosts),
+    );
   }
 
   Future<void> createJobWithBillingLimit({
@@ -114,10 +117,12 @@ class BillingService {
     final firestore = FirebaseFirestore.instance;
     final userRef = firestore.collection("users").doc(employerId);
     final jobRef = firestore.collection("jobs").doc();
+    final usedJobPosts = await countPublishedJobSlots(employerId);
 
     await firestore.runTransaction((transaction) async {
       final userSnap = await transaction.get(userRef);
-      final userData = userSnap.data() ?? {};
+      final userData =
+          _userDataWithUsedJobPosts(userSnap.data() ?? {}, usedJobPosts);
       final role = userData["role"]?.toString() ?? "";
 
       if (role == "employer") {
@@ -139,27 +144,32 @@ class BillingService {
   }) async {
     final firestore = FirebaseFirestore.instance;
     final userRef = firestore.collection("users").doc(employerId);
+    final usedJobPosts = await countPublishedJobSlots(employerId);
 
     await firestore.runTransaction((transaction) async {
       final jobSnap = await transaction.get(jobRef);
       final jobData = jobSnap.data() as Map<String, dynamic>? ?? {};
       final wasApproved = jobData["moderationStatus"]?.toString() == "approved";
-      final alreadyCounted = jobData["billingCounted"] == true;
+      final jobStatus = jobData["status"]?.toString().trim().toLowerCase();
+      final wasPublished =
+          jobStatus == null || jobStatus.isEmpty || jobStatus == "active";
 
-      if (!wasApproved && !alreadyCounted && employerId.isNotEmpty) {
+      if (!wasApproved && employerId.isNotEmpty) {
         final userSnap = await transaction.get(userRef);
-        final userData = userSnap.data() ?? {};
+        final userData =
+            _userDataWithUsedJobPosts(userSnap.data() ?? {}, usedJobPosts);
         final role = userData["role"]?.toString() ?? "";
 
         if (role == "employer") {
-          final billing = _assertEmployerCanPostFromData(userData);
-          final usedJobPosts = readInt(billing["usedJobPosts"]);
+          _assertEmployerCanPostFromData(userData);
+          final nextUsedJobPosts =
+              wasPublished ? usedJobPosts + 1 : usedJobPosts;
 
           transaction.set(
             userRef,
             {
               "billing": {
-                "usedJobPosts": usedJobPosts + 1,
+                "usedJobPosts": nextUsedJobPosts,
                 "updatedAt": FieldValue.serverTimestamp(),
               },
             },
@@ -172,11 +182,74 @@ class BillingService {
         jobRef,
         {
           ...moderationData,
-          "billingCounted": true,
+          "billingCounted": wasPublished,
         },
         SetOptions(merge: true),
       );
     });
+  }
+
+  Future<int> countPublishedJobSlots(String employerId) async {
+    if (employerId.isEmpty) return 0;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection("jobs")
+        .where("ownerId", isEqualTo: employerId)
+        .where("moderationStatus", isEqualTo: "approved")
+        .get();
+
+    return snapshot.docs.where((doc) {
+      final data = doc.data();
+      final status = data["status"]?.toString().trim().toLowerCase() ?? "";
+      return status.isEmpty ||
+          status == "active" ||
+          status == "published" ||
+          status == "open";
+    }).length;
+  }
+
+  Stream<int> publishedJobSlotsStream(String employerId) {
+    if (employerId.isEmpty) return Stream.value(0);
+
+    return FirebaseFirestore.instance
+        .collection("jobs")
+        .where("ownerId", isEqualTo: employerId)
+        .where("moderationStatus", isEqualTo: "approved")
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.where((doc) {
+        final data = doc.data();
+        final status = data["status"]?.toString().trim().toLowerCase() ?? "";
+        return status.isEmpty ||
+            status == "active" ||
+            status == "published" ||
+            status == "open";
+      }).length;
+    });
+  }
+
+  Future<void> syncUsedJobPosts(String employerId) async {
+    final usedJobPosts = await countPublishedJobSlots(employerId);
+    await FirebaseFirestore.instance.collection("users").doc(employerId).set(
+      {
+        "billing": {
+          "usedJobPosts": usedJobPosts,
+          "updatedAt": FieldValue.serverTimestamp(),
+        },
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Map<String, dynamic> _userDataWithUsedJobPosts(
+    Map<String, dynamic> userData,
+    int usedJobPosts,
+  ) {
+    final next = Map<String, dynamic>.from(userData);
+    final billing = billingFromUserData(next);
+    billing["usedJobPosts"] = usedJobPosts;
+    next["billing"] = billing;
+    return next;
   }
 
   Future<void> createPaymentRequest({

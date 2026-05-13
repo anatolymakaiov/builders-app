@@ -2405,8 +2405,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   String _companyJobStatusLabel(Job job) {
-    if (job.moderationStatus == "pending_review") return "ON ADMIN REVIEW";
-    if (job.moderationStatus == "rejected") return "REJECTED";
+    if (job.moderationStatus == "pending_review") return "ADMIN REVIEW";
+    if (job.moderationStatus == "rejected") return "ADMIN REJECTED";
     return job.isClosed ? "INACTIVE" : "ACTIVE";
   }
 

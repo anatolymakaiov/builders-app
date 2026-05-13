@@ -88,8 +88,8 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   }
 
   String _companyJobStatusLabel(Job job) {
-    if (job.moderationStatus == "pending_review") return "ON ADMIN REVIEW";
-    if (job.moderationStatus == "rejected") return "REJECTED";
+    if (job.moderationStatus == "pending_review") return "ADMIN REVIEW";
+    if (job.moderationStatus == "rejected") return "ADMIN REJECTED";
     return job.isClosed ? "INACTIVE" : "ACTIVE";
   }
 
@@ -509,7 +509,6 @@ class _BillingSection extends StatelessWidget {
     final trialActive = billing["trialActive"] == true;
     final availableJobPosts =
         BillingService.readInt(billing["availableJobPosts"]);
-    final usedJobPosts = BillingService.readInt(billing["usedJobPosts"]);
     final activeUntil = BillingService.formatDate(billing["activeUntil"]);
     final trialDaysLeft = BillingService.daysRemaining(billing["activeUntil"]);
 
@@ -554,9 +553,16 @@ class _BillingSection extends StatelessWidget {
                 label: "Available job posts",
                 value: availableJobPosts.toString(),
               ),
-              _BillingRow(
-                label: "Used job posts",
-                value: usedJobPosts.toString(),
+              StreamBuilder<int>(
+                stream: BillingService().publishedJobSlotsStream(employerId),
+                builder: (context, snapshot) {
+                  final usedJobPosts = snapshot.data ??
+                      BillingService.readInt(billing["usedJobPosts"]);
+                  return _BillingRow(
+                    label: "Used job posts",
+                    value: usedJobPosts.toString(),
+                  );
+                },
               ),
               _BillingRow(
                 label: "Payment mode",

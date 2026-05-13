@@ -7,6 +7,7 @@ import 'employer_applications_screen.dart';
 import 'job_details_screen.dart';
 import '../services/job_repository.dart';
 import '../services/notification_service.dart';
+import '../services/billing_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -153,10 +154,27 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   Future<void> setJobActive(Job job, bool active) async {
     final nextStatus = active ? "active" : "closed";
 
+    if (active && job.moderationStatus == "approved") {
+      try {
+        await BillingService().assertEmployerCanPost(job.ownerId);
+      } on BillingLimitException catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+        return;
+      }
+    }
+
     await FirebaseFirestore.instance.collection("jobs").doc(job.id).set({
       "status": nextStatus,
+      if (job.moderationStatus == "approved") "billingCounted": active,
       "updatedAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    if (job.moderationStatus == "approved") {
+      await BillingService().syncUsedJobPosts(job.ownerId);
+    }
 
     await NotificationService().notifyEmployerJobStatusChanged(
       employerId: job.ownerId,
@@ -236,14 +254,14 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   Widget buildStatusBadge(Job job) {
     if (job.moderationStatus == "pending_review") {
       return AppChip.status(
-        "ON ADMIN REVIEW",
+        "ADMIN REVIEW",
         color: AppColors.blueprintLine,
       );
     }
 
     if (job.moderationStatus == "rejected") {
       return AppChip.status(
-        "REJECTED",
+        "ADMIN REJECTED",
         color: AppColors.danger,
       );
     }
@@ -448,11 +466,12 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                 ),
                 StroykaPopupMenuButton<String>(
                   actions: [
-                    StroykaMenuAction<String>(
-                      value: "toggle",
-                      label: isClosed ? "Make active" : "Make inactive",
-                      icon: isClosed ? Icons.play_circle : Icons.pause_circle,
-                    ),
+                    if (job.moderationStatus == "approved")
+                      StroykaMenuAction<String>(
+                        value: "toggle",
+                        label: isClosed ? "Make active" : "Make inactive",
+                        icon: isClosed ? Icons.play_circle : Icons.pause_circle,
+                      ),
                     const StroykaMenuAction<String>(
                       value: "delete",
                       label: "Delete vacancy",

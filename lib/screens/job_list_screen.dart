@@ -175,22 +175,49 @@ class _JobListScreenState extends State<JobListScreen> {
     final selected = sortType == type;
 
     return Expanded(
-      child: OutlinedButton.icon(
-        onPressed: () {
-          setState(() {
-            sortType = type;
-          });
-        },
-        icon: Icon(icon, size: 16),
-        label: Text(
-          label,
-          overflow: TextOverflow.ellipsis,
+      child: CustomPaint(
+        painter: BlueprintDecorationPainter(
+          fillColor: selected
+              ? AppColors.green.withValues(alpha: 0.95)
+              : AppColors.surface.withValues(alpha: 0.96),
+          lineColor: selected ? AppColors.greenDark : AppColors.blueprintLine,
+          gridColor: selected ? Colors.white : AppColors.blueprintLine,
+          radius: 8,
+          subtle: true,
         ),
-        style: OutlinedButton.styleFrom(
-          backgroundColor: selected ? AppColors.green : Colors.white,
-          foregroundColor: selected ? Colors.white : AppColors.ink,
-          side: BorderSide(
-            color: selected ? AppColors.green : Colors.grey.shade300,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () {
+              setState(() {
+                sortType = type;
+              });
+            },
+            child: SizedBox(
+              height: 52,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon,
+                    size: 18,
+                    color: selected ? Colors.white : AppColors.ink,
+                  ),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: selected ? Colors.white : AppColors.ink,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
