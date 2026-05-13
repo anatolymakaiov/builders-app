@@ -65,6 +65,8 @@ class StroykaProfileHeader extends StatelessWidget {
     final headerImage = headerImageUrl?.trim();
     final hasHeaderImage = headerImage != null && headerImage.isNotEmpty;
     final hasControls = headerControls != null;
+    final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
+    final headerHeight = hasControls ? 220.0 : (hasSubtitle ? 210.0 : 188.0);
 
     return AppCard(
       margin: margin,
@@ -72,7 +74,7 @@ class StroykaProfileHeader extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: SizedBox(
-          height: hasControls ? 202 : 188,
+          height: headerHeight,
           child: DecoratedBox(
             decoration: BoxDecoration(
               image: hasHeaderImage
@@ -139,8 +141,7 @@ class StroykaProfileHeader extends StatelessWidget {
                                   color: AppColors.ink,
                                 ),
                               ),
-                              if (subtitle != null &&
-                                  subtitle!.trim().isNotEmpty) ...[
+                              if (hasSubtitle) ...[
                                 const SizedBox(height: 3),
                                 Text(
                                   subtitle!.trim(),
