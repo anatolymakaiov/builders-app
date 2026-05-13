@@ -158,6 +158,8 @@ class Job {
         return "Approved";
       case "rejected":
         return "Rejected";
+      case "on_hold":
+        return "On hold";
       default:
         return "Not reviewed";
     }

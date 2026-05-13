@@ -107,7 +107,53 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       reason: reason,
     );
 
+    await _sendAdminInboxMessage(
+      userId: job.ownerId,
+      title: "Job publication rejected",
+      message: reason.trim().isEmpty
+          ? "${job.displayTitle} was rejected by admin."
+          : "${job.displayTitle} was rejected by admin:\n\n${reason.trim()}",
+      audience: "employer",
+      relatedTargetType: "job",
+      relatedTargetId: job.id,
+    );
+
     return true;
+  }
+
+  Future<void> holdJob(
+    BuildContext context,
+    DocumentReference ref,
+  ) async {
+    final reason = await _askAdminReply(
+      context,
+      title: "Put job on hold",
+      label: "Message to employer",
+      hint: "Explain what should be clarified before approval",
+    );
+    if (reason == null) return;
+
+    final jobSnap = await ref.get();
+    final jobData = jobSnap.data() as Map<String, dynamic>? ?? {};
+    final job = Job.fromFirestore(ref.id, jobData);
+
+    await ref.set({
+      "moderationStatus": "on_hold",
+      "moderationReason": reason,
+      "moderatedAt": FieldValue.serverTimestamp(),
+      "updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await _sendAdminInboxMessage(
+      userId: job.ownerId,
+      title: "Job publication on hold",
+      message: reason.trim().isEmpty
+          ? "${job.displayTitle} was put on hold by admin."
+          : "${job.displayTitle} was put on hold by admin:\n\n${reason.trim()}",
+      audience: "employer",
+      relatedTargetType: "job",
+      relatedTargetId: job.id,
+    );
   }
 
   Future<void> openJobModerationDetail(
@@ -125,6 +171,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           jobRef: doc.reference,
           onApprove: approveJob,
           onReject: rejectJob,
+          onHold: holdJob,
         ),
       ),
     );
@@ -187,15 +234,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         onOpen: openJobModerationDetail,
       ),
       _SupportRequestsSection(
-        onStatusChanged: updateSupportRequestStatus,
+        onSupportStatusChanged: updateSupportRequestStatus,
+        onReportStatusChanged: updateReportStatus,
       ),
       _PaymentRequestsSection(
         onStatusChanged: updatePaymentRequestStatus,
       ),
-      _FinancialReportsSection(
-        complaintsSection: _ReportsSection(
-          onStatusChanged: updateReportStatus,
-        ),
+      const _FinancialReportsSection(
+        complaintsSection: SizedBox.shrink(),
       ),
     ];
 
@@ -274,6 +320,82 @@ Future<void> _showAdminMessageComposer(BuildContext context) async {
   );
 }
 
+Future<String?> _askAdminReply(
+  BuildContext context, {
+  required String title,
+  required String label,
+  String? hint,
+}) async {
+  final controller = TextEditingController();
+  final result = await showDialog<String>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          maxLines: 5,
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: hint,
+            border: const StroykaInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text("Send"),
+          ),
+        ],
+      );
+    },
+  );
+  controller.dispose();
+  return result;
+}
+
+Future<void> _sendAdminInboxMessage({
+  required String userId,
+  required String title,
+  required String message,
+  required String audience,
+  String? relatedTargetType,
+  String? relatedTargetId,
+}) async {
+  if (userId.trim().isEmpty || title.trim().isEmpty || message.trim().isEmpty) {
+    return;
+  }
+
+  final firestore = FirebaseFirestore.instance;
+  final batch = firestore.batch();
+  final inboxRef =
+      firestore.collection("users").doc(userId).collection("admin_inbox").doc();
+  final sentRef = firestore.collection("admin_inbox_messages").doc();
+  final payload = {
+    "userId": userId,
+    "title": title.trim(),
+    "message": message.trim(),
+    "type": "admin_message",
+    "audience": audience,
+    "read": false,
+    if (relatedTargetType != null) "relatedTargetType": relatedTargetType,
+    if (relatedTargetId != null) "relatedTargetId": relatedTargetId,
+    "createdAt": FieldValue.serverTimestamp(),
+  };
+
+  batch.set(inboxRef, payload);
+  batch.set(sentRef, {
+    ...payload,
+    "targetUserId": userId,
+    "recipientCount": 1,
+  });
+  await batch.commit();
+}
+
 class _AdminInboxTab extends StatelessWidget {
   const _AdminInboxTab();
 
@@ -281,7 +403,6 @@ class _AdminInboxTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Column(
       children: [
-        _AdminInboxSenderSection(),
         _AdminSentInboxMessagesSection(),
       ],
     );
@@ -695,6 +816,7 @@ class _PaymentRequestsSection extends StatelessWidget {
                   final data = doc.data() as Map<String, dynamic>;
                   return _PaymentRequestCard(
                     data: data,
+                    ref: doc.reference,
                     onStatusChanged: (status) {
                       onStatusChanged(doc.reference, status);
                     },
@@ -711,10 +833,12 @@ class _PaymentRequestsSection extends StatelessWidget {
 
 class _PaymentRequestCard extends StatelessWidget {
   final Map<String, dynamic> data;
+  final DocumentReference ref;
   final ValueChanged<String> onStatusChanged;
 
   const _PaymentRequestCard({
     required this.data,
+    required this.ref,
     required this.onStatusChanged,
   });
 
@@ -731,98 +855,433 @@ class _PaymentRequestCard extends StatelessWidget {
     final selectedStatus = statuses.contains(status) ? status! : "pending";
     final planName = data["planName"]?.toString().trim() ?? "Plan";
     final paymentMode = data["paymentMode"]?.toString().trim() ?? "";
+    final employerId = data["employerId"]?.toString() ?? "";
 
-    return _AdminStatusCard(
-      title: planName,
-      body: paymentMode,
-      statuses: statuses,
-      selectedStatus: selectedStatus,
-      onStatusChanged: onStatusChanged,
-      meta: [
-        _ReportMetaChip(label: "Employer", value: data["employerId"]),
-        _ReportMetaChip(label: "Plan", value: data["planId"]),
-      ],
+    return FutureBuilder<DocumentSnapshot>(
+      future: employerId.isEmpty
+          ? null
+          : FirebaseFirestore.instance
+              .collection("users")
+              .doc(employerId)
+              .get(),
+      builder: (context, snapshot) {
+        final employerData =
+            snapshot.data?.data() as Map<String, dynamic>? ?? {};
+        final companyName =
+            (employerData["companyName"] ?? employerData["name"] ?? "Employer")
+                .toString();
+
+        return _AdminRequestListCard(
+          title: companyName,
+          subtitle: "$planName • ${BillingService.formatLabel(paymentMode)}",
+          status: selectedStatus,
+          chips: [
+            _ReportMetaChip(label: "Plan", value: data["planId"]),
+            _ReportMetaChip(label: "Employer", value: employerId),
+          ],
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => _PaymentRequestDetailScreen(
+                  ref: ref,
+                  data: data,
+                  companyName: companyName,
+                  employerId: employerId,
+                  status: selectedStatus,
+                  onStatusChanged: onStatusChanged,
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
 
-class _AdminStatusCard extends StatelessWidget {
-  final String title;
-  final String body;
-  final List<String> statuses;
-  final String selectedStatus;
+class _PaymentRequestDetailScreen extends StatelessWidget {
+  final DocumentReference ref;
+  final Map<String, dynamic> data;
+  final String companyName;
+  final String employerId;
+  final String status;
   final ValueChanged<String> onStatusChanged;
-  final List<Widget> meta;
 
-  const _AdminStatusCard({
-    required this.title,
-    required this.body,
-    required this.statuses,
-    required this.selectedStatus,
+  const _PaymentRequestDetailScreen({
+    required this.ref,
+    required this.data,
+    required this.companyName,
+    required this.employerId,
+    required this.status,
     required this.onStatusChanged,
-    required this.meta,
+  });
+
+  Future<void> reply(BuildContext context) async {
+    final message = await _askAdminReply(
+      context,
+      title: "Message employer",
+      label: "Message",
+      hint: "Write a response about this billing request",
+    );
+    if (message == null || message.trim().isEmpty) return;
+
+    await _sendAdminInboxMessage(
+      userId: employerId,
+      title: "Billing request update",
+      message: message,
+      audience: "employer",
+      relatedTargetType: "payment_request",
+      relatedTargetId: ref.id,
+    );
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Message sent to employer inbox")),
+    );
+  }
+
+  Future<void> changeStatus(BuildContext context, String nextStatus) async {
+    onStatusChanged(nextStatus);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Billing request changed to $nextStatus")),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final planName = data["planName"]?.toString().trim() ?? "Plan";
+    final planId = data["planId"]?.toString().trim() ?? "";
+    final paymentMode = data["paymentMode"]?.toString().trim() ?? "";
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Billing request"),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == "message") {
+                reply(context);
+                return;
+              }
+              if (value == "approve") {
+                changeStatus(context, "paid");
+                return;
+              }
+              if (value == "reject") {
+                changeStatus(context, "failed");
+                return;
+              }
+              if (value == "cancel") {
+                changeStatus(context, "cancelled");
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: "approve",
+                child: ListTile(
+                  leading: Icon(Icons.check_circle_outline),
+                  title: Text("Approve"),
+                ),
+              ),
+              PopupMenuItem(
+                value: "reject",
+                child: ListTile(
+                  leading: Icon(Icons.cancel_outlined),
+                  title: Text("Reject"),
+                ),
+              ),
+              PopupMenuItem(
+                value: "cancel",
+                child: ListTile(
+                  leading: Icon(Icons.remove_circle_outline),
+                  title: Text("Cancel request"),
+                ),
+              ),
+              PopupMenuItem(
+                value: "message",
+                child: ListTile(
+                  leading: Icon(Icons.reply_outlined),
+                  title: Text("Message employer"),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      body: StroykaScreenBody(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
+          children: [
+            StroykaSurface(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          companyName,
+                          style: const TextStyle(
+                            color: AppColors.ink,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      _AdminStatusPill(status),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _AdminMetaLine(label: "Employer ID", value: employerId),
+                  _AdminMetaLine(label: "Requested plan", value: planName),
+                  _AdminMetaLine(label: "Plan ID", value: planId),
+                  _AdminMetaLine(
+                    label: "Payment mode",
+                    value: BillingService.formatLabel(paymentMode),
+                  ),
+                  _AdminMetaLine(label: "Request ID", value: ref.id),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminRequestListCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String status;
+  final List<Widget> chips;
+  final VoidCallback onTap;
+
+  const _AdminRequestListCard({
+    required this.title,
+    required this.subtitle,
+    required this.status,
+    required this.chips,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: AppColors.ink,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                _AdminStatusPill(status),
+                const Icon(Icons.chevron_right, color: AppColors.muted),
+              ],
+            ),
+            if (subtitle.trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.ink,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 6, children: chips),
+          ],
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    color: AppColors.ink,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
+    );
+  }
+}
+
+class _AdminStatusPill extends StatelessWidget {
+  final String status;
+
+  const _AdminStatusPill(this.status);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.green.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.green.withValues(alpha: 0.22)),
+      ),
+      child: Text(
+        BillingService.formatLabel(status),
+        style: const TextStyle(
+          color: AppColors.greenDark,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminRequestDetailScreen extends StatelessWidget {
+  final String title;
+  final String body;
+  final String userId;
+  final String userRole;
+  final DocumentReference ref;
+  final String status;
+  final List<String> statuses;
+  final ValueChanged<String> onStatusChanged;
+  final List<Widget> meta;
+
+  const _AdminRequestDetailScreen({
+    required this.title,
+    required this.body,
+    required this.userId,
+    required this.userRole,
+    required this.ref,
+    required this.status,
+    required this.statuses,
+    required this.onStatusChanged,
+    required this.meta,
+  });
+
+  Future<void> reply(BuildContext context) async {
+    final message = await _askAdminReply(
+      context,
+      title: "Reply",
+      label: "Message to user",
+      hint: "Write admin response",
+    );
+    if (message == null || message.trim().isEmpty) return;
+
+    await _sendAdminInboxMessage(
+      userId: userId,
+      title: "Admin response: $title",
+      message: message,
+      audience: userRole.isEmpty ? "user" : userRole,
+      relatedTargetType: "support",
+      relatedTargetId: ref.id,
+    );
+    await ref.set({
+      "adminReply": message.trim(),
+      "lastAdminReplyAt": FieldValue.serverTimestamp(),
+      "status": status == "open" ? "in_review" : status,
+      "updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Reply sent to inbox")),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Request"),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              if (value == "reply") {
+                await reply(context);
+                return;
+              }
+              onStatusChanged(value);
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text("Status changed to $value")),
+              );
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: "reply",
+                child: ListTile(
+                  leading: Icon(Icons.reply_outlined),
+                  title: Text("Reply"),
+                ),
+              ),
+              ...statuses.map(
+                (item) => PopupMenuItem(
+                  value: item,
+                  child: ListTile(
+                    leading: const Icon(Icons.flag_outlined),
+                    title: Text(BillingService.formatLabel(item)),
                   ),
                 ),
               ),
-              DropdownButton<String>(
-                value: selectedStatus,
-                underline: const SizedBox(),
-                items: statuses
-                    .map(
-                      (status) => DropdownMenuItem(
-                        value: status,
-                        child: Text(status),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  if (value == null || value == selectedStatus) return;
-                  onStatusChanged(value);
-                },
-              ),
             ],
           ),
-          if (body.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              body,
-              style: const TextStyle(
-                color: AppColors.ink,
-                fontWeight: FontWeight.w600,
+        ],
+      ),
+      body: StroykaScreenBody(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
+          children: [
+            StroykaSurface(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: const TextStyle(
+                            color: AppColors.ink,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      _AdminStatusPill(status),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Text(body.isEmpty ? "No message provided" : body),
+                  const SizedBox(height: 14),
+                  ...meta,
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            StroykaSurface(
+              padding: const EdgeInsets.all(18),
+              child: ElevatedButton.icon(
+                onPressed: () => reply(context),
+                icon: const Icon(Icons.reply_outlined),
+                label: const Text("Reply to user"),
               ),
             ),
           ],
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: meta,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -830,10 +1289,13 @@ class _AdminStatusCard extends StatelessWidget {
 
 class _SupportRequestsSection extends StatelessWidget {
   final Future<void> Function(DocumentReference ref, String status)
-      onStatusChanged;
+      onSupportStatusChanged;
+  final Future<void> Function(DocumentReference ref, String status)
+      onReportStatusChanged;
 
   const _SupportRequestsSection({
-    required this.onStatusChanged,
+    required this.onSupportStatusChanged,
+    required this.onReportStatusChanged,
   });
 
   @override
@@ -879,20 +1341,29 @@ class _SupportRequestsSection extends StatelessWidget {
               }
 
               final docs = snapshot.data!.docs;
-              if (docs.isEmpty) {
-                return const Text("No support requests yet");
-              }
 
               return Column(
-                children: docs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return _SupportRequestCard(
-                    data: data,
-                    onStatusChanged: (status) {
-                      onStatusChanged(doc.reference, status);
-                    },
-                  );
-                }).toList(),
+                children: [
+                  if (docs.isEmpty)
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text("No support requests yet"),
+                    )
+                  else
+                    ...docs.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return _SupportRequestCard(
+                        data: data,
+                        ref: doc.reference,
+                        onStatusChanged: (status) {
+                          onSupportStatusChanged(doc.reference, status);
+                        },
+                      );
+                    }),
+                  _SupportReportsList(
+                    onStatusChanged: onReportStatusChanged,
+                  ),
+                ],
               );
             },
           ),
@@ -904,10 +1375,12 @@ class _SupportRequestsSection extends StatelessWidget {
 
 class _SupportRequestCard extends StatelessWidget {
   final Map<String, dynamic> data;
+  final DocumentReference ref;
   final ValueChanged<String> onStatusChanged;
 
   const _SupportRequestCard({
     required this.data,
+    required this.ref,
     required this.onStatusChanged,
   });
 
@@ -957,17 +1430,93 @@ class _SupportRequestCard extends StatelessWidget {
     final type = data["type"]?.toString().trim() ?? "support";
     final message = data["message"]?.toString().trim() ?? "";
 
-    return _AdminStatusCard(
+    return _AdminRequestListCard(
       title: supportTypeLabel(data),
-      body: message,
-      statuses: statuses,
-      selectedStatus: selectedStatus,
-      onStatusChanged: onStatusChanged,
-      meta: [
+      subtitle: message,
+      status: selectedStatus,
+      chips: [
         _ReportMetaChip(label: "Type", value: type),
         _ReportMetaChip(label: "User", value: data["userId"]),
         _ReportMetaChip(label: "Role", value: data["userRole"]),
       ],
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => _AdminRequestDetailScreen(
+              title: supportTypeLabel(data),
+              body: message,
+              userId: data["userId"]?.toString() ?? "",
+              userRole: data["userRole"]?.toString() ?? "",
+              ref: ref,
+              status: selectedStatus,
+              statuses: statuses,
+              onStatusChanged: onStatusChanged,
+              meta: [
+                _AdminMetaLine(label: "Type", value: type),
+                _AdminMetaLine(
+                  label: "User",
+                  value: data["userId"]?.toString() ?? "",
+                ),
+                _AdminMetaLine(
+                  label: "Role",
+                  value: data["userRole"]?.toString() ?? "",
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SupportReportsList extends StatelessWidget {
+  final Future<void> Function(DocumentReference ref, String status)
+      onStatusChanged;
+
+  const _SupportReportsList({
+    required this.onStatusChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("reports")
+          .orderBy("createdAt", descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const LinearProgressIndicator();
+        final docs = snapshot.data!.docs;
+        if (docs.isEmpty) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
+            const Text(
+              "Complaints and reports",
+              style: TextStyle(
+                color: AppColors.ink,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...docs.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return _ReportCard(
+                data: data,
+                ref: doc.reference,
+                onStatusChanged: (status) {
+                  onStatusChanged(doc.reference, status);
+                },
+              );
+            }),
+          ],
+        );
+      },
     );
   }
 }
@@ -1241,86 +1790,14 @@ class _AdminMetricTile extends StatelessWidget {
   }
 }
 
-class _ReportsSection extends StatelessWidget {
-  final Future<void> Function(DocumentReference ref, String status)
-      onStatusChanged;
-
-  const _ReportsSection({
-    required this.onStatusChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return StroykaSurface(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: Color(0x297DB9D8),
-                child: Icon(
-                  Icons.report_problem_outlined,
-                  color: AppColors.greenDark,
-                ),
-              ),
-              SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  "Reports",
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection("reports")
-                .orderBy("createdAt", descending: true)
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const LinearProgressIndicator();
-              }
-
-              final docs = snapshot.data!.docs;
-              if (docs.isEmpty) {
-                return const Text("No reports yet");
-              }
-
-              return Column(
-                children: docs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return _ReportCard(
-                    data: data,
-                    onStatusChanged: (status) {
-                      onStatusChanged(doc.reference, status);
-                    },
-                  );
-                }).toList(),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ReportCard extends StatelessWidget {
   final Map<String, dynamic> data;
+  final DocumentReference ref;
   final ValueChanged<String> onStatusChanged;
 
   const _ReportCard({
     required this.data,
+    required this.ref,
     required this.onStatusChanged,
   });
 
@@ -1338,19 +1815,56 @@ class _ReportCard extends StatelessWidget {
     final message = data["message"]?.toString().trim() ?? "";
     final type = data["type"]?.toString().trim() ?? "report";
 
-    return _AdminStatusCard(
+    return _AdminRequestListCard(
       title: type,
-      body: message,
-      statuses: statuses,
-      selectedStatus: selectedStatus,
-      onStatusChanged: onStatusChanged,
-      meta: [
+      subtitle: message,
+      status: selectedStatus,
+      chips: [
         _ReportMetaChip(label: "From", value: data["fromUserId"]),
         _ReportMetaChip(label: "Against", value: data["againstUserId"]),
         _ReportMetaChip(label: "Job", value: data["jobId"]),
         _ReportMetaChip(label: "Application", value: data["applicationId"]),
         _ReportMetaChip(label: "Chat", value: data["chatId"]),
       ],
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => _AdminRequestDetailScreen(
+              title: type,
+              body: message,
+              userId: data["fromUserId"]?.toString() ?? "",
+              userRole: "user",
+              ref: ref,
+              status: selectedStatus,
+              statuses: statuses,
+              onStatusChanged: onStatusChanged,
+              meta: [
+                _AdminMetaLine(
+                  label: "From",
+                  value: data["fromUserId"]?.toString() ?? "",
+                ),
+                _AdminMetaLine(
+                  label: "Against",
+                  value: data["againstUserId"]?.toString() ?? "",
+                ),
+                _AdminMetaLine(
+                  label: "Job",
+                  value: data["jobId"]?.toString() ?? "",
+                ),
+                _AdminMetaLine(
+                  label: "Application",
+                  value: data["applicationId"]?.toString() ?? "",
+                ),
+                _AdminMetaLine(
+                  label: "Chat",
+                  value: data["chatId"]?.toString() ?? "",
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1433,10 +1947,10 @@ class _JobModerationSection extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection("jobs")
-                .where("moderationStatus", isEqualTo: "pending_review")
-                .snapshots(),
+            stream: FirebaseFirestore.instance.collection("jobs").where(
+              "moderationStatus",
+              whereIn: ["pending_review", "on_hold"],
+            ).snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
                 return const LinearProgressIndicator();
@@ -1454,8 +1968,6 @@ class _JobModerationSection extends StatelessWidget {
                   return _PendingJobCard(
                     job: job,
                     onOpen: () => onOpen(context, doc),
-                    onApprove: () async => onApprove(doc.reference, job),
-                    onReject: () async => onReject(context, doc.reference),
                   );
                 }).toList(),
               );
@@ -1470,14 +1982,10 @@ class _JobModerationSection extends StatelessWidget {
 class _PendingJobCard extends StatelessWidget {
   final Job job;
   final VoidCallback onOpen;
-  final Future<void> Function() onApprove;
-  final Future<bool> Function() onReject;
 
   const _PendingJobCard({
     required this.job,
     required this.onOpen,
-    required this.onApprove,
-    required this.onReject,
   });
 
   @override
@@ -1536,24 +2044,6 @@ class _PendingJobCard extends StatelessWidget {
               label: "Status",
               value: job.moderationLabel,
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: onReject,
-                    child: const Text("Reject"),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: onApprove,
-                    child: const Text("Approve"),
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
       ),
@@ -1567,12 +2057,15 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
   final Future<void> Function(DocumentReference ref, Job job) onApprove;
   final Future<bool> Function(BuildContext context, DocumentReference ref)
       onReject;
+  final Future<void> Function(BuildContext context, DocumentReference ref)
+      onHold;
 
   const _AdminJobModerationDetailScreen({
     required this.job,
     required this.jobRef,
     required this.onApprove,
     required this.onReject,
+    required this.onHold,
   });
 
   Future<void> approveAndClose(BuildContext context) async {
@@ -1594,6 +2087,15 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
     Navigator.pop(context);
   }
 
+  Future<void> holdAndClose(BuildContext context) async {
+    await onHold(context, jobRef);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Job put on hold")),
+    );
+    Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     final location = [
@@ -1605,6 +2107,38 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Review job"),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == "approve") approveAndClose(context);
+              if (value == "hold") holdAndClose(context);
+              if (value == "reject") rejectAndClose(context);
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: "approve",
+                child: ListTile(
+                  leading: Icon(Icons.check_circle_outline),
+                  title: Text("Approve"),
+                ),
+              ),
+              PopupMenuItem(
+                value: "hold",
+                child: ListTile(
+                  leading: Icon(Icons.pause_circle_outline),
+                  title: Text("Put on hold"),
+                ),
+              ),
+              PopupMenuItem(
+                value: "reject",
+                child: ListTile(
+                  leading: Icon(Icons.cancel_outlined),
+                  title: Text("Reject"),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: StroykaScreenBody(
         child: ListView(
@@ -1637,6 +2171,7 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
                     label: "Workers needed",
                     value: job.positions.toString(),
                   ),
+                  _AdminEmployerSlotsLine(employerId: job.ownerId),
                   _AdminMetaLine(
                     label: "Created",
                     value: _formatAdminDate(job.createdAt),
@@ -1707,29 +2242,6 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: StroykaSurface(
-          margin: const EdgeInsets.all(12),
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => rejectAndClose(context),
-                  child: const Text("Reject"),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => approveAndClose(context),
-                  child: const Text("Approve"),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1769,6 +2281,37 @@ class _AdminTextSection extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AdminEmployerSlotsLine extends StatelessWidget {
+  final String employerId;
+
+  const _AdminEmployerSlotsLine({
+    required this.employerId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (employerId.trim().isEmpty) return const SizedBox.shrink();
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("users")
+          .doc(employerId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
+        final billing = BillingService.billingFromUserData(data);
+        final available = BillingService.readInt(billing["availableJobPosts"]);
+        final used = BillingService.readInt(billing["usedJobPosts"]);
+        final free = (available - used).clamp(0, available);
+        return _AdminMetaLine(
+          label: "Free slots",
+          value: "$free of $available",
+        );
+      },
     );
   }
 }
