@@ -31,7 +31,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     return StroykaAvatar(
       imageUrl: avatarUrl?.toString(),
       fallbackIcon: Icons.business,
-      size: 58,
+      size: 64,
     );
   }
 

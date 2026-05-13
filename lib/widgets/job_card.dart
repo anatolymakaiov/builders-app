@@ -268,18 +268,10 @@ class _Logo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasPhoto = photo != null && photo!.trim().isNotEmpty;
-    return CircleAvatar(
-      radius: 34,
-      backgroundColor: AppColors.surfaceAlt,
-      backgroundImage: hasPhoto ? NetworkImage(photo!) : null,
-      child: hasPhoto
-          ? null
-          : const Icon(
-              Icons.business,
-              size: 32,
-              color: AppColors.greenDark,
-            ),
+    return StroykaAvatar(
+      imageUrl: photo,
+      fallbackIcon: Icons.business,
+      size: 64,
     );
   }
 }
