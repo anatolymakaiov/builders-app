@@ -2336,7 +2336,12 @@ class _AdminRequestListCard extends StatelessWidget {
                   ),
                 ),
                 _AdminStatusPill(status),
-                const Icon(Icons.chevron_right, color: AppColors.muted),
+                const SizedBox(width: 4),
+                const Icon(
+                  Icons.chevron_right,
+                  color: AppColors.muted,
+                  size: 20,
+                ),
               ],
             ),
             if (subtitle.trim().isNotEmpty) ...[
@@ -2368,20 +2373,25 @@ class _AdminStatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = AppColors.status(status);
-    return Container(
-      margin: const EdgeInsets.only(right: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.32)),
-      ),
-      child: Text(
-        BillingService.formatLabel(status),
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w900,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 116),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.32)),
+        ),
+        child: Text(
+          BillingService.formatLabel(status),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: color,
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ),
     );
@@ -4400,19 +4410,26 @@ class _ReportMetaChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = value?.toString().trim() ?? "";
     if (text.isEmpty) return const SizedBox.shrink();
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final maxWidth = screenWidth < 380 ? screenWidth - 76 : 300.0;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.green.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        "$label: $text",
-        style: const TextStyle(
-          color: AppColors.greenDark,
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.green.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          "$label: $text",
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.greenDark,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
     );
