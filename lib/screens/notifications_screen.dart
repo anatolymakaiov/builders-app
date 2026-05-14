@@ -154,6 +154,62 @@ class NotificationsScreen extends StatelessWidget {
     );
   }
 
+  Future<String?> resolveApplicationId(
+    Map<String, dynamic> data, {
+    String? preferredId,
+    String? fallbackJobId,
+  }) async {
+    final direct = cleanId(preferredId) ??
+        cleanId(data["relatedApplicationId"]) ??
+        cleanId(data["applicationId"]);
+    if (direct != null) {
+      final directDoc = await FirebaseFirestore.instance
+          .collection("applications")
+          .doc(direct)
+          .get();
+      if (directDoc.exists) return direct;
+    }
+
+    final targetId = cleanId(data["targetId"]);
+    if (targetId != null && targetId != fallbackJobId) {
+      final targetDoc = await FirebaseFirestore.instance
+          .collection("applications")
+          .doc(targetId)
+          .get();
+      if (targetDoc.exists) return targetId;
+    }
+
+    final jobId = cleanId(fallbackJobId) ??
+        cleanId(data["relatedJobId"]) ??
+        cleanId(data["jobId"]) ??
+        targetId;
+    if (jobId == null) return null;
+
+    final uid = userId;
+    final role = await currentUserRole();
+    QuerySnapshot<Map<String, dynamic>> query;
+    if (role == "employer" && uid != null) {
+      query = await FirebaseFirestore.instance
+          .collection("applications")
+          .where("jobId", isEqualTo: jobId)
+          .where("employerId", isEqualTo: uid)
+          .limit(1)
+          .get();
+    } else if (uid != null) {
+      query = await FirebaseFirestore.instance
+          .collection("applications")
+          .where("jobId", isEqualTo: jobId)
+          .where("members", arrayContains: uid)
+          .limit(1)
+          .get();
+    } else {
+      return null;
+    }
+
+    if (query.docs.isEmpty) return null;
+    return query.docs.first.id;
+  }
+
   Future<String?> currentUserRole() async {
     final uid = userId;
     if (uid == null) return null;
@@ -315,7 +371,12 @@ class NotificationsScreen extends StatelessWidget {
     switch (targetType) {
       case "application":
       case "offer":
-        final id = targetId ?? applicationId;
+        final id = await resolveApplicationId(
+          data,
+          preferredId: applicationId,
+          fallbackJobId: jobId,
+        );
+        if (!context.mounted) return;
         if (id != null) {
           await openApplicationNotification(
             context,
@@ -330,7 +391,7 @@ class NotificationsScreen extends StatelessWidget {
       case "job":
       case "inactive_job":
       case "expired_job":
-        final id = targetId ?? jobId;
+        final id = jobId ?? targetId;
         if (id != null) {
           await openJobNotification(
             context,
@@ -369,9 +430,19 @@ class NotificationsScreen extends StatelessWidget {
     if (!context.mounted) return;
 
     if (applicationId != null) {
+      final id = await resolveApplicationId(
+        data,
+        preferredId: applicationId,
+        fallbackJobId: jobId,
+      );
+      if (!context.mounted) return;
+      if (id == null) {
+        openNotificationDetails(context, data);
+        return;
+      }
       await openApplicationNotification(
         context,
-        applicationId: applicationId,
+        applicationId: id,
         fallbackJobId: jobId,
         openWorkerJobDetails:
             role == "worker" && isWorkerOfferNotification(data),

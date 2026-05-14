@@ -808,7 +808,7 @@ class AdminInboxMessageScreen extends StatelessWidget {
     }
 
     if (targetType == "application" || applicationId != null) {
-      final id = targetId ?? applicationId;
+      final id = applicationId ?? targetId;
       if (id == null) return showUnavailable();
 
       final appDoc = await FirebaseFirestore.instance
@@ -835,7 +835,7 @@ class AdminInboxMessageScreen extends StatelessWidget {
     }
 
     if (targetType == "job" || jobId != null) {
-      final id = targetId ?? jobId;
+      final id = jobId ?? targetId;
       if (id == null) return showUnavailable();
 
       final jobDoc =

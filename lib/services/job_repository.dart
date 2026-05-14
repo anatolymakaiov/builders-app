@@ -127,7 +127,7 @@ class JobRepository {
         .trim();
 
     /// 3. создаем application
-    await _db.collection('applications').add({
+    final applicationRef = await _db.collection('applications').add({
       "jobId": jobId,
       "workerId": userId,
       "applicantId": userId,
@@ -160,8 +160,16 @@ class JobRepository {
         .collection('notifications')
         .add({
       "type": "application",
+      "title": "New application received",
+      "message": "$workerName applied for ${(jobData["trade"] ?? "your job")}",
+      "targetType": "application",
+      "targetId": applicationRef.id,
+      "applicationId": applicationRef.id,
+      "relatedApplicationId": applicationRef.id,
       "jobId": jobId,
+      "relatedJobId": jobId,
       "fromUserId": userId,
+      "workerId": userId,
       "createdAt": FieldValue.serverTimestamp(),
       "read": false,
     });
