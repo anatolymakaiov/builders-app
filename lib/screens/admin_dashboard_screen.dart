@@ -233,6 +233,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       _SupportRequestsSection(
         onSupportStatusChanged: updateSupportRequestStatus,
         onReportStatusChanged: updateReportStatus,
+        onPaymentStatusChanged: updatePaymentRequestStatus,
       ),
       _PaymentRequestsSection(
         onStatusChanged: updatePaymentRequestStatus,
@@ -296,7 +297,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             label: "Jobs",
           ),
           const NavigationDestination(
-            icon: Icon(Icons.support_agent_outlined),
+            icon: _AdminSupportNavIcon(),
             label: "Support",
           ),
           const NavigationDestination(
@@ -332,6 +333,55 @@ Future<void> _showAdminMessageComposer(BuildContext context) async {
       );
     },
   );
+}
+
+class _AdminSupportNavIcon extends StatelessWidget {
+  const _AdminSupportNavIcon();
+
+  bool _isUnread(Map<String, dynamic> data) {
+    final deleted = data["deletedByAdmin"] == true;
+    if (deleted) return false;
+    return data["readByAdmin"] != true && data["viewedByAdmin"] != true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream:
+          FirebaseFirestore.instance.collection("support_requests").snapshots(),
+      builder: (context, supportSnapshot) {
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection("reports").snapshots(),
+          builder: (context, reportsSnapshot) {
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection("payment_requests")
+                  .snapshots(),
+              builder: (context, paymentsSnapshot) {
+                var count = 0;
+                for (final snapshot in [
+                  supportSnapshot.data,
+                  reportsSnapshot.data,
+                  paymentsSnapshot.data,
+                ]) {
+                  if (snapshot == null) continue;
+                  count += snapshot.docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return _isUnread(data);
+                  }).length;
+                }
+                if (count == 0) return const Icon(Icons.support_agent_outlined);
+                return Badge.count(
+                  count: count,
+                  child: const Icon(Icons.support_agent_outlined),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
 Future<String?> _askAdminReply(
@@ -616,6 +666,14 @@ IconData _attachmentIcon(String type) {
     return Icons.folder_zip_outlined;
   }
   return Icons.attach_file;
+}
+
+String _normalizeAdminSupportStatus(dynamic value) {
+  final status = value?.toString().trim() ?? "";
+  if (status == "in_review") return "in_progress";
+  if (status == "rejected") return "closed";
+  if (status.isEmpty) return "open";
+  return status;
 }
 
 class _AdminInboxTab extends StatefulWidget {
@@ -1745,9 +1803,8 @@ class _PaymentRequestsSection extends StatelessWidget {
                   return _PaymentRequestCard(
                     data: data,
                     ref: doc.reference,
-                    onStatusChanged: (status) {
-                      onStatusChanged(doc.reference, status);
-                    },
+                    onStatusChanged: (status) =>
+                        onStatusChanged(doc.reference, status),
                   );
                 }).toList(),
               );
@@ -1762,7 +1819,7 @@ class _PaymentRequestsSection extends StatelessWidget {
 class _PaymentRequestCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final DocumentReference ref;
-  final ValueChanged<String> onStatusChanged;
+  final Future<void> Function(String status) onStatusChanged;
 
   const _PaymentRequestCard({
     required this.data,
@@ -1775,6 +1832,8 @@ class _PaymentRequestCard extends StatelessWidget {
     "paid",
     "failed",
     "cancelled",
+    "rejected",
+    "pending_user_reply",
   ];
 
   @override
@@ -1784,6 +1843,10 @@ class _PaymentRequestCard extends StatelessWidget {
     final planName = data["planName"]?.toString().trim() ?? "Plan";
     final paymentMode = data["paymentMode"]?.toString().trim() ?? "";
     final employerId = data["employerId"]?.toString() ?? "";
+    final createdAt = data["createdAt"] is Timestamp
+        ? (data["createdAt"] as Timestamp).toDate()
+        : null;
+    final unread = data["readByAdmin"] != true && data["viewedByAdmin"] != true;
 
     return FutureBuilder<DocumentSnapshot>(
       future: employerId.isEmpty
@@ -1803,6 +1866,8 @@ class _PaymentRequestCard extends StatelessWidget {
           title: companyName,
           subtitle: "$planName • ${BillingService.formatLabel(paymentMode)}",
           status: selectedStatus,
+          unread: unread,
+          dateText: _adminMailTimeLabel(createdAt),
           leading: _AdminAvatar(
             data: employerData,
             fallbackIcon: Icons.business_outlined,
@@ -1811,7 +1876,13 @@ class _PaymentRequestCard extends StatelessWidget {
             _ReportMetaChip(label: "Plan", value: data["planId"]),
             _ReportMetaChip(label: "Employer", value: employerId),
           ],
-          onTap: () {
+          onTap: () async {
+            await ref.set({
+              "readByAdmin": true,
+              "viewedByAdmin": true,
+              "viewedAt": FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+            if (!context.mounted) return;
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -1838,7 +1909,7 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
   final String companyName;
   final String employerId;
   final String status;
-  final ValueChanged<String> onStatusChanged;
+  final Future<void> Function(String status) onStatusChanged;
 
   const _PaymentRequestDetailScreen({
     required this.ref,
@@ -1873,8 +1944,42 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
     );
   }
 
-  Future<void> changeStatus(BuildContext context, String nextStatus) async {
-    onStatusChanged(nextStatus);
+  Future<void> changeStatus(
+    BuildContext context,
+    String nextStatus, {
+    bool requireMessage = false,
+    bool optionalNote = false,
+  }) async {
+    String? message;
+    if (requireMessage || optionalNote) {
+      message = await _askAdminReply(
+        context,
+        title: BillingService.formatLabel(nextStatus),
+        label: requireMessage ? "Explanation" : "Optional note",
+        hint: requireMessage
+            ? "Explain this billing decision"
+            : "Leave empty to continue without a note",
+        requiredMessage: requireMessage,
+      );
+      if (message == null) return;
+    }
+
+    await onStatusChanged(nextStatus);
+    if (message != null && message.trim().isNotEmpty) {
+      await _sendAdminInboxMessage(
+        userId: employerId,
+        title: "Billing request update",
+        message: message.trim(),
+        audience: "employer",
+        relatedTargetType: "payment_request",
+        relatedTargetId: ref.id,
+      );
+      await ref.set({
+        "adminReply": message.trim(),
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("Billing request changed to $nextStatus")),
@@ -1898,15 +2003,19 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
                 return;
               }
               if (value == "approve") {
-                changeStatus(context, "paid");
+                changeStatus(context, "paid", optionalNote: true);
                 return;
               }
               if (value == "reject") {
-                changeStatus(context, "failed");
+                changeStatus(context, "rejected", requireMessage: true);
                 return;
               }
-              if (value == "cancel") {
-                changeStatus(context, "cancelled");
+              if (value == "hold") {
+                changeStatus(
+                  context,
+                  "pending_user_reply",
+                  requireMessage: true,
+                );
               }
             },
             itemBuilder: (context) => const [
@@ -1925,10 +2034,10 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
                 ),
               ),
               PopupMenuItem(
-                value: "cancel",
+                value: "hold",
                 child: ListTile(
-                  leading: Icon(Icons.remove_circle_outline),
-                  title: Text("Cancel request"),
+                  leading: Icon(Icons.pause_circle_outline),
+                  title: Text("Hold"),
                 ),
               ),
               PopupMenuItem(
@@ -1987,12 +2096,25 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   _AdminMetaLine(label: "Employer ID", value: employerId),
+                  _AdminMetaLine(
+                    label: "Current plan",
+                    value: data["currentPlanName"]?.toString() ??
+                        data["currentPlanId"]?.toString() ??
+                        "",
+                  ),
                   _AdminMetaLine(label: "Requested plan", value: planName),
                   _AdminMetaLine(label: "Plan ID", value: planId),
                   _AdminMetaLine(
                     label: "Payment mode",
                     value: BillingService.formatLabel(paymentMode),
                   ),
+                  _AdminMetaLine(
+                    label: "Direct debit",
+                    value: paymentMode == "direct_debit"
+                        ? "Configured"
+                        : "Not configured",
+                  ),
+                  _AdminMetaLine(label: "Invoice status", value: status),
                   _AdminMetaLine(label: "Request ID", value: ref.id),
                 ],
               ),
@@ -2011,6 +2133,8 @@ class _AdminRequestListCard extends StatelessWidget {
   final List<Widget> chips;
   final Widget? leading;
   final VoidCallback onTap;
+  final bool unread;
+  final String? dateText;
 
   const _AdminRequestListCard({
     required this.title,
@@ -2019,6 +2143,8 @@ class _AdminRequestListCard extends StatelessWidget {
     required this.chips,
     this.leading,
     required this.onTap,
+    this.unread = false,
+    this.dateText,
   });
 
   @override
@@ -2030,7 +2156,9 @@ class _AdminRequestListCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.72),
+          color: unread
+              ? AppColors.blueprintLine.withValues(alpha: 0.18)
+              : Colors.white.withValues(alpha: 0.72),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
         ),
@@ -2044,13 +2172,28 @@ class _AdminRequestListCard extends StatelessWidget {
                   const SizedBox(width: 12),
                 ],
                 Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: AppColors.ink,
+                          fontSize: 16,
+                          fontWeight:
+                              unread ? FontWeight.w900 : FontWeight.w800,
+                        ),
+                      ),
+                      if (dateText?.trim().isNotEmpty == true)
+                        Text(
+                          dateText!.trim(),
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 _AdminStatusPill(status),
@@ -2156,6 +2299,8 @@ class _AdminUserRequestCard extends StatelessWidget {
   final String status;
   final List<Widget> chips;
   final VoidCallback onTap;
+  final bool unread;
+  final DateTime? date;
 
   const _AdminUserRequestCard({
     required this.userId,
@@ -2165,6 +2310,8 @@ class _AdminUserRequestCard extends StatelessWidget {
     required this.status,
     required this.chips,
     required this.onTap,
+    this.unread = false,
+    this.date,
   });
 
   @override
@@ -2188,6 +2335,8 @@ class _AdminUserRequestCard extends StatelessWidget {
           title: displayTitle,
           subtitle: subtitle,
           status: status,
+          unread: unread,
+          dateText: _adminMailTimeLabel(date),
           leading: _AdminAvatar(
             data: data,
             fallbackIcon:
@@ -2214,6 +2363,8 @@ class _AdminRequestDetailScreen extends StatelessWidget {
   final List<String> statuses;
   final ValueChanged<String> onStatusChanged;
   final List<Widget> meta;
+  final String requestType;
+  final List<Map> attachments;
 
   const _AdminRequestDetailScreen({
     required this.title,
@@ -2225,6 +2376,8 @@ class _AdminRequestDetailScreen extends StatelessWidget {
     required this.statuses,
     required this.onStatusChanged,
     required this.meta,
+    this.requestType = "support",
+    this.attachments = const [],
   });
 
   Future<void> reply(BuildContext context) async {
@@ -2247,7 +2400,7 @@ class _AdminRequestDetailScreen extends StatelessWidget {
     await ref.set({
       "adminReply": message.trim(),
       "lastAdminReplyAt": FieldValue.serverTimestamp(),
-      "status": status == "open" ? "in_review" : status,
+      "status": "pending_user_reply",
       "updatedAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
@@ -2255,6 +2408,64 @@ class _AdminRequestDetailScreen extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Reply sent to inbox")),
     );
+  }
+
+  Future<void> changeStatus(
+    BuildContext context,
+    String nextStatus, {
+    bool requireMessage = false,
+  }) async {
+    String? message;
+    if (requireMessage) {
+      message = await _askAdminReply(
+        context,
+        title: BillingService.formatLabel(nextStatus),
+        label: "Message to user",
+        hint: "Explain the decision",
+        requiredMessage: true,
+      );
+      if (message == null) return;
+      await _sendAdminInboxMessage(
+        userId: userId,
+        title: "Admin update: $title",
+        message: message,
+        audience: userRole.isEmpty ? "user" : userRole,
+        relatedTargetType: requestType,
+        relatedTargetId: ref.id,
+      );
+    }
+
+    onStatusChanged(nextStatus);
+    await ref.set({
+      "status": nextStatus,
+      if (message != null && message.trim().isNotEmpty)
+        "adminReply": message.trim(),
+      "updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Status changed to $nextStatus")),
+    );
+  }
+
+  Future<void> markUnread(BuildContext context) async {
+    await ref.set({
+      "readByAdmin": false,
+      "viewedByAdmin": false,
+      "updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    if (!context.mounted) return;
+    Navigator.pop(context);
+  }
+
+  Future<void> deleteRequest(BuildContext context) async {
+    await ref.set({
+      "deletedByAdmin": true,
+      "deletedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    if (!context.mounted) return;
+    Navigator.pop(context);
   }
 
   @override
@@ -2269,11 +2480,27 @@ class _AdminRequestDetailScreen extends StatelessWidget {
                 await reply(context);
                 return;
               }
-              onStatusChanged(value);
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text("Status changed to $value")),
-              );
+              if (value == "unread") {
+                await markUnread(context);
+                return;
+              }
+              if (value == "delete") {
+                await deleteRequest(context);
+                return;
+              }
+              if (value == "resolve") {
+                await changeStatus(context, "resolved");
+                return;
+              }
+              if (value == "hold") {
+                await changeStatus(
+                  context,
+                  "pending_user_reply",
+                  requireMessage: true,
+                );
+                return;
+              }
+              await changeStatus(context, value);
             },
             itemBuilder: (context) => [
               const PopupMenuItem(
@@ -2283,13 +2510,32 @@ class _AdminRequestDetailScreen extends StatelessWidget {
                   title: Text("Reply"),
                 ),
               ),
-              ...statuses.map(
-                (item) => PopupMenuItem(
-                  value: item,
-                  child: ListTile(
-                    leading: const Icon(Icons.flag_outlined),
-                    title: Text(BillingService.formatLabel(item)),
-                  ),
+              const PopupMenuItem(
+                value: "unread",
+                child: ListTile(
+                  leading: Icon(Icons.mark_email_unread_outlined),
+                  title: Text("Mark unread"),
+                ),
+              ),
+              const PopupMenuItem(
+                value: "resolve",
+                child: ListTile(
+                  leading: Icon(Icons.check_circle_outline),
+                  title: Text("Resolve"),
+                ),
+              ),
+              const PopupMenuItem(
+                value: "hold",
+                child: ListTile(
+                  leading: Icon(Icons.pause_circle_outline),
+                  title: Text("Hold"),
+                ),
+              ),
+              const PopupMenuItem(
+                value: "delete",
+                child: ListTile(
+                  leading: Icon(Icons.delete_outline),
+                  title: Text("Delete"),
                 ),
               ),
             ],
@@ -2322,18 +2568,13 @@ class _AdminRequestDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   Text(body.isEmpty ? "No message provided" : body),
+                  if (attachments.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    _AdminMailAttachmentWrap(attachments: attachments),
+                  ],
                   const SizedBox(height: 14),
                   ...meta,
                 ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            StroykaSurface(
-              padding: const EdgeInsets.all(18),
-              child: ElevatedButton.icon(
-                onPressed: () => reply(context),
-                icon: const Icon(Icons.reply_outlined),
-                label: const Text("Reply to user"),
               ),
             ),
           ],
@@ -2343,16 +2584,61 @@ class _AdminRequestDetailScreen extends StatelessWidget {
   }
 }
 
-class _SupportRequestsSection extends StatelessWidget {
+class _SupportRequestsSection extends StatefulWidget {
   final Future<void> Function(DocumentReference ref, String status)
       onSupportStatusChanged;
   final Future<void> Function(DocumentReference ref, String status)
       onReportStatusChanged;
+  final Future<void> Function(DocumentReference ref, String status)
+      onPaymentStatusChanged;
 
   const _SupportRequestsSection({
     required this.onSupportStatusChanged,
     required this.onReportStatusChanged,
+    required this.onPaymentStatusChanged,
   });
+
+  @override
+  State<_SupportRequestsSection> createState() =>
+      _SupportRequestsSectionState();
+}
+
+class _SupportRequestsSectionState extends State<_SupportRequestsSection> {
+  String filter = "all";
+
+  static const filters = [
+    ("all", "All"),
+    ("technical_issue", "Technical issue"),
+    ("billing", "Billing"),
+    ("complaint", "Complaint"),
+    ("compliance", "Compliance"),
+    ("abuse_report", "Abuse report"),
+    ("recommendation", "Recommendation"),
+    ("other", "Other"),
+  ];
+
+  String categoryForSupport(Map<String, dynamic> data) {
+    final type = data["type"]?.toString().toLowerCase() ?? "";
+    if (type.contains("technical")) return "technical_issue";
+    if (type.contains("payment") || type.contains("billing")) return "billing";
+    if (type.contains("complaint")) return "complaint";
+    if (type.contains("compliance")) return "compliance";
+    if (type.contains("abuse")) return "abuse_report";
+    if (type.contains("recommendation")) return "recommendation";
+    return "other";
+  }
+
+  String categoryForReport(Map<String, dynamic> data) {
+    final type = data["type"]?.toString().toLowerCase() ?? "";
+    if (type.contains("abuse")) return "abuse_report";
+    if (type.contains("compliance")) return "compliance";
+    if (type.contains("recommendation")) return "recommendation";
+    return "complaint";
+  }
+
+  bool matchesFilter(String category) {
+    return filter == "all" || filter == category;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2386,40 +2672,119 @@ class _SupportRequestsSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: filters.map((item) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(item.$2),
+                    selected: filter == item.$1,
+                    onSelected: (_) => setState(() => filter = item.$1),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 14),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection("support_requests")
                 .orderBy("createdAt", descending: true)
                 .snapshots(),
             builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const LinearProgressIndicator();
-              }
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection("reports")
+                    .orderBy("createdAt", descending: true)
+                    .snapshots(),
+                builder: (context, reportsSnapshot) {
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection("payment_requests")
+                        .orderBy("createdAt", descending: true)
+                        .snapshots(),
+                    builder: (context, paymentsSnapshot) {
+                      if (!snapshot.hasData ||
+                          !reportsSnapshot.hasData ||
+                          !paymentsSnapshot.hasData) {
+                        return const LinearProgressIndicator();
+                      }
 
-              final docs = snapshot.data!.docs;
+                      final supportDocs = snapshot.data!.docs.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return matchesFilter(categoryForSupport(data)) &&
+                            data["deletedByAdmin"] != true;
+                      }).toList();
+                      final reportDocs =
+                          reportsSnapshot.data!.docs.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return matchesFilter(categoryForReport(data)) &&
+                            data["deletedByAdmin"] != true;
+                      }).toList();
+                      final paymentDocs =
+                          paymentsSnapshot.data!.docs.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return matchesFilter("billing") &&
+                            data["deletedByAdmin"] != true;
+                      }).toList();
 
-              return Column(
-                children: [
-                  if (docs.isEmpty)
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text("No support requests yet"),
-                    )
-                  else
-                    ...docs.map((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      return _SupportRequestCard(
-                        data: data,
-                        ref: doc.reference,
-                        onStatusChanged: (status) {
-                          onSupportStatusChanged(doc.reference, status);
-                        },
+                      if (supportDocs.isEmpty &&
+                          reportDocs.isEmpty &&
+                          paymentDocs.isEmpty) {
+                        return const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text("No support requests in this filter"),
+                        );
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ...supportDocs.map((doc) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            return _SupportRequestCard(
+                              data: data,
+                              ref: doc.reference,
+                              onStatusChanged: (status) {
+                                widget.onSupportStatusChanged(
+                                  doc.reference,
+                                  status,
+                                );
+                              },
+                            );
+                          }),
+                          ...reportDocs.map((doc) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            return _ReportCard(
+                              data: data,
+                              ref: doc.reference,
+                              onStatusChanged: (status) {
+                                widget.onReportStatusChanged(
+                                  doc.reference,
+                                  status,
+                                );
+                              },
+                            );
+                          }),
+                          ...paymentDocs.map((doc) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            return _PaymentRequestCard(
+                              data: data,
+                              ref: doc.reference,
+                              onStatusChanged: (status) =>
+                                  widget.onPaymentStatusChanged(
+                                doc.reference,
+                                status,
+                              ),
+                            );
+                          }),
+                        ],
                       );
-                    }),
-                  _SupportReportsList(
-                    onStatusChanged: onReportStatusChanged,
-                  ),
-                ],
+                    },
+                  );
+                },
               );
             },
           ),
@@ -2442,9 +2807,10 @@ class _SupportRequestCard extends StatelessWidget {
 
   static const statuses = [
     "open",
-    "in_review",
+    "in_progress",
+    "pending_user_reply",
     "resolved",
-    "rejected",
+    "closed",
   ];
 
   String supportTypeLabel(Map<String, dynamic> data) {
@@ -2481,10 +2847,14 @@ class _SupportRequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = data["status"]?.toString();
-    final selectedStatus = statuses.contains(status) ? status! : "open";
+    final status = _normalizeAdminSupportStatus(data["status"]);
+    final selectedStatus = statuses.contains(status) ? status : "open";
     final type = data["type"]?.toString().trim() ?? "support";
     final message = data["message"]?.toString().trim() ?? "";
+    final createdAt = data["createdAt"] is Timestamp
+        ? (data["createdAt"] as Timestamp).toDate()
+        : null;
+    final unread = data["readByAdmin"] != true && data["viewedByAdmin"] != true;
 
     return _AdminUserRequestCard(
       userId: data["userId"]?.toString() ?? "",
@@ -2492,11 +2862,19 @@ class _SupportRequestCard extends StatelessWidget {
       fallbackRole: data["userRole"]?.toString() ?? "",
       subtitle: message,
       status: selectedStatus,
+      unread: unread,
+      date: createdAt,
       chips: [
         _ReportMetaChip(label: "Topic", value: supportTypeLabel(data)),
         _ReportMetaChip(label: "Type", value: type),
       ],
-      onTap: () {
+      onTap: () async {
+        await ref.set({
+          "readByAdmin": true,
+          "viewedByAdmin": true,
+          "viewedAt": FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        if (!context.mounted) return;
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -2509,6 +2887,10 @@ class _SupportRequestCard extends StatelessWidget {
               status: selectedStatus,
               statuses: statuses,
               onStatusChanged: onStatusChanged,
+              requestType: "support",
+              attachments:
+                  (data["attachments"] as List?)?.whereType<Map>().toList() ??
+                      const [],
               meta: [
                 _AdminMetaLine(label: "Type", value: type),
                 _AdminMetaLine(
@@ -2519,59 +2901,13 @@ class _SupportRequestCard extends StatelessWidget {
                   label: "Role",
                   value: data["userRole"]?.toString() ?? "",
                 ),
+                _AdminMetaLine(
+                  label: "Created",
+                  value: _formatAdminDate(createdAt),
+                ),
               ],
             ),
           ),
-        );
-      },
-    );
-  }
-}
-
-class _SupportReportsList extends StatelessWidget {
-  final Future<void> Function(DocumentReference ref, String status)
-      onStatusChanged;
-
-  const _SupportReportsList({
-    required this.onStatusChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection("reports")
-          .orderBy("createdAt", descending: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const LinearProgressIndicator();
-        final docs = snapshot.data!.docs;
-        if (docs.isEmpty) return const SizedBox.shrink();
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 8),
-            const Text(
-              "Complaints and reports",
-              style: TextStyle(
-                color: AppColors.ink,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 10),
-            ...docs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              return _ReportCard(
-                data: data,
-                ref: doc.reference,
-                onStatusChanged: (status) {
-                  onStatusChanged(doc.reference, status);
-                },
-              );
-            }),
-          ],
         );
       },
     );
@@ -2860,17 +3196,22 @@ class _ReportCard extends StatelessWidget {
 
   static const statuses = [
     "open",
-    "in_review",
+    "in_progress",
+    "pending_user_reply",
     "resolved",
-    "rejected",
+    "closed",
   ];
 
   @override
   Widget build(BuildContext context) {
-    final status = data["status"]?.toString();
-    final selectedStatus = statuses.contains(status) ? status! : "open";
+    final status = _normalizeAdminSupportStatus(data["status"]);
+    final selectedStatus = statuses.contains(status) ? status : "open";
     final message = data["message"]?.toString().trim() ?? "";
     final type = data["type"]?.toString().trim() ?? "report";
+    final createdAt = data["createdAt"] is Timestamp
+        ? (data["createdAt"] as Timestamp).toDate()
+        : null;
+    final unread = data["readByAdmin"] != true && data["viewedByAdmin"] != true;
 
     return _AdminUserRequestCard(
       userId: data["fromUserId"]?.toString() ?? "",
@@ -2878,6 +3219,8 @@ class _ReportCard extends StatelessWidget {
       fallbackRole: "user",
       subtitle: message,
       status: selectedStatus,
+      unread: unread,
+      date: createdAt,
       chips: [
         _ReportMetaChip(label: "Topic", value: type),
         _ReportMetaChip(label: "From", value: data["fromUserId"]),
@@ -2886,7 +3229,13 @@ class _ReportCard extends StatelessWidget {
         _ReportMetaChip(label: "Application", value: data["applicationId"]),
         _ReportMetaChip(label: "Chat", value: data["chatId"]),
       ],
-      onTap: () {
+      onTap: () async {
+        await ref.set({
+          "readByAdmin": true,
+          "viewedByAdmin": true,
+          "viewedAt": FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        if (!context.mounted) return;
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -2899,6 +3248,10 @@ class _ReportCard extends StatelessWidget {
               status: selectedStatus,
               statuses: statuses,
               onStatusChanged: onStatusChanged,
+              requestType: "report",
+              attachments:
+                  (data["attachments"] as List?)?.whereType<Map>().toList() ??
+                      const [],
               meta: [
                 _AdminMetaLine(
                   label: "From",
@@ -2919,6 +3272,10 @@ class _ReportCard extends StatelessWidget {
                 _AdminMetaLine(
                   label: "Chat",
                   value: data["chatId"]?.toString() ?? "",
+                ),
+                _AdminMetaLine(
+                  label: "Created",
+                  value: _formatAdminDate(createdAt),
                 ),
               ],
             ),
