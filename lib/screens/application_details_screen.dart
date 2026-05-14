@@ -1244,6 +1244,12 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 return [
                   (
                     danger: false,
+                    icon: Icons.chat_bubble_outline,
+                    label: "Message",
+                    run: () => openChat(context, liveData),
+                  ),
+                  (
+                    danger: false,
                     icon: Icons.replay_outlined,
                     label: "Reopen Application",
                     run: reopenRejectedApplication,

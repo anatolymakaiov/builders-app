@@ -1312,6 +1312,12 @@ class WorkerProfileScreen extends StatelessWidget {
             return [
               (
                 danger: false,
+                icon: Icons.chat_bubble_outline,
+                label: "Message",
+                run: () => openMessage(startNegotiation: false),
+              ),
+              (
+                danger: false,
                 icon: Icons.replay_outlined,
                 label: "Reopen Application",
                 run: reopenRejectedApplication,
