@@ -297,7 +297,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
           const NavigationDestination(
             icon: _AdminSupportNavIcon(),
-            label: "Support & Billing",
+            label: "Support\nBilling",
           ),
           const NavigationDestination(
             icon: Icon(Icons.analytics_outlined),
@@ -1225,10 +1225,13 @@ class _AdminMailThreadScreen extends StatelessWidget {
                 first["receiverRole"]?.toString().isNotEmpty == true
                     ? first["receiverRole"].toString()
                     : latest["senderRole"]?.toString() ?? "";
-            final selectedDoc = docs.firstWhere(
-              (doc) => doc.id == initialMessageId,
-              orElse: () => docs.last,
-            );
+            var selectedDoc = docs.last;
+            for (final doc in docs) {
+              if (doc.id == initialMessageId) {
+                selectedDoc = doc;
+                break;
+              }
+            }
             final selectedData = selectedDoc.data();
 
             return ListView(
@@ -2286,10 +2289,17 @@ class _AdminRequestListCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: unread
-              ? AppColors.blueprintLine.withValues(alpha: 0.18)
-              : Colors.white.withValues(alpha: 0.72),
+              ? AppColors.blueprintLine.withValues(alpha: 0.16)
+              : AppColors.surface.withValues(alpha: 0.96),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.95)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.10),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2390,9 +2400,16 @@ class _AdminAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final url = (data["photoUrl"] ??
+            data["photo"] ??
             data["avatarUrl"] ??
+            data["profilePhotoUrl"] ??
             data["profileImageUrl"] ??
+            data["profileImage"] ??
+            data["imageUrl"] ??
+            data["image"] ??
+            data["companyLogo"] ??
             data["logoUrl"] ??
+            data["logo"] ??
             data["companyLogoUrl"] ??
             "")
         .toString()
