@@ -688,6 +688,17 @@ class _AdminMailboxList extends StatelessWidget {
       child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: query().snapshots(),
         builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  "Could not load admin mail: ${snapshot.error}",
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
           if (!snapshot.hasData) return const LinearProgressIndicator();
           final docs = snapshot.data!.docs.where((doc) {
             final data = doc.data();
@@ -957,13 +968,31 @@ class _AdminMailThreadScreen extends StatelessWidget {
           stream: FirebaseFirestore.instance
               .collection("admin_messages")
               .where("threadId", isEqualTo: threadId)
-              .orderBy("createdAt")
               .snapshots(),
           builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    "Could not load message thread: ${snapshot.error}",
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
-            final docs = snapshot.data!.docs;
+            final docs = [...snapshot.data!.docs]..sort((a, b) {
+                final aDate = a.data()["createdAt"] is Timestamp
+                    ? (a.data()["createdAt"] as Timestamp).toDate()
+                    : DateTime.fromMillisecondsSinceEpoch(0);
+                final bDate = b.data()["createdAt"] is Timestamp
+                    ? (b.data()["createdAt"] as Timestamp).toDate()
+                    : DateTime.fromMillisecondsSinceEpoch(0);
+                return aDate.compareTo(bDate);
+              });
             if (docs.isEmpty) {
               return const Center(child: Text("Message thread not found"));
             }
