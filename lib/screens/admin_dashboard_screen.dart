@@ -766,15 +766,11 @@ class _AdminMailboxList extends StatelessWidget {
             );
           }
           if (!snapshot.hasData) return const LinearProgressIndicator();
-          final docs = snapshot.data!.docs.where((doc) {
-            final data = doc.data();
-            final direction = data["direction"]?.toString() ?? "incoming";
-            final deleted = data["deletedByAdmin"] == true;
-            if (mailbox == "sent") return direction == "outgoing" && !deleted;
-            if (mailbox == "deleted") return deleted;
-            return direction == "incoming" && !deleted;
-          }).toList();
-          if (docs.isEmpty) {
+          final threads = _AdminMailThreadPreview.group(
+            snapshot.data!.docs,
+            mailbox: mailbox,
+          );
+          if (threads.isEmpty) {
             return Center(
               child: Text(
                 mailbox == "incoming"
@@ -786,14 +782,14 @@ class _AdminMailboxList extends StatelessWidget {
             );
           }
           return ListView.separated(
-            itemCount: docs.length,
+            itemCount: threads.length,
             separatorBuilder: (_, __) => Divider(
               height: 1,
               color: AppColors.muted.withValues(alpha: 0.18),
             ),
             itemBuilder: (context, index) {
               return _AdminMailListRow(
-                doc: docs[index],
+                thread: threads[index],
                 mailbox: mailbox,
               );
             },
@@ -804,29 +800,170 @@ class _AdminMailboxList extends StatelessWidget {
   }
 }
 
+class _AdminMailThreadPreview {
+  final String key;
+  final String participantKey;
+  final String normalizedSubject;
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs;
+  final QueryDocumentSnapshot<Map<String, dynamic>> latestDoc;
+  final String mailbox;
+
+  const _AdminMailThreadPreview({
+    required this.key,
+    required this.participantKey,
+    required this.normalizedSubject,
+    required this.docs,
+    required this.latestDoc,
+    required this.mailbox,
+  });
+
+  bool get unread => docs.any((doc) {
+        final data = doc.data();
+        return data["direction"] == "incoming" &&
+            data["readByAdmin"] != true &&
+            data["deletedByAdmin"] != true;
+      });
+
+  bool get important => docs.any((doc) => doc.data()["important"] == true);
+
+  List<DocumentReference<Map<String, dynamic>>> get unreadRefs => docs
+      .where((doc) {
+        final data = doc.data();
+        return data["direction"] == "incoming" &&
+            data["readByAdmin"] != true &&
+            data["deletedByAdmin"] != true;
+      })
+      .map((doc) => doc.reference)
+      .toList();
+
+  static List<_AdminMailThreadPreview> group(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs, {
+    required String mailbox,
+  }) {
+    final grouped =
+        <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+
+    for (final doc in docs) {
+      final data = doc.data();
+      final deleted = data["deletedByAdmin"] == true;
+      if (mailbox == "deleted") {
+        if (!deleted) continue;
+      } else if (deleted) {
+        continue;
+      }
+
+      final participantKey = _adminMailParticipantKey(data);
+      final subject = _normalizeAdminMailSubject(data["subject"]?.toString());
+      final key = "$participantKey::$subject";
+      grouped.putIfAbsent(key, () => []).add(doc);
+    }
+
+    final previews = <_AdminMailThreadPreview>[];
+    for (final entry in grouped.entries) {
+      final threadDocs = entry.value..sort(_compareAdminMailDocs);
+      final hasIncoming =
+          threadDocs.any((doc) => doc.data()["direction"] == "incoming");
+      final hasOutgoing =
+          threadDocs.any((doc) => doc.data()["direction"] == "outgoing");
+      if (mailbox == "incoming" && !hasIncoming) continue;
+      if (mailbox == "sent" && !hasOutgoing) continue;
+
+      final latest = threadDocs.last;
+      final parts = entry.key.split("::");
+      previews.add(
+        _AdminMailThreadPreview(
+          key: entry.key,
+          participantKey: parts.first,
+          normalizedSubject:
+              parts.length > 1 ? parts.sublist(1).join("::") : "",
+          docs: List.unmodifiable(threadDocs),
+          latestDoc: latest,
+          mailbox: mailbox,
+        ),
+      );
+    }
+
+    previews.sort((a, b) => _compareAdminMailDocs(b.latestDoc, a.latestDoc));
+    return previews;
+  }
+}
+
+int _compareAdminMailDocs(
+  QueryDocumentSnapshot<Map<String, dynamic>> a,
+  QueryDocumentSnapshot<Map<String, dynamic>> b,
+) {
+  return (_adminMailDate(a.data()) ?? DateTime.fromMillisecondsSinceEpoch(0))
+      .compareTo(
+    _adminMailDate(b.data()) ?? DateTime.fromMillisecondsSinceEpoch(0),
+  );
+}
+
+DateTime? _adminMailDate(Map<String, dynamic> data) {
+  final value = data["createdAt"];
+  if (value is Timestamp) return value.toDate();
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value);
+  return null;
+}
+
+String _adminMailParticipantKey(Map<String, dynamic> data) {
+  final direction = data["direction"]?.toString() ?? "incoming";
+  final id = direction == "outgoing"
+      ? data["receiverId"]?.toString()
+      : data["senderId"]?.toString();
+  if (id != null && id.trim().isNotEmpty && id != "admin") {
+    return id.trim();
+  }
+  final name = direction == "outgoing"
+      ? data["receiverName"]?.toString()
+      : data["senderName"]?.toString();
+  return name?.trim().toLowerCase() ?? "unknown";
+}
+
+String _normalizeAdminMailSubject(String? value) {
+  var subject = value?.trim() ?? "No subject";
+  final prefix = RegExp(r"^(re|fw|fwd)\s*:\s*", caseSensitive: false);
+  while (prefix.hasMatch(subject)) {
+    subject = subject.replaceFirst(prefix, "").trim();
+  }
+  return subject.isEmpty ? "No subject" : subject.toLowerCase();
+}
+
+String _displayAdminMailSubject(String? value) {
+  final normalized = _normalizeAdminMailSubject(value);
+  if (normalized == "no subject") return "No subject";
+  return normalized
+      .split(" ")
+      .map((word) => word.isEmpty
+          ? word
+          : "${word[0].toUpperCase()}${word.length > 1 ? word.substring(1) : ""}")
+      .join(" ");
+}
+
 class _AdminMailListRow extends StatelessWidget {
-  final QueryDocumentSnapshot<Map<String, dynamic>> doc;
+  final _AdminMailThreadPreview thread;
   final String mailbox;
 
   const _AdminMailListRow({
-    required this.doc,
+    required this.thread,
     required this.mailbox,
   });
 
   @override
   Widget build(BuildContext context) {
-    final data = doc.data();
+    final data = thread.latestDoc.data();
     final direction = data["direction"]?.toString() ?? "incoming";
     final isDeleted = data["deletedByAdmin"] == true;
-    final unread = direction == "incoming" && data["readByAdmin"] != true;
-    final important = data["important"] == true;
-    final subject = data["subject"]?.toString() ?? "No subject";
+    final unread = thread.unread;
+    final important = thread.important;
+    final subject = _displayAdminMailSubject(data["subject"]?.toString());
     final message = data["message"]?.toString() ?? "";
-    final createdAt = data["createdAt"] is Timestamp
-        ? (data["createdAt"] as Timestamp).toDate()
-        : null;
-    final attachments =
-        (data["attachments"] as List?)?.whereType<Map>().toList() ?? [];
+    final createdAt = _adminMailDate(data);
+    final attachments = thread.docs
+        .expand((doc) =>
+            (doc.data()["attachments"] as List?)?.whereType<Map>() ??
+            const Iterable<Map>.empty())
+        .toList();
     final displayName = direction == "outgoing"
         ? (data["receiverName"]?.toString() ?? "Recipient")
         : (data["senderName"]?.toString() ?? "Sender");
@@ -836,21 +973,27 @@ class _AdminMailListRow extends StatelessWidget {
 
     return InkWell(
       onTap: () async {
-        if (unread) await _markAdminMessageRead(doc.reference);
+        if (unread) {
+          for (final ref in thread.unreadRefs) {
+            await _markAdminMessageRead(ref);
+          }
+        }
         if (!context.mounted) return;
         await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => _AdminMailThreadScreen(
-              threadId: data["threadId"]?.toString() ?? doc.id,
-              initialMessageId: doc.id,
+              threadId: data["threadId"]?.toString() ?? thread.latestDoc.id,
+              initialMessageId: thread.latestDoc.id,
+              participantKey: thread.participantKey,
+              normalizedSubject: thread.normalizedSubject,
             ),
           ),
         );
       },
       onLongPress: () => _showAdminMailRowActions(
         context,
-        doc.reference,
+        thread.latestDoc.reference,
         unread: unread,
         important: important,
         deleted: isDeleted,
@@ -869,8 +1012,10 @@ class _AdminMailListRow extends StatelessWidget {
                 important ? Icons.star : Icons.star_border,
                 color: important ? AppColors.warning : AppColors.muted,
               ),
-              onPressed: () =>
-                  _toggleAdminMessageImportant(doc.reference, important),
+              onPressed: () => _toggleAdminMessageImportant(
+                thread.latestDoc.reference,
+                important,
+              ),
             ),
             Expanded(
               flex: 3,
@@ -894,7 +1039,9 @@ class _AdminMailListRow extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          subject,
+                          thread.docs.length > 1
+                              ? "$subject (${thread.docs.length})"
+                              : subject,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -1019,22 +1166,32 @@ Future<void> _showAdminMailRowActions(
 class _AdminMailThreadScreen extends StatelessWidget {
   final String threadId;
   final String initialMessageId;
+  final String? participantKey;
+  final String? normalizedSubject;
 
   const _AdminMailThreadScreen({
     required this.threadId,
     required this.initialMessageId,
+    this.participantKey,
+    this.normalizedSubject,
   });
 
   @override
   Widget build(BuildContext context) {
+    final hasGroupedThread = participantKey?.isNotEmpty == true &&
+        normalizedSubject?.isNotEmpty == true;
     return Scaffold(
       appBar: AppBar(title: const Text("Admin mail")),
       body: StroykaScreenBody(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection("admin_messages")
-              .where("threadId", isEqualTo: threadId)
-              .snapshots(),
+          stream: hasGroupedThread
+              ? FirebaseFirestore.instance
+                  .collection("admin_messages")
+                  .snapshots()
+              : FirebaseFirestore.instance
+                  .collection("admin_messages")
+                  .where("threadId", isEqualTo: threadId)
+                  .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.hasError) {
               return Center(
@@ -1050,15 +1207,15 @@ class _AdminMailThreadScreen extends StatelessWidget {
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
-            final docs = [...snapshot.data!.docs]..sort((a, b) {
-                final aDate = a.data()["createdAt"] is Timestamp
-                    ? (a.data()["createdAt"] as Timestamp).toDate()
-                    : DateTime.fromMillisecondsSinceEpoch(0);
-                final bDate = b.data()["createdAt"] is Timestamp
-                    ? (b.data()["createdAt"] as Timestamp).toDate()
-                    : DateTime.fromMillisecondsSinceEpoch(0);
-                return aDate.compareTo(bDate);
-              });
+            final docs = snapshot.data!.docs.where((doc) {
+              final data = doc.data();
+              if (data["deletedByAdmin"] == true) return false;
+              if (!hasGroupedThread) return true;
+              return _adminMailParticipantKey(data) == participantKey &&
+                  _normalizeAdminMailSubject(data["subject"]?.toString()) ==
+                      normalizedSubject;
+            }).toList()
+              ..sort(_compareAdminMailDocs);
             if (docs.isEmpty) {
               return const Center(child: Text("Message thread not found"));
             }
@@ -1102,6 +1259,14 @@ class _AdminMailThreadScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                const Text(
+                                  "Admin Mail",
+                                  style: TextStyle(
+                                    color: AppColors.muted,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
                                 Text(
                                   participantName,
                                   style: const TextStyle(
@@ -1119,6 +1284,11 @@ class _AdminMailThreadScreen extends StatelessWidget {
                                 ),
                               ],
                             ),
+                          ),
+                          _AdminMailThreadActionsMenu(
+                            source: selectedData,
+                            threadId: threadId,
+                            selectedRef: selectedDoc.reference,
                           ),
                         ],
                       ),
@@ -1141,55 +1311,93 @@ class _AdminMailThreadScreen extends StatelessWidget {
                     selected: doc.id == selectedDoc.id,
                   );
                 }),
-                const SizedBox(height: 8),
-                StroykaSurface(
-                  padding: const EdgeInsets.all(12),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () => _showAdminMailReplyComposer(
-                          context,
-                          source: selectedData,
-                          threadId: threadId,
-                          forward: false,
-                        ),
-                        icon: const Icon(Icons.reply),
-                        label: const Text("Reply"),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () => _showAdminMailReplyComposer(
-                          context,
-                          source: selectedData,
-                          threadId: threadId,
-                          forward: true,
-                        ),
-                        icon: const Icon(Icons.forward),
-                        label: const Text("Forward"),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () =>
-                            _markAdminMessageUnread(selectedDoc.reference),
-                        icon: const Icon(Icons.mark_email_unread_outlined),
-                        label: const Text("Mark unread"),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          await _deleteAdminMessage(selectedDoc.reference);
-                          if (context.mounted) Navigator.pop(context);
-                        },
-                        icon: const Icon(Icons.delete_outline),
-                        label: const Text("Delete"),
-                      ),
-                    ],
-                  ),
-                ),
               ],
             );
           },
         ),
       ),
+    );
+  }
+}
+
+class _AdminMailThreadActionsMenu extends StatelessWidget {
+  final Map<String, dynamic> source;
+  final String threadId;
+  final DocumentReference selectedRef;
+
+  const _AdminMailThreadActionsMenu({
+    required this.source,
+    required this.threadId,
+    required this.selectedRef,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: "Mail actions",
+      icon: const Icon(Icons.more_horiz, color: AppColors.ink),
+      onSelected: (value) async {
+        switch (value) {
+          case "reply":
+            await _showAdminMailReplyComposer(
+              context,
+              source: source,
+              threadId: threadId,
+              forward: false,
+            );
+            break;
+          case "forward":
+            await _showAdminMailReplyComposer(
+              context,
+              source: source,
+              threadId: threadId,
+              forward: true,
+            );
+            break;
+          case "unread":
+            await _markAdminMessageUnread(selectedRef);
+            if (context.mounted) Navigator.pop(context);
+            break;
+          case "delete":
+            await _deleteAdminMessage(selectedRef);
+            if (context.mounted) Navigator.pop(context);
+            break;
+        }
+      },
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: "reply",
+          child: ListTile(
+            leading: Icon(Icons.reply),
+            title: Text("Reply"),
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          value: "forward",
+          child: ListTile(
+            leading: Icon(Icons.forward),
+            title: Text("Forward"),
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          value: "unread",
+          child: ListTile(
+            leading: Icon(Icons.mark_email_unread_outlined),
+            title: Text("Mark unread"),
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          value: "delete",
+          child: ListTile(
+            leading: Icon(Icons.delete_outline),
+            title: Text("Delete"),
+            dense: true,
+          ),
+        ),
+      ],
     );
   }
 }
