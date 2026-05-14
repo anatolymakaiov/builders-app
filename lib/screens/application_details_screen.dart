@@ -1214,6 +1214,21 @@ class ApplicationDetailsScreen extends StatelessWidget {
               await openChat(context, liveData);
             }
 
+            Future<void> reopenRejectedApplication() async {
+              await ApplicationActivityService.updateStatus(
+                applicationId: applicationId,
+                status: "negotiation",
+                unreadFor: ApplicationActivityService.workerRecipients(
+                  liveData,
+                ),
+              );
+
+              await NotificationService().notifyApplicationReopened(
+                applicationId: applicationId,
+                applicationData: liveData,
+              );
+            }
+
             List<
                 ({
                   bool danger,
@@ -1224,6 +1239,17 @@ class ApplicationDetailsScreen extends StatelessWidget {
               final canRestartNegotiation = status == "pending" ||
                   status == "offer_withdrawn" ||
                   status == "offer_rejected";
+
+              if (status == "rejected") {
+                return [
+                  (
+                    danger: false,
+                    icon: Icons.replay_outlined,
+                    label: "Reopen Application",
+                    run: reopenRejectedApplication,
+                  ),
+                ];
+              }
 
               if (canRestartNegotiation) {
                 return [

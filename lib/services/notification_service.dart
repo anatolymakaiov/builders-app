@@ -505,6 +505,33 @@ class NotificationService {
     }
   }
 
+  Future<void> notifyApplicationReopened({
+    required String applicationId,
+    required Map<String, dynamic> applicationData,
+  }) async {
+    final recipients = applicationRecipients(applicationData);
+    if (recipients.isEmpty) return;
+
+    final jobId = applicationData["jobId"]?.toString();
+    final jobTitle = applicationData["jobTitle"]?.toString() ?? "your job";
+
+    for (final userId in recipients) {
+      await sendNotification(
+        userId: userId,
+        title: "Application reopened",
+        body: "$jobTitle: the employer reopened your application.",
+        type: "application_reopened",
+        applicationId: applicationId,
+        jobId: jobId,
+        extra: {
+          "status": "negotiation",
+          "targetType": "application",
+          "targetId": applicationId,
+        },
+      );
+    }
+  }
+
   Future<void> notifyOfferCreated({
     required String applicationId,
     required Map<String, dynamic> applicationData,
