@@ -179,6 +179,22 @@ service cloud.firestore {
       allow read, create, update, delete: if isAdmin();
     }
 
+    match /admin_messages/{messageId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /message_threads/{threadId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /message_attachments/{attachmentId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /unread_counters/{counterId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
     match /payment_requests/{requestId} {
       allow create: if isEmployer()
         && request.resource.data.employerId == uid()

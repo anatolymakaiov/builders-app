@@ -1,6 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'dart:io';
 
 import '../models/job.dart';
 import '../services/billing_service.dart';
@@ -273,24 +277,41 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) => setState(() => selectedIndex = index),
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.mark_email_unread_outlined),
+            icon: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection("admin_messages")
+                  .where("direction", isEqualTo: "incoming")
+                  .where("readByAdmin", isEqualTo: false)
+                  .where("deletedByAdmin", isEqualTo: false)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final count = snapshot.data?.docs.length ?? 0;
+                if (count == 0) {
+                  return const Icon(Icons.mark_email_unread_outlined);
+                }
+                return Badge.count(
+                  count: count,
+                  child: const Icon(Icons.mark_email_unread_outlined),
+                );
+              },
+            ),
             label: "Inbox",
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.fact_check_outlined),
             label: "Jobs",
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.support_agent_outlined),
             label: "Support",
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.payments_outlined),
             label: "Billing",
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.analytics_outlined),
             label: "Reports",
           ),
@@ -371,41 +392,1006 @@ Future<void> _sendAdminInboxMessage({
     return;
   }
 
-  final firestore = FirebaseFirestore.instance;
-  final batch = firestore.batch();
-  final inboxRef =
-      firestore.collection("users").doc(userId).collection("admin_inbox").doc();
-  final sentRef = firestore.collection("admin_inbox_messages").doc();
-  final payload = {
-    "userId": userId,
-    "title": title.trim(),
-    "message": message.trim(),
-    "type": "admin_message",
-    "audience": audience,
-    "read": false,
-    if (relatedTargetType != null) "relatedTargetType": relatedTargetType,
-    if (relatedTargetId != null) "relatedTargetId": relatedTargetId,
-    "createdAt": FieldValue.serverTimestamp(),
-  };
-
-  batch.set(inboxRef, payload);
-  batch.set(sentRef, {
-    ...payload,
-    "targetUserId": userId,
-    "recipientCount": 1,
-  });
-  await batch.commit();
+  await _createAdminMailMessage(
+    direction: "outgoing",
+    receiverId: userId,
+    receiverRole: audience,
+    subject: title,
+    message: message,
+    relatedTargetType: relatedTargetType,
+    relatedTargetId: relatedTargetId,
+  );
 }
 
-class _AdminInboxTab extends StatelessWidget {
+Future<String> _createAdminMailMessage({
+  required String direction,
+  required String receiverId,
+  required String receiverRole,
+  required String subject,
+  required String message,
+  String? threadId,
+  String? senderId,
+  String? senderName,
+  String? senderRole,
+  String? relatedTargetType,
+  String? relatedTargetId,
+  List<Map<String, dynamic>> attachments = const [],
+}) async {
+  if (subject.trim().isEmpty || message.trim().isEmpty) return "";
+
+  final firestore = FirebaseFirestore.instance;
+  final batch = firestore.batch();
+  final resolvedThreadId =
+      threadId?.trim().isNotEmpty == true ? threadId!.trim() : null;
+  final threadRef = resolvedThreadId == null
+      ? firestore.collection("message_threads").doc()
+      : firestore.collection("message_threads").doc(resolvedThreadId);
+  final messageRef = firestore.collection("admin_messages").doc();
+
+  Map<String, dynamic> userData = {};
+  if (receiverId.trim().isNotEmpty) {
+    final userSnap = await firestore.collection("users").doc(receiverId).get();
+    userData = userSnap.data() ?? {};
+  }
+
+  final receiverName = (userData["companyName"] ??
+          userData["name"] ??
+          userData["displayName"] ??
+          receiverId)
+      .toString();
+  final normalizedDirection = direction == "incoming" ? "incoming" : "outgoing";
+  final now = FieldValue.serverTimestamp();
+
+  final payload = <String, dynamic>{
+    "threadId": threadRef.id,
+    "direction": normalizedDirection,
+    "senderId": senderId ?? "admin",
+    "senderName": senderName ?? "Admin",
+    "senderRole": senderRole ?? "admin",
+    "receiverId": receiverId,
+    "receiverName": receiverName,
+    "receiverRole": receiverRole,
+    "subject": subject.trim(),
+    "message": message.trim(),
+    "type": "admin_message",
+    "readByAdmin": normalizedDirection == "outgoing",
+    "important": false,
+    "deletedByAdmin": false,
+    "attachments": attachments,
+    "hasAttachments": attachments.isNotEmpty,
+    if (relatedTargetType != null) "relatedTargetType": relatedTargetType,
+    if (relatedTargetId != null) "relatedTargetId": relatedTargetId,
+    "createdAt": now,
+  };
+
+  batch.set(messageRef, payload);
+  batch.set(
+    threadRef,
+    {
+      "subject": subject.trim(),
+      "participants": [
+        "admin",
+        if (receiverId.trim().isNotEmpty) receiverId,
+      ],
+      "lastMessage": message.trim(),
+      "lastMessageAt": now,
+      "lastSenderId": senderId ?? "admin",
+      "unreadForAdmin": normalizedDirection == "incoming" ? 1 : 0,
+      "updatedAt": now,
+    },
+    SetOptions(merge: true),
+  );
+
+  for (final attachment in attachments) {
+    batch.set(firestore.collection("message_attachments").doc(), {
+      ...attachment,
+      "threadId": threadRef.id,
+      "messageId": messageRef.id,
+      "createdAt": now,
+    });
+  }
+
+  if (normalizedDirection == "outgoing" && receiverId.trim().isNotEmpty) {
+    final inboxRef = firestore
+        .collection("users")
+        .doc(receiverId)
+        .collection("admin_inbox")
+        .doc();
+    final sentRef = firestore.collection("admin_inbox_messages").doc();
+    final legacyPayload = {
+      "userId": receiverId,
+      "title": subject.trim(),
+      "message": message.trim(),
+      "type": "admin_message",
+      "audience": receiverRole,
+      "read": false,
+      "threadId": threadRef.id,
+      "adminMessageId": messageRef.id,
+      if (relatedTargetType != null) "relatedTargetType": relatedTargetType,
+      if (relatedTargetId != null) "relatedTargetId": relatedTargetId,
+      "createdAt": now,
+    };
+    batch.set(inboxRef, legacyPayload);
+    batch.set(sentRef, {
+      ...legacyPayload,
+      "targetUserId": receiverId,
+      "recipientCount": 1,
+    });
+  }
+
+  batch.set(
+    firestore.collection("unread_counters").doc("admin"),
+    {
+      if (normalizedDirection == "incoming")
+        "unreadInbox": FieldValue.increment(1),
+      "updatedAt": now,
+    },
+    SetOptions(merge: true),
+  );
+
+  await batch.commit();
+  return messageRef.id;
+}
+
+Future<List<Map<String, dynamic>>> _uploadAdminMailImages(
+  List<XFile> files,
+) async {
+  final uploaded = <Map<String, dynamic>>[];
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? "admin";
+  for (final file in files) {
+    final name = file.name.isNotEmpty
+        ? file.name
+        : "attachment_${DateTime.now().microsecondsSinceEpoch}.jpg";
+    final ref = FirebaseStorage.instance
+        .ref("admin_mail/$uid/${DateTime.now().microsecondsSinceEpoch}_$name");
+    await ref.putFile(File(file.path));
+    final url = await ref.getDownloadURL();
+    uploaded.add({
+      "name": name,
+      "url": url,
+      "type": "image",
+    });
+  }
+  return uploaded;
+}
+
+Future<void> _markAdminMessageRead(DocumentReference ref) async {
+  await ref.set({
+    "readByAdmin": true,
+    "readAt": FieldValue.serverTimestamp(),
+  }, SetOptions(merge: true));
+}
+
+Future<void> _markAdminMessageUnread(DocumentReference ref) async {
+  await ref.set({
+    "readByAdmin": false,
+    "readAt": FieldValue.delete(),
+  }, SetOptions(merge: true));
+}
+
+Future<void> _deleteAdminMessage(DocumentReference ref) async {
+  await ref.set({
+    "deletedByAdmin": true,
+    "deletedAt": FieldValue.serverTimestamp(),
+  }, SetOptions(merge: true));
+}
+
+Future<void> _toggleAdminMessageImportant(
+  DocumentReference ref,
+  bool important,
+) async {
+  await ref.set({
+    "important": !important,
+    "updatedAt": FieldValue.serverTimestamp(),
+  }, SetOptions(merge: true));
+}
+
+String _adminMailTimeLabel(DateTime? date) {
+  if (date == null) return "";
+  final now = DateTime.now();
+  if (date.year == now.year && date.month == now.month && date.day == now.day) {
+    return "${date.hour.toString().padLeft(2, "0")}:"
+        "${date.minute.toString().padLeft(2, "0")}";
+  }
+  return "${date.day.toString().padLeft(2, "0")}/"
+      "${date.month.toString().padLeft(2, "0")}";
+}
+
+IconData _attachmentIcon(String type) {
+  final normalized = type.toLowerCase();
+  if (normalized.contains("image")) return Icons.image_outlined;
+  if (normalized.contains("pdf")) return Icons.picture_as_pdf_outlined;
+  if (normalized.contains("doc")) return Icons.description_outlined;
+  if (normalized.contains("video")) return Icons.video_file_outlined;
+  if (normalized.contains("audio")) return Icons.audio_file_outlined;
+  if (normalized.contains("zip") || normalized.contains("archive")) {
+    return Icons.folder_zip_outlined;
+  }
+  return Icons.attach_file;
+}
+
+class _AdminInboxTab extends StatefulWidget {
   const _AdminInboxTab();
 
   @override
+  State<_AdminInboxTab> createState() => _AdminInboxTabState();
+}
+
+class _AdminInboxTabState extends State<_AdminInboxTab>
+    with SingleTickerProviderStateMixin {
+  late final TabController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Column(
+    return Column(
       children: [
-        _AdminSentInboxMessagesSection(),
+        StroykaSurface(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(8),
+          child: TabBar(
+            controller: controller,
+            labelColor: AppColors.greenDark,
+            unselectedLabelColor: AppColors.muted,
+            indicatorSize: TabBarIndicatorSize.tab,
+            tabs: const [
+              Tab(text: "Incoming"),
+              Tab(text: "Sent"),
+              Tab(text: "Deleted"),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: MediaQuery.sizeOf(context).height * 0.68,
+          child: TabBarView(
+            controller: controller,
+            children: const [
+              _AdminMailboxList(mailbox: "incoming"),
+              _AdminMailboxList(mailbox: "sent"),
+              _AdminMailboxList(mailbox: "deleted"),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+}
+
+class _AdminMailboxList extends StatelessWidget {
+  final String mailbox;
+
+  const _AdminMailboxList({
+    required this.mailbox,
+  });
+
+  Query<Map<String, dynamic>> query() {
+    return FirebaseFirestore.instance
+        .collection("admin_messages")
+        .orderBy("createdAt", descending: true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StroykaSurface(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: query().snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const LinearProgressIndicator();
+          final docs = snapshot.data!.docs.where((doc) {
+            final data = doc.data();
+            final direction = data["direction"]?.toString() ?? "incoming";
+            final deleted = data["deletedByAdmin"] == true;
+            if (mailbox == "sent") return direction == "outgoing" && !deleted;
+            if (mailbox == "deleted") return deleted;
+            return direction == "incoming" && !deleted;
+          }).toList();
+          if (docs.isEmpty) {
+            return Center(
+              child: Text(
+                mailbox == "incoming"
+                    ? "No incoming admin mail yet"
+                    : mailbox == "sent"
+                        ? "No sent admin mail yet"
+                        : "No deleted admin mail",
+              ),
+            );
+          }
+          return ListView.separated(
+            itemCount: docs.length,
+            separatorBuilder: (_, __) => Divider(
+              height: 1,
+              color: AppColors.muted.withValues(alpha: 0.18),
+            ),
+            itemBuilder: (context, index) {
+              return _AdminMailListRow(
+                doc: docs[index],
+                mailbox: mailbox,
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AdminMailListRow extends StatelessWidget {
+  final QueryDocumentSnapshot<Map<String, dynamic>> doc;
+  final String mailbox;
+
+  const _AdminMailListRow({
+    required this.doc,
+    required this.mailbox,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final data = doc.data();
+    final direction = data["direction"]?.toString() ?? "incoming";
+    final isDeleted = data["deletedByAdmin"] == true;
+    final unread = direction == "incoming" && data["readByAdmin"] != true;
+    final important = data["important"] == true;
+    final subject = data["subject"]?.toString() ?? "No subject";
+    final message = data["message"]?.toString() ?? "";
+    final createdAt = data["createdAt"] is Timestamp
+        ? (data["createdAt"] as Timestamp).toDate()
+        : null;
+    final attachments =
+        (data["attachments"] as List?)?.whereType<Map>().toList() ?? [];
+    final displayName = direction == "outgoing"
+        ? (data["receiverName"]?.toString() ?? "Recipient")
+        : (data["senderName"]?.toString() ?? "Sender");
+    final role = direction == "outgoing"
+        ? (data["receiverRole"]?.toString() ?? "")
+        : (data["senderRole"]?.toString() ?? "");
+
+    return InkWell(
+      onTap: () async {
+        if (unread) await _markAdminMessageRead(doc.reference);
+        if (!context.mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => _AdminMailThreadScreen(
+              threadId: data["threadId"]?.toString() ?? doc.id,
+              initialMessageId: doc.id,
+            ),
+          ),
+        );
+      },
+      onLongPress: () => _showAdminMailRowActions(
+        context,
+        doc.reference,
+        unread: unread,
+        important: important,
+        deleted: isDeleted,
+      ),
+      child: Container(
+        color: unread
+            ? AppColors.blueprintLine.withValues(alpha: 0.12)
+            : Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                important ? Icons.star : Icons.star_border,
+                color: important ? AppColors.warning : AppColors.muted,
+              ),
+              onPressed: () =>
+                  _toggleAdminMessageImportant(doc.reference, important),
+            ),
+            Expanded(
+              flex: 3,
+              child: Text(
+                displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.ink,
+                  fontWeight: unread ? FontWeight.w900 : FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 5,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          subject,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: AppColors.ink,
+                            fontWeight:
+                                unread ? FontWeight.w900 : FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (attachments.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Icon(
+                          _attachmentIcon(
+                            attachments.first["type"]?.toString() ?? "",
+                          ),
+                          size: 16,
+                          color: AppColors.greenDark,
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    message,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                  if (role.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        BillingService.formatLabel(role),
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 54,
+              child: Text(
+                _adminMailTimeLabel(createdAt),
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 12,
+                  fontWeight: unread ? FontWeight.w900 : FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _showAdminMailRowActions(
+  BuildContext context,
+  DocumentReference ref, {
+  required bool unread,
+  required bool important,
+  required bool deleted,
+}) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    builder: (context) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!deleted)
+              ListTile(
+                leading: Icon(unread
+                    ? Icons.mark_email_read_outlined
+                    : Icons.mark_email_unread_outlined),
+                title: Text(unread ? "Mark as read" : "Mark unread"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  if (unread) {
+                    await _markAdminMessageRead(ref);
+                  } else {
+                    await _markAdminMessageUnread(ref);
+                  }
+                },
+              ),
+            if (!deleted)
+              ListTile(
+                leading:
+                    Icon(important ? Icons.star_border : Icons.star_outline),
+                title: Text(important ? "Remove important" : "Mark important"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _toggleAdminMessageImportant(ref, important);
+                },
+              ),
+            if (!deleted)
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text("Delete"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _deleteAdminMessage(ref);
+                },
+              ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _AdminMailThreadScreen extends StatelessWidget {
+  final String threadId;
+  final String initialMessageId;
+
+  const _AdminMailThreadScreen({
+    required this.threadId,
+    required this.initialMessageId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Admin mail")),
+      body: StroykaScreenBody(
+        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection("admin_messages")
+              .where("threadId", isEqualTo: threadId)
+              .orderBy("createdAt")
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final docs = snapshot.data!.docs;
+            if (docs.isEmpty) {
+              return const Center(child: Text("Message thread not found"));
+            }
+            final first = docs.first.data();
+            final latest = docs.last.data();
+            final subject = first["subject"]?.toString() ?? "No subject";
+            final participantName =
+                first["receiverName"]?.toString().isNotEmpty == true
+                    ? first["receiverName"].toString()
+                    : latest["senderName"]?.toString() ?? "Participant";
+            final participantRole =
+                first["receiverRole"]?.toString().isNotEmpty == true
+                    ? first["receiverRole"].toString()
+                    : latest["senderRole"]?.toString() ?? "";
+            final selectedDoc = docs.firstWhere(
+              (doc) => doc.id == initialMessageId,
+              orElse: () => docs.last,
+            );
+            final selectedData = selectedDoc.data();
+
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
+              children: [
+                StroykaSurface(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const CircleAvatar(
+                            radius: 24,
+                            backgroundColor: Color(0x297DB9D8),
+                            child: Icon(
+                              Icons.mark_email_unread_outlined,
+                              color: AppColors.greenDark,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  participantName,
+                                  style: const TextStyle(
+                                    color: AppColors.ink,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                Text(
+                                  BillingService.formatLabel(participantRole),
+                                  style: const TextStyle(
+                                    color: AppColors.muted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        subject,
+                        style: const TextStyle(
+                          color: AppColors.ink,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...docs.map((doc) {
+                  return _AdminMailMessageCard(
+                    doc: doc,
+                    selected: doc.id == selectedDoc.id,
+                  );
+                }),
+                const SizedBox(height: 8),
+                StroykaSurface(
+                  padding: const EdgeInsets.all(12),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () => _showAdminMailReplyComposer(
+                          context,
+                          source: selectedData,
+                          threadId: threadId,
+                          forward: false,
+                        ),
+                        icon: const Icon(Icons.reply),
+                        label: const Text("Reply"),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => _showAdminMailReplyComposer(
+                          context,
+                          source: selectedData,
+                          threadId: threadId,
+                          forward: true,
+                        ),
+                        icon: const Icon(Icons.forward),
+                        label: const Text("Forward"),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () =>
+                            _markAdminMessageUnread(selectedDoc.reference),
+                        icon: const Icon(Icons.mark_email_unread_outlined),
+                        label: const Text("Mark unread"),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          await _deleteAdminMessage(selectedDoc.reference);
+                          if (context.mounted) Navigator.pop(context);
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text("Delete"),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminMailMessageCard extends StatelessWidget {
+  final QueryDocumentSnapshot<Map<String, dynamic>> doc;
+  final bool selected;
+
+  const _AdminMailMessageCard({
+    required this.doc,
+    required this.selected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final data = doc.data();
+    final sender = data["senderName"]?.toString() ?? "Sender";
+    final receiver = data["receiverName"]?.toString() ?? "Receiver";
+    final senderRole = data["senderRole"]?.toString() ?? "";
+    final senderId = data["senderId"]?.toString() ?? "";
+    final message = data["message"]?.toString() ?? "";
+    final createdAt = data["createdAt"] is Timestamp
+        ? (data["createdAt"] as Timestamp).toDate()
+        : null;
+    final attachments =
+        (data["attachments"] as List?)?.whereType<Map>().toList() ?? [];
+
+    return StroykaSurface(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: const Color(0x297DB9D8),
+                child: Icon(
+                  senderRole == "admin"
+                      ? Icons.admin_panel_settings_outlined
+                      : Icons.person_outline,
+                  color: AppColors.greenDark,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      sender,
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      "To $receiver • ${BillingService.formatLabel(senderRole)}"
+                      "${senderId.isNotEmpty ? " • $senderId" : ""}",
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                _formatAdminDate(createdAt),
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          if (selected) ...[
+            const SizedBox(height: 8),
+            const _ReportMetaChip(label: "Opened", value: "current"),
+          ],
+          const SizedBox(height: 12),
+          Text(message),
+          if (attachments.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _AdminMailAttachmentWrap(attachments: attachments),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminMailAttachmentWrap extends StatelessWidget {
+  final List<Map> attachments;
+
+  const _AdminMailAttachmentWrap({
+    required this.attachments,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: attachments.map((attachment) {
+        final type = attachment["type"]?.toString() ?? "";
+        final name = attachment["name"]?.toString() ?? "Attachment";
+        final url = attachment["url"]?.toString() ?? "";
+        return ActionChip(
+          avatar: Icon(_attachmentIcon(type), size: 18),
+          label: Text(name),
+          onPressed: url.isEmpty
+              ? null
+              : () async {
+                  final uri = Uri.tryParse(url);
+                  if (uri == null) return;
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                },
+        );
+      }).toList(),
+    );
+  }
+}
+
+Future<void> _showAdminMailReplyComposer(
+  BuildContext context, {
+  required Map<String, dynamic> source,
+  required String threadId,
+  required bool forward,
+}) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) {
+      return Padding(
+        padding: EdgeInsets.only(
+          left: 12,
+          right: 12,
+          top: 12,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
+        ),
+        child: SingleChildScrollView(
+          child: _AdminMailReplyComposer(
+            source: source,
+            threadId: threadId,
+            forward: forward,
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _AdminMailReplyComposer extends StatefulWidget {
+  final Map<String, dynamic> source;
+  final String threadId;
+  final bool forward;
+
+  const _AdminMailReplyComposer({
+    required this.source,
+    required this.threadId,
+    required this.forward,
+  });
+
+  @override
+  State<_AdminMailReplyComposer> createState() =>
+      _AdminMailReplyComposerState();
+}
+
+class _AdminMailReplyComposerState extends State<_AdminMailReplyComposer> {
+  final receiverController = TextEditingController();
+  final messageController = TextEditingController();
+  bool sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.forward) {
+      messageController.text =
+          "\n\nForwarded message:\n${widget.source["message"] ?? ""}";
+    }
+  }
+
+  @override
+  void dispose() {
+    receiverController.dispose();
+    messageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> send() async {
+    final message = messageController.text.trim();
+    final receiverId = widget.forward
+        ? receiverController.text.trim()
+        : (widget.source["senderRole"] == "admin"
+            ? widget.source["receiverId"]?.toString() ?? ""
+            : widget.source["senderId"]?.toString() ?? "");
+    final receiverRole = widget.forward
+        ? "worker"
+        : (widget.source["senderRole"] == "admin"
+            ? widget.source["receiverRole"]?.toString() ?? ""
+            : widget.source["senderRole"]?.toString() ?? "");
+
+    if (receiverId.isEmpty || message.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter recipient and message")),
+      );
+      return;
+    }
+
+    setState(() => sending = true);
+    try {
+      await _createAdminMailMessage(
+        direction: "outgoing",
+        receiverId: receiverId,
+        receiverRole: receiverRole,
+        subject:
+            "${widget.forward ? "Fwd" : "Re"}: ${widget.source["subject"] ?? "Admin mail"}",
+        message: message,
+        threadId: widget.forward ? null : widget.threadId,
+        attachments: widget.forward
+            ? ((widget.source["attachments"] as List?)
+                    ?.whereType<Map>()
+                    .map((item) => Map<String, dynamic>.from(item))
+                    .toList() ??
+                const [])
+            : const [],
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.forward ? "Forwarded" : "Reply sent")),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not send message")),
+      );
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StroykaSurface(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.forward ? "Forward message" : "Reply",
+            style: const TextStyle(
+              color: AppColors.ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          if (widget.forward) ...[
+            const SizedBox(height: 10),
+            TextField(
+              controller: receiverController,
+              enabled: !sending,
+              decoration: const InputDecoration(
+                labelText: "Recipient user ID",
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          TextField(
+            controller: messageController,
+            enabled: !sending,
+            maxLines: 5,
+            decoration: const InputDecoration(labelText: "Message"),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: sending ? null : send,
+              icon: sending
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send),
+              label: Text(sending ? "Sending..." : "Send"),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -426,6 +1412,8 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
   final userIdController = TextEditingController();
   final titleController = TextEditingController();
   final messageController = TextEditingController();
+  final picker = ImagePicker();
+  final attachments = <XFile>[];
   String audience = "worker";
   bool sending = false;
 
@@ -494,39 +1482,22 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
         return;
       }
 
-      final batch = FirebaseFirestore.instance.batch();
-      final sentRef =
-          FirebaseFirestore.instance.collection("admin_inbox_messages").doc();
+      final uploadedAttachments = await _uploadAdminMailImages(attachments);
       for (final userId in recipients) {
-        final ref = FirebaseFirestore.instance
-            .collection("users")
-            .doc(userId)
-            .collection("admin_inbox")
-            .doc();
-        batch.set(ref, {
-          "userId": userId,
-          "title": title,
-          "message": message,
-          "type": "admin_message",
-          "audience": audience,
-          "read": false,
-          "createdAt": FieldValue.serverTimestamp(),
-        });
+        await _createAdminMailMessage(
+          direction: "outgoing",
+          receiverId: userId,
+          receiverRole: audience,
+          subject: title,
+          message: message,
+          attachments: uploadedAttachments,
+        );
       }
-      batch.set(sentRef, {
-        "title": title,
-        "message": message,
-        "type": "admin_message",
-        "audience": audience,
-        "recipientCount": recipients.length,
-        if (requiresUserId) "targetUserId": recipients.first,
-        "createdAt": FieldValue.serverTimestamp(),
-      });
-      await batch.commit();
 
       if (!mounted) return;
       titleController.clear();
       messageController.clear();
+      attachments.clear();
       if (requiresUserId) userIdController.clear();
       if (widget.compact && context.mounted) {
         Navigator.pop(context);
@@ -542,6 +1513,12 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
     } finally {
       if (mounted) setState(() => sending = false);
     }
+  }
+
+  Future<void> pickAttachments() async {
+    final files = await picker.pickMultiImage();
+    if (files.isEmpty) return;
+    setState(() => attachments.addAll(files));
   }
 
   @override
@@ -624,6 +1601,31 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
             maxLines: 4,
             decoration: const InputDecoration(labelText: "Message"),
           ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                onPressed: sending ? null : pickAttachments,
+                icon: const Icon(Icons.attach_file),
+                label: const Text("Attach images"),
+              ),
+              ...attachments.map(
+                (file) => InputChip(
+                  avatar: const Icon(Icons.image_outlined, size: 18),
+                  label: Text(
+                    file.name,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onDeleted: sending
+                      ? null
+                      : () => setState(() => attachments.remove(file)),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -639,236 +1641,6 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
               label: Text(sending ? "Sending..." : "Send admin message"),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AdminSentInboxMessagesSection extends StatelessWidget {
-  const _AdminSentInboxMessagesSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return StroykaSurface(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: Color(0x297DB9D8),
-                child: Icon(
-                  Icons.outbox_outlined,
-                  color: AppColors.greenDark,
-                ),
-              ),
-              SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  "Sent admin inbox messages",
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection("admin_inbox_messages")
-                .orderBy("createdAt", descending: true)
-                .limit(50)
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) return const LinearProgressIndicator();
-
-              final docs = snapshot.data!.docs;
-              if (docs.isEmpty) {
-                return const Text("No admin inbox messages sent yet");
-              }
-
-              return Column(
-                children: docs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final audience = data["audience"]?.toString() ?? "";
-                  final recipientCount = data["recipientCount"]?.toString();
-                  final targetUserId = data["targetUserId"]?.toString() ?? "";
-                  final createdAt = data["createdAt"] is Timestamp
-                      ? (data["createdAt"] as Timestamp).toDate()
-                      : null;
-
-                  return _AdminUserRequestCard(
-                    userId: targetUserId,
-                    fallbackTitle: data["title"]?.toString() ?? "Admin message",
-                    fallbackRole: audience,
-                    subtitle: data["message"]?.toString() ?? "",
-                    status: "sent",
-                    chips: [
-                      _ReportMetaChip(label: "Subject", value: data["title"]),
-                      _ReportMetaChip(label: "Audience", value: audience),
-                      _ReportMetaChip(
-                          label: "Recipients", value: recipientCount),
-                      _ReportMetaChip(
-                          label: "Last", value: _formatAdminDate(createdAt)),
-                    ],
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => _AdminInboxThreadScreen(
-                            data: data,
-                            createdAt: createdAt,
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                }).toList(),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AdminInboxThreadScreen extends StatelessWidget {
-  final Map<String, dynamic> data;
-  final DateTime? createdAt;
-
-  const _AdminInboxThreadScreen({
-    required this.data,
-    required this.createdAt,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final title = data["title"]?.toString() ?? "Admin message";
-    final message = data["message"]?.toString() ?? "";
-    final audience = data["audience"]?.toString() ?? "";
-
-    return Scaffold(
-      appBar: AppBar(title: const Text("Inbox thread")),
-      body: StroykaScreenBody(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
-          children: [
-            StroykaSurface(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      _ReportMetaChip(label: "Audience", value: audience),
-                      _ReportMetaChip(
-                        label: "Last",
-                        value: _formatAdminDate(createdAt),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            _AdminMailBubble(
-              sender: "Admin",
-              role: "admin",
-              date: createdAt,
-              title: title,
-              message: message,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AdminMailBubble extends StatelessWidget {
-  final String sender;
-  final String role;
-  final DateTime? date;
-  final String title;
-  final String message;
-
-  const _AdminMailBubble({
-    required this.sender,
-    required this.role,
-    required this.date,
-    required this.title,
-    required this.message,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return StroykaSurface(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const CircleAvatar(
-                radius: 22,
-                backgroundColor: Color(0x297DB9D8),
-                child: Icon(Icons.admin_panel_settings_outlined),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      sender,
-                      style: const TextStyle(
-                        color: AppColors.ink,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    Text(
-                      "${BillingService.formatLabel(role)} • ${_formatAdminDate(date)}",
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: const TextStyle(
-              color: AppColors.ink,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(message),
         ],
       ),
     );
