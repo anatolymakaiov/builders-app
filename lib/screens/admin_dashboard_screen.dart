@@ -235,13 +235,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         onReportStatusChanged: updateReportStatus,
         onPaymentStatusChanged: updatePaymentRequestStatus,
       ),
-      _PaymentRequestsSection(
-        onStatusChanged: updatePaymentRequestStatus,
-      ),
       const _FinancialReportsSection(
         complaintsSection: SizedBox.shrink(),
       ),
     ];
+    final currentIndex =
+        selectedIndex >= pages.length ? pages.length - 1 : selectedIndex;
 
     return Scaffold(
       appBar: AppBar(
@@ -257,10 +256,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       body: StroykaScreenBody(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-          children: [pages[selectedIndex]],
+          children: [pages[currentIndex]],
         ),
       ),
-      floatingActionButton: selectedIndex == 0
+      floatingActionButton: currentIndex == 0
           ? FloatingActionButton(
               tooltip: "New admin message",
               onPressed: () => _showAdminMessageComposer(context),
@@ -268,7 +267,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             )
           : null,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedIndex,
+        selectedIndex: currentIndex,
         onDestinationSelected: (index) => setState(() => selectedIndex = index),
         destinations: [
           NavigationDestination(
@@ -298,11 +297,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
           const NavigationDestination(
             icon: _AdminSupportNavIcon(),
-            label: "Support",
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.payments_outlined),
-            label: "Billing",
+            label: "Support & Billing",
           ),
           const NavigationDestination(
             icon: Icon(Icons.analytics_outlined),
@@ -1950,80 +1945,6 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
   }
 }
 
-class _PaymentRequestsSection extends StatelessWidget {
-  final Future<void> Function(DocumentReference ref, String status)
-      onStatusChanged;
-
-  const _PaymentRequestsSection({
-    required this.onStatusChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return StroykaSurface(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: Color(0x297DB9D8),
-                child: Icon(
-                  Icons.payments_outlined,
-                  color: AppColors.greenDark,
-                ),
-              ),
-              SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  "Billing/payment requests",
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection("payment_requests")
-                .orderBy("createdAt", descending: true)
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const LinearProgressIndicator();
-              }
-
-              final docs = snapshot.data!.docs;
-              if (docs.isEmpty) {
-                return const Text("No payment requests yet");
-              }
-
-              return Column(
-                children: docs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return _PaymentRequestCard(
-                    data: data,
-                    ref: doc.reference,
-                    onStatusChanged: (status) =>
-                        onStatusChanged(doc.reference, status),
-                  );
-                }).toList(),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _PaymentRequestCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final DocumentReference ref;
@@ -2850,154 +2771,157 @@ class _SupportRequestsSectionState extends State<_SupportRequestsSection> {
 
   @override
   Widget build(BuildContext context) {
-    return StroykaSurface(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        StroykaSurface(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: Color(0x297DB9D8),
-                child: Icon(
-                  Icons.support_agent_outlined,
-                  color: AppColors.greenDark,
-                ),
-              ),
-              SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  "Support requests",
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
+              const Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Color(0x297DB9D8),
+                    child: Icon(
+                      Icons.support_agent_outlined,
+                      color: AppColors.greenDark,
+                    ),
                   ),
+                  SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      "Support & Billing",
+                      style: TextStyle(
+                        color: AppColors.ink,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: filters.map((item) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(item.$2),
+                        selected: filter == item.$1,
+                        onSelected: (_) => setState(() => filter = item.$1),
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: filters.map((item) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(item.$2),
-                    selected: filter == item.$1,
-                    onSelected: (_) => setState(() => filter = item.$1),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 14),
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection("support_requests")
-                .orderBy("createdAt", descending: true)
-                .snapshots(),
-            builder: (context, snapshot) {
-              return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection("reports")
-                    .orderBy("createdAt", descending: true)
-                    .snapshots(),
-                builder: (context, reportsSnapshot) {
-                  return StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection("payment_requests")
-                        .orderBy("createdAt", descending: true)
-                        .snapshots(),
-                    builder: (context, paymentsSnapshot) {
-                      if (!snapshot.hasData ||
-                          !reportsSnapshot.hasData ||
-                          !paymentsSnapshot.hasData) {
-                        return const LinearProgressIndicator();
-                      }
+        ),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection("support_requests")
+              .orderBy("createdAt", descending: true)
+              .snapshots(),
+          builder: (context, snapshot) {
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection("reports")
+                  .orderBy("createdAt", descending: true)
+                  .snapshots(),
+              builder: (context, reportsSnapshot) {
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection("payment_requests")
+                      .orderBy("createdAt", descending: true)
+                      .snapshots(),
+                  builder: (context, paymentsSnapshot) {
+                    if (!snapshot.hasData ||
+                        !reportsSnapshot.hasData ||
+                        !paymentsSnapshot.hasData) {
+                      return const LinearProgressIndicator();
+                    }
 
-                      final supportDocs = snapshot.data!.docs.where((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        return matchesFilter(categoryForSupport(data)) &&
-                            data["deletedByAdmin"] != true;
-                      }).toList();
-                      final reportDocs =
-                          reportsSnapshot.data!.docs.where((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        return matchesFilter(categoryForReport(data)) &&
-                            data["deletedByAdmin"] != true;
-                      }).toList();
-                      final paymentDocs =
-                          paymentsSnapshot.data!.docs.where((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        return matchesFilter("billing") &&
-                            data["deletedByAdmin"] != true;
-                      }).toList();
+                    final supportDocs = snapshot.data!.docs.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return matchesFilter(categoryForSupport(data)) &&
+                          data["deletedByAdmin"] != true;
+                    }).toList();
+                    final reportDocs = reportsSnapshot.data!.docs.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return matchesFilter(categoryForReport(data)) &&
+                          data["deletedByAdmin"] != true;
+                    }).toList();
+                    final paymentDocs =
+                        paymentsSnapshot.data!.docs.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return matchesFilter("billing") &&
+                          data["deletedByAdmin"] != true;
+                    }).toList();
 
-                      if (supportDocs.isEmpty &&
-                          reportDocs.isEmpty &&
-                          paymentDocs.isEmpty) {
-                        return const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text("No support requests in this filter"),
-                        );
-                      }
+                    if (supportDocs.isEmpty &&
+                        reportDocs.isEmpty &&
+                        paymentDocs.isEmpty) {
+                      return const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text("No support requests in this filter"),
+                      );
+                    }
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ...supportDocs.map((doc) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            return _SupportRequestCard(
-                              data: data,
-                              ref: doc.reference,
-                              onStatusChanged: (status) {
-                                widget.onSupportStatusChanged(
-                                  doc.reference,
-                                  status,
-                                );
-                              },
-                            );
-                          }),
-                          ...reportDocs.map((doc) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            return _ReportCard(
-                              data: data,
-                              ref: doc.reference,
-                              onStatusChanged: (status) {
-                                widget.onReportStatusChanged(
-                                  doc.reference,
-                                  status,
-                                );
-                              },
-                            );
-                          }),
-                          ...paymentDocs.map((doc) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            return _PaymentRequestCard(
-                              data: data,
-                              ref: doc.reference,
-                              onStatusChanged: (status) =>
-                                  widget.onPaymentStatusChanged(
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ...supportDocs.map((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          return _SupportRequestCard(
+                            data: data,
+                            ref: doc.reference,
+                            onStatusChanged: (status) {
+                              widget.onSupportStatusChanged(
                                 doc.reference,
                                 status,
-                              ),
-                            );
-                          }),
-                        ],
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          ),
-        ],
-      ),
+                              );
+                            },
+                          );
+                        }),
+                        ...reportDocs.map((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          return _ReportCard(
+                            data: data,
+                            ref: doc.reference,
+                            onStatusChanged: (status) {
+                              widget.onReportStatusChanged(
+                                doc.reference,
+                                status,
+                              );
+                            },
+                          );
+                        }),
+                        ...paymentDocs.map((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          return _PaymentRequestCard(
+                            data: data,
+                            ref: doc.reference,
+                            onStatusChanged: (status) =>
+                                widget.onPaymentStatusChanged(
+                              doc.reference,
+                              status,
+                            ),
+                          );
+                        }),
+                      ],
+                    );
+                  },
+                );
+              },
+            );
+          },
+        ),
+      ],
     );
   }
 }
@@ -3552,7 +3476,7 @@ class _AdminReportsData {
   late final DateTime previousMonthStart = DateTime(now.year, now.month - 1);
   late final DateTime nextMonthStart = DateTime(now.year, now.month + 1);
 
-  late final int totalUsers = users.length;
+  late final int totalUsers = users.where(_isPlatformUser).length;
   late final int totalWorkers =
       users.where((data) => _role(data) == "worker").length;
   late final int totalEmployers =
@@ -3679,17 +3603,17 @@ class _AdminReportsData {
     final buckets = _buckets(period);
     var runningTotal = users.where((data) {
       final createdAt = _date(data["createdAt"]);
-      if (createdAt == null || !createdAt.isBefore(buckets.first.start)) {
+      if (createdAt != null && !createdAt.isBefore(buckets.first.start)) {
         return false;
       }
-      return role == null || _role(data) == role;
+      return _matchesRole(data, role);
     }).length;
 
     return buckets.map((bucket) {
       final count = users.where((data) {
         final createdAt = _date(data["createdAt"]);
         if (!_isInRange(createdAt, bucket.start, bucket.end)) return false;
-        return role == null || _role(data) == role;
+        return _matchesRole(data, role);
       }).length;
       if (cumulative) {
         runningTotal += count;
@@ -3834,8 +3758,51 @@ class _AdminReportsData {
         status != "deleted";
   }
 
-  static String _role(Map<String, dynamic> data) =>
-      data["role"]?.toString().toLowerCase().trim() ?? "";
+  static bool _matchesRole(Map<String, dynamic> data, String? role) {
+    if (role == null) return _isPlatformUser(data);
+    return _role(data) == role;
+  }
+
+  static bool _isPlatformUser(Map<String, dynamic> data) {
+    final role = _role(data);
+    return role == "worker" || role == "employer";
+  }
+
+  static String _role(Map<String, dynamic> data) {
+    final explicit = _normalizeRole(data["role"] ??
+        data["userRole"] ??
+        data["accountType"] ??
+        data["profileType"] ??
+        data["type"] ??
+        "");
+    if (explicit.isNotEmpty) return explicit;
+    if ((data["companyName"]?.toString().trim().isNotEmpty ?? false) ||
+        (data["billing"] is Map)) {
+      return "employer";
+    }
+    if ((data["trade"]?.toString().trim().isNotEmpty ?? false) ||
+        (data["skills"] is List) ||
+        (data["portfolio"] is List)) {
+      return "worker";
+    }
+    return "";
+  }
+
+  static String _normalizeRole(dynamic value) {
+    final role = value?.toString().toLowerCase().trim() ?? "";
+    if (role.contains("worker") ||
+        role.contains("candidate") ||
+        role.contains("employee")) {
+      return "worker";
+    }
+    if (role.contains("employer") ||
+        role.contains("company") ||
+        role.contains("client")) {
+      return "employer";
+    }
+    if (role.contains("admin")) return "admin";
+    return role;
+  }
 
   static String _status(Map<String, dynamic> data) =>
       data["status"]?.toString().toLowerCase().trim() ?? "";
