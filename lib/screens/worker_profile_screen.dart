@@ -1288,6 +1288,15 @@ class WorkerProfileScreen extends StatelessWidget {
           );
         }
 
+        Future<void> reopenRejectedApplication() async {
+          await updateStatus("negotiation");
+
+          await NotificationService().notifyApplicationReopened(
+            applicationId: applicationId,
+            applicationData: applicationData,
+          );
+        }
+
         List<
             ({
               bool danger,
@@ -1298,6 +1307,17 @@ class WorkerProfileScreen extends StatelessWidget {
           final canStartNegotiation = status == "pending" ||
               status == "offer_withdrawn" ||
               status == "offer_rejected";
+
+          if (status == "rejected") {
+            return [
+              (
+                danger: false,
+                icon: Icons.replay_outlined,
+                label: "Reopen Application",
+                run: reopenRejectedApplication,
+              ),
+            ];
+          }
 
           if (canStartNegotiation) {
             return [
