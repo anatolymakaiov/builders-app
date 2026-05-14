@@ -10,6 +10,7 @@ import '../models/job.dart';
 import '../services/billing_service.dart';
 import '../services/job_alert_service.dart';
 import '../services/notification_service.dart';
+import '../widgets/job_card.dart';
 import 'employer_profile_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -61,36 +62,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     BuildContext context,
     DocumentReference ref,
   ) async {
-    final controller = TextEditingController();
-
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Reject job"),
-          content: TextField(
-            controller: controller,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: "Moderation reason",
-              hintText: "Explain why this job was rejected",
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text("Reject"),
-            ),
-          ],
-        );
-      },
+    final reason = await _askAdminReply(
+      context,
+      title: "Reject job",
+      label: "Moderation reason",
+      hint: "Explain why this job was rejected",
+      requiredMessage: true,
     );
-
-    controller.dispose();
     if (reason == null) return false;
 
     final jobSnap = await ref.get();
@@ -135,6 +113,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       title: "Put job on hold",
       label: "Message to employer",
       hint: "Explain what should be clarified before approval",
+      requiredMessage: true,
     );
     if (reason == null) return;
 
@@ -148,6 +127,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       "moderatedAt": FieldValue.serverTimestamp(),
       "updatedAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    await NotificationService().notifyEmployerJobModeration(
+      employerId: job.ownerId,
+      jobId: job.id,
+      jobTitle: job.displayTitle,
+      moderationStatus: "on_hold",
+      reason: reason,
+    );
 
     await _sendAdminInboxMessage(
       userId: job.ownerId,
@@ -167,6 +154,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   ) async {
     final data = doc.data() as Map<String, dynamic>;
     final job = Job.fromFirestore(doc.id, data);
+    await doc.reference.set({
+      "viewedByAdmin": true,
+      "lastAdminViewedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    if (!mounted || !context.mounted) return;
 
     await Navigator.push(
       context,
@@ -347,32 +339,48 @@ Future<String?> _askAdminReply(
   required String title,
   required String label,
   String? hint,
+  bool requiredMessage = false,
 }) async {
   final controller = TextEditingController();
+  String? errorText;
   final result = await showDialog<String>(
     context: context,
     builder: (context) {
-      return AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          maxLines: 5,
-          decoration: InputDecoration(
-            labelText: label,
-            hintText: hint,
-            border: const StroykaInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text("Send"),
-          ),
-        ],
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text(title),
+            content: TextField(
+              controller: controller,
+              maxLines: 5,
+              decoration: InputDecoration(
+                labelText: label,
+                hintText: hint,
+                errorText: errorText,
+                border: const StroykaInputBorder(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cancel"),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final text = controller.text.trim();
+                  if (requiredMessage && text.isEmpty) {
+                    setDialogState(() {
+                      errorText = "Moderator message is required";
+                    });
+                    return;
+                  }
+                  Navigator.pop(context, text);
+                },
+                child: const Text("Send"),
+              ),
+            ],
+          );
+        },
       );
     },
   );
@@ -2077,18 +2085,19 @@ class _AdminStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = AppColors.status(status);
     return Container(
       margin: const EdgeInsets.only(right: 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.green.withValues(alpha: 0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.green.withValues(alpha: 0.22)),
+        border: Border.all(color: color.withValues(alpha: 0.32)),
       ),
       child: Text(
         BillingService.formatLabel(status),
-        style: const TextStyle(
-          color: AppColors.greenDark,
+        style: TextStyle(
+          color: color,
           fontSize: 11,
           fontWeight: FontWeight.w900,
         ),
@@ -2998,16 +3007,27 @@ class _JobModerationSection extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection("jobs").where(
-              "moderationStatus",
-              whereIn: ["pending_review", "on_hold"],
-            ).snapshots(),
+            stream: FirebaseFirestore.instance
+                .collection("jobs")
+                .orderBy("createdAt", descending: true)
+                .snapshots(),
             builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Text(
+                    "Could not load moderation queue: ${snapshot.error}");
+              }
               if (!snapshot.hasData) {
                 return const LinearProgressIndicator();
               }
 
-              final docs = snapshot.data!.docs;
+              final docs = snapshot.data!.docs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final status = data["moderationStatus"]?.toString() ?? "";
+                return status == "pending_review" ||
+                    status == "approved" ||
+                    status == "on_hold" ||
+                    status == "rejected";
+              }).toList();
               if (docs.isEmpty) {
                 return const Text("No jobs waiting for review");
               }
@@ -3041,87 +3061,26 @@ class _PendingJobCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final location = [
-      job.city,
-      job.postcode,
-    ].where((item) => item.trim().isNotEmpty).join(" ");
-
-    return InkWell(
-      onTap: onOpen,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.78),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: AppColors.greenDark.withValues(alpha: 0.22),
-            width: 1.2,
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection("jobs").doc(job.id).get(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
+        final unread = job.moderationStatus == "pending_review" &&
+            data["viewedByAdmin"] != true;
+        return JobCard(
+          job: job,
+          onTap: onOpen,
+          unread: unread,
+          margin: const EdgeInsets.only(bottom: 10),
+          statusText: job.moderationLabel,
+          statusColor: AppColors.status(job.moderationStatus),
+          detailText: "Published ${_formatAdminDate(job.createdAt)}",
+          trailingAction: const Icon(
+            Icons.more_horiz,
+            color: AppColors.muted,
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Color(0x297DB9D8),
-                  child: Icon(
-                    Icons.work_outline,
-                    color: AppColors.greenDark,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        job.displayTitle,
-                        style: const TextStyle(
-                          color: AppColors.ink,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      Text(
-                        job.companyName,
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _AdminStatusPill(job.moderationStatus),
-                const Icon(
-                  Icons.chevron_right,
-                  color: AppColors.muted,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                _ReportMetaChip(label: "Trade", value: job.trade),
-                _ReportMetaChip(label: "Site", value: job.site),
-                _ReportMetaChip(label: "Location", value: location),
-                _ReportMetaChip(
-                  label: "Created",
-                  value: _formatAdminDate(job.createdAt),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -3144,12 +3103,52 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
   });
 
   Future<void> approveAndClose(BuildContext context) async {
+    final note = await _askAdminReply(
+      context,
+      title: "Approve job",
+      label: "Optional note to employer",
+      hint: "Leave empty to approve without a message",
+    );
+    if (note == null) return;
     await onApprove(jobRef, job);
+    if (note.trim().isNotEmpty) {
+      await _sendAdminInboxMessage(
+        userId: job.ownerId,
+        title: "Job publication approved",
+        message: note.trim(),
+        audience: "employer",
+        relatedTargetType: "job",
+        relatedTargetId: job.id,
+      );
+    }
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Job approved")),
     );
     Navigator.pop(context);
+  }
+
+  Future<void> messageEmployer(BuildContext context) async {
+    final message = await _askAdminReply(
+      context,
+      title: "Message employer",
+      label: "Message",
+      hint: "Write a message about this job publication",
+      requiredMessage: true,
+    );
+    if (message == null) return;
+    await _sendAdminInboxMessage(
+      userId: job.ownerId,
+      title: "Message about ${job.displayTitle}",
+      message: message,
+      audience: "employer",
+      relatedTargetType: "job",
+      relatedTargetId: job.id,
+    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Message sent")),
+    );
   }
 
   Future<void> rejectAndClose(BuildContext context) async {
@@ -3188,6 +3187,7 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
               if (value == "approve") approveAndClose(context);
               if (value == "hold") holdAndClose(context);
               if (value == "reject") rejectAndClose(context);
+              if (value == "message") messageEmployer(context);
             },
             itemBuilder: (context) => const [
               PopupMenuItem(
@@ -3211,6 +3211,13 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
                   title: Text("Reject"),
                 ),
               ),
+              PopupMenuItem(
+                value: "message",
+                child: ListTile(
+                  leading: Icon(Icons.mail_outline),
+                  title: Text("Send message to employer"),
+                ),
+              ),
             ],
           ),
         ],
@@ -3219,6 +3226,8 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 120),
           children: [
+            _AdminModerationOverview(job: job),
+            const SizedBox(height: 12),
             StroykaSurface(
               padding: const EdgeInsets.all(18),
               child: Column(
@@ -3317,6 +3326,125 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AdminModerationOverview extends StatelessWidget {
+  final Job job;
+
+  const _AdminModerationOverview({
+    required this.job,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("users")
+          .doc(job.ownerId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
+        final billing = BillingService.billingFromUserData(data);
+        final companyName =
+            (data["companyName"] ?? data["name"] ?? job.companyName)
+                .toString()
+                .trim();
+        final logo =
+            (data["companyLogo"] ?? data["profilePhotoUrl"] ?? job.companyLogo)
+                ?.toString();
+        final available = BillingService.readInt(billing["availableJobPosts"]);
+        final used = BillingService.readInt(billing["usedJobPosts"]);
+        final free = (available - used).clamp(0, available);
+        final plan =
+            (billing["planName"] ?? billing["planId"] ?? "No plan").toString();
+        final billingStatus =
+            (billing["status"] ?? data["billing.status"] ?? "not set")
+                .toString();
+
+        return StroykaSurface(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 30,
+                    backgroundColor: const Color(0x297DB9D8),
+                    backgroundImage: logo != null && logo.trim().isNotEmpty
+                        ? NetworkImage(logo.trim())
+                        : null,
+                    child: logo == null || logo.trim().isEmpty
+                        ? const Icon(
+                            Icons.business_outlined,
+                            color: AppColors.greenDark,
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Moderation overview",
+                          style: TextStyle(
+                            color: AppColors.ink,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          companyName.isEmpty ? "Company" : companyName,
+                          style: const TextStyle(
+                            color: AppColors.ink,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _AdminStatusPill(job.moderationStatus),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _ReportMetaChip(label: "Plan", value: plan),
+                  _ReportMetaChip(
+                    label: "Billing",
+                    value: BillingService.formatLabel(billingStatus),
+                  ),
+                  _ReportMetaChip(
+                      label: "Free slots", value: "$free/$available"),
+                  _ReportMetaChip(
+                    label: "Published",
+                    value: _formatAdminDate(job.createdAt),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _AdminMetaLine(label: "Employer ID", value: job.ownerId),
+              _AdminMetaLine(
+                label: "Moderation",
+                value: job.moderationLabel,
+              ),
+              _AdminMetaLine(
+                label: "Reason/history",
+                value: job.moderationReason.trim().isEmpty
+                    ? "No moderation notes yet"
+                    : job.moderationReason,
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

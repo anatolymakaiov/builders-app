@@ -333,15 +333,24 @@ class NotificationService {
     String? reason,
   }) async {
     final approved = moderationStatus == "approved";
+    final onHold = moderationStatus == "on_hold";
     await sendEmployerNotification(
       employerId: employerId,
       type: "job_status",
-      title: approved ? "Job approved" : "Job rejected",
+      title: approved
+          ? "Job approved"
+          : onHold
+              ? "Job put on hold"
+              : "Job rejected",
       message: approved
           ? "$jobTitle has been approved and can be published."
-          : reason?.trim().isNotEmpty == true
-              ? "$jobTitle was rejected: ${reason!.trim()}"
-              : "$jobTitle was rejected by admin.",
+          : onHold
+              ? reason?.trim().isNotEmpty == true
+                  ? "$jobTitle was put on hold: ${reason!.trim()}"
+                  : "$jobTitle was put on hold by admin."
+              : reason?.trim().isNotEmpty == true
+                  ? "$jobTitle was rejected: ${reason!.trim()}"
+                  : "$jobTitle was rejected by admin.",
       relatedJobId: jobId,
       extra: {
         "status": moderationStatus,
