@@ -2914,12 +2914,21 @@ class _SupportRequestCard extends StatelessWidget {
   }
 }
 
-class _FinancialReportsSection extends StatelessWidget {
+class _FinancialReportsSection extends StatefulWidget {
   final Widget complaintsSection;
 
   const _FinancialReportsSection({
     required this.complaintsSection,
   });
+
+  @override
+  State<_FinancialReportsSection> createState() =>
+      _FinancialReportsSectionState();
+}
+
+class _FinancialReportsSectionState extends State<_FinancialReportsSection> {
+  int selectedTab = 0;
+  _AdminAnalyticsPeriod selectedPeriod = _AdminAnalyticsPeriod.monthly;
 
   double readMoney(dynamic value) {
     if (value is num) return value.toDouble();
@@ -2929,15 +2938,296 @@ class _FinancialReportsSection extends StatelessWidget {
     return 0;
   }
 
-  bool isThisMonth(dynamic value) {
-    if (value is! Timestamp) return false;
-    final date = value.toDate();
-    final now = DateTime.now();
-    return date.year == now.year && date.month == now.month;
+  Widget _buildLoading() {
+    return const StroykaSurface(
+      padding: EdgeInsets.all(18),
+      child: LinearProgressIndicator(),
+    );
   }
 
-  Map<String, dynamic> billingFromUser(Map<String, dynamic> data) {
-    return BillingService.billingFromUserData(data);
+  Widget _buildTabs() {
+    final labels = ["Financial reports", "Analytics"];
+    return StroykaSurface(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(8),
+      child: Row(
+        children: List.generate(labels.length, (index) {
+          final selected = selectedTab == index;
+          return Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(left: index == 0 ? 0 : 6),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setState(() => selectedTab = index),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? AppColors.green.withValues(alpha: 0.22)
+                        : Colors.white.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: selected
+                          ? AppColors.blueprintLine
+                          : Colors.white.withValues(alpha: 0.9),
+                    ),
+                  ),
+                  child: Text(
+                    labels[index],
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: selected ? AppColors.ink : AppColors.muted,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildFinancialReports(_AdminReportsData reports) {
+    return Column(
+      children: [
+        StroykaSurface(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Color(0x297DB9D8),
+                    child: Icon(
+                      Icons.analytics_outlined,
+                      color: AppColors.greenDark,
+                    ),
+                  ),
+                  SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      "Financial reports",
+                      style: TextStyle(
+                        color: AppColors.ink,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _AdminMetricTile(
+                    label: "Total users",
+                    value: reports.totalUsers.toString(),
+                    icon: Icons.people_outline,
+                  ),
+                  _AdminMetricTile(
+                    label: "Total workers",
+                    value: reports.totalWorkers.toString(),
+                    icon: Icons.engineering_outlined,
+                  ),
+                  _AdminMetricTile(
+                    label: "Total employers",
+                    value: reports.totalEmployers.toString(),
+                    icon: Icons.business_outlined,
+                  ),
+                  _AdminMetricTile(
+                    label: "Active paid employers",
+                    value: reports.activePaidEmployers.toString(),
+                    icon: Icons.verified_outlined,
+                  ),
+                  _AdminMetricTile(
+                    label: "Direct debit users",
+                    value: reports.directDebitUsers.toString(),
+                    icon: Icons.sync_alt_outlined,
+                  ),
+                  _AdminMetricTile(
+                    label: "Invoice-based users",
+                    value: reports.invoiceBasedUsers.toString(),
+                    icon: Icons.receipt_long_outlined,
+                  ),
+                  _AdminMetricTile(
+                    label: "Expected monthly revenue",
+                    value: reports.money(reports.expectedMonthlyRevenue),
+                    icon: Icons.request_quote_outlined,
+                  ),
+                  _AdminMetricTile(
+                    label: "Received monthly revenue",
+                    value: reports.money(reports.receivedMonthlyRevenue),
+                    icon: Icons.payments_outlined,
+                  ),
+                  _AdminMetricTile(
+                    label: "Pending payment requests",
+                    value: reports.pendingPaymentRequests.toString(),
+                    icon: Icons.pending_actions_outlined,
+                  ),
+                  _AdminMetricTile(
+                    label: "Projected revenue",
+                    value: reports.money(reports.projectedRevenue),
+                    icon: Icons.trending_up_outlined,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        StroykaSurface(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Monthly performance",
+                style: TextStyle(
+                  color: AppColors.ink,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _AdminComparisonTile(
+                    label: "Users",
+                    current: reports.currentMonthUsers.toDouble(),
+                    previous: reports.previousMonthUsers.toDouble(),
+                    currentLabel: reports.currentMonthUsers.toString(),
+                    previousLabel: reports.previousMonthUsers.toString(),
+                  ),
+                  _AdminComparisonTile(
+                    label: "Revenue",
+                    current: reports.receivedMonthlyRevenue,
+                    previous: reports.previousMonthRevenue,
+                    currentLabel: reports.money(reports.receivedMonthlyRevenue),
+                    previousLabel: reports.money(reports.previousMonthRevenue),
+                  ),
+                  _AdminComparisonTile(
+                    label: "Employers",
+                    current: reports.currentMonthEmployers.toDouble(),
+                    previous: reports.previousMonthEmployers.toDouble(),
+                    currentLabel: reports.currentMonthEmployers.toString(),
+                    previousLabel: reports.previousMonthEmployers.toString(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                "Received by payment method",
+                style: TextStyle(
+                  color: AppColors.ink,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (reports.revenueByMode.isEmpty)
+                const Text("No received payments this month yet")
+              else
+                ...reports.revenueByMode.entries.map(
+                  (entry) => _AdminMetaLine(
+                    label: BillingService.formatLabel(entry.key),
+                    value: reports.money(entry.value),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        _AdminInsightsSection(reports: reports),
+        widget.complaintsSection,
+      ],
+    );
+  }
+
+  Widget _buildAnalytics(_AdminReportsData reports) {
+    final users = reports.series(
+      period: selectedPeriod,
+      role: null,
+      cumulative: true,
+    );
+    final workers = reports.series(
+      period: selectedPeriod,
+      role: "worker",
+      cumulative: true,
+    );
+    final employers = reports.series(
+      period: selectedPeriod,
+      role: "employer",
+      cumulative: true,
+    );
+    final revenue = reports.revenueSeries(period: selectedPeriod);
+
+    return Column(
+      children: [
+        StroykaSurface(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Analytics dashboard",
+                style: TextStyle(
+                  color: AppColors.ink,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _AdminAnalyticsPeriod.values.map((period) {
+                  return ChoiceChip(
+                    selected: selectedPeriod == period,
+                    label: Text(period.label),
+                    onSelected: (_) => setState(() => selectedPeriod = period),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+        _AdminLineChartCard(
+          title: "Total users growth",
+          points: users,
+          color: AppColors.blueprintLine,
+          valueFormatter: (value) => value.round().toString(),
+        ),
+        _AdminLineChartCard(
+          title: "Workers growth",
+          points: workers,
+          color: AppColors.success,
+          valueFormatter: (value) => value.round().toString(),
+        ),
+        _AdminLineChartCard(
+          title: "Employers growth",
+          points: employers,
+          color: AppColors.purple,
+          valueFormatter: (value) => value.round().toString(),
+        ),
+        _AdminLineChartCard(
+          title: "Revenue growth",
+          points: revenue,
+          color: AppColors.warning,
+          valueFormatter: reports.money,
+        ),
+        _AdminInsightsSection(reports: reports),
+      ],
+    );
   }
 
   @override
@@ -2961,169 +3251,55 @@ class _FinancialReportsSection extends StatelessWidget {
             return StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection("payment_requests")
-                  .orderBy("createdAt", descending: true)
                   .snapshots(),
               builder: (context, paymentsSnapshot) {
-                if (!usersSnapshot.hasData || !paymentsSnapshot.hasData) {
-                  return const LinearProgressIndicator();
-                }
+                return StreamBuilder<QuerySnapshot>(
+                  stream:
+                      FirebaseFirestore.instance.collection("jobs").snapshots(),
+                  builder: (context, jobsSnapshot) {
+                    return StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection("support_requests")
+                          .snapshots(),
+                      builder: (context, supportSnapshot) {
+                        return StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection("reports")
+                              .snapshots(),
+                          builder: (context, reportsSnapshot) {
+                            if (!plansSnapshot.hasData ||
+                                !usersSnapshot.hasData ||
+                                !paymentsSnapshot.hasData ||
+                                !jobsSnapshot.hasData ||
+                                !supportSnapshot.hasData ||
+                                !reportsSnapshot.hasData) {
+                              return _buildLoading();
+                            }
 
-                final users = usersSnapshot.data!.docs
-                    .map((doc) => doc.data() as Map<String, dynamic>)
-                    .where((data) => data["accountDeleted"] != true)
-                    .toList();
-                final payments = paymentsSnapshot.data!.docs
-                    .map((doc) => doc.data() as Map<String, dynamic>)
-                    .toList();
+                            final reports = _AdminReportsData.fromSnapshots(
+                              usersSnapshot.data!.docs,
+                              paymentsSnapshot.data!.docs,
+                              jobsSnapshot.data!.docs,
+                              supportSnapshot.data!.docs,
+                              reportsSnapshot.data!.docs,
+                              planPrices,
+                              planCurrency,
+                            );
 
-                final workers = users
-                    .where((data) => data["role"]?.toString() == "worker")
-                    .length;
-                final employers = users
-                    .where((data) => data["role"]?.toString() == "employer")
-                    .toList();
-                final payingEmployers = employers.where((data) {
-                  final billing = billingFromUser(data);
-                  final status = billing["status"]?.toString() ?? "";
-                  final planId = billing["planId"]?.toString() ?? "";
-                  return planId.isNotEmpty &&
-                      (status == "active" || status == "payment_pending");
-                }).toList();
-
-                double expectedMonthlyRevenue = 0;
-                var currency = "GBP";
-                for (final employer in payingEmployers) {
-                  final billing = billingFromUser(employer);
-                  final planId = billing["planId"]?.toString() ?? "";
-                  expectedMonthlyRevenue += planPrices[planId] ?? 0;
-                  currency = planCurrency[planId] ?? currency;
-                }
-
-                final currentMonthPayments = payments
-                    .where((data) =>
-                        isThisMonth(data["paidAt"]) ||
-                        (data["paidAt"] == null &&
-                            isThisMonth(data["updatedAt"])))
-                    .toList();
-                final paidThisMonth = currentMonthPayments
-                    .where((data) => data["status"]?.toString() == "paid")
-                    .toList();
-                final pendingRequests = payments
-                    .where((data) => data["status"]?.toString() == "pending")
-                    .length;
-
-                final revenueByMode = <String, double>{};
-                for (final payment in paidThisMonth) {
-                  final mode =
-                      payment["paymentMode"]?.toString() ?? "manual_invoice";
-                  final planId = payment["planId"]?.toString() ?? "";
-                  revenueByMode[mode] =
-                      (revenueByMode[mode] ?? 0) + (planPrices[planId] ?? 0);
-                }
-                final receivedThisMonth = revenueByMode.values.fold<double>(
-                  0,
-                  (total, value) => total + value,
-                );
-
-                return Column(
-                  children: [
-                    StroykaSurface(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(18),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 24,
-                                backgroundColor: Color(0x297DB9D8),
-                                child: Icon(
-                                  Icons.analytics_outlined,
-                                  color: AppColors.greenDark,
-                                ),
-                              ),
-                              SizedBox(width: 14),
-                              Expanded(
-                                child: Text(
-                                  "Financial reports",
-                                  style: TextStyle(
-                                    color: AppColors.ink,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            children: [
-                              _AdminMetricTile(
-                                label: "All users",
-                                value: users.length.toString(),
-                                icon: Icons.people_outline,
-                              ),
-                              _AdminMetricTile(
-                                label: "Workers",
-                                value: workers.toString(),
-                                icon: Icons.engineering_outlined,
-                              ),
-                              _AdminMetricTile(
-                                label: "Employers",
-                                value: employers.length.toString(),
-                                icon: Icons.business_outlined,
-                              ),
-                              _AdminMetricTile(
-                                label: "Paying clients",
-                                value: payingEmployers.length.toString(),
-                                icon: Icons.verified_outlined,
-                              ),
-                              _AdminMetricTile(
-                                label: "Expected / month",
-                                value:
-                                    "$currency ${expectedMonthlyRevenue.toStringAsFixed(2)}",
-                                icon: Icons.request_quote_outlined,
-                              ),
-                              _AdminMetricTile(
-                                label: "Received this month",
-                                value:
-                                    "$currency ${receivedThisMonth.toStringAsFixed(2)}",
-                                icon: Icons.payments_outlined,
-                              ),
-                              _AdminMetricTile(
-                                label: "Pending payment requests",
-                                value: pendingRequests.toString(),
-                                icon: Icons.pending_actions_outlined,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          const Text(
-                            "Received by payment method",
-                            style: TextStyle(
-                              color: AppColors.ink,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          if (revenueByMode.isEmpty)
-                            const Text("No received payments this month yet")
-                          else
-                            ...revenueByMode.entries.map(
-                              (entry) => _AdminMetaLine(
-                                label: BillingService.formatLabel(entry.key),
-                                value:
-                                    "$currency ${entry.value.toStringAsFixed(2)}",
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    complaintsSection,
-                  ],
+                            return Column(
+                              children: [
+                                _buildTabs(),
+                                if (selectedTab == 0)
+                                  _buildFinancialReports(reports)
+                                else
+                                  _buildAnalytics(reports),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
                 );
               },
             );
@@ -3131,6 +3307,739 @@ class _FinancialReportsSection extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+enum _AdminAnalyticsPeriod {
+  weekly("Weekly"),
+  monthly("Monthly"),
+  yearly("Yearly");
+
+  final String label;
+
+  const _AdminAnalyticsPeriod(this.label);
+}
+
+class _AdminSeriesPoint {
+  final String label;
+  final double value;
+
+  const _AdminSeriesPoint({
+    required this.label,
+    required this.value,
+  });
+}
+
+class _AdminReportsData {
+  final List<Map<String, dynamic>> users;
+  final List<Map<String, dynamic>> payments;
+  final List<Map<String, dynamic>> jobs;
+  final List<Map<String, dynamic>> supportRequests;
+  final List<Map<String, dynamic>> reports;
+  final Map<String, double> planPrices;
+  final Map<String, String> planCurrency;
+  final DateTime now;
+
+  late final DateTime currentMonthStart = DateTime(now.year, now.month);
+  late final DateTime previousMonthStart = DateTime(now.year, now.month - 1);
+  late final DateTime nextMonthStart = DateTime(now.year, now.month + 1);
+
+  late final int totalUsers = users.length;
+  late final int totalWorkers =
+      users.where((data) => _role(data) == "worker").length;
+  late final int totalEmployers =
+      users.where((data) => _role(data) == "employer").length;
+  late final List<Map<String, dynamic>> employers =
+      users.where((data) => _role(data) == "employer").toList();
+  late final List<Map<String, dynamic>> activePaidEmployerDocs =
+      employers.where(_isActivePaidEmployer).toList();
+  late final int activePaidEmployers = activePaidEmployerDocs.length;
+  late final int directDebitUsers =
+      activePaidEmployerDocs.where(_usesDirectDebit).length;
+  late final int invoiceBasedUsers =
+      activePaidEmployerDocs.where(_usesInvoice).length;
+  late final int pendingPaymentRequests =
+      payments.where((data) => _status(data) == "pending").length;
+
+  late final int currentMonthUsers =
+      users.where((data) => _isInMonth(_date(data["createdAt"]), now)).length;
+  late final int previousMonthUsers = users
+      .where((data) => _isInRange(
+            _date(data["createdAt"]),
+            previousMonthStart,
+            currentMonthStart,
+          ))
+      .length;
+  late final int currentMonthEmployers = employers
+      .where((data) => _isInMonth(_date(data["createdAt"]), now))
+      .length;
+  late final int previousMonthEmployers = employers
+      .where((data) => _isInRange(
+            _date(data["createdAt"]),
+            previousMonthStart,
+            currentMonthStart,
+          ))
+      .length;
+
+  late final double expectedMonthlyRevenue =
+      activePaidEmployerDocs.fold<double>(
+    0,
+    (total, employer) {
+      final billing = BillingService.billingFromUserData(employer);
+      final planId = billing["planId"]?.toString() ?? "";
+      return total + (planPrices[planId] ?? 0);
+    },
+  );
+
+  late final Map<String, double> revenueByMode = _revenueByModeForMonth(now);
+  late final double receivedMonthlyRevenue = revenueByMode.values.fold<double>(
+    0,
+    (total, value) => total + value,
+  );
+  late final double previousMonthRevenue =
+      _revenueForRange(previousMonthStart, currentMonthStart);
+  late final double pendingPaymentValue =
+      payments.where((data) => _status(data) == "pending").fold<double>(
+            0,
+            (total, payment) => total + _paymentValue(payment),
+          );
+  late final double projectedRevenue =
+      expectedMonthlyRevenue + pendingPaymentValue;
+
+  late final int activeJobs = jobs.where(_isActiveJob).length;
+  late final int jobsPendingModeration =
+      jobs.where((data) => _moderationStatus(data) == "pending_review").length;
+  late final int rejectedJobs =
+      jobs.where((data) => _moderationStatus(data) == "rejected").length;
+  late final int supportLoad =
+      supportRequests.where(_isOpenSupportItem).length +
+          reports.where(_isOpenSupportItem).length;
+  late final int activeSubscriptions = activePaidEmployers;
+  late final double conversionRate =
+      totalEmployers == 0 ? 0 : activePaidEmployers / totalEmployers * 100;
+
+  late final String currency = _resolveCurrency();
+
+  _AdminReportsData({
+    required this.users,
+    required this.payments,
+    required this.jobs,
+    required this.supportRequests,
+    required this.reports,
+    required this.planPrices,
+    required this.planCurrency,
+    required this.now,
+  });
+
+  factory _AdminReportsData.fromSnapshots(
+    List<QueryDocumentSnapshot> userDocs,
+    List<QueryDocumentSnapshot> paymentDocs,
+    List<QueryDocumentSnapshot> jobDocs,
+    List<QueryDocumentSnapshot> supportDocs,
+    List<QueryDocumentSnapshot> reportDocs,
+    Map<String, double> planPrices,
+    Map<String, String> planCurrency,
+  ) {
+    List<Map<String, dynamic>> read(List<QueryDocumentSnapshot> docs) {
+      return docs
+          .map((doc) => doc.data() as Map<String, dynamic>)
+          .where((data) => data["deletedByAdmin"] != true)
+          .toList();
+    }
+
+    return _AdminReportsData(
+      users: read(userDocs)
+          .where((data) => data["accountDeleted"] != true)
+          .toList(),
+      payments: read(paymentDocs),
+      jobs: read(jobDocs),
+      supportRequests: read(supportDocs),
+      reports: read(reportDocs),
+      planPrices: planPrices,
+      planCurrency: planCurrency,
+      now: DateTime.now(),
+    );
+  }
+
+  String money(double value) => "$currency ${value.toStringAsFixed(2)}";
+
+  List<_AdminSeriesPoint> series({
+    required _AdminAnalyticsPeriod period,
+    required String? role,
+    required bool cumulative,
+  }) {
+    final buckets = _buckets(period);
+    var runningTotal = users.where((data) {
+      final createdAt = _date(data["createdAt"]);
+      if (createdAt == null || !createdAt.isBefore(buckets.first.start)) {
+        return false;
+      }
+      return role == null || _role(data) == role;
+    }).length;
+
+    return buckets.map((bucket) {
+      final count = users.where((data) {
+        final createdAt = _date(data["createdAt"]);
+        if (!_isInRange(createdAt, bucket.start, bucket.end)) return false;
+        return role == null || _role(data) == role;
+      }).length;
+      if (cumulative) {
+        runningTotal += count;
+        return _AdminSeriesPoint(
+          label: bucket.label,
+          value: runningTotal.toDouble(),
+        );
+      }
+      return _AdminSeriesPoint(label: bucket.label, value: count.toDouble());
+    }).toList();
+  }
+
+  List<_AdminSeriesPoint> revenueSeries({
+    required _AdminAnalyticsPeriod period,
+  }) {
+    return _buckets(period).map((bucket) {
+      return _AdminSeriesPoint(
+        label: bucket.label,
+        value: _revenueForRange(bucket.start, bucket.end),
+      );
+    }).toList();
+  }
+
+  Map<String, double> _revenueByModeForMonth(DateTime month) {
+    final map = <String, double>{};
+    for (final payment in payments) {
+      if (_status(payment) != "paid") continue;
+      if (!_isInMonth(_paymentDate(payment), month)) continue;
+      final mode = payment["paymentMode"]?.toString() ?? "manual_invoice";
+      map[mode] = (map[mode] ?? 0) + _paymentValue(payment);
+    }
+    return map;
+  }
+
+  double _revenueForRange(DateTime start, DateTime end) {
+    return payments.where((payment) {
+      return _status(payment) == "paid" &&
+          _isInRange(_paymentDate(payment), start, end);
+    }).fold<double>(
+      0,
+      (total, payment) => total + _paymentValue(payment),
+    );
+  }
+
+  double _paymentValue(Map<String, dynamic> payment) {
+    final explicitAmount =
+        payment["amount"] ?? payment["total"] ?? payment["price"];
+    final parsed = _readMoney(explicitAmount);
+    if (parsed > 0) return parsed;
+    final planId = payment["planId"]?.toString() ?? "";
+    return planPrices[planId] ?? 0;
+  }
+
+  DateTime? _paymentDate(Map<String, dynamic> payment) {
+    return _date(payment["paidAt"]) ??
+        _date(payment["updatedAt"]) ??
+        _date(payment["createdAt"]);
+  }
+
+  List<_AdminReportBucket> _buckets(_AdminAnalyticsPeriod period) {
+    switch (period) {
+      case _AdminAnalyticsPeriod.weekly:
+        final today = DateTime(now.year, now.month, now.day);
+        return List.generate(7, (index) {
+          final start = today.subtract(Duration(days: 6 - index));
+          return _AdminReportBucket(
+            label: "${start.day}/${start.month}",
+            start: start,
+            end: start.add(const Duration(days: 1)),
+          );
+        });
+      case _AdminAnalyticsPeriod.monthly:
+        return List.generate(6, (index) {
+          final start = DateTime(now.year, now.month - (5 - index));
+          return _AdminReportBucket(
+            label: _monthLabel(start),
+            start: start,
+            end: DateTime(start.year, start.month + 1),
+          );
+        });
+      case _AdminAnalyticsPeriod.yearly:
+        return List.generate(5, (index) {
+          final year = now.year - (4 - index);
+          return _AdminReportBucket(
+            label: year.toString(),
+            start: DateTime(year),
+            end: DateTime(year + 1),
+          );
+        });
+    }
+  }
+
+  String _resolveCurrency() {
+    for (final employer in activePaidEmployerDocs) {
+      final billing = BillingService.billingFromUserData(employer);
+      final planId = billing["planId"]?.toString() ?? "";
+      final value = planCurrency[planId];
+      if (value != null && value.isNotEmpty) return value;
+    }
+    for (final value in planCurrency.values) {
+      if (value.isNotEmpty) return value;
+    }
+    return "GBP";
+  }
+
+  bool _isActivePaidEmployer(Map<String, dynamic> data) {
+    final billing = BillingService.billingFromUserData(data);
+    final status = billing["status"]?.toString() ?? "";
+    final planId = billing["planId"]?.toString() ?? "";
+    return planId.isNotEmpty && status == "active";
+  }
+
+  bool _usesDirectDebit(Map<String, dynamic> data) {
+    final billing = BillingService.billingFromUserData(data);
+    final mode = billing["paymentMode"]?.toString().toLowerCase() ?? "";
+    return billing["directDebitEnabled"] == true ||
+        mode.contains("direct_debit") ||
+        mode.contains("direct debit");
+  }
+
+  bool _usesInvoice(Map<String, dynamic> data) {
+    final billing = BillingService.billingFromUserData(data);
+    final mode = billing["paymentMode"]?.toString().toLowerCase() ?? "";
+    return mode.contains("invoice") || mode.contains("manual");
+  }
+
+  bool _isActiveJob(Map<String, dynamic> data) {
+    final moderation = _moderationStatus(data);
+    final status = _status(data);
+    return moderation == "approved" &&
+        (status.isEmpty ||
+            status == "active" ||
+            status == "published" ||
+            status == "open");
+  }
+
+  bool _isOpenSupportItem(Map<String, dynamic> data) {
+    final status = _status(data);
+    return status != "resolved" &&
+        status != "closed" &&
+        status != "rejected" &&
+        status != "deleted";
+  }
+
+  static String _role(Map<String, dynamic> data) =>
+      data["role"]?.toString().toLowerCase().trim() ?? "";
+
+  static String _status(Map<String, dynamic> data) =>
+      data["status"]?.toString().toLowerCase().trim() ?? "";
+
+  static String _moderationStatus(Map<String, dynamic> data) =>
+      data["moderationStatus"]?.toString().toLowerCase().trim() ?? "";
+
+  static DateTime? _date(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  static bool _isInMonth(DateTime? date, DateTime month) {
+    if (date == null) return false;
+    return date.year == month.year && date.month == month.month;
+  }
+
+  static bool _isInRange(DateTime? date, DateTime start, DateTime end) {
+    if (date == null) return false;
+    return !date.isBefore(start) && date.isBefore(end);
+  }
+
+  static double _readMoney(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value.replaceAll(RegExp(r"[^0-9.]"), "")) ?? 0;
+    }
+    return 0;
+  }
+
+  static String _monthLabel(DateTime date) {
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    return months[date.month - 1];
+  }
+}
+
+class _AdminReportBucket {
+  final String label;
+  final DateTime start;
+  final DateTime end;
+
+  const _AdminReportBucket({
+    required this.label,
+    required this.start,
+    required this.end,
+  });
+}
+
+class _AdminComparisonTile extends StatelessWidget {
+  final String label;
+  final double current;
+  final double previous;
+  final String currentLabel;
+  final String previousLabel;
+
+  const _AdminComparisonTile({
+    required this.label,
+    required this.current,
+    required this.previous,
+    required this.currentLabel,
+    required this.previousLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final difference = current - previous;
+    final percent = previous == 0 ? 0 : difference / previous * 100;
+    final isPositive = difference >= 0;
+    final color = isPositive ? AppColors.success : AppColors.danger;
+
+    return Container(
+      width: 155,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.74),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            currentLabel,
+            style: const TextStyle(
+              color: AppColors.ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(
+                isPositive
+                    ? Icons.trending_up_outlined
+                    : Icons.trending_down_outlined,
+                color: color,
+                size: 16,
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  previous == 0
+                      ? "Prev $previousLabel"
+                      : "${percent >= 0 ? "+" : ""}${percent.toStringAsFixed(1)}%",
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminInsightsSection extends StatelessWidget {
+  final _AdminReportsData reports;
+
+  const _AdminInsightsSection({required this.reports});
+
+  @override
+  Widget build(BuildContext context) {
+    return StroykaSurface(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Admin insights",
+            style: TextStyle(
+              color: AppColors.ink,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _AdminMetricTile(
+                label: "Active jobs",
+                value: reports.activeJobs.toString(),
+                icon: Icons.work_outline,
+              ),
+              _AdminMetricTile(
+                label: "Jobs pending moderation",
+                value: reports.jobsPendingModeration.toString(),
+                icon: Icons.rule_folder_outlined,
+              ),
+              _AdminMetricTile(
+                label: "Rejected jobs",
+                value: reports.rejectedJobs.toString(),
+                icon: Icons.block_outlined,
+              ),
+              _AdminMetricTile(
+                label: "Support load",
+                value: reports.supportLoad.toString(),
+                icon: Icons.support_agent_outlined,
+              ),
+              _AdminMetricTile(
+                label: "Active subscriptions",
+                value: reports.activeSubscriptions.toString(),
+                icon: Icons.workspace_premium_outlined,
+              ),
+              _AdminMetricTile(
+                label: "Employer conversion",
+                value: "${reports.conversionRate.toStringAsFixed(1)}%",
+                icon: Icons.insights_outlined,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminLineChartCard extends StatelessWidget {
+  final String title;
+  final List<_AdminSeriesPoint> points;
+  final Color color;
+  final String Function(double value) valueFormatter;
+
+  const _AdminLineChartCard({
+    required this.title,
+    required this.points,
+    required this.color,
+    required this.valueFormatter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final latest = points.isEmpty ? 0.0 : points.last.value;
+    return StroykaSurface(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                valueFormatter(latest),
+                style: TextStyle(
+                  color: color,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 180,
+            width: double.infinity,
+            child: CustomPaint(
+              painter: _AdminLineChartPainter(
+                points: points,
+                color: color,
+                valueFormatter: valueFormatter,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminLineChartPainter extends CustomPainter {
+  final List<_AdminSeriesPoint> points;
+  final Color color;
+  final String Function(double value) valueFormatter;
+
+  const _AdminLineChartPainter({
+    required this.points,
+    required this.color,
+    required this.valueFormatter,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = AppColors.blueprintLine.withValues(alpha: 0.16)
+      ..strokeWidth = 1;
+    final axisPaint = Paint()
+      ..color = AppColors.muted.withValues(alpha: 0.35)
+      ..strokeWidth = 1;
+    final linePaint = Paint()
+      ..color = color
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final dotPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    const left = 36.0;
+    const right = 8.0;
+    const top = 12.0;
+    const bottom = 32.0;
+    final chart = Rect.fromLTWH(
+      left,
+      top,
+      size.width - left - right,
+      size.height - top - bottom,
+    );
+
+    for (var i = 0; i <= 3; i++) {
+      final y = chart.top + chart.height / 3 * i;
+      canvas.drawLine(Offset(chart.left, y), Offset(chart.right, y), gridPaint);
+    }
+    canvas.drawLine(
+      Offset(chart.left, chart.bottom),
+      Offset(chart.right, chart.bottom),
+      axisPaint,
+    );
+
+    if (points.isEmpty) {
+      _drawText(
+          canvas,
+          "No data",
+          Offset(chart.center.dx - 28, chart.center.dy),
+          AppColors.muted,
+          12,
+          FontWeight.w800);
+      return;
+    }
+
+    final maxValue = points
+        .map((point) => point.value)
+        .fold<double>(0, (a, b) => a > b ? a : b);
+    final safeMax = maxValue <= 0 ? 1.0 : maxValue;
+    final stepX = points.length <= 1 ? 0 : chart.width / (points.length - 1);
+    final offsets = <Offset>[];
+
+    for (var i = 0; i < points.length; i++) {
+      final x = points.length <= 1 ? chart.center.dx : chart.left + stepX * i;
+      final y = chart.bottom - (points[i].value / safeMax * chart.height);
+      offsets.add(Offset(x, y));
+    }
+
+    if (offsets.length == 1) {
+      canvas.drawCircle(offsets.first, 4, dotPaint);
+    } else {
+      final path = Path()..moveTo(offsets.first.dx, offsets.first.dy);
+      for (final point in offsets.skip(1)) {
+        path.lineTo(point.dx, point.dy);
+      }
+      canvas.drawPath(path, linePaint);
+      for (final point in offsets) {
+        canvas.drawCircle(point, 4, dotPaint);
+      }
+    }
+
+    _drawText(
+      canvas,
+      valueFormatter(safeMax),
+      Offset(0, chart.top - 2),
+      AppColors.muted,
+      10,
+      FontWeight.w800,
+    );
+    _drawText(
+      canvas,
+      "0",
+      Offset(0, chart.bottom - 10),
+      AppColors.muted,
+      10,
+      FontWeight.w800,
+    );
+
+    for (var i = 0; i < points.length; i++) {
+      if (points.length > 6 && i.isOdd) continue;
+      final x = points.length <= 1 ? chart.center.dx : chart.left + stepX * i;
+      _drawText(
+        canvas,
+        points[i].label,
+        Offset(x - 14, chart.bottom + 10),
+        AppColors.muted,
+        10,
+        FontWeight.w800,
+      );
+    }
+  }
+
+  void _drawText(
+    Canvas canvas,
+    String text,
+    Offset offset,
+    Color color,
+    double fontSize,
+    FontWeight weight,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: fontSize,
+          fontWeight: weight,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(canvas, offset);
+  }
+
+  @override
+  bool shouldRepaint(covariant _AdminLineChartPainter oldDelegate) {
+    return oldDelegate.points != points || oldDelegate.color != color;
   }
 }
 
