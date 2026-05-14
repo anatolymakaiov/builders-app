@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/auth_preferences_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -14,27 +15,70 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+  final authPreferences = AuthPreferencesService();
 
   String role = "worker";
   bool isLogin = true;
   bool loading = false;
 
+  Future<UserCredential?> handleLogin() async {
+    final email = authPreferences.normalizeEmail(emailController.text);
+    final passwordOrLink = passwordController.text.trim();
+
+    if (FirebaseAuth.instance.isSignInWithEmailLink(passwordOrLink)) {
+      return authPreferences.signInWithEmailLink(
+        email: email,
+        emailLink: passwordOrLink,
+      );
+    }
+
+    final preferredMethod = await authPreferences.methodForEmail(email);
+
+    if (passwordOrLink.isEmpty &&
+        preferredMethod != AuthPreferenceMethod.biometric) {
+      await authPreferences.sendPasswordlessLink(email);
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Passwordless sign-in link sent. Open it from your email, or paste it into the password field.",
+          ),
+        ),
+      );
+      return null;
+    }
+
+    if (preferredMethod == AuthPreferenceMethod.biometric &&
+        passwordOrLink.isEmpty) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Biometric login is enabled for this account. Use your password once on this device as a secure fallback.",
+          ),
+        ),
+      );
+      return null;
+    }
+
+    return FirebaseAuth.instance.signInWithEmailAndPassword(
+      email: email,
+      password: passwordOrLink,
+    );
+  }
+
   Future<void> submit() async {
     setState(() => loading = true);
 
     try {
-      UserCredential result;
-
       if (isLogin) {
-        /// LOGIN
-        result = await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: emailController.text.trim(),
-          password: passwordController.text.trim(),
-        );
+        await handleLogin();
       } else {
         /// REGISTER
-        result = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: emailController.text.trim(),
+        final email = authPreferences.normalizeEmail(emailController.text);
+        final result =
+            await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email,
           password: passwordController.text.trim(),
         );
 
@@ -43,6 +87,21 @@ class _LoginScreenState extends State<LoginScreen> {
             .doc(result.user!.uid)
             .set({
           "role": role,
+          "email": email,
+          "authMethod": AuthPreferenceMethod.password,
+          "settings": {
+            "authMethod": AuthPreferenceMethod.password,
+            "updatedAt": FieldValue.serverTimestamp(),
+          },
+          "authPreferences": {
+            "activeMethod": AuthPreferenceMethod.password,
+            "passwordLoginEnabled": true,
+            "passwordlessLoginEnabled": false,
+            "biometricLoginEnabled": false,
+            "email": email,
+            "emailVerified": result.user?.emailVerified ?? false,
+            "updatedAt": FieldValue.serverTimestamp(),
+          },
           "createdAt": FieldValue.serverTimestamp(),
         });
       }

@@ -48,6 +48,9 @@ dependencies:
   flutter_local_notifications: ^17.0.0
   add_2_calendar: ^3.0.1
 
+  # AUTH SECURITY
+  local_auth: ^2.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

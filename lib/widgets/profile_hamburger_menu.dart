@@ -8,6 +8,7 @@ import '../screens/edit_profile_screen.dart';
 import '../screens/employer_profile_screen.dart';
 import '../screens/job_details_screen.dart';
 import '../screens/login_screen.dart';
+import '../services/auth_preferences_service.dart';
 import '../services/billing_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -427,7 +428,9 @@ class ProfileSettingsScreen extends StatefulWidget {
 }
 
 class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
+  final AuthPreferencesService authPreferences = AuthPreferencesService();
   bool savingLanguage = false;
+  bool savingAuthMethod = false;
 
   String languageLabel(String value) {
     switch (value) {
@@ -446,10 +449,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     setState(() => savingLanguage = true);
     try {
       await FirebaseFirestore.instance.collection("users").doc(uid).set({
-        "settings": {
-          "language": language,
-          "updatedAt": FieldValue.serverTimestamp(),
-        },
+        "settings.language": language,
+        "settings.updatedAt": FieldValue.serverTimestamp(),
         "language": language,
       }, SetOptions(merge: true));
 
@@ -475,20 +476,56 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     required IconData icon,
     required String title,
     required String subtitle,
+    required String value,
+    required String activeMethod,
   }) {
+    final active = value == activeMethod;
+
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: Icon(icon, color: AppColors.greenDark),
+      enabled: !savingAuthMethod,
+      leading: Icon(
+        icon,
+        color: active ? AppColors.blueprintLine : AppColors.greenDark,
+      ),
       title: Text(
         title,
         style: const TextStyle(fontWeight: FontWeight.w800),
       ),
       subtitle: Text(subtitle),
-      trailing: const Chip(
-        label: Text("Future-ready"),
-        visualDensity: VisualDensity.compact,
+      trailing: Icon(
+        active ? Icons.check_circle : Icons.radio_button_unchecked,
+        color: active ? AppColors.success : AppColors.muted,
       ),
+      onTap: savingAuthMethod || active ? null : () => saveAuthMethod(value),
     );
+  }
+
+  Future<void> saveAuthMethod(String method) async {
+    setState(() => savingAuthMethod = true);
+    try {
+      final result = await authPreferences.saveCurrentUserMethod(method);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: result.warning ? Colors.orange.shade800 : null,
+        ),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? "Could not save auth setting")),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not save auth setting")),
+      );
+    } finally {
+      if (mounted) setState(() => savingAuthMethod = false);
+    }
   }
 
   @override
@@ -512,6 +549,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                 : <String, dynamic>{};
             final language =
                 (settings["language"] ?? data["language"] ?? "en").toString();
+            final activeAuthMethod = authPreferences.methodFromUserData(data);
 
             return ListView(
               padding: const EdgeInsets.all(12),
@@ -561,23 +599,38 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const _SectionTitle("Authentication settings"),
+                      Text(
+                        "Current method: ${AuthPreferenceMethod.label(activeAuthMethod)}",
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      if (savingAuthMethod) ...[
+                        const SizedBox(height: 10),
+                        const LinearProgressIndicator(minHeight: 2),
+                      ],
+                      const SizedBox(height: 8),
                       buildAuthenticationOption(
                         icon: Icons.lock_outline,
                         title: "Password login",
                         subtitle:
-                            "Current Firebase email/password sign-in remains active.",
+                            "Use Firebase email and password. This remains available as a safe fallback.",
+                        value: AuthPreferenceMethod.password,
+                        activeMethod: activeAuthMethod,
                       ),
                       buildAuthenticationOption(
                         icon: Icons.mark_email_read_outlined,
                         title: "Passwordless login",
                         subtitle:
-                            "Prepared for future email link or one-time-code sign-in.",
+                            "Send an email sign-in link from the login screen when no password is entered.",
+                        value: AuthPreferenceMethod.passwordless,
+                        activeMethod: activeAuthMethod,
                       ),
                       buildAuthenticationOption(
                         icon: Icons.fingerprint,
                         title: "Biometric login",
                         subtitle:
-                            "Prepared for Face ID / Touch ID when biometric package and secure token flow are added.",
+                            "Validates Face ID / Touch ID availability and keeps password login as fallback.",
+                        value: AuthPreferenceMethod.biometric,
+                        activeMethod: activeAuthMethod,
                       ),
                     ],
                   ),
