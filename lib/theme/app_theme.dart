@@ -76,6 +76,14 @@ class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: AppButtonStyles.text(),
       ),
+      tabBarTheme: const TabBarThemeData(
+        labelStyle: AppTypography.tab,
+        unselectedLabelStyle: AppTypography.tabUnselected,
+        labelColor: AppColors.greenDark,
+        unselectedLabelColor: AppColors.muted,
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+      ),
       popupMenuTheme: PopupMenuThemeData(
         color: AppColors.surface,
         elevation: 14,

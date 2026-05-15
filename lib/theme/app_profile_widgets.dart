@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'app_blueprint.dart';
 import 'app_cards.dart';
 import 'app_colors.dart';
+import 'app_typography.dart';
 
 class StroykaAvatar extends StatelessWidget {
   final String? imageUrl;
@@ -195,6 +196,8 @@ class StroykaTabBar extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(4),
           child: TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             dividerColor: Colors.transparent,
             indicator: const BoxDecoration(
               color: AppColors.green,
@@ -203,21 +206,20 @@ class StroykaTabBar extends StatelessWidget {
             indicatorSize: TabBarIndicatorSize.tab,
             labelColor: Colors.white,
             unselectedLabelColor: AppColors.ink,
-            labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-            labelStyle: const TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 15,
-            ),
-            unselectedLabelStyle: const TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-            ),
+            labelPadding: const EdgeInsets.symmetric(horizontal: 20),
+            labelStyle: AppTypography.tab,
+            unselectedLabelStyle: AppTypography.tabUnselected,
             tabs: [
               for (final label in labels)
                 Tab(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(label),
+                  height: 48,
+                  child: Center(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                    ),
                   ),
                 ),
             ],

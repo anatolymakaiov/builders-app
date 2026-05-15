@@ -730,10 +730,13 @@ class _AdminInboxTabState extends State<_AdminInboxTab>
             labelColor: AppColors.greenDark,
             unselectedLabelColor: AppColors.muted,
             indicatorSize: TabBarIndicatorSize.tab,
+            labelStyle: AppTypography.tab,
+            unselectedLabelStyle: AppTypography.tabUnselected,
+            labelPadding: const EdgeInsets.symmetric(horizontal: 20),
             tabs: const [
-              Tab(text: "Incoming"),
-              Tab(text: "Sent"),
-              Tab(text: "Deleted"),
+              Tab(height: 48, text: "Incoming"),
+              Tab(height: 48, text: "Sent"),
+              Tab(height: 48, text: "Deleted"),
             ],
           ),
         ),
@@ -3204,9 +3207,10 @@ class _FinancialReportsSectionState extends State<_FinancialReportsSection> {
                   child: Text(
                     labels[index],
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.tab.copyWith(
                       color: selected ? AppColors.ink : AppColors.muted,
-                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),

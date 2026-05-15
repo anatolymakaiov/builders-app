@@ -741,10 +741,15 @@ class _AdminInboxScreenState extends State<AdminInboxScreen>
         title: const Text("Inbox from Admin"),
         bottom: TabBar(
           controller: tabController,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          labelStyle: AppTypography.tab,
+          unselectedLabelStyle: AppTypography.tabUnselected,
+          labelPadding: const EdgeInsets.symmetric(horizontal: 20),
           tabs: const [
-            Tab(text: "Incoming"),
-            Tab(text: "Sent"),
-            Tab(text: "Deleted"),
+            Tab(height: 48, text: "Incoming"),
+            Tab(height: 48, text: "Sent"),
+            Tab(height: 48, text: "Deleted"),
           ],
         ),
       ),

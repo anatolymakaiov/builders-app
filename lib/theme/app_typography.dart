@@ -44,4 +44,16 @@ class AppTypography {
     fontWeight: FontWeight.w900,
     letterSpacing: 0,
   );
+
+  static const tab = TextStyle(
+    fontSize: 15,
+    fontWeight: FontWeight.w900,
+    letterSpacing: 0,
+  );
+
+  static const tabUnselected = TextStyle(
+    fontSize: 15,
+    fontWeight: FontWeight.w800,
+    letterSpacing: 0,
+  );
 }
