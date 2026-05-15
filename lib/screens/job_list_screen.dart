@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:test_app/services/job_alert_service.dart';
 import 'package:test_app/services/job_repository.dart';
 import '../models/job.dart';
+import '../services/job_taxonomy_service.dart';
 import 'filter_sheet.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -242,6 +243,36 @@ class _JobListScreenState extends State<JobListScreen> {
     );
   }
 
+  Widget buildRoleSuggestions() {
+    final suggestions = JobTaxonomyService.suggestions(searchQuery, limit: 6);
+    if (searchQuery.trim().isEmpty || suggestions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return SizedBox(
+      height: 42,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        scrollDirection: Axis.horizontal,
+        itemCount: suggestions.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final role = suggestions[index];
+          return ActionChip(
+            label: Text(role.canonical),
+            avatar: const Icon(Icons.work_outline, size: 16),
+            onPressed: () {
+              setState(() {
+                searchController.text = role.canonical;
+                searchQuery = role.canonical;
+              });
+            },
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -278,11 +309,12 @@ class _JobListScreenState extends State<JobListScreen> {
                 ),
                 onChanged: (value) {
                   setState(() {
-                    searchQuery = value.toLowerCase();
+                    searchQuery = value;
                   });
                 },
               ),
             ),
+            buildRoleSuggestions(),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Row(
@@ -322,16 +354,18 @@ class _JobListScreenState extends State<JobListScreen> {
 
                       final filteredJobs = jobs.where((job) {
                         if (searchQuery.isNotEmpty &&
-                            !job.displayTitle
-                                .toLowerCase()
-                                .contains(searchQuery) &&
-                            !job.trade.toLowerCase().contains(searchQuery)) {
+                            !JobTaxonomyService.matchesJob(
+                              job,
+                              searchQuery,
+                            )) {
                           return false;
                         }
 
                         if (filters.trade != "All" &&
-                            job.trade.toLowerCase() !=
-                                filters.trade.toLowerCase()) {
+                            !JobTaxonomyService.matchesTradeFilter(
+                              job,
+                              filters.trade,
+                            )) {
                           return false;
                         }
 

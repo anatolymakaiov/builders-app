@@ -10,6 +10,7 @@ import 'dart:io';
 
 import '../models/job.dart';
 import '../services/billing_service.dart';
+import '../services/job_taxonomy_service.dart';
 import '../theme/stroyka_background.dart';
 import 'employer_profile_screen.dart';
 
@@ -47,46 +48,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
   String postcodeStatus = "";
 
   String jobType = "hourly";
-  String selectedTrade = "Bricklayer";
+  String selectedTrade = JobTaxonomyService.canonicalRoles.first;
 
   List<File> jobPhotos = [];
   List<String> existingPhotos = [];
 
   final picker = ImagePicker();
-
-  final trades = [
-    "Bricklayer",
-    "Dryliner",
-    "Carpenter",
-    "Joiner",
-    "Painter",
-    "Decorator",
-    "Plasterer",
-    "Tiler",
-    "Floor layer",
-    "Groundworker",
-    "Steel fixer",
-    "Concrete finisher",
-    "Scaffolder",
-    "Roofer",
-    "Window fitter",
-    "Door installer",
-    "Electrician",
-    "Electrical mate",
-    "Plumber",
-    "Pipe fitter",
-    "Gas engineer",
-    "HVAC engineer",
-    "Fire alarm engineer",
-    "Security engineer",
-    "Data engineer",
-    "Kitchen fitter",
-    "Bathroom fitter",
-    "Handyman",
-    "Snagger",
-    "Cleaner",
-    "Labourer"
-  ];
 
   @override
   void initState() {
@@ -109,7 +76,9 @@ class _PostJobScreenState extends State<PostJobScreen> {
       candidateRequirementsController.text = job.candidateRequirements;
       requiredDocumentsController.text = job.requiredDocuments;
 
-      selectedTrade = job.trade;
+      selectedTrade = JobTaxonomyService.bestCanonicalFor(
+        job.trade.isNotEmpty ? job.trade : job.title,
+      );
       jobType = job.jobType;
 
       existingPhotos = job.photos;
@@ -281,7 +250,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final title = selectedTrade.trim();
+    final taxonomyRole = JobTaxonomyService.bestRoleFor(selectedTrade);
+    final title = JobTaxonomyService.bestCanonicalFor(selectedTrade);
     final postcode = normalizeUKPostcode(postcodeController.text);
 
     if (title.isEmpty) {
@@ -349,7 +319,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
       "ownerId": user.uid,
       "title": title,
       "site": siteController.text.trim(),
-      "trade": selectedTrade,
+      "trade": title,
+      "roleCanonical": title,
+      "roleCategory": taxonomyRole?.category ?? "",
+      "roleAliases": taxonomyRole?.aliases ?? const <String>[],
+      "searchTerms": JobTaxonomyService.searchTermsFor(title),
       "duration": durationController.text.trim(),
       "weeklyHours": weeklyHoursController.text.trim(),
       "positions": int.tryParse(positionsController.text) ?? 1,
@@ -430,13 +404,65 @@ class _PostJobScreenState extends State<PostJobScreen> {
             padding: const EdgeInsets.all(18),
             child: Column(
               children: [
-                DropdownButtonFormField<String>(
-                  initialValue: selectedTrade,
-                  items: trades
-                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                      .toList(),
-                  onChanged: (v) => setState(() => selectedTrade = v!),
-                  decoration: const InputDecoration(labelText: "Trade"),
+                Autocomplete<ConstructionRole>(
+                  displayStringForOption: (role) => role.canonical,
+                  initialValue: TextEditingValue(text: selectedTrade),
+                  optionsBuilder: (textEditingValue) {
+                    return JobTaxonomyService.suggestions(
+                      textEditingValue.text,
+                      limit: 12,
+                    );
+                  },
+                  onSelected: (role) {
+                    setState(() => selectedTrade = role.canonical);
+                  },
+                  fieldViewBuilder: (
+                    context,
+                    textEditingController,
+                    focusNode,
+                    onFieldSubmitted,
+                  ) {
+                    return TextField(
+                      controller: textEditingController,
+                      focusNode: focusNode,
+                      decoration: const InputDecoration(
+                        labelText: "Trade / role",
+                        hintText: "Start typing, e.g. dry, fix, carp",
+                      ),
+                      onChanged: (value) {
+                        selectedTrade = value;
+                      },
+                    );
+                  },
+                  optionsViewBuilder: (context, onSelected, options) {
+                    return Align(
+                      alignment: Alignment.topLeft,
+                      child: Material(
+                        elevation: 8,
+                        borderRadius: BorderRadius.circular(12),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxHeight: 320,
+                            maxWidth: 420,
+                          ),
+                          child: ListView.builder(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            itemCount: options.length,
+                            itemBuilder: (context, index) {
+                              final role = options.elementAt(index);
+                              return ListTile(
+                                dense: true,
+                                title: Text(role.canonical),
+                                subtitle: Text(role.category),
+                                onTap: () => onSelected(role),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
                 TextField(

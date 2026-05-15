@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/job_taxonomy_service.dart';
 import '../theme/app_theme.dart';
 
 class FilterResult {
@@ -39,37 +40,7 @@ class _FilterSheetState extends State<FilterSheet> {
 
   final List<String> trades = [
     "All",
-    "Bricklayer",
-    "Dryliner",
-    "Carpenter",
-    "Joiner",
-    "Painter",
-    "Decorator",
-    "Plasterer",
-    "Tiler",
-    "Floor layer",
-    "Groundworker",
-    "Steel fixer",
-    "Concrete finisher",
-    "Scaffolder",
-    "Roofer",
-    "Window fitter",
-    "Door installer",
-    "Electrician",
-    "Electrical mate",
-    "Plumber",
-    "Pipe fitter",
-    "Gas engineer",
-    "HVAC engineer",
-    "Fire alarm engineer",
-    "Security engineer",
-    "Data engineer",
-    "Kitchen fitter",
-    "Bathroom fitter",
-    "Handyman",
-    "Snagger",
-    "Cleaner",
-    "Labourer",
+    ...JobTaxonomyService.canonicalRoles,
   ];
 
   @override
