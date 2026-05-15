@@ -16,79 +16,106 @@ class ReportService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final controller = TextEditingController();
-
     final message = await showDialog<String>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Report"),
-          content: TextField(
-            controller: controller,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: "Message",
-              hintText: "Describe the issue",
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text("Submit"),
-            ),
-          ],
-        );
-      },
+      builder: (_) => const _ReportDialog(),
     );
-
-    controller.dispose();
     if (message == null || message.isEmpty) return;
 
-    final reportRef =
-        await FirebaseFirestore.instance.collection("reports").add({
-      "fromUserId": user.uid,
-      if (againstUserId != null && againstUserId.isNotEmpty)
-        "againstUserId": againstUserId,
-      if (jobId != null && jobId.isNotEmpty) "jobId": jobId,
-      if (applicationId != null && applicationId.isNotEmpty)
-        "applicationId": applicationId,
-      if (chatId != null && chatId.isNotEmpty) "chatId": chatId,
-      "type": type,
-      "message": message,
-      "status": "open",
-      "createdAt": FieldValue.serverTimestamp(),
-      "updatedAt": FieldValue.serverTimestamp(),
-    });
+    try {
+      final reportRef =
+          await FirebaseFirestore.instance.collection("reports").add({
+        "fromUserId": user.uid,
+        if (againstUserId != null && againstUserId.isNotEmpty)
+          "againstUserId": againstUserId,
+        if (jobId != null && jobId.isNotEmpty) "jobId": jobId,
+        if (applicationId != null && applicationId.isNotEmpty)
+          "applicationId": applicationId,
+        if (chatId != null && chatId.isNotEmpty) "chatId": chatId,
+        "type": type,
+        "message": message,
+        "status": "open",
+        "createdAt": FieldValue.serverTimestamp(),
+        "updatedAt": FieldValue.serverTimestamp(),
+      });
 
-    if (againstUserId != null && againstUserId.isNotEmpty) {
-      final targetSnap = await FirebaseFirestore.instance
-          .collection("users")
-          .doc(againstUserId)
-          .get();
-      final targetRole = targetSnap.data()?["role"]?.toString() ?? "";
-      if (targetRole != "employer") {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Report submitted")),
-        );
-        return;
+      if (againstUserId != null && againstUserId.isNotEmpty) {
+        final targetSnap = await FirebaseFirestore.instance
+            .collection("users")
+            .doc(againstUserId)
+            .get();
+        final targetRole = targetSnap.data()?["role"]?.toString() ?? "";
+        if (targetRole == "employer") {
+          await NotificationService().notifyEmployerReportSubmitted(
+            employerId: againstUserId,
+            reportId: reportRef.id,
+            reportType: type,
+          );
+        }
       }
 
-      await NotificationService().notifyEmployerReportSubmitted(
-        employerId: againstUserId,
-        reportId: reportRef.id,
-        reportType: type,
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Report submitted")),
+      );
+    } catch (e) {
+      debugPrint("REPORT SUBMIT ERROR: $e");
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Could not submit report. Please try again."),
+        ),
       );
     }
+  }
+}
 
-    if (!context.mounted) return;
+class _ReportDialog extends StatefulWidget {
+  const _ReportDialog();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Report submitted")),
+  @override
+  State<_ReportDialog> createState() => _ReportDialogState();
+}
+
+class _ReportDialogState extends State<_ReportDialog> {
+  final controller = TextEditingController();
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  void submit() {
+    final message = controller.text.trim();
+    if (message.isEmpty) return;
+    Navigator.of(context).pop(message);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text("Report"),
+      content: TextField(
+        controller: controller,
+        maxLines: 4,
+        decoration: const InputDecoration(
+          labelText: "Message",
+          hintText: "Describe the issue",
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text("Cancel"),
+        ),
+        ElevatedButton(
+          onPressed: submit,
+          child: const Text("Submit"),
+        ),
+      ],
     );
   }
 }
