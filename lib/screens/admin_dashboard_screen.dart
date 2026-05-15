@@ -1505,12 +1505,24 @@ class _AdminMailAttachmentWrap extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: attachments.map((attachment) {
-        final type = attachment["type"]?.toString() ?? "";
-        final name = attachment["name"]?.toString() ?? "Attachment";
-        final url = attachment["url"]?.toString() ?? "";
+        final type =
+            (attachment["type"] ?? attachment["fileType"])?.toString().trim() ??
+                "";
+        final name =
+            (attachment["name"] ?? attachment["fileName"])?.toString().trim() ??
+                "Attachment";
+        final url =
+            (attachment["url"] ?? attachment["fileUrl"])?.toString().trim() ??
+                "";
         return ActionChip(
           avatar: Icon(_attachmentIcon(type), size: 18),
-          label: Text(name),
+          label: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 220),
+            child: Text(
+              name,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           onPressed: url.isEmpty
               ? null
               : () async {
@@ -2776,10 +2788,18 @@ class _SupportRequestsSectionState extends State<_SupportRequestsSection> {
   String categoryForSupport(Map<String, dynamic> data) {
     final type = data["type"]?.toString().toLowerCase() ?? "";
     if (type.contains("technical")) return "technical_issue";
-    if (type.contains("payment") || type.contains("billing")) return "billing";
+    if (type.contains("payment") ||
+        type.contains("billing") ||
+        type.contains("tariff") ||
+        type.contains("direct_debit") ||
+        type.contains("invoice")) {
+      return "billing";
+    }
     if (type.contains("complaint")) return "complaint";
     if (type.contains("compliance")) return "compliance";
-    if (type.contains("abuse")) return "abuse_report";
+    if (type.contains("abuse") || type.contains("safety")) {
+      return "abuse_report";
+    }
     if (type.contains("recommendation")) return "recommendation";
     return "other";
   }
@@ -2986,8 +3006,32 @@ class _SupportRequestCard extends StatelessWidget {
         return "Technical issue with app/site";
       case "job_ad_complaint":
         return "Complaint about advertisement/job post";
+      case "application_issue":
+        return "Application issue";
+      case "chat_media_issue":
+        return "Chat or media issue";
+      case "profile_account_issue":
+        return "Profile/account issue";
+      case "safety_abuse_report":
+        return "Safety or abuse report";
+      case "billing":
+        return "Billing";
       case "payment":
         return "Payment";
+      case "tariff_plan":
+        return "Tariff plan";
+      case "direct_debit":
+        return "Direct debit";
+      case "invoice":
+        return "Invoice";
+      case "job_posting_issue":
+        return "Job posting issue";
+      case "job_moderation_issue":
+        return "Job moderation issue";
+      case "worker_team_complaint":
+        return "Complaint about worker/team";
+      case "profile_company_account_issue":
+        return "Profile/company account issue";
       case "job_publishing":
       case "job publishing":
         return "Job publishing";
