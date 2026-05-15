@@ -1364,61 +1364,60 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Future<void> acceptOffer(String applicationId) async {
-    await FirebaseFirestore.instance.runTransaction((transaction) async {
-      final appRef = FirebaseFirestore.instance
+    try {
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final appRef = FirebaseFirestore.instance
+            .collection("applications")
+            .doc(applicationId);
+
+        final appSnap = await transaction.get(appRef);
+
+        if (!appSnap.exists) return;
+
+        final appData = appSnap.data() as Map<String, dynamic>;
+
+        final currentStatus = appData["status"] ?? "";
+        if (currentStatus == "accepted" || currentStatus == "offer_accepted") {
+          return;
+        }
+
+        transaction.update(appRef, {
+          "status": "offer_accepted",
+          "offerAcceptedAt": FieldValue.serverTimestamp(),
+          "acceptedByWorkerId": userId,
+          "applicationActivityAt": FieldValue.serverTimestamp(),
+          "updatedAt": FieldValue.serverTimestamp(),
+          "unreadFor": FieldValue.arrayUnion(
+            ApplicationActivityService.employerRecipients(appData),
+          ),
+        });
+      });
+
+      final appSnap = await FirebaseFirestore.instance
           .collection("applications")
-          .doc(applicationId);
-      final jobRef =
-          FirebaseFirestore.instance.collection("jobs").doc(widget.job.id);
+          .doc(applicationId)
+          .get();
+      final appData = appSnap.data();
+      final offer = appData?["offer"];
 
-      final appSnap = await transaction.get(appRef);
-      final jobSnap = await transaction.get(jobRef);
-
-      if (!appSnap.exists || !jobSnap.exists) return;
-
-      final appData = appSnap.data() as Map<String, dynamic>;
-      final jobData = jobSnap.data() as Map<String, dynamic>;
-
-      final currentStatus = appData["status"] ?? "";
-      if (currentStatus == "accepted" || currentStatus == "offer_accepted") {
-        return;
+      if (appData != null && offer is Map<String, dynamic>) {
+        await NotificationService().notifyEmployerOfferDecision(
+          applicationId: applicationId,
+          applicationData: appData,
+          status: "offer_accepted",
+        );
+        await NotificationService().scheduleWorkerStartReminders(
+          applicationId: applicationId,
+          applicationData: appData,
+          offer: offer,
+        );
+        await addOfferToCalendar(offer);
       }
-
-      final workersCount = (appData["workersCount"] as num?)?.toInt() ?? 1;
-      final filled = (jobData["filledPositions"] as num?)?.toInt() ?? 0;
-
-      transaction.update(appRef, {
-        "status": "offer_accepted",
-        "offerAcceptedAt": FieldValue.serverTimestamp(),
-        "acceptedByWorkerId": userId,
-        "applicationActivityAt": FieldValue.serverTimestamp(),
-        "updatedAt": FieldValue.serverTimestamp(),
-        "unreadFor": FieldValue.arrayUnion(
-          ApplicationActivityService.employerRecipients(appData),
-        ),
-      });
-      transaction.update(jobRef, {
-        "filledPositions": filled + workersCount,
-      });
-    });
-
-    final appSnap = await FirebaseFirestore.instance
-        .collection("applications")
-        .doc(applicationId)
-        .get();
-    final appData = appSnap.data();
-    final offer = appData?["offer"];
-
-    if (appData != null && offer is Map<String, dynamic>) {
-      await NotificationService().notifyEmployerOfferDecision(
-        applicationId: applicationId,
-        applicationData: appData,
-        status: "offer_accepted",
-      );
-      await NotificationService().scheduleWorkerStartReminders(
-        applicationId: applicationId,
-        applicationData: appData,
-        offer: offer,
+    } catch (e) {
+      debugPrint("ACCEPT OFFER ERROR: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not accept offer")),
       );
     }
   }

@@ -151,23 +151,17 @@ class ApplicationDetailsScreen extends StatelessWidget {
         final appRef = FirebaseFirestore.instance
             .collection("applications")
             .doc(applicationId);
-        final jobRef = FirebaseFirestore.instance.collection("jobs").doc(jobId);
 
         final appSnap = await transaction.get(appRef);
-        final jobSnap = await transaction.get(jobRef);
 
-        if (!appSnap.exists || !jobSnap.exists) return;
+        if (!appSnap.exists) return;
 
         final appData = appSnap.data() as Map<String, dynamic>;
-        final jobData = jobSnap.data() as Map<String, dynamic>;
         final currentStatus = appData["status"]?.toString() ?? "";
 
         if (currentStatus == "accepted" || currentStatus == "offer_accepted") {
           return;
         }
-
-        final workersCount = (appData["workersCount"] as num?)?.toInt() ?? 1;
-        final filled = (jobData["filledPositions"] as num?)?.toInt() ?? 0;
 
         transaction.update(appRef, {
           "status": "offer_accepted",
@@ -178,10 +172,6 @@ class ApplicationDetailsScreen extends StatelessWidget {
           "unreadFor": FieldValue.arrayUnion(
             ApplicationActivityService.employerRecipients(appData),
           ),
-        });
-
-        transaction.update(jobRef, {
-          "filledPositions": filled + workersCount,
         });
       });
 
@@ -203,6 +193,8 @@ class ApplicationDetailsScreen extends StatelessWidget {
             applicationData: updatedData,
             offer: offer,
           );
+          if (!context.mounted) return;
+          await addEmployerOfferToCalendar(context, updatedData);
         }
       }
     } catch (e) {
