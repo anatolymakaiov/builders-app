@@ -14,6 +14,7 @@ import '../services/notification_service.dart';
 import '../services/report_service.dart';
 import '../services/support_request_service.dart';
 import 'chat_screen.dart';
+import '../widgets/make_offer_dialog.dart';
 import '../widgets/phone_link.dart';
 import '../widgets/profile_hamburger_menu.dart';
 import '../theme/app_theme.dart';
@@ -201,196 +202,35 @@ class WorkerProfileScreen extends StatelessWidget {
         await _loadOfferPhysicalAddressFields(applicationData);
     if (!context.mounted) return;
 
-    String jobType = "hourly";
-    final rateController = TextEditingController();
-    final workPeriodController = TextEditingController();
-    final weeklyHoursController = TextEditingController();
-    final scheduleController = TextEditingController();
-    final startDateTimeController = TextEditingController();
-    final siteAddressController = TextEditingController(
-      text: physicalAddressFields["siteAddress"] ?? "",
-    );
-    final firstDayRequirementsController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final validUntilController = TextEditingController();
-
-    Widget offerTextField({
-      required TextEditingController controller,
-      required String label,
-      String? hint,
-      TextInputType? keyboardType,
-      int maxLines = 1,
-    }) {
-      return TextField(
-        controller: controller,
-        keyboardType: keyboardType,
-        maxLines: maxLines,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          border: const StroykaInputBorder(),
-        ),
-      );
-    }
-
-    final result = await showDialog<bool>(
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text("Make offer"),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      DropdownButtonFormField<String>(
-                        initialValue: jobType,
-                        decoration: const InputDecoration(
-                          labelText: "Work format",
-                          hintText: "Daywork, price, negotiable",
-                          border: StroykaInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: "hourly",
-                            child: Text("Daywork"),
-                          ),
-                          DropdownMenuItem(
-                            value: "price",
-                            child: Text("Price"),
-                          ),
-                          DropdownMenuItem(
-                            value: "negotiable",
-                            child: Text("Negotiable"),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) return;
-                          setDialogState(() => jobType = value);
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      offerTextField(
-                        controller: rateController,
-                        label: jobType == "price" ? "Price (£)" : "Rate (£)",
-                        hint: jobType == "price"
-                            ? "Total project price"
-                            : "Hourly or day rate",
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 12),
-                      offerTextField(
-                        controller: workPeriodController,
-                        label: "Work period",
-                        hint: "2 weeks, 3 months, ongoing",
-                      ),
-                      const SizedBox(height: 12),
-                      offerTextField(
-                        controller: weeklyHoursController,
-                        label: "Hours per week",
-                        hint: "40",
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 12),
-                      offerTextField(
-                        controller: scheduleController,
-                        label: "Work schedule",
-                        hint: "7:00-17:00, 1 hour break",
-                      ),
-                      const SizedBox(height: 12),
-                      offerTextField(
-                        controller: startDateTimeController,
-                        label: "Start date and time",
-                        hint: "Monday 12 May, 7:00",
-                      ),
-                      const SizedBox(height: 12),
-                      offerTextField(
-                        controller: siteAddressController,
-                        label: "Site address",
-                        hint: "Full construction site address",
-                      ),
-                      const SizedBox(height: 12),
-                      offerTextField(
-                        controller: firstDayRequirementsController,
-                        label: "Required on first day",
-                        hint: "Documents, certifications, tools, PPE, etc.",
-                        maxLines: 2,
-                      ),
-                      const SizedBox(height: 12),
-                      offerTextField(
-                        controller: descriptionController,
-                        label: "Offer description",
-                        hint: "Additional conditions, notes, or expectations",
-                        maxLines: 3,
-                      ),
-                      const SizedBox(height: 12),
-                      offerTextField(
-                        controller: validUntilController,
-                        label: "Offer valid until",
-                        hint: "Friday 16 May, 18:00",
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (startDateTimeController.text.trim().isEmpty ||
-                        siteAddressController.text.trim().isEmpty) {
-                      return;
-                    }
-                    Navigator.pop(context, true);
-                  },
-                  child: const Text("Send offer"),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (_) => MakeOfferDialog(
+        physicalAddressFields: physicalAddressFields,
+      ),
     );
 
-    if (result != true) {
-      rateController.dispose();
-      workPeriodController.dispose();
-      weeklyHoursController.dispose();
-      scheduleController.dispose();
-      startDateTimeController.dispose();
-      siteAddressController.dispose();
-      firstDayRequirementsController.dispose();
-      descriptionController.dispose();
-      validUntilController.dispose();
-      return;
-    }
+    if (result == null) return;
 
     try {
       final offer = {
-        "jobType": jobType,
-        "workFormat": _jobTypeLabel(jobType),
-        "rate": rateController.text.trim(),
-        "workPeriod": workPeriodController.text.trim(),
-        "weeklyHours": weeklyHoursController.text.trim(),
-        "schedule": scheduleController.text.trim(),
-        "startDateTime": startDateTimeController.text.trim(),
+        "jobType": result["jobType"],
+        "workFormat": _jobTypeLabel(result["jobType"]?.toString() ?? "hourly"),
+        "rate": result["rate"],
+        "workPeriod": result["workPeriod"],
+        "weeklyHours": result["weeklyHours"],
+        "schedule": result["schedule"],
+        "startDateTime": result["startDateTime"],
         "siteStreet": physicalAddressFields["siteStreet"],
         "siteCity": physicalAddressFields["siteCity"],
         "sitePostcode": physicalAddressFields["sitePostcode"],
         "siteCounty": physicalAddressFields["siteCounty"],
-        "siteAddress": siteAddressController.text.trim(),
-        "fullAddress": siteAddressController.text.trim(),
-        "firstDayRequirements": firstDayRequirementsController.text.trim(),
-        "description": descriptionController.text.trim(),
-        "validUntil": validUntilController.text.trim(),
-        "startDate": startDateTimeController.text.trim(),
-        "message": descriptionController.text.trim(),
+        "siteAddress": result["siteAddress"],
+        "fullAddress": result["siteAddress"],
+        "firstDayRequirements": result["firstDayRequirements"],
+        "description": result["description"],
+        "validUntil": result["validUntil"],
+        "startDate": result["startDateTime"],
+        "message": result["description"],
         "createdAt": FieldValue.serverTimestamp(),
       };
       final notificationOffer = Map<String, dynamic>.from(offer)
@@ -408,16 +248,12 @@ class WorkerProfileScreen extends StatelessWidget {
         applicationData: applicationData,
         offer: notificationOffer,
       );
-    } finally {
-      rateController.dispose();
-      workPeriodController.dispose();
-      weeklyHoursController.dispose();
-      scheduleController.dispose();
-      startDateTimeController.dispose();
-      siteAddressController.dispose();
-      firstDayRequirementsController.dispose();
-      descriptionController.dispose();
-      validUntilController.dispose();
+    } catch (e) {
+      debugPrint("MAKE OFFER ERROR: $e");
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not send offer")),
+      );
     }
   }
 
