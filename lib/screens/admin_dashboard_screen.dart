@@ -2044,8 +2044,11 @@ class _PaymentRequestCard extends StatelessWidget {
             fallbackIcon: Icons.business_outlined,
           ),
           chips: [
-            _ReportMetaChip(label: "Plan", value: data["planId"]),
-            _ReportMetaChip(label: "Employer", value: employerId),
+            _ReportMetaChip(label: "Plan", value: planName),
+            _ReportMetaChip(
+              label: "Payment",
+              value: BillingService.formatLabel(paymentMode),
+            ),
           ],
           onTap: () async {
             await ref.set({
@@ -2328,10 +2331,15 @@ class _AdminRequestListCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: unread
-              ? AppColors.blueprintLine.withValues(alpha: 0.16)
+              ? AppColors.surface.withValues(alpha: 0.99)
               : AppColors.surface.withValues(alpha: 0.96),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.95)),
+          border: Border.all(
+            color: unread
+                ? AppColors.green.withValues(alpha: 0.72)
+                : Colors.white.withValues(alpha: 0.95),
+            width: unread ? 1.4 : 1,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.10),
@@ -2345,6 +2353,17 @@ class _AdminRequestListCard extends StatelessWidget {
           children: [
             Row(
               children: [
+                if (unread) ...[
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: AppColors.green,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
                 if (leading != null) ...[
                   leading!,
                   const SizedBox(width: 12),
@@ -3096,7 +3115,8 @@ class _SupportRequestCard extends StatelessWidget {
       date: createdAt,
       chips: [
         _ReportMetaChip(label: "Topic", value: supportTypeLabel(data)),
-        _ReportMetaChip(label: "Type", value: type),
+        if ((data["attachments"] as List?)?.isNotEmpty == true)
+          const _ReportMetaChip(label: "Files", value: "Attached"),
       ],
       onTap: () async {
         await ref.set({
@@ -4406,11 +4426,8 @@ class _ReportCard extends StatelessWidget {
       date: createdAt,
       chips: [
         _ReportMetaChip(label: "Topic", value: type),
-        _ReportMetaChip(label: "From", value: data["fromUserId"]),
-        _ReportMetaChip(label: "Against", value: data["againstUserId"]),
-        _ReportMetaChip(label: "Job", value: data["jobId"]),
-        _ReportMetaChip(label: "Application", value: data["applicationId"]),
-        _ReportMetaChip(label: "Chat", value: data["chatId"]),
+        if ((data["attachments"] as List?)?.isNotEmpty == true)
+          const _ReportMetaChip(label: "Files", value: "Attached"),
       ],
       onTap: () async {
         await ref.set({
