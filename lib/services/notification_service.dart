@@ -142,6 +142,49 @@ class NotificationService {
         .add(payload);
   }
 
+  Future<void> markApplicationNotificationsRead({
+    required String userId,
+    required String applicationId,
+  }) async {
+    if (userId.trim().isEmpty || applicationId.trim().isEmpty) return;
+
+    final snapshot = await _db
+        .collection("users")
+        .doc(userId)
+        .collection("notifications")
+        .where("read", isEqualTo: false)
+        .get();
+
+    final batch = _db.batch();
+    var hasUpdates = false;
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final ids = [
+        data["applicationId"],
+        data["relatedApplicationId"],
+        data["targetId"],
+      ].map((value) => value?.toString().trim()).where(
+            (value) => value != null && value.isNotEmpty && value != "null",
+          );
+
+      if (!ids.contains(applicationId)) continue;
+
+      batch.set(
+          doc.reference,
+          {
+            "read": true,
+            "readAt": FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true));
+      hasUpdates = true;
+    }
+
+    if (hasUpdates) {
+      await batch.commit();
+    }
+  }
+
   String? _defaultTargetType({
     required String type,
     String? applicationId,

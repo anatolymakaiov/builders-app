@@ -1788,6 +1788,15 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           .snapshots(),
       builder: (context, snapshot) {
         final appData = snapshot.data?.data();
+        final currentUserId = userId;
+        if (currentUserId != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            NotificationService().markApplicationNotificationsRead(
+              userId: currentUserId,
+              applicationId: applicationId,
+            );
+          });
+        }
         return buildWorkerJobActionHeaderContent(applicationId, appData);
       },
     );

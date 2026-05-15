@@ -1179,6 +1179,10 @@ class ApplicationDetailsScreen extends StatelessWidget {
                   applicationId,
                   currentUserId,
                 );
+                NotificationService().markApplicationNotificationsRead(
+                  userId: currentUserId,
+                  applicationId: applicationId,
+                );
               });
             }
 
