@@ -38,6 +38,14 @@ service cloud.firestore {
       return signedIn() && uid() == userId;
     }
 
+    function isAdminMailParticipant(data) {
+      return signedIn()
+        && (
+          data.senderId == uid()
+          || data.receiverId == uid()
+        );
+    }
+
     function jobPath(jobId) {
       return /databases/$(database)/documents/jobs/$(jobId);
     }
@@ -180,11 +188,24 @@ service cloud.firestore {
     }
 
     match /admin_messages/{messageId} {
-      allow read, create, update, delete: if isAdmin();
+      allow read: if isAdmin() || isAdminMailParticipant(resource.data);
+      allow create: if isAdmin()
+        || (
+          signedIn()
+          && request.resource.data.senderId == uid()
+          && request.resource.data.receiverId == "admin"
+        );
+      allow update: if isAdmin() || isAdminMailParticipant(resource.data);
+      allow delete: if isAdmin();
     }
 
     match /message_threads/{threadId} {
-      allow read, create, update, delete: if isAdmin();
+      allow read: if isAdmin()
+        || (signedIn() && uid() in resource.data.participants);
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (signedIn() && uid() in resource.data.participants);
+      allow delete: if isAdmin();
     }
 
     match /message_attachments/{attachmentId} {

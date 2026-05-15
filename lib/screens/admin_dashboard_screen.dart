@@ -508,8 +508,11 @@ Future<String> _createAdminMailMessage({
     "message": message.trim(),
     "type": "admin_message",
     "readByAdmin": normalizedDirection == "outgoing",
+    "readByReceiver": normalizedDirection == "incoming",
     "important": false,
     "deletedByAdmin": false,
+    "deletedByReceiver": false,
+    "deletedBySender": false,
     "attachments": attachments,
     "hasAttachments": attachments.isNotEmpty,
     if (relatedTargetType != null) "relatedTargetType": relatedTargetType,
@@ -556,6 +559,8 @@ Future<String> _createAdminMailMessage({
       "title": subject.trim(),
       "message": message.trim(),
       "type": "admin_message",
+      "targetType": "admin_message",
+      "targetId": threadRef.id,
       "audience": receiverRole,
       "read": false,
       "threadId": threadRef.id,
@@ -570,6 +575,25 @@ Future<String> _createAdminMailMessage({
       "targetUserId": receiverId,
       "recipientCount": 1,
     });
+    batch.set(
+      firestore
+          .collection("users")
+          .doc(receiverId)
+          .collection("notifications")
+          .doc(),
+      {
+        "userId": receiverId,
+        "type": "admin_message",
+        "targetType": "admin_message",
+        "targetId": threadRef.id,
+        "threadId": threadRef.id,
+        "adminMessageId": messageRef.id,
+        "title": subject.trim(),
+        "message": message.trim(),
+        "read": false,
+        "createdAt": now,
+      },
+    );
   }
 
   batch.set(

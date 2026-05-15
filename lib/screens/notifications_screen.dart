@@ -11,6 +11,7 @@ import '../models/job.dart';
 import '../services/calendar_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/profile_hamburger_menu.dart';
 
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
@@ -321,7 +322,7 @@ class NotificationsScreen extends StatelessWidget {
     if (type == "support" || cleanId(data["relatedSupportRequestId"]) != null) {
       return "support_request";
     }
-    if (type == "admin_message") return "notification";
+    if (type == "admin_message") return "admin_message";
     if (type == "application" ||
         type == "application_status" ||
         type == "offer" ||
@@ -421,7 +422,28 @@ class NotificationsScreen extends StatelessWidget {
         break;
       case "support_request":
       case "report":
+        openNotificationDetails(context, data);
+        return;
       case "admin_message":
+        final currentUser = FirebaseAuth.instance.currentUser;
+        final threadId = cleanId(data["threadId"] ?? targetId);
+        final messageId = cleanId(data["adminMessageId"]);
+        if (currentUser != null && threadId != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AdminInboxMessageScreen(
+                userId: currentUser.uid,
+                role: role ?? "",
+                threadId: threadId,
+                initialMessageId: messageId ?? threadId,
+              ),
+            ),
+          );
+          return;
+        }
+        openNotificationDetails(context, data);
+        return;
       case "notification":
         openNotificationDetails(context, data);
         return;
