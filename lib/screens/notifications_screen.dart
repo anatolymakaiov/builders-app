@@ -479,6 +479,11 @@ class NotificationsScreen extends StatelessWidget {
     final added = await CalendarService.addOfferToCalendar(
       title: title,
       offer: offer,
+      fallbackLocation:
+          (data["jobAddress"] ?? data["jobLocation"] ?? data["siteAddress"])
+              ?.toString(),
+      workerName: data["workerName"]?.toString(),
+      contactInfo: data["contactInfo"]?.toString(),
     );
 
     if (!context.mounted) return;

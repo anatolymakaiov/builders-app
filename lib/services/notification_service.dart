@@ -266,9 +266,32 @@ class NotificationService {
             : applicationData["teamName"]?.toString().trim().isNotEmpty == true
                 ? applicationData["teamName"].toString().trim()
                 : "Worker";
+    Map<String, dynamic> workerProfile = {};
+    if (workerId != null && workerId.isNotEmpty) {
+      try {
+        final workerDoc = await _db.collection("users").doc(workerId).get();
+        workerProfile = workerDoc.data() ?? {};
+      } catch (_) {
+        workerProfile = {};
+      }
+    }
+    final workerPhone =
+        (applicationData["workerPhone"] ?? workerProfile["phone"])
+                ?.toString()
+                .trim() ??
+            "";
+    final workerEmail =
+        (applicationData["workerEmail"] ?? workerProfile["email"])
+                ?.toString()
+                .trim() ??
+            "";
     final startDate =
         (offer["startDateTime"] ?? offer["startDate"])?.toString().trim() ?? "";
     final jobAddress = _offerAddress(offer, applicationData);
+    final contactInfo = [
+      if (workerPhone.isNotEmpty) workerPhone,
+      if (workerEmail.isNotEmpty) workerEmail,
+    ].join(" / ");
 
     await sendEmployerNotification(
       employerId: employerId,
@@ -293,7 +316,13 @@ class NotificationService {
           "startDateTime": startDate,
         },
         if (jobTitle.isNotEmpty) "jobTitle": jobTitle,
+        if (jobTitle.isNotEmpty) "position": jobTitle,
         if (jobAddress.isNotEmpty) "jobAddress": jobAddress,
+        if (jobAddress.isNotEmpty) "jobLocation": jobAddress,
+        if (jobAddress.isNotEmpty) "siteAddress": jobAddress,
+        if (workerPhone.isNotEmpty) "workerPhone": workerPhone,
+        if (workerEmail.isNotEmpty) "workerEmail": workerEmail,
+        if (contactInfo.isNotEmpty) "contactInfo": contactInfo,
         if (offer.isNotEmpty) "offer": offer,
       },
     );

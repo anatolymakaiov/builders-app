@@ -5,6 +5,7 @@ import 'chat_screen.dart';
 import 'job_list_screen.dart';
 import 'worker_profile_screen.dart';
 import '../services/application_activity_service.dart';
+import '../services/calendar_service.dart';
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/phone_link.dart';
@@ -210,6 +211,53 @@ class ApplicationDetailsScreen extends StatelessWidget {
         const SnackBar(content: Text("Could not accept offer")),
       );
     }
+  }
+
+  Future<void> addEmployerOfferToCalendar(
+    BuildContext context,
+    Map<String, dynamic> source,
+  ) async {
+    final offerRaw = source["offer"];
+    if (offerRaw is! Map) return;
+
+    final offer = Map<String, dynamic>.from(offerRaw);
+    final jobTitle = source["jobTitle"]?.toString().trim().isNotEmpty == true
+        ? source["jobTitle"].toString().trim()
+        : "Construction job";
+    final workerName =
+        source["workerName"]?.toString().trim().isNotEmpty == true
+            ? source["workerName"].toString().trim()
+            : source["teamName"]?.toString().trim().isNotEmpty == true
+                ? source["teamName"].toString().trim()
+                : "Worker";
+    final location = (source["jobAddress"] ??
+            source["jobLocation"] ??
+            source["siteAddress"] ??
+            source["fullAddress"])
+        ?.toString();
+    final contactInfo = [
+      source["workerPhone"]?.toString().trim() ?? "",
+      source["workerEmail"]?.toString().trim() ?? "",
+    ].where((value) => value.isNotEmpty).join(" / ");
+
+    final added = await CalendarService.addOfferToCalendar(
+      title: "$jobTitle - $workerName",
+      offer: offer,
+      fallbackLocation: location,
+      workerName: workerName,
+      contactInfo: contactInfo.isEmpty ? null : contactInfo,
+    );
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          added
+              ? "Offer added to calendar"
+              : "Enter the start date in a calendar-readable format",
+        ),
+      ),
+    );
   }
 
   Future<void> withdrawWorkerApplication(BuildContext context) async {
@@ -1327,6 +1375,12 @@ class ApplicationDetailsScreen extends StatelessWidget {
                     icon: Icons.chat_bubble_outline,
                     label: "Message",
                     run: () => openChat(context, liveData),
+                  ),
+                  (
+                    danger: false,
+                    icon: Icons.calendar_month_outlined,
+                    label: "Add to Calendar",
+                    run: () => addEmployerOfferToCalendar(context, liveData),
                   ),
                 ];
               }

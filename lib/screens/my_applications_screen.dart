@@ -33,6 +33,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       case "negotiation":
         return Colors.purple;
       case "rejected":
+      case "offer_rejected":
         return Colors.red;
       default:
         return AppColors.ink;
@@ -57,7 +58,10 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       case "negotiation":
         return normalizedStatus == "negotiation";
       case "offer":
-        return normalizedStatus == "offer_sent";
+        return normalizedStatus == "offer_sent" ||
+            normalizedStatus == "offer_accepted" ||
+            normalizedStatus == "accepted" ||
+            normalizedStatus == "offer_rejected";
       case "rejected":
         return normalizedStatus == "rejected";
       default:
@@ -103,6 +107,8 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       case "accepted":
       case "offer_accepted":
         return "OFFER ACCEPTED";
+      case "offer_rejected":
+        return "OFFER REJECTED";
       case "rejected":
         return "REJECTED";
       default:

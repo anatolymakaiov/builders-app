@@ -44,6 +44,7 @@ class CalendarService {
     String? fallbackLocation,
     String? employerName,
     String? workerName,
+    String? contactInfo,
   }) async {
     final start = parseOfferDate(offer["startDateTime"] ?? offer["startDate"]);
     if (start == null) return false;
@@ -59,6 +60,7 @@ class CalendarService {
         offer,
         employerName: employerName,
         workerName: workerName,
+        contactInfo: contactInfo,
       ),
       location:
           location == null || location.isEmpty ? fallbackLocation : location,
@@ -74,6 +76,7 @@ class CalendarService {
     Map<String, dynamic> offer, {
     String? employerName,
     String? workerName,
+    String? contactInfo,
   }) {
     final rows = <String>[];
 
@@ -84,6 +87,7 @@ class CalendarService {
 
     add("Employer / company", employerName);
     add("Worker", workerName);
+    add("Contact", contactInfo);
     add("Work format", offer["workFormat"]);
     add("Rate / price", offer["rate"]);
     add("Work period", offer["workPeriod"]);

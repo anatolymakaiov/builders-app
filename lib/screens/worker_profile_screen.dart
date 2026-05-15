@@ -8,6 +8,7 @@ import 'team_details_screen.dart';
 
 import 'edit_profile_screen.dart';
 import '../services/application_activity_service.dart';
+import '../services/calendar_service.dart';
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../services/report_service.dart';
@@ -1297,6 +1298,53 @@ class WorkerProfileScreen extends StatelessWidget {
           );
         }
 
+        Future<void> addAcceptedOfferToCalendar() async {
+          final offerRaw = applicationData["offer"];
+          if (offerRaw is! Map) return;
+
+          final offer = Map<String, dynamic>.from(offerRaw);
+          final jobTitle =
+              applicationData["jobTitle"]?.toString().trim().isNotEmpty == true
+                  ? applicationData["jobTitle"].toString().trim()
+                  : "Construction job";
+          final workerName =
+              applicationData["workerName"]?.toString().trim().isNotEmpty ==
+                      true
+                  ? applicationData["workerName"].toString().trim()
+                  : applicationData["teamName"]?.toString().trim().isNotEmpty ==
+                          true
+                      ? applicationData["teamName"].toString().trim()
+                      : "Worker";
+          final location = (applicationData["jobAddress"] ??
+                  applicationData["jobLocation"] ??
+                  applicationData["siteAddress"] ??
+                  applicationData["fullAddress"])
+              ?.toString();
+          final contactInfo = [
+            applicationData["workerPhone"]?.toString().trim() ?? "",
+            applicationData["workerEmail"]?.toString().trim() ?? "",
+          ].where((value) => value.isNotEmpty).join(" / ");
+
+          final added = await CalendarService.addOfferToCalendar(
+            title: "$jobTitle - $workerName",
+            offer: offer,
+            fallbackLocation: location,
+            workerName: workerName,
+            contactInfo: contactInfo.isEmpty ? null : contactInfo,
+          );
+
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                added
+                    ? "Offer added to calendar"
+                    : "Enter the start date in a calendar-readable format",
+              ),
+            ),
+          );
+        }
+
         List<
             ({
               bool danger,
@@ -1392,6 +1440,23 @@ class WorkerProfileScreen extends StatelessWidget {
                 icon: Icons.undo,
                 label: "Withdraw Offer",
                 run: () => updateStatus("offer_withdrawn"),
+              ),
+            ];
+          }
+
+          if (status == "offer_accepted" || status == "accepted") {
+            return [
+              (
+                danger: false,
+                icon: Icons.chat_bubble_outline,
+                label: "Message",
+                run: () => openMessage(startNegotiation: false),
+              ),
+              (
+                danger: false,
+                icon: Icons.calendar_month_outlined,
+                label: "Add to Calendar",
+                run: addAcceptedOfferToCalendar,
               ),
             ];
           }
