@@ -420,6 +420,9 @@ class ApplicationDetailsScreen extends StatelessWidget {
         "weeklyHours": result["weeklyHours"],
         "schedule": result["schedule"],
         "startDateTime": result["startDateTime"],
+        if (result["startDateTimestamp"] is DateTime)
+          "startDateTimestamp":
+              Timestamp.fromDate(result["startDateTimestamp"] as DateTime),
         "siteStreet": physicalAddressFields["siteStreet"],
         "siteCity": physicalAddressFields["siteCity"],
         "sitePostcode": physicalAddressFields["sitePostcode"],
@@ -429,6 +432,9 @@ class ApplicationDetailsScreen extends StatelessWidget {
         "firstDayRequirements": result["firstDayRequirements"],
         "description": result["description"],
         "validUntil": result["validUntil"],
+        if (result["validUntilTimestamp"] is DateTime)
+          "validUntilTimestamp":
+              Timestamp.fromDate(result["validUntilTimestamp"] as DateTime),
         // Backward-compatible fields used by the worker screens.
         "startDate": result["startDateTime"],
         "message": result["description"],

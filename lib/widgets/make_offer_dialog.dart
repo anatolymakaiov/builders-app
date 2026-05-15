@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'stroyka_date_time_field.dart';
 
 class MakeOfferDialog extends StatefulWidget {
   final Map<String, String> physicalAddressFields;
@@ -20,11 +21,11 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
   late final TextEditingController workPeriodController;
   late final TextEditingController weeklyHoursController;
   late final TextEditingController scheduleController;
-  late final TextEditingController startDateTimeController;
   late final TextEditingController siteAddressController;
   late final TextEditingController firstDayRequirementsController;
   late final TextEditingController descriptionController;
-  late final TextEditingController validUntilController;
+  StroykaDateTimeValue startDateTime = const StroykaDateTimeValue();
+  StroykaDateTimeValue validUntil = const StroykaDateTimeValue();
 
   @override
   void initState() {
@@ -33,13 +34,11 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
     workPeriodController = TextEditingController();
     weeklyHoursController = TextEditingController();
     scheduleController = TextEditingController();
-    startDateTimeController = TextEditingController();
     siteAddressController = TextEditingController(
       text: widget.physicalAddressFields["siteAddress"] ?? "",
     );
     firstDayRequirementsController = TextEditingController();
     descriptionController = TextEditingController();
-    validUntilController = TextEditingController();
   }
 
   @override
@@ -48,11 +47,9 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
     workPeriodController.dispose();
     weeklyHoursController.dispose();
     scheduleController.dispose();
-    startDateTimeController.dispose();
     siteAddressController.dispose();
     firstDayRequirementsController.dispose();
     descriptionController.dispose();
-    validUntilController.dispose();
     super.dispose();
   }
 
@@ -76,7 +73,8 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
   }
 
   void submit() {
-    if (startDateTimeController.text.trim().isEmpty ||
+    if (startDateTime.dateTime == null ||
+        startDateTime.time == null ||
         siteAddressController.text.trim().isEmpty) {
       return;
     }
@@ -87,11 +85,14 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
       "workPeriod": workPeriodController.text.trim(),
       "weeklyHours": weeklyHoursController.text.trim(),
       "schedule": scheduleController.text.trim(),
-      "startDateTime": startDateTimeController.text.trim(),
+      "startDateTime": startDateTime.displayText,
+      "startDateTimestamp": startDateTime.dateTime,
       "siteAddress": siteAddressController.text.trim(),
       "firstDayRequirements": firstDayRequirementsController.text.trim(),
       "description": descriptionController.text.trim(),
-      "validUntil": validUntilController.text.trim(),
+      "validUntil": validUntil.displayText,
+      if (validUntil.dateTime != null)
+        "validUntilTimestamp": validUntil.dateTime,
     });
   }
 
@@ -160,10 +161,11 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
                 hint: "7:00-17:00, 1 hour break",
               ),
               const SizedBox(height: 12),
-              offerTextField(
-                controller: startDateTimeController,
+              StroykaDateTimeField(
                 label: "Start date and time",
-                hint: "Monday 12 May, 7:00",
+                value: startDateTime,
+                firstDate: DateTime.now(),
+                onChanged: (value) => setState(() => startDateTime = value),
               ),
               const SizedBox(height: 12),
               offerTextField(
@@ -186,10 +188,11 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
                 maxLines: 3,
               ),
               const SizedBox(height: 12),
-              offerTextField(
-                controller: validUntilController,
+              StroykaDateTimeField(
                 label: "Offer valid until",
-                hint: "Friday 16 May, 18:00",
+                value: validUntil,
+                firstDate: DateTime.now(),
+                onChanged: (value) => setState(() => validUntil = value),
               ),
             ],
           ),

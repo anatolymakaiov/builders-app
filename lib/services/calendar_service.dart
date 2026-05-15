@@ -1,7 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:add_2_calendar/add_2_calendar.dart';
 
 class CalendarService {
   static DateTime? parseOfferDate(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+
     final text = value?.toString().trim();
     if (text == null || text.isEmpty) return null;
 
@@ -46,7 +50,11 @@ class CalendarService {
     String? workerName,
     String? contactInfo,
   }) async {
-    final start = parseOfferDate(offer["startDateTime"] ?? offer["startDate"]);
+    final start = parseOfferDate(
+      offer["startDateTimestamp"] ??
+          offer["startDateTime"] ??
+          offer["startDate"],
+    );
     if (start == null) return false;
 
     final hours = int.tryParse(offer["weeklyHours"]?.toString() ?? "");
