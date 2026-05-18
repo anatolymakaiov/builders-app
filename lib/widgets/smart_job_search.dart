@@ -462,102 +462,126 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
   @override
   Widget build(BuildContext context) {
     final noResults = controller.text.trim().isNotEmpty && suggestions.isEmpty;
+    final media = MediaQuery.of(context);
+    final maxHeight = media.size.height * 0.88;
+    final keyboardBottom = media.viewInsets.bottom;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "Enter position or company you want to find",
-            style: TextStyle(
-              color: AppColors.ink,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 14),
-          if (widget.showJobScopeToggle) ...[
-            JobScopeToggle(
-              showOnlyMyJobs: showOnlyMyJobs,
-              onChanged: (value) => setState(() => showOnlyMyJobs = value),
-            ),
-            const SizedBox(height: 12),
-          ],
-          TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: AppInputFields.decoration(
-              hint: "Search role or company",
-              icon: Icons.search,
-            ).copyWith(
-              suffixIcon: _FilterIconButton(
-                count: filters.activeCount,
-                onPressed: _openFilters,
-              ),
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-          if (selectedRoles.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
+    return SafeArea(
+      top: false,
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(bottom: keyboardBottom),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final role in selectedRoles)
-                  _SearchChip(
-                    label: role.canonical,
-                    onDeleted: () => setState(() => selectedRoles.remove(role)),
+                const Text(
+                  "Enter position or company you want to find",
+                  style: TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
                   ),
+                ),
+                const SizedBox(height: 14),
+                if (widget.showJobScopeToggle) ...[
+                  JobScopeToggle(
+                    showOnlyMyJobs: showOnlyMyJobs,
+                    onChanged: (value) =>
+                        setState(() => showOnlyMyJobs = value),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                Flexible(
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextField(
+                          controller: controller,
+                          autofocus: true,
+                          decoration: AppInputFields.decoration(
+                            hint: "Search role or company",
+                            icon: Icons.search,
+                          ).copyWith(
+                            suffixIcon: _FilterIconButton(
+                              count: filters.activeCount,
+                              onPressed: _openFilters,
+                            ),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                        if (selectedRoles.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              for (final role in selectedRoles)
+                                _SearchChip(
+                                  label: role.canonical,
+                                  onDeleted: () => setState(
+                                    () => selectedRoles.remove(role),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOut,
+                          child: suggestions.isEmpty
+                              ? const SizedBox.shrink()
+                              : _SuggestionPanel(
+                                  suggestions: suggestions,
+                                  onSelected: _select,
+                                ),
+                        ),
+                        if (noResults)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 8, left: 4),
+                            child: Text(
+                              "Check spelling or try another trade",
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(
+                        context,
+                        SmartJobSearchValue(
+                          roles: selectedRoles,
+                          query: controller.text.trim(),
+                          filters: filters,
+                          showOnlyMyJobs: showOnlyMyJobs,
+                        ),
+                      );
+                    },
+                    child: Text("Show $resultCount jobs"),
+                  ),
+                ),
               ],
             ),
-          ],
-          AnimatedSize(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            child: suggestions.isEmpty
-                ? const SizedBox.shrink()
-                : _SuggestionPanel(
-                    suggestions: suggestions,
-                    onSelected: _select,
-                  ),
           ),
-          if (noResults)
-            const Padding(
-              padding: EdgeInsets.only(top: 8, left: 4),
-              child: Text(
-                "Check spelling or try another trade",
-                style: TextStyle(
-                  color: AppColors.muted,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(
-                  context,
-                  SmartJobSearchValue(
-                    roles: selectedRoles,
-                    query: controller.text.trim(),
-                    filters: filters,
-                    showOnlyMyJobs: showOnlyMyJobs,
-                  ),
-                );
-              },
-              child: Text("Show $resultCount jobs"),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

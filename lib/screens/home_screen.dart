@@ -393,24 +393,25 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: const Icon(Icons.add),
                         )
                       : null,
-                  bottomNavigationBar: Container(
-                    margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.deep.withValues(alpha: 0.92),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: AppColors.blueprintLine.withValues(alpha: 0.25),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.34),
-                          blurRadius: 24,
-                          offset: const Offset(0, 12),
+                  bottomNavigationBar: SafeArea(
+                    top: false,
+                    minimum: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.deep.withValues(alpha: 0.92),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color:
+                              AppColors.blueprintLine.withValues(alpha: 0.25),
                         ),
-                      ],
-                    ),
-                    child: SafeArea(
-                      top: false,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.34),
+                            blurRadius: 24,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
+                      ),
                       child: BottomNavigationBar(
                         currentIndex: currentIndex,
                         items: items,
