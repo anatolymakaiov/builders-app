@@ -260,48 +260,77 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DropdownButtonFormField<String>(
-                initialValue: selectedType,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: "Type"),
-                selectedItemBuilder: (context) {
-                  return widget.requestTypes.values.map((label) {
-                    return Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        label,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+              const Text(
+                "Type",
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              ...widget.requestTypes.entries.map((entry) {
+                final selected = selectedType == entry.key;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: submitting
+                        ? null
+                        : () => setState(() => selectedType = entry.key),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 140),
+                      curve: Curves.easeOut,
+                      width: double.infinity,
+                      constraints: const BoxConstraints(minHeight: 48),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 11,
                       ),
-                    );
-                  }).toList();
-                },
-                items: widget.requestTypes.entries
-                    .map(
-                      (entry) => DropdownMenuItem(
-                        value: entry.key,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: dialogWidth - 96,
-                          ),
-                          child: Text(
-                            entry.value,
-                            softWrap: true,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.08)
+                            : Colors.white.withValues(alpha: 0.72),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: selected
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.black.withValues(alpha: 0.16),
+                          width: selected ? 1.4 : 1,
                         ),
                       ),
-                    )
-                    .toList(),
-                onChanged: submitting
-                    ? null
-                    : (value) {
-                        if (value == null || !mounted) return;
-                        setState(() => selectedType = value);
-                      },
-              ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Icon(
+                            selected
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked,
+                            size: 20,
+                            color: selected
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.black.withValues(alpha: 0.45),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              entry.value,
+                              softWrap: true,
+                              style: TextStyle(
+                                fontWeight: selected
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                                height: 1.25,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
               const SizedBox(height: 12),
               TextField(
                 controller: controller,
