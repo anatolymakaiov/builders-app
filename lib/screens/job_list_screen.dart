@@ -7,9 +7,9 @@ import 'package:test_app/services/job_repository.dart';
 import '../models/job.dart';
 import '../services/job_taxonomy_service.dart';
 import 'filter_sheet.dart';
-import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/job_card.dart';
+import '../widgets/smart_job_search.dart';
 
 enum SortType {
   nearest,
@@ -39,8 +39,9 @@ class _JobListScreenState extends State<JobListScreen> {
     distance: 50,
   );
 
-  final searchController = TextEditingController();
   String searchQuery = "";
+  List<ConstructionRole> selectedRoles = [];
+  JobSearchFilters searchFilters = const JobSearchFilters();
 
   @override
   void initState() {
@@ -83,20 +84,6 @@ class _JobListScreenState extends State<JobListScreen> {
     );
 
     return meters / 1609.34;
-  }
-
-  Future<void> openFilters() async {
-    final result = await showModalBottomSheet<FilterResult>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => FilterSheet(current: filters),
-    );
-
-    if (result != null) {
-      setState(() {
-        filters = result;
-      });
-    }
   }
 
   Future<void> saveJobAlert() async {
@@ -172,59 +159,6 @@ class _JobListScreenState extends State<JobListScreen> {
     await jobRepository.toggleSaveJob(user.uid, job.id, isSaved);
   }
 
-  Widget buildSortButton(SortType type, String label, IconData icon) {
-    final selected = sortType == type;
-
-    return Expanded(
-      child: CustomPaint(
-        painter: BlueprintDecorationPainter(
-          fillColor: selected
-              ? AppColors.green.withValues(alpha: 0.95)
-              : AppColors.surface.withValues(alpha: 0.96),
-          lineColor: selected ? AppColors.greenDark : AppColors.blueprintLine,
-          gridColor: selected ? Colors.white : AppColors.blueprintLine,
-          radius: 8,
-          subtle: true,
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () {
-              setState(() {
-                sortType = type;
-              });
-            },
-            child: SizedBox(
-              height: 52,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    icon,
-                    size: 18,
-                    color: selected ? Colors.white : AppColors.ink,
-                  ),
-                  const SizedBox(width: 10),
-                  Flexible(
-                    child: Text(
-                      label,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: selected ? Colors.white : AppColors.ink,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget buildJobCard(Job job, bool isSaved) {
     final distance = calculateDistance(job.lat, job.lng);
     return JobCard(
@@ -243,36 +177,6 @@ class _JobListScreenState extends State<JobListScreen> {
     );
   }
 
-  Widget buildRoleSuggestions() {
-    final suggestions = JobTaxonomyService.suggestions(searchQuery, limit: 6);
-    if (searchQuery.trim().isEmpty || suggestions.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return SizedBox(
-      height: 42,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        scrollDirection: Axis.horizontal,
-        itemCount: suggestions.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final role = suggestions[index];
-          return ActionChip(
-            label: Text(role.canonical),
-            avatar: const Icon(Icons.work_outline, size: 16),
-            onPressed: () {
-              setState(() {
-                searchController.text = role.canonical;
-                searchQuery = role.canonical;
-              });
-            },
-          );
-        },
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -286,55 +190,11 @@ class _JobListScreenState extends State<JobListScreen> {
             icon: const Icon(Icons.notifications_active),
             onPressed: saveJobAlert,
           ),
-          IconButton(
-            icon: const Icon(Icons.filter_alt),
-            onPressed: openFilters,
-          ),
         ],
       ),
       body: StroykaScreenBody(
         child: Column(
           children: [
-            /// SEARCH
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: TextField(
-                controller: searchController,
-                decoration: InputDecoration(
-                  hintText: "Search jobs",
-                  prefixIcon: const Icon(Icons.search),
-                  border: StroykaInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onChanged: (value) {
-                  setState(() {
-                    searchQuery = value;
-                  });
-                },
-              ),
-            ),
-            buildRoleSuggestions(),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  buildSortButton(
-                    SortType.nearest,
-                    "Distance",
-                    Icons.near_me_outlined,
-                  ),
-                  const SizedBox(width: 8),
-                  buildSortButton(
-                    SortType.highestPay,
-                    "Pay",
-                    Icons.payments_outlined,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 4),
-
             Expanded(
               child: StreamBuilder<Set<String>>(
                 stream: userId == null
@@ -352,12 +212,35 @@ class _JobListScreenState extends State<JobListScreen> {
 
                       final jobs = snapshot.data!;
 
+                      final searchField = SmartJobSearchField(
+                        selectedRoles: selectedRoles,
+                        query: searchQuery,
+                        filters: searchFilters,
+                        jobs: jobs,
+                        distanceForJob: (job) => calculateDistance(
+                          job.lat,
+                          job.lng,
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            selectedRoles = value.roles;
+                            searchQuery = value.query;
+                            searchFilters = value.filters;
+                          });
+                        },
+                      );
+
                       final filteredJobs = jobs.where((job) {
-                        if (searchQuery.isNotEmpty &&
-                            !JobTaxonomyService.matchesJob(
-                              job,
-                              searchQuery,
-                            )) {
+                        if (!jobMatchesSearch(
+                          job,
+                          roles: selectedRoles,
+                          query: searchQuery,
+                          filters: searchFilters,
+                          distanceForJob: (job) => calculateDistance(
+                            job.lat,
+                            job.lng,
+                          ),
+                        )) {
                           return false;
                         }
 
@@ -395,16 +278,23 @@ class _JobListScreenState extends State<JobListScreen> {
                                 .compareTo(a.createdAt ?? DateTime.now()));
                       }
 
-                      return ListView.builder(
-                        itemCount: filteredJobs.length,
-                        itemBuilder: (context, index) {
-                          final job = filteredJobs[index];
+                      return Column(
+                        children: [
+                          searchField,
+                          Expanded(
+                            child: ListView.builder(
+                              itemCount: filteredJobs.length,
+                              itemBuilder: (context, index) {
+                                final job = filteredJobs[index];
 
-                          return buildJobCard(
-                            job,
-                            savedJobIds.contains(job.id),
-                          );
-                        },
+                                return buildJobCard(
+                                  job,
+                                  savedJobIds.contains(job.id),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       );
                     },
                   );

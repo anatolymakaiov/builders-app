@@ -8,8 +8,10 @@ import 'job_details_screen.dart';
 import '../services/job_repository.dart';
 import '../services/notification_service.dart';
 import '../services/billing_service.dart';
+import '../services/job_taxonomy_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/smart_job_search.dart';
 
 class EmployerDashboardScreen extends StatefulWidget {
   const EmployerDashboardScreen({super.key});
@@ -23,6 +25,9 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   final jobRepository = JobRepository();
   String selectedTrade = "All";
   String selectedSite = "All";
+  String searchQuery = "";
+  List<ConstructionRole> selectedRoles = [];
+  JobSearchFilters searchFilters = const JobSearchFilters();
 
   Widget buildCompanyAvatar(Job job, Map<String, dynamic>? employerData) {
     final avatarUrl = job.companyLogo ??
@@ -539,31 +544,13 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
 
             final jobs = snapshot.data!;
 
-            final tradeSet = <String>{};
-            final siteSet = <String>{};
-
-            for (var job in jobs) {
-              if (job.trade.isNotEmpty) tradeSet.add(job.trade);
-              if (job.site.isNotEmpty) siteSet.add(job.site);
-            }
-
-            final tradeList = ["All", ...tradeSet];
-            final siteList = ["All", ...siteSet];
-
             final filteredJobs = jobs.where((job) {
-              if (selectedTrade != "All" &&
-                  job.trade.toLowerCase().trim() !=
-                      selectedTrade.toLowerCase().trim()) {
-                return false;
-              }
-
-              if (selectedSite != "All" &&
-                  job.site.toLowerCase().trim() !=
-                      selectedSite.toLowerCase().trim()) {
-                return false;
-              }
-
-              return true;
+              return jobMatchesSearch(
+                job,
+                roles: selectedRoles,
+                query: searchQuery,
+                filters: searchFilters,
+              );
             }).toList();
 
             return StreamBuilder<DocumentSnapshot>(
@@ -577,7 +564,20 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
 
                 return Column(
                   children: [
-                    buildFilterPanel(tradeList, siteList),
+                    SmartJobSearchField(
+                      selectedRoles: selectedRoles,
+                      query: searchQuery,
+                      filters: searchFilters,
+                      jobs: jobs,
+                      hintText: "Search my jobs",
+                      onChanged: (value) {
+                        setState(() {
+                          selectedRoles = value.roles;
+                          searchQuery = value.query;
+                          searchFilters = value.filters;
+                        });
+                      },
+                    ),
                     Expanded(
                       child: ListView.builder(
                         itemCount: filteredJobs.length,

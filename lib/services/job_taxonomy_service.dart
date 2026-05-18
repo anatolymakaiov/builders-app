@@ -16,6 +16,8 @@ class ConstructionRole {
     yield category;
     yield* aliases;
   }
+
+  String get canonicalRoleId => JobTaxonomyService.roleIdFor(canonical);
 }
 
 class JobTaxonomyService {
@@ -32,13 +34,17 @@ class JobTaxonomyService {
         "dry liner",
         "dry lining boarder",
         "drywall installer",
-        "partition installer"
+        "partition installer",
+        "dryliner fixer",
+        "drywall fixer",
+        "fixer",
+        "fix"
       ],
     ),
     ConstructionRole(
       canonical: "Drylining Fixer",
       category: "Drylining",
-      aliases: ["dryliner fixer", "drywall fixer", "fixer", "fix"],
+      aliases: ["dry lining fixer", "board fixer"],
     ),
     ConstructionRole(
       canonical: "Ceiling Fixer",
@@ -784,6 +790,10 @@ class JobTaxonomyService {
   static List<String> get canonicalRoles =>
       roles.map((role) => role.canonical).toList(growable: false);
 
+  static String roleIdFor(String value) {
+    return normalise(value).replaceAll(" ", "_");
+  }
+
   static String normalise(String value) {
     return value
         .toLowerCase()
@@ -796,6 +806,9 @@ class JobTaxonomyService {
   static ConstructionRole? roleFor(String value) {
     final query = normalise(value);
     if (query.isEmpty) return null;
+
+    final override = _canonicalOverride(query);
+    if (override != null) return override;
 
     for (final role in roles) {
       if (role.searchableTerms.any((term) => normalise(term) == query)) {
@@ -837,11 +850,17 @@ class JobTaxonomyService {
   }) {
     final normalisedQuery = normalise(query);
     if (normalisedQuery.isEmpty) return roles.take(limit).toList();
+    final override = _canonicalOverride(normalisedQuery);
 
     final scored = roles.map((role) {
       final score = _scoreRole(role, normalisedQuery);
       return (role: role, score: score);
     }).where((item) {
+      if (override != null &&
+          item.role.canonical == "Drylining Fixer" &&
+          override.canonical == "Dryliner") {
+        return false;
+      }
       return item.score < 9999;
     }).toList()
       ..sort((a, b) => a.score.compareTo(b.score));
@@ -860,9 +879,13 @@ class JobTaxonomyService {
     if (normalisedQuery.isEmpty) return true;
 
     final values = [
+      job.canonicalRoleName,
+      job.canonicalRoleId,
+      job.originalEmployerInput,
       job.title,
       job.trade,
       job.displayTitle,
+      job.companyName,
       job.site,
       job.location,
       job.fullAddress,
@@ -874,6 +897,29 @@ class JobTaxonomyService {
 
     return _scoreRoleForValue("${job.title} ${job.trade}", normalisedQuery) <
         9999;
+  }
+
+  static bool matchesAnyRole(Job job, Iterable<ConstructionRole> roles) {
+    final selected = roles.toList(growable: false);
+    if (selected.isEmpty) return true;
+
+    final jobRole = bestCanonicalFor(
+      [
+        job.canonicalRoleName,
+        job.trade,
+        job.title,
+        job.originalEmployerInput,
+      ].where((value) => value.trim().isNotEmpty).join(" "),
+    );
+
+    final jobRoleId = roleIdFor(
+      job.canonicalRoleId.trim().isNotEmpty ? job.canonicalRoleId : jobRole,
+    );
+
+    return selected.any((role) {
+      return roleIdFor(role.canonical) == jobRoleId ||
+          normalise(role.canonical) == normalise(jobRole);
+    });
   }
 
   static bool matchesTradeFilter(Job job, String filter) {
@@ -897,6 +943,22 @@ class JobTaxonomyService {
     final exactRole = roleFor(value);
     if (exactRole != null) return _scoreRole(exactRole, query);
     return _termScore(normalise(value), query);
+  }
+
+  static ConstructionRole? _canonicalOverride(String query) {
+    const drylinerAliases = {
+      "fix",
+      "fixer",
+      "dryliner fixer",
+      "drylining fixer",
+      "drywall fixer",
+    };
+
+    if (drylinerAliases.contains(query)) {
+      return roles.firstWhere((role) => role.canonical == "Dryliner");
+    }
+
+    return null;
   }
 
   static int _termScore(String term, String query) {

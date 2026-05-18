@@ -12,6 +12,7 @@ import '../models/job.dart';
 import '../services/billing_service.dart';
 import '../services/job_taxonomy_service.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/smart_job_search.dart';
 import 'employer_profile_screen.dart';
 
 class PostJobScreen extends StatefulWidget {
@@ -252,6 +253,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
     final taxonomyRole = JobTaxonomyService.bestRoleFor(selectedTrade);
     final title = JobTaxonomyService.bestCanonicalFor(selectedTrade);
+    final canonicalRoleId = JobTaxonomyService.roleIdFor(title);
     final postcode = normalizeUKPostcode(postcodeController.text);
 
     if (title.isEmpty) {
@@ -320,7 +322,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
       "title": title,
       "site": siteController.text.trim(),
       "trade": title,
+      "canonicalRoleId": canonicalRoleId,
+      "canonicalRoleName": title,
+      "originalEmployerInput": selectedTrade.trim(),
       "roleCanonical": title,
+      "roleCanonicalId": canonicalRoleId,
       "roleCategory": taxonomyRole?.category ?? "",
       "roleAliases": taxonomyRole?.aliases ?? const <String>[],
       "searchTerms": JobTaxonomyService.searchTermsFor(title),
@@ -404,64 +410,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
             padding: const EdgeInsets.all(18),
             child: Column(
               children: [
-                Autocomplete<ConstructionRole>(
-                  displayStringForOption: (role) => role.canonical,
-                  initialValue: TextEditingValue(text: selectedTrade),
-                  optionsBuilder: (textEditingValue) {
-                    return JobTaxonomyService.suggestions(
-                      textEditingValue.text,
-                      limit: 12,
-                    );
-                  },
+                SmartRolePickerField(
+                  initialValue: selectedTrade,
+                  onChanged: (value) => selectedTrade = value,
                   onSelected: (role) {
                     setState(() => selectedTrade = role.canonical);
-                  },
-                  fieldViewBuilder: (
-                    context,
-                    textEditingController,
-                    focusNode,
-                    onFieldSubmitted,
-                  ) {
-                    return TextField(
-                      controller: textEditingController,
-                      focusNode: focusNode,
-                      decoration: const InputDecoration(
-                        labelText: "Trade / role",
-                        hintText: "Start typing, e.g. dry, fix, carp",
-                      ),
-                      onChanged: (value) {
-                        selectedTrade = value;
-                      },
-                    );
-                  },
-                  optionsViewBuilder: (context, onSelected, options) {
-                    return Align(
-                      alignment: Alignment.topLeft,
-                      child: Material(
-                        elevation: 8,
-                        borderRadius: BorderRadius.circular(12),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            maxHeight: 320,
-                            maxWidth: 420,
-                          ),
-                          child: ListView.builder(
-                            padding: EdgeInsets.zero,
-                            shrinkWrap: true,
-                            itemCount: options.length,
-                            itemBuilder: (context, index) {
-                              final role = options.elementAt(index);
-                              return ListTile(
-                                dense: true,
-                                title: Text(role.canonical),
-                                subtitle: Text(role.category),
-                                onTap: () => onSelected(role),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    );
                   },
                 ),
                 const SizedBox(height: 12),
