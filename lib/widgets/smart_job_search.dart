@@ -884,7 +884,7 @@ class JobScopeToggle extends StatelessWidget {
             onTap: () => onChanged(false),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 14),
         Expanded(
           child: _JobScopeButton(
             label: "My jobs",
