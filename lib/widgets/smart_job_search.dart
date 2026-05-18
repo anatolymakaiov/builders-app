@@ -73,6 +73,7 @@ class SmartJobSearchField extends StatelessWidget {
   final bool showJobScopeToggleInField;
   final bool showOnlyMyJobs;
   final String? currentUserId;
+  final bool showFilterButton;
 
   const SmartJobSearchField({
     super.key,
@@ -86,6 +87,7 @@ class SmartJobSearchField extends StatelessWidget {
     bool? showJobScopeToggleInField,
     this.showOnlyMyJobs = false,
     this.currentUserId,
+    this.showFilterButton = true,
   }) : showJobScopeToggleInField =
             showJobScopeToggleInField ?? showJobScopeToggle;
 
@@ -175,10 +177,11 @@ class SmartJobSearchField extends StatelessWidget {
                     ],
                   ),
                 ),
-                _FilterIconButton(
-                  count: filters.activeCount,
-                  onPressed: () => _openFilters(context),
-                ),
+                if (showFilterButton)
+                  _FilterIconButton(
+                    count: filters.activeCount,
+                    onPressed: () => _openFilters(context),
+                  ),
               ],
             ),
           ),
@@ -200,6 +203,7 @@ class SmartJobSearchField extends StatelessWidget {
         showJobScopeToggle: showJobScopeToggle,
         showOnlyMyJobs: showOnlyMyJobs,
         currentUserId: currentUserId,
+        showFilterButton: showFilterButton,
       ),
     );
 
@@ -367,6 +371,7 @@ class _SmartSearchModal extends StatefulWidget {
   final bool showJobScopeToggle;
   final bool showOnlyMyJobs;
   final String? currentUserId;
+  final bool showFilterButton;
 
   const _SmartSearchModal({
     required this.initialRoles,
@@ -376,6 +381,7 @@ class _SmartSearchModal extends StatefulWidget {
     this.showJobScopeToggle = false,
     this.showOnlyMyJobs = false,
     this.currentUserId,
+    this.showFilterButton = true,
   });
 
   @override
@@ -512,10 +518,12 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
                             hint: "Search role or company",
                             icon: Icons.search,
                           ).copyWith(
-                            suffixIcon: _FilterIconButton(
-                              count: filters.activeCount,
-                              onPressed: _openFilters,
-                            ),
+                            suffixIcon: widget.showFilterButton
+                                ? _FilterIconButton(
+                                    count: filters.activeCount,
+                                    onPressed: _openFilters,
+                                  )
+                                : null,
                           ),
                           onChanged: (_) => setState(() {}),
                         ),

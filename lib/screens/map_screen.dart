@@ -8,9 +8,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/job.dart';
 import 'job_details_screen.dart';
 import '../services/job_repository.dart';
+import '../services/job_taxonomy_service.dart';
 import '../theme/app_theme.dart';
-import '../theme/stroyka_background.dart';
 import '../widgets/job_card.dart';
+import '../widgets/smart_job_search.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -39,17 +40,17 @@ class _MapScreenState extends State<MapScreen> {
   Job? selectedJob;
 
   List<Job> allJobs = [];
+  List<Job> currentVisibleJobs = [];
 
   LatLngBounds? mapBounds;
   LatLngBounds? searchBounds;
 
   bool panelOpen = true;
   bool showSearchButton = false;
+  bool showUserLocationMarker = false;
 
-  String tradeFilter = "All";
-  String sortBy = "distance";
-
-  final trades = ["All", "Bricklayer", "Dryliner", "Painter", "Labourer"];
+  List<ConstructionRole> selectedRoles = [];
+  String searchQuery = "";
 
   @override
   void initState() {
@@ -65,9 +66,9 @@ class _MapScreenState extends State<MapScreen> {
 
       int index = (offset / 170).round();
 
-      if (index < 0 || index >= allJobs.length) return;
+      if (index < 0 || index >= currentVisibleJobs.length) return;
 
-      final job = allJobs[index];
+      final job = currentVisibleJobs[index];
 
       mapController.move(
         LatLng(job.lat, job.lng),
@@ -197,35 +198,15 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   List<Job> applyFilters(List<Job> jobs) {
-    List<Job> result = jobs;
-
-    if (tradeFilter != "All") {
-      result = result.where((job) {
-        return job.trade.toLowerCase() == tradeFilter.toLowerCase();
-      }).toList();
-    }
-
-    if (sortBy == "distance") {
-      result.sort((a, b) {
-        final d1 = calculateDistance(a.lat, a.lng);
-        final d2 = calculateDistance(b.lat, b.lng);
-
-        return d1.compareTo(d2);
-      });
-    }
-
-    if (sortBy == "rate") {
-      result.sort((a, b) => b.rate.compareTo(a.rate));
-    }
-
-    if (sortBy == "newest") {
-      result.sort((a, b) {
-        final aDate = a.createdAt ?? DateTime(2000);
-        final bDate = b.createdAt ?? DateTime(2000);
-
-        return bDate.compareTo(aDate);
-      });
-    }
+    final result = jobs.where((job) {
+      return jobMatchesSearch(
+        job,
+        roles: selectedRoles,
+        query: searchQuery,
+        filters: const JobSearchFilters(),
+        originJobs: allJobs,
+      );
+    }).toList();
 
     if (selectedJobId != null) {
       result.sort((a, b) {
@@ -238,33 +219,47 @@ class _MapScreenState extends State<MapScreen> {
     return result;
   }
 
-  Marker buildUserMarker() {
-    if (isEmployer) {
-      return const Marker(
-        point: LatLng(0, 0),
-        width: 0,
-        height: 0,
-        child: SizedBox(),
-      );
-    }
-
-    if (userLat == null || userLng == null) {
-      return const Marker(
-        point: LatLng(0, 0),
-        width: 0,
-        height: 0,
-        child: SizedBox(),
-      );
-    }
+  Marker? buildUserMarker() {
+    if (isEmployer || !showUserLocationMarker) return null;
+    if (userLat == null || userLng == null) return null;
 
     return Marker(
-      width: 40,
-      height: 40,
+      width: 122,
+      height: 58,
       point: LatLng(userLat!, userLng!),
-      child: const Icon(
-        Icons.my_location,
-        size: 36,
-        color: AppColors.green,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.green,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.20),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Text(
+              "Your Location",
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const Icon(
+            Icons.my_location,
+            size: 26,
+            color: AppColors.green,
+          ),
+        ],
       ),
     );
   }
@@ -291,7 +286,11 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  Widget buildMap(LatLng center, List<Marker> markers) {
+  Widget buildMap(
+    LatLng center,
+    List<Marker> jobMarkers,
+    Marker? userMarker,
+  ) {
     return FlutterMap(
       mapController: mapController,
       options: MapOptions(
@@ -321,7 +320,7 @@ class _MapScreenState extends State<MapScreen> {
         ),
         MarkerClusterLayerWidget(
           options: MarkerClusterLayerOptions(
-            markers: markers,
+            markers: jobMarkers,
             maxClusterRadius: 120,
             size: const Size(40, 40),
             onClusterTap: (cluster) {
@@ -350,6 +349,7 @@ class _MapScreenState extends State<MapScreen> {
             },
           ),
         ),
+        if (userMarker != null) MarkerLayer(markers: [userMarker]),
       ],
     );
   }
@@ -389,67 +389,21 @@ class _MapScreenState extends State<MapScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: StroykaSurface(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        borderRadius: BorderRadius.circular(12),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: tradeFilter,
-                            isExpanded: true,
-                            items: trades.map((trade) {
-                              return DropdownMenuItem(
-                                value: trade,
-                                child: Text(trade),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                tradeFilter = value!;
-                              });
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: StroykaSurface(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        borderRadius: BorderRadius.circular(12),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: sortBy,
-                            isExpanded: true,
-                            items: const [
-                              DropdownMenuItem(
-                                value: "distance",
-                                child: Text("Distance"),
-                              ),
-                              DropdownMenuItem(
-                                value: "rate",
-                                child: Text("Pay"),
-                              ),
-                              DropdownMenuItem(
-                                value: "newest",
-                                child: Text("Newest"),
-                              ),
-                            ],
-                            onChanged: (value) {
-                              setState(() {
-                                sortBy = value!;
-                              });
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              SmartJobSearchField(
+                selectedRoles: selectedRoles,
+                query: searchQuery,
+                filters: const JobSearchFilters(),
+                jobs: allJobs,
+                hintText: "Search jobs on map",
+                showFilterButton: false,
+                onChanged: (value) {
+                  setState(() {
+                    selectedRoles = value.roles;
+                    searchQuery = value.query;
+                    selectedJobId = null;
+                    selectedJob = null;
+                  });
+                },
               ),
               Expanded(
                 child: ListView.builder(
@@ -529,13 +483,14 @@ class _MapScreenState extends State<MapScreen> {
           }
 
           visibleJobs = applyFilters(visibleJobs);
+          currentVisibleJobs = visibleJobs;
 
-          final markers = <Marker>[];
+          final jobMarkers = <Marker>[];
 
           for (int i = 0; i < visibleJobs.length; i++) {
             final job = visibleJobs[i];
 
-            markers.add(
+            jobMarkers.add(
               Marker(
                 width: 80,
                 height: 40,
@@ -570,7 +525,7 @@ class _MapScreenState extends State<MapScreen> {
             );
           }
 
-          markers.add(buildUserMarker());
+          final userMarker = buildUserMarker();
 
           final center = userLat != null
               ? LatLng(userLat!, userLng!)
@@ -578,7 +533,7 @@ class _MapScreenState extends State<MapScreen> {
 
           return Stack(
             children: [
-              buildMap(center, markers),
+              buildMap(center, jobMarkers, userMarker),
               if (showSearchButton)
                 Positioned(
                   top: 10,
@@ -608,6 +563,9 @@ class _MapScreenState extends State<MapScreen> {
                         mini: true,
                         onPressed: () {
                           if (userLat == null || userLng == null) return;
+                          setState(() {
+                            showUserLocationMarker = true;
+                          });
                           mapController.move(
                             LatLng(userLat!, userLng!),
                             15,
