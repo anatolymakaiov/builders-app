@@ -543,7 +543,13 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("My Jobs"),
+        title: SizedBox(
+          width: 220,
+          child: JobScopeToggle(
+            showOnlyMyJobs: showOnlyMyJobs,
+            onChanged: (value) => setState(() => showOnlyMyJobs = value),
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -609,6 +615,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                           jobs: jobs,
                           hintText: "Search jobs",
                           showJobScopeToggle: true,
+                          showJobScopeToggleInField: false,
                           showOnlyMyJobs: showOnlyMyJobs,
                           currentUserId: ownerId,
                           onChanged: (value) {

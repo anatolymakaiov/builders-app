@@ -69,6 +69,7 @@ class SmartJobSearchField extends StatelessWidget {
   final String hintText;
   final double Function(Job job)? distanceForJob;
   final bool showJobScopeToggle;
+  final bool showJobScopeToggleInField;
   final bool showOnlyMyJobs;
   final String? currentUserId;
 
@@ -82,9 +83,11 @@ class SmartJobSearchField extends StatelessWidget {
     this.hintText = "Search position or company",
     this.distanceForJob,
     this.showJobScopeToggle = false,
+    bool? showJobScopeToggleInField,
     this.showOnlyMyJobs = false,
     this.currentUserId,
-  });
+  }) : showJobScopeToggleInField =
+            showJobScopeToggleInField ?? showJobScopeToggle;
 
   List<Job> _jobsForScope(bool onlyMine) {
     if (!onlyMine || currentUserId == null) return jobs;
@@ -98,8 +101,8 @@ class SmartJobSearchField extends StatelessWidget {
       padding: const EdgeInsets.all(8),
       child: Column(
         children: [
-          if (showJobScopeToggle) ...[
-            _JobScopeToggle(
+          if (showJobScopeToggleInField) ...[
+            JobScopeToggle(
               showOnlyMyJobs: showOnlyMyJobs,
               onChanged: (value) {
                 onChanged(
@@ -484,7 +487,7 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
           ),
           const SizedBox(height: 14),
           if (widget.showJobScopeToggle) ...[
-            _JobScopeToggle(
+            JobScopeToggle(
               showOnlyMyJobs: showOnlyMyJobs,
               onChanged: (value) => setState(() => showOnlyMyJobs = value),
             ),
@@ -860,11 +863,12 @@ class _SearchChip extends StatelessWidget {
   }
 }
 
-class _JobScopeToggle extends StatelessWidget {
+class JobScopeToggle extends StatelessWidget {
   final bool showOnlyMyJobs;
   final ValueChanged<bool> onChanged;
 
-  const _JobScopeToggle({
+  const JobScopeToggle({
+    super.key,
     required this.showOnlyMyJobs,
     required this.onChanged,
   });
@@ -874,7 +878,7 @@ class _JobScopeToggle extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: _ScopeButton(
+          child: _JobScopeButton(
             label: "All jobs",
             selected: !showOnlyMyJobs,
             onTap: () => onChanged(false),
@@ -882,7 +886,7 @@ class _JobScopeToggle extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: _ScopeButton(
+          child: _JobScopeButton(
             label: "My jobs",
             selected: showOnlyMyJobs,
             onTap: () => onChanged(true),
@@ -893,12 +897,12 @@ class _JobScopeToggle extends StatelessWidget {
   }
 }
 
-class _ScopeButton extends StatelessWidget {
+class _JobScopeButton extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _ScopeButton({
+  const _JobScopeButton({
     required this.label,
     required this.selected,
     required this.onTap,
