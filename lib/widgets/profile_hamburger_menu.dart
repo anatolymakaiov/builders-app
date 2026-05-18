@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../screens/edit_profile_screen.dart';
 import '../screens/login_screen.dart';
@@ -196,23 +197,44 @@ class ProfileHamburgerMenu extends StatelessWidget {
                       );
                     },
                   ),
-                  _MenuTile(
-                    icon: Icons.mark_email_unread_outlined,
-                    title: "Inbox from Admin",
-                    onTap: () {
-                      Navigator.pop(context);
-                      if (uid == null) return;
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => AdminInboxScreen(
-                            userId: uid,
-                            role: role,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                  if (uid == null)
+                    _MenuTile(
+                      icon: Icons.mark_email_unread_outlined,
+                      title: "Inbox from Admin",
+                      onTap: () {},
+                    )
+                  else
+                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection("admin_messages")
+                          .where("receiverId", isEqualTo: uid)
+                          .where("readByReceiver", isEqualTo: false)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        final unread = snapshot.data?.docs
+                                .where((doc) =>
+                                    doc.data()["deletedByReceiver"] != true)
+                                .length ??
+                            0;
+                        return _MenuTile(
+                          icon: Icons.mark_email_unread_outlined,
+                          title: "Inbox from Admin",
+                          badgeCount: unread,
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => AdminInboxScreen(
+                                  userId: uid,
+                                  role: role,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
                   _MenuTile(
                     icon: Icons.info_outline,
                     title: "About App",
@@ -260,12 +282,14 @@ class _MenuTile extends StatelessWidget {
   final String title;
   final VoidCallback onTap;
   final bool danger;
+  final int badgeCount;
 
   const _MenuTile({
     required this.icon,
     required this.title,
     required this.onTap,
     this.danger = false,
+    this.badgeCount = 0,
   });
 
   @override
@@ -281,6 +305,12 @@ class _MenuTile extends StatelessWidget {
           fontWeight: FontWeight.w800,
         ),
       ),
+      trailing: badgeCount > 0
+          ? Badge.count(
+              count: badgeCount,
+              backgroundColor: AppColors.danger,
+            )
+          : null,
       onTap: onTap,
     );
   }
@@ -1059,6 +1089,26 @@ String _userAdminMailTimeLabel(DateTime? date) {
   return "${date.day.toString().padLeft(2, "0")}/${date.month.toString().padLeft(2, "0")}";
 }
 
+IconData _userAdminMailAttachmentIcon(String type) {
+  final normalized = type.toLowerCase();
+  if (normalized.contains("image") ||
+      ["jpg", "jpeg", "png", "gif", "webp"].contains(normalized)) {
+    return Icons.image_outlined;
+  }
+  if (normalized.contains("pdf")) return Icons.picture_as_pdf_outlined;
+  if (normalized.contains("doc")) return Icons.description_outlined;
+  if (normalized.contains("video") || normalized == "mp4") {
+    return Icons.video_file_outlined;
+  }
+  if (normalized.contains("audio") || normalized == "mp3") {
+    return Icons.audio_file_outlined;
+  }
+  if (normalized.contains("zip") || normalized.contains("archive")) {
+    return Icons.folder_zip_outlined;
+  }
+  return Icons.attach_file;
+}
+
 class _UserAdminMailRow extends StatelessWidget {
   final _UserAdminMailThread thread;
   final String userId;
@@ -1093,6 +1143,10 @@ class _UserAdminMailRow extends StatelessWidget {
           for (final ref in thread.unreadRefs) {
             await _markUserAdminMailRead(ref);
           }
+          await _markUserAdminMailNotificationsRead(
+            userId: userId,
+            threadId: data["threadId"]?.toString() ?? thread.latestDoc.id,
+          );
         }
         if (!context.mounted) return;
         Navigator.push(
@@ -1228,6 +1282,14 @@ class AdminInboxMessageScreen extends StatelessWidget {
   });
 
   Future<void> reply(BuildContext context, Map<String, dynamic> source) async {
+    if (source["canReply"] == false) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Informational message. Reply is not available."),
+        ),
+      );
+      return;
+    }
     final controller = TextEditingController();
     final message = await showDialog<String>(
       context: context,
@@ -1370,6 +1432,7 @@ class AdminInboxMessageScreen extends StatelessWidget {
                   if (doc.id == initialMessageId) selectedDoc = doc;
                 }
                 final selectedData = selectedDoc.data();
+                final canReply = selectedData["canReply"] != false;
 
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
@@ -1414,6 +1477,16 @@ class AdminInboxMessageScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (!canReply) ...[
+                      const SizedBox(height: 10),
+                      const StroykaSurface(
+                        padding: EdgeInsets.all(12),
+                        child: Text(
+                          "Informational message. Reply is not available.",
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     ...docs.map((doc) => _UserAdminMailMessageCard(
                           doc: doc,
@@ -1519,10 +1592,27 @@ class _UserAdminMailMessageCard extends StatelessWidget {
                 final name = (attachment["name"] ?? attachment["fileName"])
                         ?.toString() ??
                     "Attachment";
+                final type = (attachment["type"] ?? attachment["fileType"])
+                        ?.toString()
+                        .trim() ??
+                    "";
+                final url = (attachment["url"] ?? attachment["fileUrl"])
+                        ?.toString()
+                        .trim() ??
+                    "";
                 return ActionChip(
-                  avatar: const Icon(Icons.attach_file, size: 18),
+                  avatar: Icon(_userAdminMailAttachmentIcon(type), size: 18),
                   label: Text(name, overflow: TextOverflow.ellipsis),
-                  onPressed: null,
+                  onPressed: url.isEmpty
+                      ? null
+                      : () async {
+                          final uri = Uri.tryParse(url);
+                          if (uri == null) return;
+                          await launchUrl(
+                            uri,
+                            mode: LaunchMode.externalApplication,
+                          );
+                        },
                 );
               }).toList(),
             ),
@@ -1550,6 +1640,7 @@ class _UserAdminMailThreadMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canReply = source["canReply"] != false;
     return PopupMenuButton<String>(
       tooltip: "Mail actions",
       icon: const Icon(Icons.more_horiz, color: AppColors.ink),
@@ -1572,16 +1663,17 @@ class _UserAdminMailThreadMenu extends StatelessWidget {
           if (context.mounted) Navigator.pop(context);
         }
       },
-      itemBuilder: (context) => const [
-        PopupMenuItem(
-          value: "reply",
-          child: ListTile(
-            leading: Icon(Icons.reply),
-            title: Text("Reply"),
-            dense: true,
+      itemBuilder: (context) => [
+        if (canReply)
+          const PopupMenuItem(
+            value: "reply",
+            child: ListTile(
+              leading: Icon(Icons.reply),
+              title: Text("Reply"),
+              dense: true,
+            ),
           ),
-        ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: "forward",
           child: ListTile(
             leading: Icon(Icons.forward),
@@ -1589,7 +1681,7 @@ class _UserAdminMailThreadMenu extends StatelessWidget {
             dense: true,
           ),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: "unread",
           child: ListTile(
             leading: Icon(Icons.mark_email_unread_outlined),
@@ -1597,7 +1689,7 @@ class _UserAdminMailThreadMenu extends StatelessWidget {
             dense: true,
           ),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: "delete",
           child: ListTile(
             leading: Icon(Icons.delete_outline),
@@ -1704,6 +1796,32 @@ Future<void> _deleteUserAdminMail(
     data["senderId"] == userId ? "deletedBySender" : "deletedByReceiver": true,
     "deletedAt": FieldValue.serverTimestamp(),
   }, SetOptions(merge: true));
+}
+
+Future<void> _markUserAdminMailNotificationsRead({
+  required String userId,
+  required String threadId,
+}) async {
+  if (userId.trim().isEmpty || threadId.trim().isEmpty) return;
+  final snapshot = await FirebaseFirestore.instance
+      .collection("users")
+      .doc(userId)
+      .collection("notifications")
+      .where("read", isEqualTo: false)
+      .where("threadId", isEqualTo: threadId)
+      .get();
+  if (snapshot.docs.isEmpty) return;
+  final batch = FirebaseFirestore.instance.batch();
+  for (final doc in snapshot.docs) {
+    batch.set(
+        doc.reference,
+        {
+          "read": true,
+          "readAt": FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true));
+  }
+  await batch.commit();
 }
 
 class AboutAppScreen extends StatelessWidget {

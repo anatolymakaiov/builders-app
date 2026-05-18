@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 
@@ -433,6 +433,169 @@ Future<String?> _askAdminReply(
   return result;
 }
 
+class _AdminReplyDraft {
+  final String message;
+  final List<Map<String, dynamic>> attachments;
+
+  const _AdminReplyDraft({
+    required this.message,
+    required this.attachments,
+  });
+}
+
+Future<_AdminReplyDraft?> _askAdminReplyWithAttachments(
+  BuildContext context, {
+  required String title,
+  required String label,
+  String? hint,
+  bool requiredMessage = false,
+}) async {
+  final controller = TextEditingController();
+  final attachments = <PlatformFile>[];
+  String? errorText;
+
+  final result = await showModalBottomSheet<_AdminReplyDraft>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) {
+      var uploading = false;
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> pickFiles() async {
+            final files = await FilePicker.platform.pickFiles(
+              allowMultiple: true,
+              withData: false,
+            );
+            if (files == null || files.files.isEmpty || !context.mounted) {
+              return;
+            }
+            setDialogState(() => attachments.addAll(files.files));
+          }
+
+          Future<void> send() async {
+            final text = controller.text.trim();
+            if (requiredMessage && text.isEmpty) {
+              setDialogState(() {
+                errorText = "Moderator message is required";
+              });
+              return;
+            }
+            if (text.isEmpty && attachments.isEmpty) {
+              setDialogState(() {
+                errorText = "Enter message or attach a file";
+              });
+              return;
+            }
+            setDialogState(() => uploading = true);
+            try {
+              final uploaded = await _uploadAdminMailFiles(attachments);
+              if (!context.mounted) return;
+              Navigator.pop(
+                context,
+                _AdminReplyDraft(message: text, attachments: uploaded),
+              );
+            } catch (_) {
+              if (!context.mounted) return;
+              setDialogState(() {
+                uploading = false;
+                errorText = "Could not upload attachments";
+              });
+            }
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 12,
+              right: 12,
+              top: 12,
+              bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
+            ),
+            child: StroykaSurface(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: AppColors.ink,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: controller,
+                    enabled: !uploading,
+                    maxLines: 5,
+                    decoration: InputDecoration(
+                      labelText: label,
+                      hintText: hint,
+                      errorText: errorText,
+                      border: const StroykaInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: uploading ? null : pickFiles,
+                        icon: const Icon(Icons.attach_file),
+                        label: const Text("Attach files"),
+                      ),
+                      ...attachments.map(
+                        (file) => InputChip(
+                          avatar: Icon(_attachmentIcon(file.extension ?? "")),
+                          label:
+                              Text(file.name, overflow: TextOverflow.ellipsis),
+                          onDeleted: uploading
+                              ? null
+                              : () => setDialogState(
+                                    () => attachments.remove(file),
+                                  ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed:
+                            uploading ? null : () => Navigator.pop(context),
+                        child: const Text("Cancel"),
+                      ),
+                      const Spacer(),
+                      ElevatedButton.icon(
+                        onPressed: uploading ? null : send,
+                        icon: uploading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.send),
+                        label: Text(uploading ? "Sending..." : "Send"),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+  controller.dispose();
+  return result;
+}
+
 Future<void> _sendAdminInboxMessage({
   required String userId,
   required String title,
@@ -440,8 +603,11 @@ Future<void> _sendAdminInboxMessage({
   required String audience,
   String? relatedTargetType,
   String? relatedTargetId,
+  List<Map<String, dynamic>> attachments = const [],
 }) async {
-  if (userId.trim().isEmpty || title.trim().isEmpty || message.trim().isEmpty) {
+  if (userId.trim().isEmpty ||
+      title.trim().isEmpty ||
+      (message.trim().isEmpty && attachments.isEmpty)) {
     return;
   }
 
@@ -451,6 +617,7 @@ Future<void> _sendAdminInboxMessage({
     receiverRole: audience,
     subject: title,
     message: message,
+    attachments: attachments,
     relatedTargetType: relatedTargetType,
     relatedTargetId: relatedTargetId,
   );
@@ -493,6 +660,9 @@ Future<String> _createAdminMailMessage({
           receiverId)
       .toString();
   final normalizedDirection = direction == "incoming" ? "incoming" : "outgoing";
+  final audienceType =
+      receiverRole.trim().isEmpty ? "specific_user" : receiverRole.trim();
+  final canReply = !audienceType.startsWith("all_");
   final now = FieldValue.serverTimestamp();
 
   final payload = <String, dynamic>{
@@ -504,6 +674,10 @@ Future<String> _createAdminMailMessage({
     "receiverId": receiverId,
     "receiverName": receiverName,
     "receiverRole": receiverRole,
+    "recipientId": receiverId,
+    "recipientRole": receiverRole,
+    "audienceType": audienceType,
+    "canReply": canReply,
     "subject": subject.trim(),
     "message": message.trim(),
     "type": "admin_message",
@@ -562,6 +736,8 @@ Future<String> _createAdminMailMessage({
       "targetType": "admin_message",
       "targetId": threadRef.id,
       "audience": receiverRole,
+      "audienceType": audienceType,
+      "canReply": canReply,
       "read": false,
       "threadId": threadRef.id,
       "adminMessageId": messageRef.id,
@@ -629,23 +805,33 @@ Future<String> _createAdminMailMessage({
   return messageRef.id;
 }
 
-Future<List<Map<String, dynamic>>> _uploadAdminMailImages(
-  List<XFile> files,
+Future<List<Map<String, dynamic>>> _uploadAdminMailFiles(
+  List<PlatformFile> files,
 ) async {
   final uploaded = <Map<String, dynamic>>[];
   final uid = FirebaseAuth.instance.currentUser?.uid ?? "admin";
   for (final file in files) {
+    final path = file.path;
+    if (path == null || path.isEmpty) continue;
     final name = file.name.isNotEmpty
         ? file.name
-        : "attachment_${DateTime.now().microsecondsSinceEpoch}.jpg";
+        : "attachment_${DateTime.now().microsecondsSinceEpoch}";
+    final extension =
+        name.contains(".") ? name.split(".").last.toLowerCase() : "";
     final ref = FirebaseStorage.instance
         .ref("admin_mail/$uid/${DateTime.now().microsecondsSinceEpoch}_$name");
-    await ref.putFile(File(file.path));
+    await ref.putFile(File(path));
     final url = await ref.getDownloadURL();
     uploaded.add({
       "name": name,
+      "fileName": name,
       "url": url,
-      "type": "image",
+      "fileUrl": url,
+      "type": extension.isEmpty ? "file" : extension,
+      "fileType": extension.isEmpty ? "file" : extension,
+      "size": file.size,
+      "uploadedAt": Timestamp.now(),
+      "uploadedBy": uid,
     });
   }
   return uploaded;
@@ -1631,6 +1817,7 @@ class _AdminMailReplyComposer extends StatefulWidget {
 class _AdminMailReplyComposerState extends State<_AdminMailReplyComposer> {
   final receiverController = TextEditingController();
   final messageController = TextEditingController();
+  final attachments = <PlatformFile>[];
   bool sending = false;
 
   @override
@@ -1671,6 +1858,7 @@ class _AdminMailReplyComposerState extends State<_AdminMailReplyComposer> {
 
     setState(() => sending = true);
     try {
+      final uploadedAttachments = await _uploadAdminMailFiles(attachments);
       await _createAdminMailMessage(
         direction: "outgoing",
         receiverId: receiverId,
@@ -1685,13 +1873,13 @@ class _AdminMailReplyComposerState extends State<_AdminMailReplyComposer> {
                     .map((item) => Map<String, dynamic>.from(item))
                     .toList() ??
                 const [])
-            : const [],
+            : uploadedAttachments,
       );
       if (!mounted) return;
-      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(widget.forward ? "Forwarded" : "Reply sent")),
       );
+      Navigator.pop(context);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1700,6 +1888,15 @@ class _AdminMailReplyComposerState extends State<_AdminMailReplyComposer> {
     } finally {
       if (mounted) setState(() => sending = false);
     }
+  }
+
+  Future<void> pickAttachments() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: false,
+    );
+    if (result == null || result.files.isEmpty || !mounted) return;
+    setState(() => attachments.addAll(result.files));
   }
 
   @override
@@ -1733,6 +1930,27 @@ class _AdminMailReplyComposerState extends State<_AdminMailReplyComposer> {
             enabled: !sending,
             maxLines: 5,
             decoration: const InputDecoration(labelText: "Message"),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              OutlinedButton.icon(
+                onPressed: sending || widget.forward ? null : pickAttachments,
+                icon: const Icon(Icons.attach_file),
+                label: const Text("Attach files"),
+              ),
+              ...attachments.map(
+                (file) => InputChip(
+                  avatar: Icon(_attachmentIcon(file.extension ?? "")),
+                  label: Text(file.name, overflow: TextOverflow.ellipsis),
+                  onDeleted: sending
+                      ? null
+                      : () => setState(() => attachments.remove(file)),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -1771,8 +1989,7 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
   final userIdController = TextEditingController();
   final titleController = TextEditingController();
   final messageController = TextEditingController();
-  final picker = ImagePicker();
-  final attachments = <XFile>[];
+  final attachments = <PlatformFile>[];
   String audience = "worker";
   bool sending = false;
 
@@ -1792,6 +2009,8 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
         return "All employers";
       case "all_workers":
         return "All workers";
+      case "all_users":
+        return "All users";
       case "worker":
       default:
         return "Specific worker";
@@ -1807,14 +2026,20 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
       return [id];
     }
 
-    final role = audience == "all_employers" ? "employer" : "worker";
-    final users = await FirebaseFirestore.instance
-        .collection("users")
-        .where("role", isEqualTo: role)
-        .get();
+    final users = audience == "all_users"
+        ? await FirebaseFirestore.instance.collection("users").get()
+        : await FirebaseFirestore.instance
+            .collection("users")
+            .where(
+              "role",
+              isEqualTo: audience == "all_employers" ? "employer" : "worker",
+            )
+            .get();
 
     return users.docs
-        .where((doc) => doc.data()["accountDeleted"] != true)
+        .where((doc) =>
+            doc.data()["accountDeleted"] != true &&
+            doc.data()["role"] != "admin")
         .map((doc) => doc.id)
         .toList();
   }
@@ -1841,7 +2066,7 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
         return;
       }
 
-      final uploadedAttachments = await _uploadAdminMailImages(attachments);
+      final uploadedAttachments = await _uploadAdminMailFiles(attachments);
       for (final userId in recipients) {
         await _createAdminMailMessage(
           direction: "outgoing",
@@ -1859,7 +2084,11 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
       attachments.clear();
       if (requiresUserId) userIdController.clear();
       if (widget.compact && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Admin message sent to ${recipients.length}")),
+        );
         Navigator.pop(context);
+        return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Admin message sent to ${recipients.length}")),
@@ -1875,9 +2104,12 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
   }
 
   Future<void> pickAttachments() async {
-    final files = await picker.pickMultiImage();
-    if (files.isEmpty) return;
-    setState(() => attachments.addAll(files));
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: false,
+    );
+    if (result == null || result.files.isEmpty || !mounted) return;
+    setState(() => attachments.addAll(result.files));
   }
 
   @override
@@ -1929,6 +2161,10 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
                 value: "all_employers",
                 child: Text("All employers"),
               ),
+              DropdownMenuItem(
+                value: "all_users",
+                child: Text("All users"),
+              ),
             ],
             onChanged: sending
                 ? null
@@ -1969,11 +2205,11 @@ class _AdminInboxSenderSectionState extends State<_AdminInboxSenderSection> {
               OutlinedButton.icon(
                 onPressed: sending ? null : pickAttachments,
                 icon: const Icon(Icons.attach_file),
-                label: const Text("Attach images"),
+                label: const Text("Attach files"),
               ),
               ...attachments.map(
                 (file) => InputChip(
-                  avatar: const Icon(Icons.image_outlined, size: 18),
+                  avatar: Icon(_attachmentIcon(file.extension ?? ""), size: 18),
                   label: Text(
                     file.name,
                     overflow: TextOverflow.ellipsis,
@@ -2114,21 +2350,25 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
   });
 
   Future<void> reply(BuildContext context) async {
-    final message = await _askAdminReply(
+    final draft = await _askAdminReplyWithAttachments(
       context,
       title: "Message employer",
       label: "Message",
       hint: "Write a response about this billing request",
     );
-    if (message == null || message.trim().isEmpty) return;
+    if (draft == null ||
+        (draft.message.trim().isEmpty && draft.attachments.isEmpty)) {
+      return;
+    }
 
     await _sendAdminInboxMessage(
       userId: employerId,
       title: "Billing request update",
-      message: message,
+      message: draft.message,
       audience: "employer",
       relatedTargetType: "payment_request",
       relatedTargetId: ref.id,
+      attachments: draft.attachments,
     );
 
     if (!context.mounted) return;
@@ -2614,24 +2854,28 @@ class _AdminRequestDetailScreen extends StatelessWidget {
   });
 
   Future<void> reply(BuildContext context) async {
-    final message = await _askAdminReply(
+    final draft = await _askAdminReplyWithAttachments(
       context,
       title: "Reply",
       label: "Message to user",
       hint: "Write admin response",
     );
-    if (message == null || message.trim().isEmpty) return;
+    if (draft == null ||
+        (draft.message.trim().isEmpty && draft.attachments.isEmpty)) {
+      return;
+    }
 
     await _sendAdminInboxMessage(
       userId: userId,
       title: "Admin response: $title",
-      message: message,
+      message: draft.message,
       audience: userRole.isEmpty ? "user" : userRole,
       relatedTargetType: "support",
       relatedTargetId: ref.id,
+      attachments: draft.attachments,
     );
     await ref.set({
-      "adminReply": message.trim(),
+      "adminReply": draft.message.trim(),
       "lastAdminReplyAt": FieldValue.serverTimestamp(),
       "status": "pending_user_reply",
       "updatedAt": FieldValue.serverTimestamp(),
