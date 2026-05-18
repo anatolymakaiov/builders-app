@@ -20,8 +20,6 @@ class MyApplicationsScreen extends StatefulWidget {
 
 class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   String statusFilter = "all";
-  String jobFilter = "all";
-  String offerFilter = "all";
 
   Color getStatusColor(String status) {
     switch (canonicalStatus(status)) {
@@ -59,38 +57,16 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         return normalizedStatus == "negotiation";
       case "offer":
         return normalizedStatus == "offer_sent" ||
-            normalizedStatus == "offer_accepted" ||
-            normalizedStatus == "accepted" ||
             normalizedStatus == "offer_rejected";
+      case "hired":
+        return normalizedStatus == "accepted" ||
+            normalizedStatus == "offer_accepted";
       case "rejected":
         return normalizedStatus == "rejected";
-      default:
-        return true;
-    }
-  }
-
-  bool matchesJobFilter(String status) {
-    final normalizedStatus = canonicalStatus(status);
-    switch (jobFilter) {
-      case "new":
-        return normalizedStatus != "accepted" &&
-            normalizedStatus != "offer_accepted";
-      case "current":
-        return normalizedStatus == "accepted" ||
-            normalizedStatus == "offer_accepted";
-      default:
-        return true;
-    }
-  }
-
-  bool matchesOfferFilter(String status) {
-    final normalizedStatus = canonicalStatus(status);
-    switch (offerFilter) {
-      case "review":
-        return normalizedStatus == "offer_sent";
-      case "accepted":
-        return normalizedStatus == "accepted" ||
-            normalizedStatus == "offer_accepted";
+      case "withdrawn":
+        return normalizedStatus == "withdrawn" ||
+            normalizedStatus == "cancelled" ||
+            normalizedStatus == "deleted";
       default:
         return true;
     }
@@ -99,7 +75,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   String statusLabel(String status) {
     switch (canonicalStatus(status)) {
       case "pending":
-        return "SENT";
+        return "IN REVIEW";
       case "negotiation":
         return "NEGOTIATION";
       case "offer_sent":
@@ -311,10 +287,17 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                     final data = doc.data() as Map<String, dynamic>;
                     final status = canonicalStatus(data["status"]);
 
-                    return matchesStatusFilter(status) &&
-                        matchesJobFilter(status) &&
-                        matchesOfferFilter(status);
+                    return matchesStatusFilter(status);
                   }).toList();
+
+                  apps.sort((a, b) {
+                    final aData = a.data() as Map<String, dynamic>;
+                    final bData = b.data() as Map<String, dynamic>;
+                    return ApplicationActivityService.activityDate(bData)
+                        .compareTo(
+                      ApplicationActivityService.activityDate(aData),
+                    );
+                  });
 
                   if (apps.isEmpty) {
                     return const Center(child: Text("No applications"));
@@ -504,54 +487,16 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
             label: "Status",
             value: statusFilter,
             items: const [
-              DropdownMenuItem(value: "all", child: Text("All statuses")),
-              DropdownMenuItem(value: "sent", child: Text("Sent")),
+              DropdownMenuItem(value: "all", child: Text("All")),
               DropdownMenuItem(value: "review", child: Text("In review")),
               DropdownMenuItem(
                   value: "negotiation", child: Text("Negotiation")),
               DropdownMenuItem(value: "offer", child: Text("Offer")),
               DropdownMenuItem(value: "rejected", child: Text("Rejected")),
+              DropdownMenuItem(value: "hired", child: Text("Hired")),
+              DropdownMenuItem(value: "withdrawn", child: Text("Withdrawn")),
             ],
             onChanged: (value) => setState(() => statusFilter = value),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: filterDropdown(
-                  label: "Your job",
-                  value: jobFilter,
-                  items: const [
-                    DropdownMenuItem(value: "all", child: Text("All jobs")),
-                    DropdownMenuItem(value: "new", child: Text("Your new job")),
-                    DropdownMenuItem(
-                      value: "current",
-                      child: Text("Current job"),
-                    ),
-                  ],
-                  onChanged: (value) => setState(() => jobFilter = value),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: filterDropdown(
-                  label: "Your offers",
-                  value: offerFilter,
-                  items: const [
-                    DropdownMenuItem(value: "all", child: Text("All offers")),
-                    DropdownMenuItem(
-                      value: "review",
-                      child: Text("Offers in review"),
-                    ),
-                    DropdownMenuItem(
-                      value: "accepted",
-                      child: Text("Accepted offers"),
-                    ),
-                  ],
-                  onChanged: (value) => setState(() => offerFilter = value),
-                ),
-              ),
-            ],
           ),
         ],
       ),

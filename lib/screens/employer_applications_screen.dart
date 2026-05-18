@@ -383,6 +383,16 @@ class _EmployerApplicationsScreenState
 
                     return true;
                   }).toList();
+
+                  apps.sort((a, b) {
+                    final aData = a.data() as Map<String, dynamic>;
+                    final bData = b.data() as Map<String, dynamic>;
+                    return ApplicationActivityService.activityDate(bData)
+                        .compareTo(
+                      ApplicationActivityService.activityDate(aData),
+                    );
+                  });
+
                   if (apps.isEmpty) {
                     return const Center(child: Text("No applications yet"));
                   }
