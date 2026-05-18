@@ -5,14 +5,16 @@ import 'package:local_auth/local_auth.dart';
 class AuthPreferenceMethod {
   static const password = "password";
   static const passwordless = "passwordless";
+  static const simpleEnter = "simple_enter";
   static const biometric = "biometric";
 
-  static const all = [password, passwordless, biometric];
+  static const all = [password, simpleEnter, biometric];
 
   static String label(String method) {
     switch (method) {
+      case simpleEnter:
       case passwordless:
-        return "Passwordless login";
+        return "Simple Enter";
       case biometric:
         return "Biometric login";
       case password:
@@ -53,6 +55,9 @@ class AuthPreferencesService {
 
   String normalizeMethod(dynamic value) {
     final method = value?.toString() ?? AuthPreferenceMethod.password;
+    if (method == AuthPreferenceMethod.passwordless) {
+      return AuthPreferenceMethod.simpleEnter;
+    }
     if (AuthPreferenceMethod.all.contains(method)) return method;
     return AuthPreferenceMethod.password;
   }
@@ -115,14 +120,6 @@ class AuthPreferencesService {
     final refreshedUser = _auth.currentUser ?? user;
     final email = normalizeEmail(refreshedUser.email ?? "");
 
-    if (normalizedMethod == AuthPreferenceMethod.passwordless &&
-        email.isEmpty) {
-      throw FirebaseAuthException(
-        code: "missing-email",
-        message: "Passwordless login requires an email address.",
-      );
-    }
-
     var biometricEnabled = false;
     if (normalizedMethod == AuthPreferenceMethod.biometric) {
       final available = await biometricAvailable();
@@ -150,8 +147,8 @@ class AuthPreferencesService {
       biometricEnabled = true;
     }
 
-    final passwordlessEnabled =
-        normalizedMethod == AuthPreferenceMethod.passwordless;
+    final simpleEnterEnabled =
+        normalizedMethod == AuthPreferenceMethod.simpleEnter;
 
     await _userRef(refreshedUser.uid).set({
       if (email.isNotEmpty) "email": email,
@@ -161,27 +158,32 @@ class AuthPreferencesService {
       "authPreferences": {
         "activeMethod": normalizedMethod,
         "passwordLoginEnabled": true,
-        "passwordlessLoginEnabled": passwordlessEnabled,
+        "passwordlessLoginEnabled": false,
+        "simpleEnterEnabled": simpleEnterEnabled,
         "biometricLoginEnabled": biometricEnabled,
         "email": email,
         "emailVerified": refreshedUser.emailVerified,
-        "emailVerificationRecommended":
-            passwordlessEnabled && !refreshedUser.emailVerified,
+        "emailVerificationRecommended": false,
         "updatedAt": FieldValue.serverTimestamp(),
       },
     }, SetOptions(merge: true));
 
-    if (passwordlessEnabled && !refreshedUser.emailVerified) {
-      return const AuthPreferenceResult(
-        message:
-            "Passwordless login saved. Please verify your email before relying on email-link sign-in.",
-        warning: true,
-      );
-    }
-
     return AuthPreferenceResult(
       message:
           "Authentication method saved: ${AuthPreferenceMethod.label(normalizedMethod)}.",
+    );
+  }
+
+  Future<bool> authenticateBiometricLogin() async {
+    final available = await biometricAvailable();
+    if (!available) return false;
+
+    return _localAuth.authenticate(
+      localizedReason: "Use Face ID / Touch ID to enter STROYKA",
+      options: const AuthenticationOptions(
+        biometricOnly: true,
+        stickyAuth: true,
+      ),
     );
   }
 

@@ -713,11 +713,11 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                         activeMethod: activeAuthMethod,
                       ),
                       buildAuthenticationOption(
-                        icon: Icons.mark_email_read_outlined,
-                        title: "Passwordless login",
+                        icon: Icons.login,
+                        title: "Simple Enter",
                         subtitle:
-                            "Send an email sign-in link from the login screen when no password is entered.",
-                        value: AuthPreferenceMethod.passwordless,
+                            "Show an Enter button on launch when your Firebase session is still valid. Password remains the fallback.",
+                        value: AuthPreferenceMethod.simpleEnter,
                         activeMethod: activeAuthMethod,
                       ),
                       buildAuthenticationOption(

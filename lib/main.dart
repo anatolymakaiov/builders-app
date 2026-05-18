@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'services/app_navigation.dart';
+import 'services/auth_preferences_service.dart';
 import 'services/notification_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -22,8 +23,6 @@ Future<void> main() async {
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   await NotificationService().init();
-
-  await FirebaseAuth.instance.signOut();
 
   runApp(const JobApp());
 }
@@ -56,6 +55,8 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
+  bool sessionUnlocked = false;
+
   @override
   void initState() {
     super.initState();
@@ -101,6 +102,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
         }
 
         if (!snapshot.hasData) {
+          sessionUnlocked = false;
           return const LoginScreen();
         }
 
@@ -132,6 +134,21 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
                 FirebaseAuth.instance.signOut();
               });
               return const LoginScreen();
+            }
+
+            final authMethod =
+                AuthPreferencesService().methodFromUserData(userData ?? {});
+            final requiresSessionGate =
+                authMethod == AuthPreferenceMethod.biometric ||
+                    authMethod == AuthPreferenceMethod.simpleEnter;
+            if (requiresSessionGate && !sessionUnlocked) {
+              return LoginScreen(
+                sessionMode: authMethod,
+                onSessionUnlocked: () {
+                  if (!mounted) return;
+                  setState(() => sessionUnlocked = true);
+                },
+              );
             }
 
             return const HomeScreen();
