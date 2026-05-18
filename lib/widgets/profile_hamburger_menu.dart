@@ -1,7 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:io';
 
 import '../screens/edit_profile_screen.dart';
 import '../screens/login_screen.dart';
@@ -1290,37 +1293,9 @@ class AdminInboxMessageScreen extends StatelessWidget {
       );
       return;
     }
-    final controller = TextEditingController();
-    final message = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text("Reply to Admin"),
-        content: TextField(
-          controller: controller,
-          minLines: 3,
-          maxLines: 6,
-          decoration: const InputDecoration(
-            labelText: "Message",
-            hintText: "Write your reply",
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              controller.text.trim(),
-            ),
-            child: const Text("Send"),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (message == null || message.isEmpty) return;
+    final draft = await _showUserAdminReplyComposer(context);
+    if (draft == null) return;
+    if (draft.message.trim().isEmpty && draft.attachments.isEmpty) return;
 
     final userDoc =
         await FirebaseFirestore.instance.collection("users").doc(userId).get();
@@ -1331,6 +1306,7 @@ class AdminInboxMessageScreen extends StatelessWidget {
             ?.toString() ??
         "User";
     final subject = source["subject"]?.toString() ?? "Admin message";
+    final message = draft.message.trim();
     await FirebaseFirestore.instance.collection("admin_messages").add({
       "threadId": threadId,
       "direction": "incoming",
@@ -1349,14 +1325,23 @@ class AdminInboxMessageScreen extends StatelessWidget {
       "deletedByAdmin": false,
       "deletedBySender": false,
       "deletedByReceiver": false,
-      "attachments": const [],
-      "hasAttachments": false,
+      "attachments": draft.attachments,
+      "hasAttachments": draft.attachments.isNotEmpty,
       if (source["relatedTargetType"] != null)
         "relatedTargetType": source["relatedTargetType"],
       if (source["relatedTargetId"] != null)
         "relatedTargetId": source["relatedTargetId"],
       "createdAt": FieldValue.serverTimestamp(),
     });
+    for (final attachment in draft.attachments) {
+      await FirebaseFirestore.instance.collection("message_attachments").add({
+        ...attachment,
+        "threadId": threadId,
+        "senderId": userId,
+        "senderRole": role,
+        "createdAt": FieldValue.serverTimestamp(),
+      });
+    }
     await FirebaseFirestore.instance
         .collection("message_threads")
         .doc(threadId)
@@ -1700,6 +1685,219 @@ class _UserAdminMailThreadMenu extends StatelessWidget {
       ],
     );
   }
+}
+
+class _UserAdminReplyDraft {
+  final String message;
+  final List<Map<String, dynamic>> attachments;
+
+  const _UserAdminReplyDraft({
+    required this.message,
+    required this.attachments,
+  });
+}
+
+Future<_UserAdminReplyDraft?> _showUserAdminReplyComposer(
+  BuildContext context,
+) async {
+  return showModalBottomSheet<_UserAdminReplyDraft>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) => Padding(
+      padding: EdgeInsets.only(
+        left: 12,
+        right: 12,
+        top: 12,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 12,
+      ),
+      child: const SingleChildScrollView(
+        child: _UserAdminReplyComposer(),
+      ),
+    ),
+  );
+}
+
+class _UserAdminReplyComposer extends StatefulWidget {
+  const _UserAdminReplyComposer();
+
+  @override
+  State<_UserAdminReplyComposer> createState() =>
+      _UserAdminReplyComposerState();
+}
+
+class _UserAdminReplyComposerState extends State<_UserAdminReplyComposer> {
+  final messageController = TextEditingController();
+  final attachments = <PlatformFile>[];
+  bool sending = false;
+
+  @override
+  void dispose() {
+    messageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> pickAttachments() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: false,
+      type: FileType.any,
+    );
+    if (result == null || result.files.isEmpty || !mounted) return;
+    setState(() {
+      final existing = attachments.map((file) => file.name).toSet();
+      attachments.addAll(
+        result.files.where((file) => !existing.contains(file.name)),
+      );
+    });
+  }
+
+  Future<void> send() async {
+    final message = messageController.text.trim();
+    if (message.isEmpty && attachments.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Write a message or attach a file")),
+      );
+      return;
+    }
+
+    setState(() => sending = true);
+    try {
+      final uploaded = await _uploadUserAdminReplyFiles(attachments);
+      if (!mounted) return;
+      Navigator.pop(
+        context,
+        _UserAdminReplyDraft(
+          message: message,
+          attachments: uploaded,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not upload attachments")),
+      );
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StroykaSurface(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            "Reply to Admin",
+            style: TextStyle(
+              color: AppColors.ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: messageController,
+            enabled: !sending,
+            minLines: 3,
+            maxLines: 6,
+            decoration: const InputDecoration(
+              labelText: "Message",
+              hintText: "Write your reply",
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                onPressed: sending ? null : pickAttachments,
+                icon: const Icon(Icons.attach_file),
+                label: const Text("Attach files"),
+              ),
+              ...attachments.map(
+                (file) => InputChip(
+                  avatar: Icon(_userAdminMailAttachmentIcon(
+                    file.extension ?? "",
+                  )),
+                  label: Text(file.name, overflow: TextOverflow.ellipsis),
+                  onDeleted: sending
+                      ? null
+                      : () => setState(() => attachments.remove(file)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: sending ? null : () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: sending ? null : send,
+                  icon: sending
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send),
+                  label: Text(sending ? "Sending..." : "Send"),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<List<Map<String, dynamic>>> _uploadUserAdminReplyFiles(
+  List<PlatformFile> files,
+) async {
+  final uploaded = <Map<String, dynamic>>[];
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? "user";
+  for (final file in files) {
+    final path = file.path;
+    if (path == null || path.isEmpty) continue;
+
+    final name = file.name.isNotEmpty
+        ? file.name
+        : "attachment_${DateTime.now().microsecondsSinceEpoch}";
+    final safeName = name.replaceAll(RegExp(r"[^A-Za-z0-9._-]"), "_");
+    final extension =
+        name.contains(".") ? name.split(".").last.toLowerCase() : "";
+    final ref = FirebaseStorage.instance.ref(
+      "admin_mail/$uid/${DateTime.now().microsecondsSinceEpoch}_$safeName",
+    );
+
+    await ref.putFile(File(path));
+    final url = await ref.getDownloadURL();
+    uploaded.add({
+      "name": name,
+      "fileName": name,
+      "url": url,
+      "fileUrl": url,
+      "type": extension.isEmpty ? "file" : extension,
+      "fileType": extension.isEmpty ? "file" : extension,
+      "size": file.size,
+      "uploadedAt": Timestamp.now(),
+      "uploadedBy": uid,
+    });
+  }
+  return uploaded;
 }
 
 Future<void> _showUserAdminMailActions(
