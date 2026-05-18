@@ -803,6 +803,10 @@ class JobTaxonomyService {
         .trim();
   }
 
+  static String compactNormalise(String value) {
+    return normalise(value).replaceAll(" ", "");
+  }
+
   static ConstructionRole? roleFor(String value) {
     final query = normalise(value);
     if (query.isEmpty) return null;
@@ -891,7 +895,14 @@ class JobTaxonomyService {
       job.fullAddress,
     ];
 
-    if (values.any((value) => normalise(value).contains(normalisedQuery))) {
+    final compactQuery = compactNormalise(query);
+
+    if (values.any((value) {
+      final normalisedValue = normalise(value);
+      final compactValue = compactNormalise(value);
+      return normalisedValue.contains(normalisedQuery) ||
+          compactValue.contains(compactQuery);
+    })) {
       return true;
     }
 
@@ -903,22 +914,41 @@ class JobTaxonomyService {
     final selected = roles.toList(growable: false);
     if (selected.isEmpty) return true;
 
-    final jobRole = bestCanonicalFor(
-      [
+    return selected.any((role) {
+      final selectedRoleId = roleIdFor(role.canonical);
+
+      if (job.canonicalRoleId.trim().isNotEmpty &&
+          roleIdFor(job.canonicalRoleId) == selectedRoleId) {
+        return true;
+      }
+
+      final values = [
         job.canonicalRoleName,
         job.trade,
         job.title,
         job.originalEmployerInput,
-      ].where((value) => value.trim().isNotEmpty).join(" "),
-    );
+      ].where((value) => value.trim().isNotEmpty);
 
-    final jobRoleId = roleIdFor(
-      job.canonicalRoleId.trim().isNotEmpty ? job.canonicalRoleId : jobRole,
-    );
+      for (final value in values) {
+        final exactRole = roleFor(value);
+        if (exactRole != null && exactRole.canonicalRoleId == selectedRoleId) {
+          return true;
+        }
 
-    return selected.any((role) {
-      return roleIdFor(role.canonical) == jobRoleId ||
-          normalise(role.canonical) == normalise(jobRole);
+        final bestRole = bestRoleFor(value);
+        if (bestRole != null && bestRole.canonicalRoleId == selectedRoleId) {
+          return true;
+        }
+
+        final compactValue = compactNormalise(value);
+        final compactCanonical = compactNormalise(role.canonical);
+        if (compactValue.contains(compactCanonical) ||
+            compactCanonical.contains(compactValue)) {
+          return true;
+        }
+      }
+
+      return false;
     });
   }
 
@@ -964,9 +994,14 @@ class JobTaxonomyService {
   static int _termScore(String term, String query) {
     if (term.isEmpty) return 9999;
     if (term == query) return 0;
+    final compactTerm = compactNormalise(term);
+    final compactQuery = compactNormalise(query);
+    if (compactTerm == compactQuery) return 0;
     if (term.startsWith(query)) return 1;
+    if (compactTerm.startsWith(compactQuery)) return 1;
     if (term.split(" ").any((word) => word.startsWith(query))) return 2;
     if (term.contains(query)) return 3;
+    if (compactTerm.contains(compactQuery)) return 3;
 
     final words = term.split(" ");
     final typoTolerance = query.length <= 4 ? 1 : 2;
