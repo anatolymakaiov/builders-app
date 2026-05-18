@@ -154,25 +154,20 @@ class JobRepository {
     });
 
     /// 4. уведомление работодателю
-    await _db
-        .collection('users')
-        .doc(employerId)
-        .collection('notifications')
-        .add({
-      "type": "application",
-      "title": "New application received",
-      "message": "$workerName applied for ${(jobData["trade"] ?? "your job")}",
-      "targetType": "application",
-      "targetId": applicationRef.id,
-      "applicationId": applicationRef.id,
-      "relatedApplicationId": applicationRef.id,
-      "jobId": jobId,
-      "relatedJobId": jobId,
-      "fromUserId": userId,
-      "workerId": userId,
-      "createdAt": FieldValue.serverTimestamp(),
-      "read": false,
-    });
+    await notificationService.sendNotification(
+      userId: employerId.toString(),
+      title: "New application received",
+      body: "$workerName applied for ${(jobData["trade"] ?? "your job")}",
+      type: "application",
+      applicationId: applicationRef.id,
+      jobId: jobId,
+      extra: {
+        "targetType": "application",
+        "targetId": applicationRef.id,
+        "fromUserId": userId,
+        "workerId": userId,
+      },
+    );
   }
 
   /// 🔥 APPLICATIONS (WORKER)

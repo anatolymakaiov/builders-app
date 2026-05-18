@@ -1,8 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:convert';
 
+import '../screens/notifications_screen.dart';
+import 'app_navigation.dart';
 import 'calendar_service.dart';
 
 class NotificationService {
@@ -10,6 +15,20 @@ class NotificationService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _local =
       FlutterLocalNotificationsPlugin();
+
+  static const defaultPreferences = <String, bool>{
+    "enabled": true,
+    "jobAlerts": true,
+    "applicationUpdates": true,
+    "offers": true,
+    "messages": true,
+    "adminMessages": true,
+    "billing": true,
+    "supportReplies": true,
+    "policyUpdates": true,
+    "sound": true,
+    "badges": true,
+  };
 
   /// 🔥 INIT
   Future<void> init() async {
@@ -24,36 +43,73 @@ class NotificationService {
 
     /// 🔥 LOCAL NOTIFICATIONS INIT
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const ios = DarwinInitializationSettings();
+    const ios = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
 
     const settings = InitializationSettings(
       android: android,
       iOS: ios,
     );
 
-    await _local.initialize(settings);
+    await _local.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (response) {
+        _handlePayload(response.payload);
+      },
+    );
+
+    await FirebaseMessaging.instance
+        .setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
 
     /// 🔔 FOREGROUND сообщения
-    FirebaseMessaging.onMessage.listen((message) {
+    FirebaseMessaging.onMessage.listen((message) async {
       final notification = message.notification;
 
       if (notification == null) return;
+      final userId = message.data["userId"]?.toString();
+      final preferences = await notificationPreferences(userId);
+      if (!_shouldDisplayPush(message.data, preferences)) return;
+      final badgeCount = userId == null
+          ? null
+          : await syncUnreadBadgeCount(userId, preferences: preferences);
 
       _local.show(
-        0,
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
         notification.title,
         notification.body,
-        const NotificationDetails(
+        NotificationDetails(
           android: AndroidNotificationDetails(
             'default_channel',
             'General',
             importance: Importance.max,
             priority: Priority.high,
+            playSound: preferences["sound"] != false,
           ),
-          iOS: DarwinNotificationDetails(),
+          iOS: DarwinNotificationDetails(
+            presentSound: preferences["sound"] != false,
+            presentBadge: preferences["badges"] != false,
+            badgeNumber: preferences["badges"] == false ? null : badgeCount,
+          ),
         ),
+        payload: jsonEncode(message.data),
       );
     });
+
+    FirebaseMessaging.onMessageOpenedApp.listen(handleRemoteMessageTap);
+
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        handleRemoteMessageTap(initialMessage);
+      });
+    }
 
     debugPrint("NotificationService initialized");
   }
@@ -63,15 +119,12 @@ class NotificationService {
     debugPrint("saveToken called");
 
     try {
-      /// 🍏 Проверяем APNS (iOS)
-      final apns = await _fcm.getAPNSToken();
-
-      if (apns == null) {
-        debugPrint("iOS push token unavailable");
-        return;
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+        final apns = await _fcm.getAPNSToken();
+        if (apns == null) {
+          debugPrint("iOS APNS token is not ready yet");
+        }
       }
-
-      debugPrint("APNS token received");
 
       /// 🔥 Получаем FCM
       final token = await _fcm.getToken();
@@ -86,12 +139,51 @@ class NotificationService {
       /// 🔥 Сохраняем
       await _db.collection("users").doc(userId).set({
         "fcmToken": token,
+        "fcmTokens": FieldValue.arrayUnion([token]),
+        "push.updatedAt": FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      await _db
+          .collection("users")
+          .doc(userId)
+          .collection("deviceTokens")
+          .doc(token)
+          .set({
+        "token": token,
+        "platform": defaultTargetPlatform.name,
+        "updatedAt": FieldValue.serverTimestamp(),
+        "active": true,
+      }, SetOptions(merge: true));
+
+      _fcm.onTokenRefresh.listen((newToken) async {
+        await _db.collection("users").doc(userId).set({
+          "fcmToken": newToken,
+          "fcmTokens": FieldValue.arrayUnion([newToken]),
+          "push.updatedAt": FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        await _db
+            .collection("users")
+            .doc(userId)
+            .collection("deviceTokens")
+            .doc(newToken)
+            .set({
+          "token": newToken,
+          "platform": defaultTargetPlatform.name,
+          "updatedAt": FieldValue.serverTimestamp(),
+          "active": true,
+        }, SetOptions(merge: true));
+      });
 
       debugPrint("FCM token saved");
     } catch (e) {
       debugPrint("saveToken error: $e");
     }
+  }
+
+  Future<void> saveCurrentUserToken() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    await saveToken(user.uid);
   }
 
   /// 🔔 Локальная запись уведомления (Firestore)
@@ -104,6 +196,7 @@ class NotificationService {
     String? jobId,
     Map<String, dynamic>? extra,
   }) async {
+    final category = _categoryFor(type, extra: extra);
     final targetType = extra?["targetType"] ??
         _defaultTargetType(
           type: type,
@@ -124,6 +217,7 @@ class NotificationService {
       "body": body,
       "message": body,
       "type": type,
+      "category": category,
       if (targetType != null) "targetType": targetType,
       if (targetId != null) "targetId": targetId,
       "applicationId": applicationId,
@@ -132,14 +226,196 @@ class NotificationService {
       if (jobId != null) "relatedJobId": jobId,
       "createdAt": FieldValue.serverTimestamp(),
       "read": false,
+      "badgeEligible": true,
+      "pushEligible": true,
       ...?extra,
     };
 
-    await _db
+    final ref = await _db
         .collection('users')
         .doc(userId)
         .collection('notifications')
         .add(payload);
+
+    await ref.set({
+      "notificationId": ref.id,
+      "push": {
+        "title": title,
+        "body": body,
+        "category": category,
+        "sound": true,
+        "badge": true,
+        "data": {
+          "notificationId": ref.id,
+          "userId": userId,
+          "type": type,
+          "category": category,
+          if (targetType != null) "targetType": targetType,
+          if (targetId != null) "targetId": targetId,
+          if (applicationId != null) "applicationId": applicationId,
+          if (jobId != null) "jobId": jobId,
+        },
+      },
+    }, SetOptions(merge: true));
+
+    await _db.collection('users').doc(userId).set({
+      "notificationState.unreadCount": FieldValue.increment(1),
+      "notificationState.updatedAt": FieldValue.serverTimestamp(),
+      "notificationState.lastNotificationId": ref.id,
+    }, SetOptions(merge: true));
+
+    await syncUnreadBadgeCount(userId);
+  }
+
+  Future<Map<String, bool>> notificationPreferences(String? userId) async {
+    if (userId == null || userId.trim().isEmpty) return defaultPreferences;
+    try {
+      final doc = await _db.collection("users").doc(userId).get();
+      final data = doc.data() ?? {};
+      final settings = data["settings"] is Map
+          ? Map<String, dynamic>.from(data["settings"])
+          : <String, dynamic>{};
+      final raw = settings["notifications"] is Map
+          ? Map<String, dynamic>.from(settings["notifications"])
+          : data["notificationPreferences"] is Map
+              ? Map<String, dynamic>.from(data["notificationPreferences"])
+              : <String, dynamic>{};
+      return {
+        for (final entry in defaultPreferences.entries)
+          entry.key:
+              raw[entry.key] is bool ? raw[entry.key] as bool : entry.value,
+      };
+    } catch (_) {
+      return defaultPreferences;
+    }
+  }
+
+  Future<void> saveNotificationPreference({
+    required String userId,
+    required String key,
+    required bool value,
+  }) async {
+    if (!defaultPreferences.containsKey(key)) return;
+    await _db.collection("users").doc(userId).set({
+      "settings.notifications.$key": value,
+      "notificationPreferences.$key": value,
+      "settings.updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<int> syncUnreadBadgeCount(
+    String userId, {
+    Map<String, bool>? preferences,
+  }) async {
+    final prefs = preferences ?? await notificationPreferences(userId);
+    final notifications = await _db
+        .collection("users")
+        .doc(userId)
+        .collection("notifications")
+        .where("read", isEqualTo: false)
+        .get();
+    final chats = await _db
+        .collection("chats")
+        .where("unreadFor", arrayContains: userId)
+        .get();
+    final count = (prefs["badges"] == false)
+        ? 0
+        : notifications.docs.length + chats.docs.length;
+    await _db.collection("users").doc(userId).set({
+      "notificationState.unreadCount": notifications.docs.length,
+      "notificationState.unreadChatCount": chats.docs.length,
+      "notificationState.badgeCount": count,
+      "notificationState.updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    return count;
+  }
+
+  bool _shouldDisplayPush(
+    Map<String, dynamic> data,
+    Map<String, bool> preferences,
+  ) {
+    if (preferences["enabled"] == false) return false;
+    final category = data["category"]?.toString() ??
+        _categoryFor(data["type"]?.toString() ?? "", extra: data);
+    return preferences[_preferenceKeyForCategory(category)] != false;
+  }
+
+  String _preferenceKeyForCategory(String category) {
+    return switch (category) {
+      "job" => "jobAlerts",
+      "application" => "applicationUpdates",
+      "offer" => "offers",
+      "chat" => "messages",
+      "admin" => "adminMessages",
+      "billing" => "billing",
+      "support" => "supportReplies",
+      "policy" => "policyUpdates",
+      _ => "enabled",
+    };
+  }
+
+  String _categoryFor(String type, {Map<String, dynamic>? extra}) {
+    if (type.contains("offer")) return "offer";
+    if (type == "message" || extra?["chatId"] != null) return "chat";
+    if (type == "job_alert" || type == "job_status") return "job";
+    if (type == "billing" || extra?["relatedPaymentRequestId"] != null) {
+      return "billing";
+    }
+    if (type == "support" || extra?["relatedSupportRequestId"] != null) {
+      return "support";
+    }
+    if (type == "admin_message") return "admin";
+    if (type == "policy_update" || type == "legal_update") return "policy";
+    if (type == "application" ||
+        type == "application_status" ||
+        type == "application_reopened") {
+      return "application";
+    }
+    return "alert";
+  }
+
+  Future<void> handleRemoteMessageTap(RemoteMessage message) async {
+    await _handlePayload(jsonEncode(message.data));
+  }
+
+  Future<void> _handlePayload(String? payload) async {
+    if (payload == null || payload.trim().isEmpty) return;
+    final context = appNavigatorKey.currentContext;
+    if (context == null) return;
+    try {
+      final data = Map<String, dynamic>.from(jsonDecode(payload) as Map);
+      final userId = data["userId"]?.toString() ??
+          FirebaseAuth.instance.currentUser?.uid ??
+          "";
+      final notificationId = data["notificationId"]?.toString() ??
+          data["targetNotificationId"]?.toString();
+      if (notificationId != null &&
+          notificationId.isNotEmpty &&
+          data["userId"] != null) {
+        final ref = _db
+            .collection("users")
+            .doc(data["userId"].toString())
+            .collection("notifications")
+            .doc(notificationId);
+        final snapshot = await ref.get();
+        final notificationData = snapshot.data() ?? data;
+        if (!context.mounted) return;
+        await const NotificationsScreen().handleNotificationTap(
+          context,
+          ref,
+          notificationData,
+        );
+        return;
+      }
+
+      if (!context.mounted) return;
+      const NotificationsScreen().openNotificationDetails(context, data);
+      if (userId.isNotEmpty) {
+        await syncUnreadBadgeCount(userId);
+      }
+    } catch (e) {
+      debugPrint("Notification payload routing error: $e");
+    }
   }
 
   Future<void> markApplicationNotificationsRead({
@@ -182,6 +458,7 @@ class NotificationService {
 
     if (hasUpdates) {
       await batch.commit();
+      await syncUnreadBadgeCount(userId);
     }
   }
 
@@ -745,13 +1022,16 @@ class NotificationService {
             .doc(userId)
             .collection("notifications")
             .doc("work_start_${applicationId}_${daysBefore}d");
+        final message = companyName.isEmpty
+            ? "$displayTitle starts on $startText."
+            : "$displayTitle with $companyName starts on $startText.";
         await ref.set({
+          "notificationId": ref.id,
           "userId": userId,
           "type": "work_start_reminder",
+          "category": "offer",
           "title": "Work starts soon",
-          "message": companyName.isEmpty
-              ? "$displayTitle starts on $startText."
-              : "$displayTitle with $companyName starts on $startText.",
+          "message": message,
           "targetType": "application",
           "targetId": applicationId,
           "applicationId": applicationId,
@@ -766,9 +1046,29 @@ class NotificationService {
           "reminderDaysBefore": daysBefore,
           "reminderAt": Timestamp.fromDate(reminderAt),
           "read": false,
+          "badgeEligible": true,
+          "pushEligible": true,
           "createdAt": FieldValue.serverTimestamp(),
           "offer": offer,
+          "push": {
+            "title": "Work starts soon",
+            "body": message,
+            "category": "offer",
+            "sound": true,
+            "badge": true,
+            "data": {
+              "notificationId": ref.id,
+              "userId": userId,
+              "type": "work_start_reminder",
+              "category": "offer",
+              "targetType": "application",
+              "targetId": applicationId,
+              "applicationId": applicationId,
+              if (jobId != null && jobId.isNotEmpty) "jobId": jobId,
+            },
+          },
         }, SetOptions(merge: true));
+        await syncUnreadBadgeCount(userId);
       }
     }
   }

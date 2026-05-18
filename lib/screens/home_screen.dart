@@ -15,6 +15,7 @@ import 'employer_applications_screen.dart';
 import 'post_job_screen.dart';
 import 'employer_profile_screen.dart';
 import 'admin_dashboard_screen.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -50,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     userId = user.uid;
+    unawaited(NotificationService().saveToken(user.uid));
 
     try {
       final doc = await FirebaseFirestore.instance
@@ -92,7 +94,10 @@ class _HomeScreenState extends State<HomeScreen> {
         .collection("notifications")
         .where("read", isEqualTo: false)
         .snapshots()
-        .map((snap) => snap.docs.length);
+        .map((snap) {
+      unawaited(NotificationService().syncUnreadBadgeCount(userId!));
+      return snap.docs.length;
+    });
   }
 
   /// 💬 REAL UNREAD MESSAGES
@@ -103,7 +108,10 @@ class _HomeScreenState extends State<HomeScreen> {
         .collection("chats")
         .where("unreadFor", arrayContains: userId)
         .snapshots()
-        .map((snapshot) => snapshot.docs.length);
+        .map((snapshot) {
+      unawaited(NotificationService().syncUnreadBadgeCount(userId!));
+      return snapshot.docs.length;
+    });
   }
 
   Stream<int> getUnreadApplications() {

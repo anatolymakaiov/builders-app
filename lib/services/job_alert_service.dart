@@ -84,15 +84,40 @@ class JobAlertService {
 
       final notificationRef = userRef.collection("notifications").doc();
       batch.set(notificationRef, {
+        "notificationId": notificationRef.id,
+        "userId": userRef.id,
         "type": "job_alert",
+        "category": "job",
         "title": "New matching job",
         "body": jobData["title"] ?? "A new job matches your alert",
+        "message": jobData["title"] ?? "A new job matches your alert",
+        "targetType": "job",
+        "targetId": jobId,
         "jobId": jobId,
+        "relatedJobId": jobId,
         "trade": jobData["trade"] ?? "",
         "jobType": jobData["jobType"] ?? "",
         "distanceMiles": miles,
         "createdAt": FieldValue.serverTimestamp(),
         "read": false,
+        "badgeEligible": true,
+        "pushEligible": true,
+        "push": {
+          "title": "New matching job",
+          "body": jobData["title"] ?? "A new job matches your alert",
+          "category": "job",
+          "sound": true,
+          "badge": true,
+          "data": {
+            "notificationId": notificationRef.id,
+            "userId": userRef.id,
+            "type": "job_alert",
+            "category": "job",
+            "targetType": "job",
+            "targetId": jobId,
+            "jobId": jobId,
+          },
+        },
       });
 
       writes++;

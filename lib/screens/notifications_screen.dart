@@ -9,6 +9,7 @@ import 'job_details_screen.dart';
 import 'worker_profile_screen.dart';
 import '../models/job.dart';
 import '../services/calendar_service.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/profile_hamburger_menu.dart';
@@ -356,6 +357,10 @@ class NotificationsScreen extends StatelessWidget {
       "read": true,
       "readAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+    final uid = userId;
+    if (uid != null) {
+      await NotificationService().syncUnreadBadgeCount(uid);
+    }
 
     if (!context.mounted) return;
 

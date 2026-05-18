@@ -6,6 +6,7 @@ import '../screens/edit_profile_screen.dart';
 import '../screens/login_screen.dart';
 import '../services/auth_preferences_service.dart';
 import '../services/billing_service.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import 'legal_documents.dart';
@@ -427,6 +428,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   final AuthPreferencesService authPreferences = AuthPreferencesService();
   bool savingLanguage = false;
   bool savingAuthMethod = false;
+  bool savingNotificationPreference = false;
 
   String languageLabel(String value) {
     switch (value) {
@@ -524,6 +526,73 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     }
   }
 
+  Map<String, bool> notificationPrefsFromUserData(Map<String, dynamic> data) {
+    final settings = data["settings"] is Map
+        ? Map<String, dynamic>.from(data["settings"])
+        : <String, dynamic>{};
+    final raw = settings["notifications"] is Map
+        ? Map<String, dynamic>.from(settings["notifications"])
+        : data["notificationPreferences"] is Map
+            ? Map<String, dynamic>.from(data["notificationPreferences"])
+            : <String, dynamic>{};
+
+    return {
+      for (final entry in NotificationService.defaultPreferences.entries)
+        entry.key:
+            raw[entry.key] is bool ? raw[entry.key] as bool : entry.value,
+    };
+  }
+
+  Future<void> saveNotificationSetting(String key, bool value) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    setState(() => savingNotificationPreference = true);
+    try {
+      await NotificationService().saveNotificationPreference(
+        userId: uid,
+        key: key,
+        value: value,
+      );
+      await NotificationService().syncUnreadBadgeCount(uid);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Notification setting saved")),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not save notification setting")),
+      );
+    } finally {
+      if (mounted) setState(() => savingNotificationPreference = false);
+    }
+  }
+
+  Widget buildNotificationSwitch({
+    required String title,
+    required String subtitle,
+    required String keyName,
+    required Map<String, bool> preferences,
+  }) {
+    final enabled = preferences["enabled"] != false;
+    final isGlobal = keyName == "enabled";
+    return SwitchListTile.adaptive(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      title: Text(
+        title,
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+      subtitle: Text(subtitle),
+      value: preferences[keyName] != false,
+      onChanged: savingNotificationPreference || (!enabled && !isGlobal)
+          ? null
+          : (value) => saveNotificationSetting(keyName, value),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -546,6 +615,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
             final language =
                 (settings["language"] ?? data["language"] ?? "en").toString();
             final activeAuthMethod = authPreferences.methodFromUserData(data);
+            final notificationPreferences = notificationPrefsFromUserData(data);
 
             return ListView(
               padding: const EdgeInsets.all(12),
@@ -627,6 +697,93 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                             "Validates Face ID / Touch ID availability and keeps password login as fallback.",
                         value: AuthPreferenceMethod.biometric,
                         activeMethod: activeAuthMethod,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                StroykaSurface(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _SectionTitle("Notification preferences"),
+                      const Text(
+                        "Choose which phone alerts, sounds and app badge counts are enabled for this account.",
+                      ),
+                      if (savingNotificationPreference) ...[
+                        const SizedBox(height: 10),
+                        const LinearProgressIndicator(minHeight: 2),
+                      ],
+                      const SizedBox(height: 8),
+                      buildNotificationSwitch(
+                        title: "All notifications",
+                        subtitle: "Master switch for phone push alerts.",
+                        keyName: "enabled",
+                        preferences: notificationPreferences,
+                      ),
+                      buildNotificationSwitch(
+                        title: "Job alerts",
+                        subtitle: "New matching jobs and job updates.",
+                        keyName: "jobAlerts",
+                        preferences: notificationPreferences,
+                      ),
+                      buildNotificationSwitch(
+                        title: "Application updates",
+                        subtitle: "Application status changes and decisions.",
+                        keyName: "applicationUpdates",
+                        preferences: notificationPreferences,
+                      ),
+                      buildNotificationSwitch(
+                        title: "Offers",
+                        subtitle:
+                            "New offers, accepted offers and rejected offers.",
+                        keyName: "offers",
+                        preferences: notificationPreferences,
+                      ),
+                      buildNotificationSwitch(
+                        title: "Messages and chats",
+                        subtitle: "Unread chat message alerts.",
+                        keyName: "messages",
+                        preferences: notificationPreferences,
+                      ),
+                      buildNotificationSwitch(
+                        title: "Admin messages",
+                        subtitle: "Inbox from Admin and official notices.",
+                        keyName: "adminMessages",
+                        preferences: notificationPreferences,
+                      ),
+                      buildNotificationSwitch(
+                        title: "Billing notifications",
+                        subtitle:
+                            "Invoices, payment reminders and plan updates.",
+                        keyName: "billing",
+                        preferences: notificationPreferences,
+                      ),
+                      buildNotificationSwitch(
+                        title: "Support replies",
+                        subtitle: "Replies and updates for support requests.",
+                        keyName: "supportReplies",
+                        preferences: notificationPreferences,
+                      ),
+                      buildNotificationSwitch(
+                        title: "Policy/document updates",
+                        subtitle: "Required legal document and policy updates.",
+                        keyName: "policyUpdates",
+                        preferences: notificationPreferences,
+                      ),
+                      buildNotificationSwitch(
+                        title: "Sound",
+                        subtitle: "Play sound for eligible push notifications.",
+                        keyName: "sound",
+                        preferences: notificationPreferences,
+                      ),
+                      buildNotificationSwitch(
+                        title: "Badge counts",
+                        subtitle:
+                            "Show unread count on the app icon when supported.",
+                        keyName: "badges",
+                        preferences: notificationPreferences,
                       ),
                     ],
                   ),

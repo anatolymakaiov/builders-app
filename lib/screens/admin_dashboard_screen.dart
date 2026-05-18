@@ -575,25 +575,44 @@ Future<String> _createAdminMailMessage({
       "targetUserId": receiverId,
       "recipientCount": 1,
     });
-    batch.set(
-      firestore
-          .collection("users")
-          .doc(receiverId)
-          .collection("notifications")
-          .doc(),
-      {
-        "userId": receiverId,
-        "type": "admin_message",
-        "targetType": "admin_message",
-        "targetId": threadRef.id,
-        "threadId": threadRef.id,
-        "adminMessageId": messageRef.id,
+    final notificationRef = firestore
+        .collection("users")
+        .doc(receiverId)
+        .collection("notifications")
+        .doc();
+    batch.set(notificationRef, {
+      "notificationId": notificationRef.id,
+      "userId": receiverId,
+      "type": "admin_message",
+      "category": "admin",
+      "targetType": "admin_message",
+      "targetId": threadRef.id,
+      "threadId": threadRef.id,
+      "adminMessageId": messageRef.id,
+      "title": subject.trim(),
+      "message": message.trim(),
+      "read": false,
+      "badgeEligible": true,
+      "pushEligible": true,
+      "push": {
         "title": subject.trim(),
-        "message": message.trim(),
-        "read": false,
-        "createdAt": now,
+        "body": message.trim(),
+        "category": "admin",
+        "sound": true,
+        "badge": true,
+        "data": {
+          "notificationId": notificationRef.id,
+          "userId": receiverId,
+          "type": "admin_message",
+          "category": "admin",
+          "targetType": "admin_message",
+          "targetId": threadRef.id,
+          "threadId": threadRef.id,
+          "adminMessageId": messageRef.id,
+        },
       },
-    );
+      "createdAt": now,
+    });
   }
 
   batch.set(
