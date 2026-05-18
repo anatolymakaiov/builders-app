@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/job.dart';
@@ -22,9 +24,9 @@ class JobSearchFilters {
 
   int get activeCount {
     var count = 0;
-    if (distance < 50) count++;
-    if (minPay > 0 || maxPay < 50) count++;
     if (city.trim().isNotEmpty) count++;
+    if (city.trim().isNotEmpty && distance < 50) count++;
+    if (minPay > 0 || maxPay < 50) count++;
     count += employmentTypes.length;
     return count;
   }
@@ -67,7 +69,6 @@ class SmartJobSearchField extends StatelessWidget {
   final List<Job> jobs;
   final ValueChanged<SmartJobSearchValue> onChanged;
   final String hintText;
-  final double Function(Job job)? distanceForJob;
   final bool showJobScopeToggle;
   final bool showJobScopeToggleInField;
   final bool showOnlyMyJobs;
@@ -81,7 +82,6 @@ class SmartJobSearchField extends StatelessWidget {
     required this.jobs,
     required this.onChanged,
     this.hintText = "Search position or company",
-    this.distanceForJob,
     this.showJobScopeToggle = false,
     bool? showJobScopeToggleInField,
     this.showOnlyMyJobs = false,
@@ -197,7 +197,6 @@ class SmartJobSearchField extends StatelessWidget {
         initialQuery: query,
         initialFilters: filters,
         jobs: jobs,
-        distanceForJob: distanceForJob,
         showJobScopeToggle: showJobScopeToggle,
         showOnlyMyJobs: showOnlyMyJobs,
         currentUserId: currentUserId,
@@ -222,7 +221,7 @@ class SmartJobSearchField extends StatelessWidget {
             roles: selectedRoles,
             query: query,
             filters: next,
-            distanceForJob: distanceForJob,
+            originJobs: _jobsForScope(showOnlyMyJobs),
           );
         }).length,
       ),
@@ -365,7 +364,6 @@ class _SmartSearchModal extends StatefulWidget {
   final String initialQuery;
   final JobSearchFilters initialFilters;
   final List<Job> jobs;
-  final double Function(Job job)? distanceForJob;
   final bool showJobScopeToggle;
   final bool showOnlyMyJobs;
   final String? currentUserId;
@@ -375,7 +373,6 @@ class _SmartSearchModal extends StatefulWidget {
     required this.initialQuery,
     required this.initialFilters,
     required this.jobs,
-    this.distanceForJob,
     this.showJobScopeToggle = false,
     this.showOnlyMyJobs = false,
     this.currentUserId,
@@ -429,7 +426,7 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
           roles: selectedRoles,
           query: controller.text,
           filters: filters,
-          distanceForJob: widget.distanceForJob,
+          originJobs: scopedJobs,
         );
       }).length;
 
@@ -454,7 +451,7 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
             roles: selectedRoles,
             query: controller.text,
             filters: next,
-            distanceForJob: widget.distanceForJob,
+            originJobs: scopedJobs,
           );
         }).length,
       ),
@@ -651,11 +648,35 @@ class _SmartJobFilterSheetState extends State<SmartJobFilterSheet> {
             ),
             const SizedBox(height: 16),
             _FilterSection(
-              title: "Distance",
+              title: "City",
+              child: TextField(
+                controller: cityController,
+                decoration: AppInputFields.decoration(
+                  hint: "City",
+                  icon: Icons.location_city_outlined,
+                ),
+                onChanged: (value) {
+                  setState(() => filters = filters.copyWith(city: value));
+                },
+              ),
+            ),
+            _FilterSection(
+              title: "Distance from city",
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text("${filters.distance.toInt()} miles"),
+                  const SizedBox(height: 4),
+                  Text(
+                    filters.city.trim().isEmpty
+                        ? "Enter a city first to use distance."
+                        : "Radius from ${filters.city.trim()}",
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   Slider(
                     min: 5,
                     max: 50,
@@ -703,19 +724,6 @@ class _SmartJobFilterSheetState extends State<SmartJobFilterSheet> {
                     },
                   ),
                 ],
-              ),
-            ),
-            _FilterSection(
-              title: "City",
-              child: TextField(
-                controller: cityController,
-                decoration: AppInputFields.decoration(
-                  hint: "City",
-                  icon: Icons.location_city_outlined,
-                ),
-                onChanged: (value) {
-                  setState(() => filters = filters.copyWith(city: value));
-                },
               ),
             ),
             _FilterSection(
@@ -1005,16 +1013,11 @@ bool jobMatchesSearch(
   required List<ConstructionRole> roles,
   required String query,
   required JobSearchFilters filters,
-  double Function(Job job)? distanceForJob,
+  List<Job>? originJobs,
 }) {
   if (!JobTaxonomyService.matchesAnyRole(job, roles)) return false;
 
   if (query.trim().isNotEmpty && !JobTaxonomyService.matchesJob(job, query)) {
-    return false;
-  }
-
-  if (filters.city.trim().isNotEmpty &&
-      !job.city.toLowerCase().contains(filters.city.trim().toLowerCase())) {
     return false;
   }
 
@@ -1023,9 +1026,20 @@ bool jobMatchesSearch(
     return false;
   }
 
-  if (distanceForJob != null && filters.distance < 50) {
-    final distance = distanceForJob(job);
-    if (distance.isFinite && distance > filters.distance) {
+  final cityQuery = filters.city.trim();
+  if (cityQuery.isNotEmpty) {
+    final origin = _cityOrigin(cityQuery, originJobs ?? const <Job>[]);
+    if (origin != null && _hasCoordinates(job)) {
+      final distance = _distanceMiles(
+        origin.lat,
+        origin.lng,
+        job.lat,
+        job.lng,
+      );
+      if (distance > filters.distance) {
+        return false;
+      }
+    } else if (!_jobMatchesCity(job, cityQuery)) {
       return false;
     }
   }
@@ -1037,4 +1051,58 @@ bool jobMatchesSearch(
   }
 
   return true;
+}
+
+({double lat, double lng})? _cityOrigin(String city, List<Job> jobs) {
+  final matches = jobs.where((job) {
+    return _jobMatchesCity(job, city) && _hasCoordinates(job);
+  }).toList();
+
+  if (matches.isEmpty) return null;
+
+  final lat =
+      matches.map((job) => job.lat).reduce((a, b) => a + b) / matches.length;
+  final lng =
+      matches.map((job) => job.lng).reduce((a, b) => a + b) / matches.length;
+  return (lat: lat, lng: lng);
+}
+
+bool _jobMatchesCity(Job job, String city) {
+  final query = city.toLowerCase().trim();
+  if (query.isEmpty) return true;
+
+  return [
+    job.city,
+    job.location,
+    job.fullAddress,
+    job.postcode,
+  ].any((value) => value.toLowerCase().contains(query));
+}
+
+bool _hasCoordinates(Job job) {
+  return job.lat != 0 && job.lng != 0;
+}
+
+double _distanceMiles(
+  double startLat,
+  double startLng,
+  double endLat,
+  double endLng,
+) {
+  const earthRadiusMiles = 3958.8;
+  final dLat = _degreesToRadians(endLat - startLat);
+  final dLng = _degreesToRadians(endLng - startLng);
+  final a = _sinSquared(dLat / 2) +
+      math.cos(_degreesToRadians(startLat)) *
+          math.cos(_degreesToRadians(endLat)) *
+          _sinSquared(dLng / 2);
+  final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  return earthRadiusMiles * c;
+}
+
+double _degreesToRadians(double degrees) => degrees * 0.017453292519943295;
+
+double _sinSquared(double value) {
+  final sin = math.sin(value);
+  return sin * sin;
 }

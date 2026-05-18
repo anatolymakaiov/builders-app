@@ -594,6 +594,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                     roles: selectedRoles,
                     query: searchQuery,
                     filters: searchFilters,
+                    originJobs: visibleJobs,
                   );
                 }).toList();
 

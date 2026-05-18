@@ -217,10 +217,6 @@ class _JobListScreenState extends State<JobListScreen> {
                         query: searchQuery,
                         filters: searchFilters,
                         jobs: jobs,
-                        distanceForJob: (job) => calculateDistance(
-                          job.lat,
-                          job.lng,
-                        ),
                         onChanged: (value) {
                           setState(() {
                             selectedRoles = value.roles;
@@ -236,10 +232,7 @@ class _JobListScreenState extends State<JobListScreen> {
                           roles: selectedRoles,
                           query: searchQuery,
                           filters: searchFilters,
-                          distanceForJob: (job) => calculateDistance(
-                            job.lat,
-                            job.lng,
-                          ),
+                          originJobs: jobs,
                         )) {
                           return false;
                         }
