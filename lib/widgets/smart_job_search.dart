@@ -543,6 +543,11 @@ class _SmartJobFilterSheetState extends State<SmartJobFilterSheet> {
     setState(() => filters = filters.copyWith(employmentTypes: next));
   }
 
+  void _resetFilters() {
+    cityController.clear();
+    setState(() => filters = const JobSearchFilters());
+  }
+
   @override
   Widget build(BuildContext context) {
     final count = widget.resultCountBuilder(filters);
@@ -559,13 +564,24 @@ class _SmartJobFilterSheetState extends State<SmartJobFilterSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              "Filters",
-              style: TextStyle(
-                color: AppColors.ink,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-              ),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    "Filters",
+                    style: TextStyle(
+                      color: AppColors.ink,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _resetFilters,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text("Reset"),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             _FilterSection(
@@ -868,8 +884,11 @@ bool jobMatchesSearch(
     return false;
   }
 
-  if (distanceForJob != null && distanceForJob(job) > filters.distance) {
-    return false;
+  if (distanceForJob != null && filters.distance < 50) {
+    final distance = distanceForJob(job);
+    if (distance.isFinite && distance > filters.distance) {
+      return false;
+    }
   }
 
   if (job.jobType == "hourly" && job.rate > 0) {
