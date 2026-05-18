@@ -917,19 +917,17 @@ class _JobScopeButton extends StatelessWidget {
         height: 38,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected
-              ? AppColors.blueprintLine.withValues(alpha: 0.18)
-              : Colors.white.withValues(alpha: 0.42),
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: selected ? AppColors.blueprintLine : AppColors.muted,
-            width: selected ? 1.2 : 0.7,
+            color: selected ? AppColors.blueprintLine : Colors.transparent,
+            width: 1.4,
           ),
         ),
         child: Text(
           label,
-          style: TextStyle(
-            color: selected ? AppColors.greenDark : AppColors.ink,
+          style: const TextStyle(
+            color: Colors.white,
             fontWeight: FontWeight.w900,
           ),
         ),
