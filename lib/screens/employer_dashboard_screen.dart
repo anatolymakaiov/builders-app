@@ -28,6 +28,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   String searchQuery = "";
   List<ConstructionRole> selectedRoles = [];
   JobSearchFilters searchFilters = const JobSearchFilters();
+  bool showOnlyMyJobs = false;
 
   Widget buildCompanyAvatar(Job job, Map<String, dynamic>? employerData) {
     final avatarUrl = job.companyLogo ??
@@ -506,6 +507,28 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     );
   }
 
+  List<Job> mergeEmployerVisibleJobs({
+    required List<Job> publicJobs,
+    required List<Job> ownerJobs,
+  }) {
+    final byId = <String, Job>{};
+
+    for (final job in publicJobs) {
+      byId[job.id] = job;
+    }
+    for (final job in ownerJobs) {
+      byId[job.id] = job;
+    }
+
+    final jobs = byId.values.toList();
+    jobs.sort((a, b) {
+      final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bDate.compareTo(aDate);
+    });
+    return jobs;
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -532,65 +555,86 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
       ),
       body: StroykaScreenBody(
         child: StreamBuilder<List<Job>>(
-          stream: jobRepository.getJobsByOwner(ownerId),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+          stream: jobRepository.getJobs(),
+          builder: (context, publicSnapshot) {
+            if (publicSnapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (!snapshot.hasData) {
+            if (!publicSnapshot.hasData) {
               return const Center(child: Text("Error loading jobs"));
             }
 
-            final jobs = snapshot.data!;
+            return StreamBuilder<List<Job>>(
+              stream: jobRepository.getJobsByOwner(ownerId),
+              builder: (context, ownerSnapshot) {
+                if (ownerSnapshot.connectionState == ConnectionState.waiting &&
+                    !ownerSnapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-            final filteredJobs = jobs.where((job) {
-              return jobMatchesSearch(
-                job,
-                roles: selectedRoles,
-                query: searchQuery,
-                filters: searchFilters,
-              );
-            }).toList();
+                final ownerJobs = ownerSnapshot.data ?? const <Job>[];
+                final jobs = mergeEmployerVisibleJobs(
+                  publicJobs: publicSnapshot.data!,
+                  ownerJobs: ownerJobs,
+                );
+                final visibleJobs = showOnlyMyJobs
+                    ? jobs.where((job) => job.ownerId == ownerId).toList()
+                    : jobs;
 
-            return StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection("users")
-                  .doc(ownerId)
-                  .snapshots(),
-              builder: (context, employerSnapshot) {
-                final employerData =
-                    employerSnapshot.data?.data() as Map<String, dynamic>?;
+                final filteredJobs = visibleJobs.where((job) {
+                  return jobMatchesSearch(
+                    job,
+                    roles: selectedRoles,
+                    query: searchQuery,
+                    filters: searchFilters,
+                  );
+                }).toList();
 
-                return Column(
-                  children: [
-                    SmartJobSearchField(
-                      selectedRoles: selectedRoles,
-                      query: searchQuery,
-                      filters: searchFilters,
-                      jobs: jobs,
-                      hintText: "Search my jobs",
-                      onChanged: (value) {
-                        setState(() {
-                          selectedRoles = value.roles;
-                          searchQuery = value.query;
-                          searchFilters = value.filters;
-                        });
-                      },
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: filteredJobs.length,
-                        itemBuilder: (context, index) {
-                          return buildJobCard(
-                            context,
-                            filteredJobs[index],
-                            employerData,
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                return StreamBuilder<DocumentSnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection("users")
+                      .doc(ownerId)
+                      .snapshots(),
+                  builder: (context, employerSnapshot) {
+                    final employerData =
+                        employerSnapshot.data?.data() as Map<String, dynamic>?;
+
+                    return Column(
+                      children: [
+                        SmartJobSearchField(
+                          selectedRoles: selectedRoles,
+                          query: searchQuery,
+                          filters: searchFilters,
+                          jobs: jobs,
+                          hintText: "Search jobs",
+                          showJobScopeToggle: true,
+                          showOnlyMyJobs: showOnlyMyJobs,
+                          currentUserId: ownerId,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedRoles = value.roles;
+                              searchQuery = value.query;
+                              searchFilters = value.filters;
+                              showOnlyMyJobs = value.showOnlyMyJobs;
+                            });
+                          },
+                        ),
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: filteredJobs.length,
+                            itemBuilder: (context, index) {
+                              return buildJobCard(
+                                context,
+                                filteredJobs[index],
+                                employerData,
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
             );

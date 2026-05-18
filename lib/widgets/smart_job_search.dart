@@ -50,11 +50,13 @@ class SmartJobSearchValue {
   final List<ConstructionRole> roles;
   final String query;
   final JobSearchFilters filters;
+  final bool showOnlyMyJobs;
 
   const SmartJobSearchValue({
     required this.roles,
     required this.query,
     required this.filters,
+    this.showOnlyMyJobs = false,
   });
 }
 
@@ -66,6 +68,9 @@ class SmartJobSearchField extends StatelessWidget {
   final ValueChanged<SmartJobSearchValue> onChanged;
   final String hintText;
   final double Function(Job job)? distanceForJob;
+  final bool showJobScopeToggle;
+  final bool showOnlyMyJobs;
+  final String? currentUserId;
 
   const SmartJobSearchField({
     super.key,
@@ -76,75 +81,105 @@ class SmartJobSearchField extends StatelessWidget {
     required this.onChanged,
     this.hintText = "Search position or company",
     this.distanceForJob,
+    this.showJobScopeToggle = false,
+    this.showOnlyMyJobs = false,
+    this.currentUserId,
   });
+
+  List<Job> _jobsForScope(bool onlyMine) {
+    if (!onlyMine || currentUserId == null) return jobs;
+    return jobs.where((job) => job.ownerId == currentUserId).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
     return StroykaSurface(
       margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
       padding: const EdgeInsets.all(8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => _openSearch(context),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Icon(Icons.search, color: AppColors.ink),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  for (final role in selectedRoles)
-                    _SearchChip(
-                      label: role.canonical,
-                      onDeleted: () {
-                        final next = [...selectedRoles]..remove(role);
-                        onChanged(
-                          SmartJobSearchValue(
-                            roles: next,
-                            query: query,
-                            filters: filters,
-                          ),
-                        );
-                      },
-                    ),
-                  if (selectedRoles.isEmpty && query.trim().isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 9),
-                      child: Text(
-                        hintText,
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  if (query.trim().isNotEmpty)
-                    _SearchChip(
-                      label: query.trim(),
-                      icon: Icons.business_outlined,
-                      onDeleted: () {
-                        onChanged(
-                          SmartJobSearchValue(
-                            roles: selectedRoles,
-                            query: "",
-                            filters: filters,
-                          ),
-                        );
-                      },
-                    ),
-                ],
-              ),
+      child: Column(
+        children: [
+          if (showJobScopeToggle) ...[
+            _JobScopeToggle(
+              showOnlyMyJobs: showOnlyMyJobs,
+              onChanged: (value) {
+                onChanged(
+                  SmartJobSearchValue(
+                    roles: selectedRoles,
+                    query: query,
+                    filters: filters,
+                    showOnlyMyJobs: value,
+                  ),
+                );
+              },
             ),
-            _FilterIconButton(
-              count: filters.activeCount,
-              onPressed: () => _openFilters(context),
-            ),
+            const SizedBox(height: 8),
           ],
-        ),
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => _openSearch(context),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Icon(Icons.search, color: AppColors.ink),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      for (final role in selectedRoles)
+                        _SearchChip(
+                          label: role.canonical,
+                          onDeleted: () {
+                            final next = [...selectedRoles]..remove(role);
+                            onChanged(
+                              SmartJobSearchValue(
+                                roles: next,
+                                query: query,
+                                filters: filters,
+                                showOnlyMyJobs: showOnlyMyJobs,
+                              ),
+                            );
+                          },
+                        ),
+                      if (selectedRoles.isEmpty && query.trim().isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 9),
+                          child: Text(
+                            hintText,
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      if (query.trim().isNotEmpty)
+                        _SearchChip(
+                          label: query.trim(),
+                          icon: Icons.business_outlined,
+                          onDeleted: () {
+                            onChanged(
+                              SmartJobSearchValue(
+                                roles: selectedRoles,
+                                query: "",
+                                filters: filters,
+                                showOnlyMyJobs: showOnlyMyJobs,
+                              ),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+                _FilterIconButton(
+                  count: filters.activeCount,
+                  onPressed: () => _openFilters(context),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -160,6 +195,9 @@ class SmartJobSearchField extends StatelessWidget {
         initialFilters: filters,
         jobs: jobs,
         distanceForJob: distanceForJob,
+        showJobScopeToggle: showJobScopeToggle,
+        showOnlyMyJobs: showOnlyMyJobs,
+        currentUserId: currentUserId,
       ),
     );
 
@@ -173,8 +211,9 @@ class SmartJobSearchField extends StatelessWidget {
       useSafeArea: true,
       builder: (_) => SmartJobFilterSheet(
         current: filters,
-        jobs: jobs,
-        resultCountBuilder: (next) => jobs.where((job) {
+        jobs: _jobsForScope(showOnlyMyJobs),
+        resultCountBuilder: (next) =>
+            _jobsForScope(showOnlyMyJobs).where((job) {
           return jobMatchesSearch(
             job,
             roles: selectedRoles,
@@ -192,6 +231,7 @@ class SmartJobSearchField extends StatelessWidget {
           roles: selectedRoles,
           query: query,
           filters: result,
+          showOnlyMyJobs: showOnlyMyJobs,
         ),
       );
     }
@@ -323,6 +363,9 @@ class _SmartSearchModal extends StatefulWidget {
   final JobSearchFilters initialFilters;
   final List<Job> jobs;
   final double Function(Job job)? distanceForJob;
+  final bool showJobScopeToggle;
+  final bool showOnlyMyJobs;
+  final String? currentUserId;
 
   const _SmartSearchModal({
     required this.initialRoles,
@@ -330,6 +373,9 @@ class _SmartSearchModal extends StatefulWidget {
     required this.initialFilters,
     required this.jobs,
     this.distanceForJob,
+    this.showJobScopeToggle = false,
+    this.showOnlyMyJobs = false,
+    this.currentUserId,
   });
 
   @override
@@ -340,6 +386,7 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
   late final TextEditingController controller;
   late List<ConstructionRole> selectedRoles;
   late JobSearchFilters filters;
+  late bool showOnlyMyJobs;
 
   @override
   void initState() {
@@ -347,6 +394,7 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
     controller = TextEditingController(text: widget.initialQuery);
     selectedRoles = [...widget.initialRoles];
     filters = widget.initialFilters;
+    showOnlyMyJobs = widget.showOnlyMyJobs;
   }
 
   @override
@@ -365,7 +413,14 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
         .toList(growable: false);
   }
 
-  int get resultCount => widget.jobs.where((job) {
+  List<Job> get scopedJobs {
+    if (!showOnlyMyJobs || widget.currentUserId == null) return widget.jobs;
+    return widget.jobs
+        .where((job) => job.ownerId == widget.currentUserId)
+        .toList();
+  }
+
+  int get resultCount => scopedJobs.where((job) {
         return jobMatchesSearch(
           job,
           roles: selectedRoles,
@@ -389,8 +444,8 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
       useSafeArea: true,
       builder: (_) => SmartJobFilterSheet(
         current: filters,
-        jobs: widget.jobs,
-        resultCountBuilder: (next) => widget.jobs.where((job) {
+        jobs: scopedJobs,
+        resultCountBuilder: (next) => scopedJobs.where((job) {
           return jobMatchesSearch(
             job,
             roles: selectedRoles,
@@ -428,6 +483,13 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
             ),
           ),
           const SizedBox(height: 14),
+          if (widget.showJobScopeToggle) ...[
+            _JobScopeToggle(
+              showOnlyMyJobs: showOnlyMyJobs,
+              onChanged: (value) => setState(() => showOnlyMyJobs = value),
+            ),
+            const SizedBox(height: 12),
+          ],
           TextField(
             controller: controller,
             autofocus: true,
@@ -488,6 +550,7 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
                     roles: selectedRoles,
                     query: controller.text.trim(),
                     filters: filters,
+                    showOnlyMyJobs: showOnlyMyJobs,
                   ),
                 );
               },
@@ -793,6 +856,80 @@ class _SearchChip extends StatelessWidget {
       onDeleted: onDeleted,
       labelStyle: const TextStyle(fontWeight: FontWeight.w800),
       visualDensity: VisualDensity.compact,
+    );
+  }
+}
+
+class _JobScopeToggle extends StatelessWidget {
+  final bool showOnlyMyJobs;
+  final ValueChanged<bool> onChanged;
+
+  const _JobScopeToggle({
+    required this.showOnlyMyJobs,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _ScopeButton(
+            label: "All jobs",
+            selected: !showOnlyMyJobs,
+            onTap: () => onChanged(false),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _ScopeButton(
+            label: "My jobs",
+            selected: showOnlyMyJobs,
+            onTap: () => onChanged(true),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ScopeButton extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ScopeButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        height: 38,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.blueprintLine.withValues(alpha: 0.18)
+              : Colors.white.withValues(alpha: 0.42),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? AppColors.blueprintLine : AppColors.muted,
+            width: selected ? 1.2 : 0.7,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? AppColors.greenDark : AppColors.ink,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
     );
   }
 }
