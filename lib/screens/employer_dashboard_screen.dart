@@ -614,7 +614,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                           filters: searchFilters,
                           jobs: jobs,
                           hintText: "Search jobs",
-                          showJobScopeToggle: true,
+                          showJobScopeToggle: false,
                           showJobScopeToggleInField: false,
                           showOnlyMyJobs: showOnlyMyJobs,
                           currentUserId: ownerId,
