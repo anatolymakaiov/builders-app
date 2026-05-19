@@ -22,8 +22,10 @@ class Job {
   final double lng;
 
   final String description;
+  final String responsibilities;
   final String candidateRequirements;
   final String requiredDocuments;
+  final String additionalInformation;
 
   final String companyName;
   final String? companyLogo;
@@ -68,8 +70,10 @@ class Job {
     required this.lat,
     required this.lng,
     required this.description,
+    this.responsibilities = "",
     this.candidateRequirements = "",
     this.requiredDocuments = "",
+    this.additionalInformation = "",
     required this.companyName,
     this.companyLogo,
     required this.photos,
@@ -272,8 +276,10 @@ class Job {
       lng: safeDouble(data["lng"]),
 
       description: data["description"] ?? "",
+      responsibilities: data["responsibilities"]?.toString() ?? "",
       candidateRequirements: data["candidateRequirements"]?.toString() ?? "",
       requiredDocuments: data["requiredDocuments"]?.toString() ?? "",
+      additionalInformation: data["additionalInformation"]?.toString() ?? "",
 
       companyName: data["companyName"] ?? "",
       companyLogo: data["companyLogo"],

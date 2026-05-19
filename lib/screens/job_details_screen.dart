@@ -2136,12 +2136,20 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             children: [
               buildDescription(),
               buildJobInfoSection(
+                "Responsibilities",
+                widget.job.responsibilities,
+              ),
+              buildJobInfoSection(
                 "Candidate requirements",
                 widget.job.candidateRequirements,
               ),
               buildJobInfoSection(
                 "Required documents / certifications",
                 widget.job.requiredDocuments,
+              ),
+              buildJobInfoSection(
+                "Additional information",
+                widget.job.additionalInformation,
               ),
             ],
           ),

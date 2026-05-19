@@ -11,9 +11,11 @@ import 'dart:io';
 import '../models/job.dart';
 import '../services/billing_service.dart';
 import '../services/job_taxonomy_service.dart';
+import '../services/vacancy_import_service.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/smart_job_search.dart';
 import 'employer_profile_screen.dart';
+import 'vacancy_import_preview_screen.dart';
 
 class PostJobScreen extends StatefulWidget {
   final Function(dynamic) onJobCreated;
@@ -40,12 +42,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
   final postcodeController = TextEditingController();
   final rateController = TextEditingController();
   final descriptionController = TextEditingController();
+  final responsibilitiesController = TextEditingController();
   final candidateRequirementsController = TextEditingController();
   final requiredDocumentsController = TextEditingController();
+  final additionalInformationController = TextEditingController();
   final siteController = TextEditingController();
 
   bool loading = false;
   bool pickingPhotos = false;
+  bool importingVacancy = false;
   String postcodeStatus = "";
 
   String jobType = "hourly";
@@ -74,8 +79,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
       rateController.text = job.rate.toString();
 
       descriptionController.text = job.description;
+      responsibilitiesController.text = job.responsibilities;
       candidateRequirementsController.text = job.candidateRequirements;
       requiredDocumentsController.text = job.requiredDocuments;
+      additionalInformationController.text = job.additionalInformation;
 
       selectedTrade = JobTaxonomyService.bestCanonicalFor(
         job.trade.isNotEmpty ? job.trade : job.title,
@@ -84,6 +91,24 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
       existingPhotos = job.photos;
     }
+  }
+
+  @override
+  void dispose() {
+    positionsController.dispose();
+    durationController.dispose();
+    weeklyHoursController.dispose();
+    streetController.dispose();
+    cityController.dispose();
+    postcodeController.dispose();
+    rateController.dispose();
+    descriptionController.dispose();
+    responsibilitiesController.dispose();
+    candidateRequirementsController.dispose();
+    requiredDocumentsController.dispose();
+    additionalInformationController.dispose();
+    siteController.dispose();
+    super.dispose();
   }
 
   /// IMAGE PICKERS
@@ -123,6 +148,64 @@ class _PostJobScreenState extends State<PostJobScreen> {
     } catch (e) {
       debugPrint("Upload error: $e");
       return null;
+    }
+  }
+
+  Future<void> importVacancyFile() async {
+    if (loading || importingVacancy) return;
+
+    try {
+      setState(() => importingVacancy = true);
+      final parsed = await VacancyImportService.pickAndParseVacancyFile();
+      if (parsed == null || !mounted) return;
+
+      final preview = await Navigator.push<ParsedVacancy>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VacancyImportPreviewScreen(parsedVacancy: parsed),
+        ),
+      );
+      if (preview == null || !mounted) return;
+
+      setState(() {
+        if (preview.jobDescription.isNotEmpty) {
+          descriptionController.text = preview.jobDescription;
+        }
+        if (preview.responsibilities.isNotEmpty) {
+          responsibilitiesController.text = preview.responsibilities;
+        }
+        if (preview.requirements.isNotEmpty) {
+          candidateRequirementsController.text = preview.requirements;
+        }
+        if (preview.requiredDocumentsAndCertifications.isNotEmpty) {
+          requiredDocumentsController.text =
+              preview.requiredDocumentsAndCertifications;
+        }
+        if (preview.additionalInformation.isNotEmpty) {
+          additionalInformationController.text = preview.additionalInformation;
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Vacancy text imported")),
+      );
+    } on VacancyImportException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (e) {
+      debugPrint("VACANCY IMPORT ERROR: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Could not import this vacancy file. You can create it manually.",
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => importingVacancy = false);
     }
   }
 
@@ -350,8 +433,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
       "jobType": jobType,
       "companyName": companyName,
       "description": descriptionController.text.trim(),
+      "responsibilities": responsibilitiesController.text.trim(),
       "candidateRequirements": candidateRequirementsController.text.trim(),
       "requiredDocuments": requiredDocumentsController.text.trim(),
+      "additionalInformation": additionalInformationController.text.trim(),
       "photos": photoUrls,
       "lat": lat,
       "lng": lng,
@@ -410,6 +495,23 @@ class _PostJobScreenState extends State<PostJobScreen> {
             padding: const EdgeInsets.all(18),
             child: Column(
               children: [
+                if (widget.existingJob == null) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: loading || importingVacancy
+                          ? null
+                          : importVacancyFile,
+                      icon: const Icon(Icons.upload_file_outlined),
+                      label: Text(
+                        importingVacancy
+                            ? "Parsing vacancy file..."
+                            : "Import Vacancy File",
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 SmartRolePickerField(
                   initialValue: selectedTrade,
                   onChanged: (value) => selectedTrade = value,
@@ -493,6 +595,14 @@ class _PostJobScreenState extends State<PostJobScreen> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
+                  controller: responsibilitiesController,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: "Responsibilities",
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
                   controller: candidateRequirementsController,
                   maxLines: 3,
                   decoration: const InputDecoration(
@@ -507,6 +617,14 @@ class _PostJobScreenState extends State<PostJobScreen> {
                   decoration: const InputDecoration(
                     labelText: "Required documents / certifications",
                     hintText: "CSCS, PPE, certifications, tools, documents",
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: additionalInformationController,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: "Additional information",
                   ),
                 ),
                 const SizedBox(height: 20),
