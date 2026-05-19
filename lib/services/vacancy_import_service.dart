@@ -147,6 +147,76 @@ class VacancyImportService {
 
   static Map<String, Uint8List> _readZipEntries(Uint8List bytes) {
     final entries = <String, Uint8List>{};
+
+    void addEntry({
+      required String name,
+      required int method,
+      required int compressedSize,
+      required int dataStart,
+    }) {
+      final dataEnd = dataStart + compressedSize;
+      if (dataStart < 0 || dataStart > bytes.length || dataEnd > bytes.length) {
+        return;
+      }
+
+      final compressed = bytes.sublist(dataStart, dataEnd);
+      try {
+        if (method == 0) {
+          entries[name] = Uint8List.fromList(compressed);
+        } else if (method == 8) {
+          entries[name] = Uint8List.fromList(zlib.decode(compressed));
+        }
+      } catch (_) {
+        try {
+          if (method == 8) {
+            entries[name] = Uint8List.fromList(
+              ZLibCodec(raw: true).decode(compressed),
+            );
+          }
+        } catch (_) {
+          // Skip corrupted or unsupported entries safely.
+        }
+      }
+    }
+
+    var centralOffset = 0;
+    while (centralOffset + 46 < bytes.length) {
+      if (_uint32(bytes, centralOffset) != 0x02014b50) {
+        centralOffset++;
+        continue;
+      }
+
+      final method = _uint16(bytes, centralOffset + 10);
+      final compressedSize = _uint32(bytes, centralOffset + 20);
+      final fileNameLength = _uint16(bytes, centralOffset + 28);
+      final extraLength = _uint16(bytes, centralOffset + 30);
+      final commentLength = _uint16(bytes, centralOffset + 32);
+      final localHeaderOffset = _uint32(bytes, centralOffset + 42);
+      final nameStart = centralOffset + 46;
+      if (nameStart + fileNameLength > bytes.length ||
+          localHeaderOffset + 30 > bytes.length) {
+        break;
+      }
+
+      final name = utf8.decode(
+        bytes.sublist(nameStart, nameStart + fileNameLength),
+        allowMalformed: true,
+      );
+      final localNameLength = _uint16(bytes, localHeaderOffset + 26);
+      final localExtraLength = _uint16(bytes, localHeaderOffset + 28);
+      final dataStart =
+          localHeaderOffset + 30 + localNameLength + localExtraLength;
+      addEntry(
+        name: name,
+        method: method,
+        compressedSize: compressedSize,
+        dataStart: dataStart,
+      );
+      centralOffset = nameStart + fileNameLength + extraLength + commentLength;
+    }
+
+    if (entries.isNotEmpty) return entries;
+
     var offset = 0;
     while (offset + 30 < bytes.length) {
       if (_uint32(bytes, offset) != 0x04034b50) {
@@ -171,18 +241,12 @@ class VacancyImportService {
         bytes.sublist(nameStart, nameStart + fileNameLength),
         allowMalformed: true,
       );
-      final compressed = bytes.sublist(dataStart, dataEnd);
-      try {
-        if (method == 0) {
-          entries[name] = Uint8List.fromList(compressed);
-        } else if (method == 8) {
-          entries[name] = Uint8List.fromList(
-            ZLibCodec(raw: true).decode(compressed),
-          );
-        }
-      } catch (_) {
-        // Skip corrupted or unsupported entries safely.
-      }
+      addEntry(
+        name: name,
+        method: method,
+        compressedSize: compressedSize,
+        dataStart: dataStart,
+      );
 
       offset = dataEnd;
     }
@@ -214,10 +278,24 @@ class VacancyImportService {
       if (streamText == null || streamText.isEmpty) continue;
       try {
         final decoded = zlib.decode(latin1.encode(streamText));
-        chunks.addAll(_extractPdfTextObjects(latin1.decode(decoded)));
+        final decodedText = latin1.decode(decoded);
+        chunks.addAll(_extractPdfTextObjects(decodedText));
+        chunks.add(_extractReadableText(decodedText));
       } catch (_) {
-        // Some PDF streams use predictors/encryption; leave them empty.
+        try {
+          final decoded =
+              ZLibCodec(raw: true).decode(latin1.encode(streamText));
+          final decodedText = latin1.decode(decoded);
+          chunks.addAll(_extractPdfTextObjects(decodedText));
+          chunks.add(_extractReadableText(decodedText));
+        } catch (_) {
+          // Some PDF streams use predictors/encryption; leave them empty.
+        }
       }
+    }
+
+    if (chunks.where((chunk) => chunk.trim().isNotEmpty).isEmpty) {
+      chunks.add(_extractReadableText(raw));
     }
 
     return chunks.join("\n");
@@ -231,18 +309,71 @@ class VacancyImportService {
       parts.add(_decodePdfLiteral(token.substring(1, token.lastIndexOf(")"))));
     }
 
-    final arrayString =
-        RegExp(r"\[((?:\s*\((?:\\.|[^\\)])*\)\s*-?\d*)+)\]\s*TJ");
+    final hexString = RegExp(r"<([0-9A-Fa-f\s]{4,})>\s*Tj");
+    for (final match in hexString.allMatches(value)) {
+      parts.add(_decodePdfHex(match.group(1) ?? ""));
+    }
+
+    final arrayString = RegExp(
+        r"\[((?:\s*(?:\((?:\\.|[^\\)])*\)|<[0-9A-Fa-f\s]+>)\s*-?\d*)+)\]\s*TJ");
     for (final match in arrayString.allMatches(value)) {
       final token = match.group(1) ?? "";
-      final text = RegExp(r"\((?:\\.|[^\\)])*\)").allMatches(token).map((part) {
-        final raw = part.group(0) ?? "()";
+      final text = RegExp(r"\((?:\\.|[^\\)])*\)|<[0-9A-Fa-f\s]+>")
+          .allMatches(token)
+          .map((part) {
+        final raw = part.group(0) ?? "";
+        if (raw.startsWith("<")) {
+          return _decodePdfHex(raw.substring(1, raw.length - 1));
+        }
         return _decodePdfLiteral(raw.substring(1, raw.length - 1));
       }).join("");
       parts.add(text);
     }
 
+    final looseLiteral = RegExp(r"\((?:\\.|[^\\)]){4,}\)");
+    for (final match in looseLiteral.allMatches(value)) {
+      final token = match.group(0) ?? "";
+      final decoded = _decodePdfLiteral(token.substring(1, token.length - 1));
+      if (RegExp(r"[A-Za-z]{3,}").hasMatch(decoded)) parts.add(decoded);
+    }
+
     return parts;
+  }
+
+  static String _decodePdfHex(String value) {
+    final clean = value.replaceAll(RegExp(r"\s+"), "");
+    if (clean.length < 2) return "";
+    final hex = clean.length.isOdd ? "${clean}0" : clean;
+    final bytes = <int>[];
+    for (var i = 0; i + 1 < hex.length; i += 2) {
+      final byte = int.tryParse(hex.substring(i, i + 2), radix: 16);
+      if (byte != null) bytes.add(byte);
+    }
+    if (bytes.isEmpty) return "";
+
+    final hasUtf16Pattern = bytes.length > 3 &&
+        bytes.where((byte) => byte == 0).length > bytes.length / 4;
+    if (hasUtf16Pattern ||
+        (bytes.length > 1 && bytes.first == 0xfe && bytes[1] == 0xff)) {
+      final start =
+          bytes.length > 1 && bytes.first == 0xfe && bytes[1] == 0xff ? 2 : 0;
+      final codeUnits = <int>[];
+      for (var i = start; i + 1 < bytes.length; i += 2) {
+        codeUnits.add((bytes[i] << 8) | bytes[i + 1]);
+      }
+      return String.fromCharCodes(codeUnits);
+    }
+
+    return utf8.decode(bytes, allowMalformed: true);
+  }
+
+  static String _extractReadableText(String value) {
+    return RegExp(r'''[A-Za-z0-9£$€.,;:!?@#%&()/'"+\-\s]{5,}''')
+        .allMatches(value)
+        .map((match) => match.group(0) ?? "")
+        .map((part) => part.replaceAll(RegExp(r"\s+"), " ").trim())
+        .where((part) => RegExp(r"[A-Za-z]{3,}").hasMatch(part))
+        .join("\n");
   }
 
   static String _decodePdfLiteral(String value) {
