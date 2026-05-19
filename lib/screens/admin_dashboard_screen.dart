@@ -676,6 +676,10 @@ Future<String> _createAdminMailMessage({
     "receiverRole": receiverRole,
     "recipientId": receiverId,
     "recipientRole": receiverRole,
+    "threadParticipants": [
+      "admin",
+      if (receiverId.trim().isNotEmpty) receiverId.trim(),
+    ],
     "audienceType": audienceType,
     "canReply": canReply,
     "subject": subject.trim(),
@@ -1465,6 +1469,19 @@ class _AdminMailThreadScreen extends StatelessWidget {
               }
             }
             final selectedData = selectedDoc.data();
+            final unreadRefs = docs.where((doc) {
+              final data = doc.data();
+              return data["direction"] == "incoming" &&
+                  data["readByAdmin"] != true &&
+                  data["deletedByAdmin"] != true;
+            }).map((doc) => doc.reference);
+            if (unreadRefs.isNotEmpty) {
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                for (final ref in unreadRefs) {
+                  await _markAdminMessageRead(ref);
+                }
+              });
+            }
 
             return ListView(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),

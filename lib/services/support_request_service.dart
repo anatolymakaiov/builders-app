@@ -5,6 +5,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 class SupportRequestService {
+  static const _billingRequestTypes = {
+    "billing",
+    "payment",
+    "tariff_plan",
+    "direct_debit",
+    "invoice",
+  };
+
   static const workerRequestTypes = {
     "technical_issue": "Technical issue",
     "employer_complaint": "Complaint about employer/company",
@@ -57,7 +65,9 @@ class SupportRequestService {
 
     if (result == null || result.message.isEmpty) return;
 
-    await FirebaseFirestore.instance.collection("support_requests").add({
+    final supportRef =
+        FirebaseFirestore.instance.collection("support_requests").doc();
+    await supportRef.set({
       "userId": user.uid,
       "userRole": userRole,
       "role": userRole,
@@ -75,11 +85,107 @@ class SupportRequestService {
       "updatedAt": FieldValue.serverTimestamp(),
     });
 
+    if (!_billingRequestTypes.contains(result.type)) {
+      await _createAdminInboxThreadForSupportRequest(
+        supportRequestId: supportRef.id,
+        userId: user.uid,
+        userRole: userRole,
+        userData: userDoc.data() ?? {},
+        type: result.type,
+        typeLabel: requestTypes[result.type] ?? result.type,
+        message: result.message,
+        attachments: result.attachments,
+      );
+    }
+
     if (!context.mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Support request submitted")),
     );
+  }
+
+  static Future<void> _createAdminInboxThreadForSupportRequest({
+    required String supportRequestId,
+    required String userId,
+    required String userRole,
+    required Map<String, dynamic> userData,
+    required String type,
+    required String typeLabel,
+    required String message,
+    required List<Map<String, dynamic>> attachments,
+  }) async {
+    final firestore = FirebaseFirestore.instance;
+    final threadRef = firestore.collection("message_threads").doc();
+    final messageRef = firestore.collection("admin_messages").doc();
+    final now = FieldValue.serverTimestamp();
+    final senderName = (userRole == "employer"
+            ? userData["companyName"] ?? userData["name"]
+            : userData["name"] ?? userData["displayName"])
+        ?.toString()
+        .trim();
+    final displayName = senderName?.isNotEmpty == true ? senderName! : "User";
+    final subject = "Support: $typeLabel";
+
+    final batch = firestore.batch();
+    batch.set(messageRef, {
+      "threadId": threadRef.id,
+      "direction": "incoming",
+      "senderId": userId,
+      "senderName": displayName,
+      "senderRole": userRole,
+      "receiverId": "admin",
+      "receiverName": "Admin",
+      "receiverRole": "admin",
+      "recipientId": "admin",
+      "recipientRole": "admin",
+      "threadParticipants": [userId, "admin"],
+      "audienceType": "specific_admin",
+      "canReply": true,
+      "subject": subject,
+      "message": message,
+      "type": "support_request",
+      "supportRequestType": type,
+      "relatedSupportRequestId": supportRequestId,
+      "relatedTargetType": "support_request",
+      "relatedTargetId": supportRequestId,
+      "readByAdmin": false,
+      "readByReceiver": true,
+      "important": false,
+      "deletedByAdmin": false,
+      "deletedByReceiver": false,
+      "deletedBySender": false,
+      "attachments": attachments,
+      "hasAttachments": attachments.isNotEmpty,
+      "createdAt": now,
+    });
+    batch.set(threadRef, {
+      "subject": subject,
+      "participants": [userId, "admin"],
+      "lastMessage": message,
+      "lastMessageAt": now,
+      "lastSenderId": userId,
+      "unreadForAdmin": 1,
+      "relatedSupportRequestId": supportRequestId,
+      "updatedAt": now,
+    });
+    for (final attachment in attachments) {
+      batch.set(firestore.collection("message_attachments").doc(), {
+        ...attachment,
+        "threadId": threadRef.id,
+        "messageId": messageRef.id,
+        "createdAt": now,
+      });
+    }
+    batch.set(
+      firestore.collection("unread_counters").doc("admin"),
+      {
+        "unreadInbox": FieldValue.increment(1),
+        "updatedAt": now,
+      },
+      SetOptions(merge: true),
+    );
+    await batch.commit();
   }
 }
 

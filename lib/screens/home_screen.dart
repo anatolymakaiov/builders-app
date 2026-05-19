@@ -18,6 +18,7 @@ import 'admin_dashboard_screen.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/profile_hamburger_menu.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -126,6 +127,56 @@ class _HomeScreenState extends State<HomeScreen> {
         .where("unreadFor", arrayContains: userId)
         .snapshots()
         .map((snap) => snap.docs.length);
+  }
+
+  Stream<int> getUnreadProfileNotices() {
+    if (userId == null || role == "admin") return const Stream.empty();
+    final controller = StreamController<int>();
+    var adminInboxCount = 0;
+    var policyNoticeCount = 0;
+
+    void emit() {
+      if (!controller.isClosed) {
+        controller.add(adminInboxCount + policyNoticeCount);
+      }
+    }
+
+    final adminSub =
+        ProfileHamburgerMenu.unreadAdminInboxCountStream(userId!).listen(
+      (unreadCount) {
+        adminInboxCount = unreadCount;
+        emit();
+      },
+      onError: (_) {
+        adminInboxCount = 0;
+        emit();
+      },
+    );
+
+    final policySub = FirebaseFirestore.instance
+        .collection("users")
+        .doc(userId!)
+        .collection("notifications")
+        .where("read", isEqualTo: false)
+        .where("category", isEqualTo: "policy")
+        .snapshots()
+        .listen(
+      (snapshot) {
+        policyNoticeCount = snapshot.docs.length;
+        emit();
+      },
+      onError: (_) {
+        policyNoticeCount = 0;
+        emit();
+      },
+    );
+
+    controller.onCancel = () async {
+      await adminSub.cancel();
+      await policySub.cancel();
+    };
+
+    return controller.stream;
   }
 
   Stream<int> getUnviewedEmployerApplications(String employerId) {
@@ -255,6 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
     int notifCount,
     int chatCount,
     int applicationCount,
+    int profileCount,
   ) {
     if (role == "admin") {
       return const [
@@ -287,8 +339,8 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: buildBadgeIcon(Icons.chat, chatCount),
           label: "Chats",
         ),
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.person),
+        BottomNavigationBarItem(
+          icon: buildBadgeIcon(Icons.person, profileCount),
           label: "Profile",
         ),
       ];
@@ -319,8 +371,8 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: buildBadgeIcon(Icons.chat, chatCount),
         label: "Chats",
       ),
-      const BottomNavigationBarItem(
-        icon: Icon(Icons.person),
+      BottomNavigationBarItem(
+        icon: buildBadgeIcon(Icons.person, profileCount),
         label: "Profile",
       ),
     ];
@@ -361,74 +413,86 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (appSnap.hasData) _lastApplicationCount = appSnap.data ?? 0;
                 final applicationCount = _lastApplicationCount;
 
-                final screens = getScreens();
-                final items =
-                    getMenuItems(notifCount, chatCount, applicationCount);
+                return StreamBuilder<int>(
+                  stream: getUnreadProfileNotices(),
+                  builder: (context, profileSnap) {
+                    final profileCount = profileSnap.data ?? 0;
 
-                if (currentIndex >= screens.length) {
-                  currentIndex = 0;
-                }
+                    final screens = getScreens();
+                    final items = getMenuItems(
+                      notifCount,
+                      chatCount,
+                      applicationCount,
+                      profileCount,
+                    );
 
-                return Scaffold(
-                  body: StroykaBackground(
-                    asset: AppAssets.darkBackgrounds[
-                        currentIndex % AppAssets.darkBackgrounds.length],
-                    child: IndexedStack(
-                      index: currentIndex,
-                      children: screens,
-                    ),
-                  ),
-                  floatingActionButton: role == "employer" && currentIndex == 0
-                      ? FloatingActionButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => PostJobScreen(
-                                  onJobCreated: (_) {},
-                                ),
-                              ),
-                            );
-                          },
-                          child: const Icon(Icons.add),
-                        )
-                      : null,
-                  bottomNavigationBar: SafeArea(
-                    top: false,
-                    minimum: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.deep.withValues(alpha: 0.92),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color:
-                              AppColors.blueprintLine.withValues(alpha: 0.25),
+                    if (currentIndex >= screens.length) {
+                      currentIndex = 0;
+                    }
+
+                    return Scaffold(
+                      body: StroykaBackground(
+                        asset: AppAssets.darkBackgrounds[
+                            currentIndex % AppAssets.darkBackgrounds.length],
+                        child: IndexedStack(
+                          index: currentIndex,
+                          children: screens,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.34),
-                            blurRadius: 24,
-                            offset: const Offset(0, 12),
+                      ),
+                      floatingActionButton:
+                          role == "employer" && currentIndex == 0
+                              ? FloatingActionButton(
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => PostJobScreen(
+                                          onJobCreated: (_) {},
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: const Icon(Icons.add),
+                                )
+                              : null,
+                      bottomNavigationBar: SafeArea(
+                        top: false,
+                        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.deep.withValues(alpha: 0.92),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: AppColors.blueprintLine
+                                  .withValues(alpha: 0.25),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.34),
+                                blurRadius: 24,
+                                offset: const Offset(0, 12),
+                              ),
+                            ],
                           ),
-                        ],
+                          child: BottomNavigationBar(
+                            currentIndex: currentIndex,
+                            items: items,
+                            type: BottomNavigationBarType.fixed,
+                            backgroundColor: Colors.transparent,
+                            selectedItemColor: AppColors.blueprintLine,
+                            unselectedItemColor:
+                                Colors.white.withValues(alpha: 0.82),
+                            showUnselectedLabels: true,
+                            onTap: (index) {
+                              setState(() {
+                                currentIndex = index;
+                              });
+                            },
+                          ),
+                        ),
                       ),
-                      child: BottomNavigationBar(
-                        currentIndex: currentIndex,
-                        items: items,
-                        type: BottomNavigationBarType.fixed,
-                        backgroundColor: Colors.transparent,
-                        selectedItemColor: AppColors.blueprintLine,
-                        unselectedItemColor:
-                            Colors.white.withValues(alpha: 0.82),
-                        showUnselectedLabels: true,
-                        onTap: (index) {
-                          setState(() {
-                            currentIndex = index;
-                          });
-                        },
-                      ),
-                    ),
-                  ),
+                    );
+                  },
                 );
               },
             );

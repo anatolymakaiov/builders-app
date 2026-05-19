@@ -150,11 +150,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
       appBar: AppBar(
         leading: isMyCompany
             ? Builder(
-                builder: (context) => IconButton(
-                  tooltip: "Menu",
-                  icon: const Icon(Icons.menu),
-                  onPressed: () => Scaffold.of(context).openDrawer(),
-                ),
+                builder: (context) => const ProfileHamburgerButton(),
               )
             : null,
         title: const Text("Company Profile"),

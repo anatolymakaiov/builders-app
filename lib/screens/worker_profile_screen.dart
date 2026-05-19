@@ -1365,11 +1365,7 @@ class WorkerProfileScreen extends StatelessWidget {
       appBar: AppBar(
         leading: isMyProfile
             ? Builder(
-                builder: (context) => IconButton(
-                  tooltip: "Menu",
-                  icon: const Icon(Icons.menu),
-                  onPressed: () => Scaffold.of(context).openDrawer(),
-                ),
+                builder: (context) => const ProfileHamburgerButton(),
               )
             : null,
         title: const Text("Worker Profile"),

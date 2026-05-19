@@ -25,6 +25,17 @@ class ProfileHamburgerMenu extends StatelessWidget {
 
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
 
+  static Stream<int> unreadAdminInboxCountStream(String uid) {
+    return FirebaseFirestore.instance
+        .collection("admin_messages")
+        .where("receiverId", isEqualTo: uid)
+        .where("readByReceiver", isEqualTo: false)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .where((doc) => doc.data()["deletedByReceiver"] != true)
+            .length);
+  }
+
   static Future<bool> _confirmDeleteAccount(BuildContext context) async {
     final first = await showDialog<bool>(
       context: context,
@@ -207,18 +218,11 @@ class ProfileHamburgerMenu extends StatelessWidget {
                       onTap: () {},
                     )
                   else
-                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: FirebaseFirestore.instance
-                          .collection("admin_messages")
-                          .where("receiverId", isEqualTo: uid)
-                          .where("readByReceiver", isEqualTo: false)
-                          .snapshots(),
+                    StreamBuilder<int>(
+                      stream:
+                          ProfileHamburgerMenu.unreadAdminInboxCountStream(uid),
                       builder: (context, snapshot) {
-                        final unread = snapshot.data?.docs
-                                .where((doc) =>
-                                    doc.data()["deletedByReceiver"] != true)
-                                .length ??
-                            0;
+                        final unread = snapshot.data ?? 0;
                         return _MenuTile(
                           icon: Icons.mark_email_unread_outlined,
                           title: "Inbox from Admin",
@@ -276,6 +280,38 @@ class ProfileHamburgerMenu extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class ProfileHamburgerButton extends StatelessWidget {
+  const ProfileHamburgerButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      return IconButton(
+        tooltip: "Menu",
+        icon: const Icon(Icons.menu),
+        onPressed: () => Scaffold.of(context).openDrawer(),
+      );
+    }
+
+    return StreamBuilder<int>(
+      stream: ProfileHamburgerMenu.unreadAdminInboxCountStream(uid),
+      builder: (context, snapshot) {
+        final unread = snapshot.data ?? 0;
+        return IconButton(
+          tooltip: "Menu",
+          icon: Badge(
+            isLabelVisible: unread > 0,
+            label: Text(unread > 9 ? "9+" : unread.toString()),
+            child: const Icon(Icons.menu),
+          ),
+          onPressed: () => Scaffold.of(context).openDrawer(),
+        );
+      },
     );
   }
 }
@@ -868,6 +904,11 @@ class _AdminInboxScreenState extends State<AdminInboxScreen>
           .orderBy("createdAt", descending: true)
           .snapshots();
     }
+    if (mailbox == "deleted") {
+      return base
+          .where("threadParticipants", arrayContains: widget.userId)
+          .snapshots();
+    }
     return base
         .where("receiverId", isEqualTo: widget.userId)
         .orderBy("createdAt", descending: true)
@@ -936,10 +977,25 @@ class _AdminInboxScreenState extends State<AdminInboxScreen>
           labelStyle: AppTypography.tab,
           unselectedLabelStyle: AppTypography.tabUnselected,
           labelPadding: const EdgeInsets.symmetric(horizontal: 20),
-          tabs: const [
-            Tab(height: 48, text: "Incoming"),
-            Tab(height: 48, text: "Sent"),
-            Tab(height: 48, text: "Deleted"),
+          tabs: [
+            Tab(
+              height: 48,
+              child: StreamBuilder<int>(
+                stream: ProfileHamburgerMenu.unreadAdminInboxCountStream(
+                  widget.userId,
+                ),
+                builder: (context, snapshot) {
+                  final count = snapshot.data ?? 0;
+                  return Badge(
+                    isLabelVisible: count > 0,
+                    label: Text(count > 9 ? "9+" : count.toString()),
+                    child: const Text("Incoming"),
+                  );
+                },
+              ),
+            ),
+            const Tab(height: 48, text: "Sent"),
+            const Tab(height: 48, text: "Deleted"),
           ],
         ),
       ),
@@ -1316,6 +1372,7 @@ class AdminInboxMessageScreen extends StatelessWidget {
       "receiverId": "admin",
       "receiverName": "Admin",
       "receiverRole": "admin",
+      "threadParticipants": [userId, "admin"],
       "subject":
           subject.toLowerCase().startsWith("re:") ? subject : "RE: $subject",
       "message": message,
@@ -1331,6 +1388,10 @@ class AdminInboxMessageScreen extends StatelessWidget {
         "relatedTargetType": source["relatedTargetType"],
       if (source["relatedTargetId"] != null)
         "relatedTargetId": source["relatedTargetId"],
+      if (source["relatedSupportRequestId"] != null)
+        "relatedSupportRequestId": source["relatedSupportRequestId"],
+      if (source["relatedBillingRequestId"] != null)
+        "relatedBillingRequestId": source["relatedBillingRequestId"],
       "createdAt": FieldValue.serverTimestamp(),
     });
     for (final attachment in draft.attachments) {
@@ -1418,6 +1479,23 @@ class AdminInboxMessageScreen extends StatelessWidget {
                 }
                 final selectedData = selectedDoc.data();
                 final canReply = selectedData["canReply"] != false;
+                final unreadRefs = docs.where((doc) {
+                  final data = doc.data();
+                  return data["receiverId"] == userId &&
+                      data["readByReceiver"] != true &&
+                      data["deletedByReceiver"] != true;
+                }).map((doc) => doc.reference);
+                if (unreadRefs.isNotEmpty) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) async {
+                    for (final ref in unreadRefs) {
+                      await _markUserAdminMailRead(ref);
+                    }
+                    await _markUserAdminMailNotificationsRead(
+                      userId: userId,
+                      threadId: threadId,
+                    );
+                  });
+                }
 
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
