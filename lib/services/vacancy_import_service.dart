@@ -495,9 +495,11 @@ class VacancyImportService {
   static String _cleanPdfMappedChunk(String value) {
     return value
         .replaceAll("\$", " ")
+        .replaceAll(RegExp(r"[\u000E\u000F]+"), " - ")
         .replaceAll(RegExp(r"[\u001D\u001F\u2580-\u259F]+"), ": ")
         .replaceAll("É", "£")
         .replaceAll("î", "£")
+        .replaceAll("Ă", "£")
         .replaceAll("R e", "Re")
         .replaceAll("P ost", "Post")
         .replaceAll("T empor", "Tempor")
@@ -570,6 +572,8 @@ class VacancyImportService {
         .replaceAll("safet y", "safety")
         .replaceAll("Abilit y", "Ability")
         .replaceAll("qualit y", "quality")
+        .replaceAll("da y", "day")
+        .replaceAll("Pa yment", "Payment")
         .replaceAll("Monda y", "Monday")
         .replaceAll("Frida y", "Friday")
         .replaceAll("opportunit y", "opportunity")
@@ -582,6 +586,10 @@ class VacancyImportService {
         .replaceAllMapped(
           RegExp(r"\s+(Role & Responsibilities|Requirements):"),
           (match) => "\n${match.group(1)}:",
+        )
+        .replaceAllMapped(
+          RegExp(r"\s+(JOB DUTIES|EXPERIENCE - QUALIFICATIONS|APPLY)\b"),
+          (match) => "\n${match.group(1)}",
         )
         .replaceAll(RegExp(r"\n{3,}"), "\n\n")
         .trim();
@@ -611,10 +619,12 @@ class VacancyImportService {
       "role responsibilities",
       "role and responsibilities",
       "role & responsibilities",
+      "job duties",
       "requirements",
       "candidate requirements",
       "skills required",
       "experience required",
+      "experience - qualifications",
       "required documents",
       "certifications",
       "cscs requirements",
@@ -709,6 +719,19 @@ class VacancyImportService {
         .replaceAll("Prov en", "Proven")
         .replaceAll("R eliable", "Reliable")
         .replaceAll("teamIf", "team. If")
+        .replaceAll("av ailable", "available")
+        .replaceAll("contr act", "contract")
+        .replaceAll("dur ation", "duration")
+        .replaceAll("P anels", "Panels")
+        .replaceAll("work ed", "worked")
+        .replaceAll("y ears", "years")
+        .replaceAll("QU ALIFICA TIONS", "QUALIFICATIONS")
+        .replaceAll("W ork", "Work")
+        .replaceAll("P ermit", "Permit")
+        .replaceAll("APPL Y", "APPLY")
+        .replaceAll("T o apply", "To apply")
+        .replaceAll("adv ert", "advert")
+        .replaceAll("acop y", "a copy")
         .replaceAll("Responsibili ties", "Responsibilities")
         .replaceAll(RegExp(r"\b(\d+)\s*/\s*(\d{2}/\d{4})\b"), r"$1/$2");
     return line;
@@ -878,6 +901,7 @@ class VacancyImportService {
       "role responsibilities",
       "role and responsibilities",
       "role & responsibilities",
+      "job duties",
     ])) {
       return "responsibilities";
     }
@@ -886,6 +910,7 @@ class VacancyImportService {
       "candidate requirements",
       "skills required",
       "experience required",
+      "experience - qualifications",
     ])) {
       return "requirements";
     }
@@ -903,6 +928,7 @@ class VacancyImportService {
       "other information",
       "job details",
       "how to apply",
+      "apply",
     ])) {
       return "additionalInformation";
     }
@@ -940,6 +966,7 @@ class VacancyImportService {
     return _decodeXmlEntities(value)
         .replaceAll("\u0000", " ")
         .replaceAll("\$", " ")
+        .replaceAll(RegExp(r"[\u000E\u000F]+"), " - ")
         .replaceAll(RegExp(r"[\u001D\u001F\u2580-\u259F]+"), ": ")
         .replaceAll(RegExp(r"[ \t]+"), " ")
         .replaceAll(RegExp(r"\n{3,}"), "\n\n")
