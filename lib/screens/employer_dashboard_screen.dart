@@ -11,6 +11,7 @@ import '../services/billing_service.dart';
 import '../services/job_taxonomy_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/job_pagination.dart';
 import '../widgets/smart_job_search.dart';
 
 class EmployerDashboardScreen extends StatefulWidget {
@@ -22,6 +23,8 @@ class EmployerDashboardScreen extends StatefulWidget {
 }
 
 class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
+  static const int _jobsPerPage = 10;
+
   final jobRepository = JobRepository();
   String selectedTrade = "All";
   String selectedSite = "All";
@@ -29,6 +32,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   List<ConstructionRole> selectedRoles = [];
   JobSearchFilters searchFilters = const JobSearchFilters();
   bool showOnlyMyJobs = false;
+  int currentPage = 1;
 
   Widget buildCompanyAvatar(Job job, Map<String, dynamic>? employerData) {
     final avatarUrl = job.companyLogo ??
@@ -547,7 +551,10 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
           width: 220,
           child: JobScopeToggle(
             showOnlyMyJobs: showOnlyMyJobs,
-            onChanged: (value) => setState(() => showOnlyMyJobs = value),
+            onChanged: (value) => setState(() {
+              showOnlyMyJobs = value;
+              currentPage = 1;
+            }),
           ),
         ),
         actions: [
@@ -598,6 +605,14 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                   );
                 }).toList();
 
+                final totalPages = (filteredJobs.length / _jobsPerPage).ceil();
+                final safePage = totalPages == 0
+                    ? 1
+                    : currentPage.clamp(1, totalPages).toInt();
+                final pageStart = (safePage - 1) * _jobsPerPage;
+                final pageJobs =
+                    filteredJobs.skip(pageStart).take(_jobsPerPage).toList();
+
                 return StreamBuilder<DocumentSnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection("users")
@@ -625,20 +640,29 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                               searchQuery = value.query;
                               searchFilters = value.filters;
                               showOnlyMyJobs = value.showOnlyMyJobs;
+                              currentPage = 1;
                             });
                           },
                         ),
                         Expanded(
                           child: ListView.builder(
-                            itemCount: filteredJobs.length,
+                            itemCount: pageJobs.length,
                             itemBuilder: (context, index) {
                               return buildJobCard(
                                 context,
-                                filteredJobs[index],
+                                pageJobs[index],
                                 employerData,
                               );
                             },
                           ),
+                        ),
+                        JobPagination(
+                          currentPage: safePage,
+                          totalItems: filteredJobs.length,
+                          itemsPerPage: _jobsPerPage,
+                          onPageChanged: (page) {
+                            setState(() => currentPage = page);
+                          },
                         ),
                       ],
                     );

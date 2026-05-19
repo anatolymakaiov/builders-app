@@ -9,6 +9,7 @@ import '../services/job_taxonomy_service.dart';
 import 'filter_sheet.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/job_card.dart';
+import '../widgets/job_pagination.dart';
 import '../widgets/smart_job_search.dart';
 
 enum SortType {
@@ -25,6 +26,8 @@ class JobListScreen extends StatefulWidget {
 }
 
 class _JobListScreenState extends State<JobListScreen> {
+  static const int _jobsPerPage = 10;
+
   final jobRepository = JobRepository();
   final jobAlertService = JobAlertService();
 
@@ -42,6 +45,7 @@ class _JobListScreenState extends State<JobListScreen> {
   String searchQuery = "";
   List<ConstructionRole> selectedRoles = [];
   JobSearchFilters searchFilters = const JobSearchFilters();
+  int currentPage = 1;
 
   @override
   void initState() {
@@ -222,6 +226,7 @@ class _JobListScreenState extends State<JobListScreen> {
                             selectedRoles = value.roles;
                             searchQuery = value.query;
                             searchFilters = value.filters;
+                            currentPage = 1;
                           });
                         },
                       );
@@ -271,14 +276,25 @@ class _JobListScreenState extends State<JobListScreen> {
                                 .compareTo(a.createdAt ?? DateTime.now()));
                       }
 
+                      final totalPages =
+                          (filteredJobs.length / _jobsPerPage).ceil();
+                      final safePage = totalPages == 0
+                          ? 1
+                          : currentPage.clamp(1, totalPages).toInt();
+                      final pageStart = (safePage - 1) * _jobsPerPage;
+                      final pageJobs = filteredJobs
+                          .skip(pageStart)
+                          .take(_jobsPerPage)
+                          .toList();
+
                       return Column(
                         children: [
                           searchField,
                           Expanded(
                             child: ListView.builder(
-                              itemCount: filteredJobs.length,
+                              itemCount: pageJobs.length,
                               itemBuilder: (context, index) {
-                                final job = filteredJobs[index];
+                                final job = pageJobs[index];
 
                                 return buildJobCard(
                                   job,
@@ -286,6 +302,14 @@ class _JobListScreenState extends State<JobListScreen> {
                                 );
                               },
                             ),
+                          ),
+                          JobPagination(
+                            currentPage: safePage,
+                            totalItems: filteredJobs.length,
+                            itemsPerPage: _jobsPerPage,
+                            onPageChanged: (page) {
+                              setState(() => currentPage = page);
+                            },
                           ),
                         ],
                       );
