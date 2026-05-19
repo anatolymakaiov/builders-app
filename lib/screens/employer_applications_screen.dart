@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'application_details_screen.dart';
 import 'worker_profile_screen.dart';
 import '../services/application_activity_service.dart';
+import '../services/application_status_utils.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -37,11 +38,11 @@ class _EmployerApplicationsScreenState
     super.initState();
     selectedStatus = widget.initialStatus == "all"
         ? "all"
-        : canonicalStatus(widget.initialStatus);
+        : ApplicationStatusUtils.filterForStatus(widget.initialStatus);
   }
 
   Color getStatusColor(String status) {
-    switch (canonicalStatus(status)) {
+    switch (ApplicationStatusUtils.normalizeStatus(status)) {
       case "accepted":
       case "offer_accepted":
         return Colors.green;
@@ -60,33 +61,12 @@ class _EmployerApplicationsScreenState
   }
 
   String canonicalStatus(dynamic value) {
-    final status = value?.toString().toLowerCase().trim() ?? "pending";
-    if (status == "review" || status == "in_review" || status == "applied") {
-      return "pending";
-    }
-    return status.isEmpty ? "pending" : status;
+    return ApplicationStatusUtils.normalizeStatus(value);
   }
 
   String statusLabel(String status) {
-    switch (canonicalStatus(status)) {
-      case "pending":
-        return "IN REVIEW";
-      case "negotiation":
-        return "NEGOTIATION";
-      case "offer_sent":
-        return "OFFER SENT";
-      case "offer_withdrawn":
-        return "OFFER WITHDRAWN";
-      case "offer_accepted":
-      case "accepted":
-        return "ACCEPTED";
-      case "offer_rejected":
-        return "OFFER REJECTED";
-      case "rejected":
-        return "REJECTED";
-      default:
-        return status.toUpperCase();
-    }
+    return ApplicationStatusUtils.getStatusDisplayLabel(status, "employer")
+        .toUpperCase();
   }
 
   Widget buildApplicantAvatar(Map<String, dynamic> data) {
@@ -251,17 +231,20 @@ class _EmployerApplicationsScreenState
                         fillColor: Colors.white,
                       ),
                       items: [
-                        "all",
-                        "pending",
-                        "negotiation",
-                        "offer_sent",
-                        "rejected",
-                        "offer_accepted"
+                        ApplicationStatusUtils.allFilter,
+                        ApplicationStatusUtils.reviewFilter,
+                        ApplicationStatusUtils.negotiationFilter,
+                        ApplicationStatusUtils.offerFilter,
+                        ApplicationStatusUtils.rejectedFilter,
+                        ApplicationStatusUtils.hiredFilter,
+                        ApplicationStatusUtils.withdrawnFilter,
                       ]
                           .map((e) => DropdownMenuItem(
                                 value: e,
-                                child:
-                                    Text(e == "all" ? "All" : statusLabel(e)),
+                                child: Text(e == "all"
+                                    ? "All"
+                                    : ApplicationStatusUtils
+                                        .getStatusDisplayLabel(e, "employer")),
                               ))
                           .toList(),
                       onChanged: (value) {
@@ -369,7 +352,10 @@ class _EmployerApplicationsScreenState
                       return false;
                     }
 
-                    if (selectedStatus != "all" && status != selectedStatus) {
+                    if (!ApplicationStatusUtils.isStatusInFilter(
+                      status,
+                      selectedStatus,
+                    )) {
                       return false;
                     }
 
@@ -387,9 +373,9 @@ class _EmployerApplicationsScreenState
                   apps.sort((a, b) {
                     final aData = a.data() as Map<String, dynamic>;
                     final bData = b.data() as Map<String, dynamic>;
-                    return ApplicationActivityService.activityDate(bData)
-                        .compareTo(
-                      ApplicationActivityService.activityDate(aData),
+                    return ApplicationStatusUtils.compareNewestFirst(
+                      aData,
+                      bData,
                     );
                   });
 

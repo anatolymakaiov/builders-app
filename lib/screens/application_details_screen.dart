@@ -5,6 +5,7 @@ import 'chat_screen.dart';
 import 'job_list_screen.dart';
 import 'worker_profile_screen.dart';
 import '../services/application_activity_service.dart';
+import '../services/application_status_utils.dart';
 import '../services/calendar_service.dart';
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
@@ -96,11 +97,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
   }
 
   String canonicalStatus(dynamic value) {
-    final status = value?.toString().toLowerCase().trim() ?? "pending";
-    if (status == "review" || status == "in_review" || status == "applied") {
-      return "pending";
-    }
-    return status.isEmpty ? "pending" : status;
+    return ApplicationStatusUtils.normalizeStatus(value);
   }
 
   Future<void> openChat(
@@ -1027,42 +1024,37 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
             Widget statusBadge({required bool forEmployer}) {
               Color color;
-              String label;
               switch (status) {
                 case "negotiation":
                   color = AppColors.purple;
-                  label = "Negotiation";
                   break;
                 case "offer_sent":
                   color = AppColors.greenDark;
-                  label = forEmployer ? "Offer Sent" : "Offer Received";
                   break;
                 case "offer_withdrawn":
                   color = AppColors.warning;
-                  label = "Offer Withdrawn";
                   break;
                 case "offer_accepted":
                 case "accepted":
                   color = AppColors.success;
-                  label = forEmployer ? "Hired" : "Offer Accepted";
                   break;
                 case "offer_rejected":
                   color = AppColors.danger;
-                  label = "Offer Rejected";
                   break;
                 case "rejected":
                   color = AppColors.danger;
-                  label = "Rejected";
                   break;
                 case "withdrawn":
                   color = AppColors.muted;
-                  label = "Withdrawn";
                   break;
                 default:
                   color = AppColors.greenDark;
-                  label = "Pending";
               }
 
+              final label = ApplicationStatusUtils.getStatusDisplayLabel(
+                status,
+                forEmployer ? "employer" : "worker",
+              );
               return AppChip.status(label, color: color);
             }
 

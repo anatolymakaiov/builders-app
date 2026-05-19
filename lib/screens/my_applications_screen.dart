@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/job.dart';
 import '../screens/job_details_screen.dart';
 import '../services/application_activity_service.dart';
+import '../services/application_status_utils.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/job_card.dart';
@@ -22,7 +23,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   String statusFilter = "all";
 
   Color getStatusColor(String status) {
-    switch (canonicalStatus(status)) {
+    switch (ApplicationStatusUtils.normalizeStatus(status)) {
       case "accepted":
       case "offer_accepted":
         return Colors.green;
@@ -39,57 +40,16 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   }
 
   String canonicalStatus(dynamic value) {
-    final status = value?.toString().toLowerCase().trim() ?? "pending";
-    if (status == "review" || status == "in_review" || status == "applied") {
-      return "pending";
-    }
-    return status.isEmpty ? "pending" : status;
+    return ApplicationStatusUtils.normalizeStatus(value);
   }
 
   bool matchesStatusFilter(String status) {
-    final normalizedStatus = canonicalStatus(status);
-    switch (statusFilter) {
-      case "sent":
-        return normalizedStatus == "pending";
-      case "review":
-        return normalizedStatus == "pending";
-      case "negotiation":
-        return normalizedStatus == "negotiation";
-      case "offer":
-        return normalizedStatus == "offer_sent" ||
-            normalizedStatus == "offer_rejected";
-      case "hired":
-        return normalizedStatus == "accepted" ||
-            normalizedStatus == "offer_accepted";
-      case "rejected":
-        return normalizedStatus == "rejected";
-      case "withdrawn":
-        return normalizedStatus == "withdrawn" ||
-            normalizedStatus == "cancelled" ||
-            normalizedStatus == "deleted";
-      default:
-        return true;
-    }
+    return ApplicationStatusUtils.isStatusInFilter(status, statusFilter);
   }
 
   String statusLabel(String status) {
-    switch (canonicalStatus(status)) {
-      case "pending":
-        return "IN REVIEW";
-      case "negotiation":
-        return "NEGOTIATION";
-      case "offer_sent":
-        return "OFFER RECEIVED";
-      case "accepted":
-      case "offer_accepted":
-        return "OFFER ACCEPTED";
-      case "offer_rejected":
-        return "OFFER REJECTED";
-      case "rejected":
-        return "REJECTED";
-      default:
-        return status.toUpperCase();
-    }
+    return ApplicationStatusUtils.getStatusDisplayLabel(status, "worker")
+        .toUpperCase();
   }
 
   String applicationDateText(dynamic value) {
@@ -293,9 +253,9 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                   apps.sort((a, b) {
                     final aData = a.data() as Map<String, dynamic>;
                     final bData = b.data() as Map<String, dynamic>;
-                    return ApplicationActivityService.activityDate(bData)
-                        .compareTo(
-                      ApplicationActivityService.activityDate(aData),
+                    return ApplicationStatusUtils.compareNewestFirst(
+                      aData,
+                      bData,
                     );
                   });
 

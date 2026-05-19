@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'application_status_utils.dart';
+
 class ApplicationActivityService {
   static Map<String, dynamic> createdForEmployer(String? employerId) {
     final unreadFor = <String>[
@@ -42,10 +44,7 @@ class ApplicationActivityService {
   }
 
   static DateTime activityDate(Map<String, dynamic> data) {
-    final value =
-        data["applicationActivityAt"] ?? data["updatedAt"] ?? data["createdAt"];
-    if (value is Timestamp) return value.toDate();
-    return DateTime.fromMillisecondsSinceEpoch(0);
+    return ApplicationStatusUtils.getStatusSortTimestamp(data);
   }
 
   static int compareForUser(
