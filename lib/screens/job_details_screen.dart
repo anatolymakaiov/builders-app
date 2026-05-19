@@ -13,6 +13,7 @@ import '../services/application_activity_service.dart';
 import '../services/calendar_service.dart';
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
+import '../services/offer_acceptance_service.dart';
 import '../services/report_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -1365,33 +1366,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
   Future<void> acceptOffer(String applicationId) async {
     try {
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final appRef = FirebaseFirestore.instance
-            .collection("applications")
-            .doc(applicationId);
-
-        final appSnap = await transaction.get(appRef);
-
-        if (!appSnap.exists) return;
-
-        final appData = appSnap.data() as Map<String, dynamic>;
-
-        final currentStatus = appData["status"] ?? "";
-        if (currentStatus == "accepted" || currentStatus == "offer_accepted") {
-          return;
-        }
-
-        transaction.update(appRef, {
-          "status": "offer_accepted",
-          "offerAcceptedAt": FieldValue.serverTimestamp(),
-          "acceptedByWorkerId": userId,
-          "applicationActivityAt": FieldValue.serverTimestamp(),
-          "updatedAt": FieldValue.serverTimestamp(),
-          "unreadFor": FieldValue.arrayUnion(
-            ApplicationActivityService.employerRecipients(appData),
-          ),
-        });
-      });
+      final accepted = await OfferAcceptanceService.acceptOffer(
+        applicationId: applicationId,
+        currentUserId: userId,
+      );
+      if (!accepted) return;
 
       final appSnap = await FirebaseFirestore.instance
           .collection("applications")

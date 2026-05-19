@@ -33,6 +33,8 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
   final picker = ImagePicker();
   bool uploadingTeamPortfolio = false;
   bool addingMember = false;
+  bool deletingTeam = false;
+  bool teamDeletedLocally = false;
 
   String? get currentUserId => FirebaseAuth.instance.currentUser?.uid;
 
@@ -358,6 +360,8 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
   }
 
   Future<void> deleteTeam() async {
+    if (deletingTeam) return;
+
     final confirmed = await confirmAction(
       title: "Delete team",
       message:
@@ -366,24 +370,37 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
     );
     if (!confirmed) return;
 
-    final firestore = FirebaseFirestore.instance;
-    final teamRef = firestore.collection("teams").doc(widget.teamId);
-    final portfolio = await teamRef.collection("portfolio").get();
-    final batch = firestore.batch();
-
-    for (final doc in portfolio.docs) {
-      batch.delete(doc.reference);
-    }
-    batch.delete(teamRef);
-
-    await batch.commit();
-
     if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    Navigator.pop(context);
-    messenger.showSnackBar(
-      const SnackBar(content: Text("Team deleted")),
-    );
+    setState(() => deletingTeam = true);
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final teamRef = firestore.collection("teams").doc(widget.teamId);
+      final portfolio = await teamRef.collection("portfolio").get();
+      final batch = firestore.batch();
+
+      for (final doc in portfolio.docs) {
+        batch.delete(doc.reference);
+      }
+      batch.delete(teamRef);
+
+      await batch.commit();
+
+      if (!mounted) return;
+      setState(() => teamDeletedLocally = true);
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.of(context).pop(true);
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Team deleted")),
+      );
+    } catch (e) {
+      debugPrint("DELETE TEAM ERROR: $e");
+      if (!mounted) return;
+      setState(() => deletingTeam = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not delete team")),
+      );
+    }
   }
 
   Future<void> openInternalChat(
@@ -571,7 +588,9 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
       builder: (context, snapshot) {
         if (snapshot.hasData && !snapshot.data!.exists) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) Navigator.pop(context);
+            if (mounted && !teamDeletedLocally && Navigator.canPop(context)) {
+              Navigator.pop(context, true);
+            }
           });
           return const Scaffold(
             body: Center(child: Text("Team deleted")),
@@ -602,7 +621,7 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                 IconButton(
                   tooltip: "Delete team",
                   icon: const Icon(Icons.delete_outline),
-                  onPressed: deleteTeam,
+                  onPressed: deletingTeam ? null : deleteTeam,
                 ),
             ],
           ),
@@ -645,7 +664,7 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                           side: const BorderSide(color: Colors.red),
                         ),
                         onPressed: canEdit
-                            ? deleteTeam
+                            ? (deletingTeam ? null : deleteTeam)
                             : () => leaveTeam(team, members),
                         icon: Icon(
                           canEdit ? Icons.delete_outline : Icons.logout,

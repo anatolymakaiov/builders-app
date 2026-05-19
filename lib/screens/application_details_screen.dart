@@ -8,6 +8,7 @@ import '../services/application_activity_service.dart';
 import '../services/calendar_service.dart';
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
+import '../services/offer_acceptance_service.dart';
 import '../widgets/make_offer_dialog.dart';
 import '../widgets/phone_link.dart';
 import '../theme/app_theme.dart';
@@ -147,33 +148,11 @@ class ApplicationDetailsScreen extends StatelessWidget {
     if (jobId == null || jobId.isEmpty) return;
 
     try {
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final appRef = FirebaseFirestore.instance
-            .collection("applications")
-            .doc(applicationId);
-
-        final appSnap = await transaction.get(appRef);
-
-        if (!appSnap.exists) return;
-
-        final appData = appSnap.data() as Map<String, dynamic>;
-        final currentStatus = appData["status"]?.toString() ?? "";
-
-        if (currentStatus == "accepted" || currentStatus == "offer_accepted") {
-          return;
-        }
-
-        transaction.update(appRef, {
-          "status": "offer_accepted",
-          "offerAcceptedAt": FieldValue.serverTimestamp(),
-          "acceptedByWorkerId": FirebaseAuth.instance.currentUser?.uid,
-          "applicationActivityAt": FieldValue.serverTimestamp(),
-          "updatedAt": FieldValue.serverTimestamp(),
-          "unreadFor": FieldValue.arrayUnion(
-            ApplicationActivityService.employerRecipients(appData),
-          ),
-        });
-      });
+      final accepted = await OfferAcceptanceService.acceptOffer(
+        applicationId: applicationId,
+        currentUserId: FirebaseAuth.instance.currentUser?.uid,
+      );
+      if (!accepted) return;
 
       final updatedApplication = await FirebaseFirestore.instance
           .collection("applications")
