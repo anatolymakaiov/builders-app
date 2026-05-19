@@ -356,7 +356,7 @@ class VacancyImportService {
       chunks.addAll(_extractPdfTextWithFontMaps(stream, fontResourceMaps));
     }
 
-    final text = chunks.join("\n");
+    final text = _shapePdfMappedText(chunks);
     return _hasReadableTextQuality(text) ? text : "";
   }
 
@@ -477,7 +477,7 @@ class VacancyImportService {
     }
 
     return chunks.map(_cleanPdfMappedChunk).where((chunk) {
-      return chunk.trim().isNotEmpty && RegExp(r"[A-Za-z]{2,}").hasMatch(chunk);
+      return chunk.trim().isNotEmpty && RegExp(r"[A-Za-z0-9£]").hasMatch(chunk);
     }).toList();
   }
 
@@ -495,12 +495,223 @@ class VacancyImportService {
   static String _cleanPdfMappedChunk(String value) {
     return value
         .replaceAll("\$", " ")
+        .replaceAll(RegExp(r"[\u001D\u001F\u2580-\u259F]+"), ": ")
         .replaceAll("É", "£")
+        .replaceAll("î", "£")
         .replaceAll("R e", "Re")
         .replaceAll("P ost", "Post")
         .replaceAll("T empor", "Tempor")
         .replaceAll(RegExp(r"\s+"), " ")
         .trim();
+  }
+
+  static String _shapePdfMappedText(List<String> chunks) {
+    final cleaned = chunks
+        .map(_cleanPdfMappedChunk)
+        .where((chunk) => chunk.isNotEmpty)
+        .toList();
+    if (cleaned.isEmpty) return "";
+
+    final lines = <String>[];
+    final current = StringBuffer();
+
+    void flush() {
+      final line = _repairPdfLine(current.toString());
+      if (line.isNotEmpty) lines.add(line);
+      current.clear();
+    }
+
+    for (final chunk in cleaned) {
+      final startsNewLine = _isPdfStandaloneHeading(chunk) ||
+          RegExp(r"^[A-Z][A-Za-z /&-]{2,}:").hasMatch(chunk) ||
+          RegExp(r"^[*•-]\s*").hasMatch(chunk);
+      if (startsNewLine && current.isNotEmpty) flush();
+
+      if (current.isEmpty) {
+        current.write(chunk);
+      } else if (_shouldJoinPdfChunks(current.toString(), chunk)) {
+        current.write(chunk);
+      } else {
+        current.write(" $chunk");
+      }
+
+      if (_isPdfStandaloneHeading(chunk) ||
+          chunk.endsWith(".") ||
+          chunk.endsWith(":")) {
+        flush();
+      }
+    }
+    if (current.isNotEmpty) flush();
+
+    final text = lines.join("\n");
+    return _finalizePdfMappedText(_stripPdfJobBoardFooter(text)
+        .replaceAllMapped(
+          RegExp(r"\b(Job Title|Location|Requirements|Description)\s+"),
+          (match) => "${match.group(1)}: ",
+        )
+        .replaceAllMapped(
+          RegExp(
+            r"\s+(Role & Responsibilities|Requirements|Job Details|How to Apply):",
+          ),
+          (match) => "\n${match.group(1)}:",
+        )
+        .replaceAll(RegExp(r"\n{3,}"), "\n\n")
+        .trim());
+  }
+
+  static String _finalizePdfMappedText(String value) {
+    return value
+        .replaceAll(RegExp(r"\bW\s+We\b"), "We")
+        .replaceAll(RegExp(r"\bWWe\b"), "We")
+        .replaceAll(RegExp(r"\bR\s*Role\b"), "Role")
+        .replaceAll(RegExp(r"\bV\s*Valid\b"), "Valid")
+        .replaceAll(RegExp(r"\by\s*You\b"), "You")
+        .replaceAll(RegExp(r"\bB\s+You\b"), "You")
+        .replaceAll("safet y", "safety")
+        .replaceAll("Abilit y", "Ability")
+        .replaceAll("qualit y", "quality")
+        .replaceAll("Monda y", "Monday")
+        .replaceAll("Frida y", "Friday")
+        .replaceAll("opportunit y", "opportunity")
+        .replaceAll("weekda y", "weekday")
+        .replaceAll("punctualit y", "punctuality")
+        .replaceAllMapped(
+          RegExp(r"\b([A-Za-z])\s+y\b"),
+          (match) => "${match.group(1)}y",
+        )
+        .replaceAllMapped(
+          RegExp(r"\s+(Role & Responsibilities|Requirements):"),
+          (match) => "\n${match.group(1)}:",
+        )
+        .replaceAll(RegExp(r"\n{3,}"), "\n\n")
+        .trim();
+  }
+
+  static String _stripPdfJobBoardFooter(String value) {
+    final marker = RegExp(
+      r"\bJob Type\b|\bContract Length\b|\bContact Name\b|\bJob Reference\b|\bJob ID\b",
+      caseSensitive: false,
+    ).firstMatch(value);
+    if (marker == null) return value;
+    final head = value.substring(0, marker.start).trim();
+    return head.isEmpty ? value : head;
+  }
+
+  static bool _isPdfStandaloneHeading(String value) {
+    final normalized =
+        value.toLowerCase().replaceAll(RegExp(r"[^a-z0-9 /&-]"), "").trim();
+    return {
+      "job description",
+      "description",
+      "about the role",
+      "responsibilities",
+      "duties",
+      "main duties",
+      "key responsibilities",
+      "role responsibilities",
+      "role and responsibilities",
+      "role & responsibilities",
+      "requirements",
+      "candidate requirements",
+      "skills required",
+      "experience required",
+      "required documents",
+      "certifications",
+      "cscs requirements",
+      "licenses",
+      "licences",
+      "additional information",
+      "other information",
+    }.contains(normalized);
+  }
+
+  static bool _shouldJoinPdfChunks(String current, String next) {
+    if (current.isEmpty || next.isEmpty) return false;
+    final last = current[current.length - 1];
+    final first = next[0];
+    if (RegExp(r"[A-Za-z]").hasMatch(last) &&
+        RegExp(r"[a-z]").hasMatch(first) &&
+        next.length <= 4) {
+      return true;
+    }
+    if (RegExp(r"[A-Za-z]").hasMatch(last) &&
+        RegExp(r"[A-Za-z]").hasMatch(first) &&
+        current.length <= 4) {
+      return true;
+    }
+    return false;
+  }
+
+  static String _repairPdfLine(String value) {
+    var line = value
+        .replaceAll(RegExp(r"[\u2580-\u259F]+"), " ")
+        .replaceAll(RegExp(r"\s+"), " ")
+        .trim();
+    if (line.isEmpty) return "";
+
+    line = line
+        .replaceAllMapped(
+          RegExp(r"\b([A-Z])\s+([A-Z])([a-z])"),
+          (match) {
+            final first = match.group(1);
+            final second = match.group(2);
+            if (first == second) return "$second${match.group(3)}";
+            return match.group(0) ?? "";
+          },
+        )
+        .replaceAllMapped(
+          RegExp(r"\b([A-Z])([A-Z])([a-z])"),
+          (match) {
+            final first = match.group(1);
+            final second = match.group(2);
+            if (first == second) return "$second${match.group(3)}";
+            return match.group(0) ?? "";
+          },
+        )
+        .replaceAllMapped(
+          RegExp(r"\b([A-Za-z])\s+y\b"),
+          (match) => "${match.group(1)}y",
+        )
+        .replaceAll("Tempor ary", "Temporary")
+        .replaceAll("Agency/Emplo yer", "Agency/Employer")
+        .replaceAll("libr ary", "library")
+        .replaceAll("co .uk", "co.uk")
+        .replaceAll("w as", "was")
+        .replaceAll("e Are", "We Are")
+        .replaceAll("e are", "We are")
+        .replaceAll("vac ancy", "vacancy")
+        .replaceAll("Employ er", "Employer")
+        .replaceAll("Emploer", "Employer")
+        .replaceAll("Exper ience", "Experience")
+        .replaceAll("Qualifica tions", "Qualifications")
+        .replaceAll("Job Title Dryliner", "Job Title: Dryliner")
+        .replaceAll("Location Bristol", "Location: Bristol")
+        .replaceAll("Require ments", "Requirements")
+        .replaceAll("equirements", "Requirements")
+        .replaceAll("RRequirements", "Requirements")
+        .replaceAll("ole &", "Role &")
+        .replaceAll("alid", "Valid")
+        .replaceAll("y You", "You")
+        .replaceAll("yYou", "You")
+        .replaceAll("B You", "You")
+        .replaceAll("y ou", "you")
+        .replaceAll("ou ", "You ")
+        .replaceAll("P osted", "Posted")
+        .replaceAll("R equired", "Required")
+        .replaceAll("R esponsibilities", "Responsibilities")
+        .replaceAll("R ate", "Rate")
+        .replaceAll("R eference", "Reference")
+        .replaceAll("Contr act", "Contract")
+        .replaceAll("sitedra wings", "site drawings")
+        .replaceAll("dra wings", "drawings")
+        .replaceAll("w alls", "walls")
+        .replaceAll("fr ameworks", "frameworks")
+        .replaceAll("Prov en", "Proven")
+        .replaceAll("R eliable", "Reliable")
+        .replaceAll("teamIf", "team. If")
+        .replaceAll("Responsibili ties", "Responsibilities")
+        .replaceAll(RegExp(r"\b(\d+)\s*/\s*(\d{2}/\d{4})\b"), r"$1/$2");
+    return line;
   }
 
   static List<String> _extractPdfTextObjects(String value) {
@@ -625,6 +836,9 @@ class VacancyImportService {
         if (remainder.isNotEmpty) buckets[current]!.add(remainder);
         continue;
       }
+      if (current == "additionalInformation" && _isJobBoardBoilerplate(line)) {
+        continue;
+      }
       buckets[current]!.add(line);
     }
 
@@ -645,11 +859,13 @@ class VacancyImportService {
         line.toLowerCase().replaceAll(RegExp(r"[^a-z0-9 /&-]"), "").trim();
     final headingOnly = normalized.split(RegExp(r"[:\\-]")).first.trim();
 
-    bool isOneOf(Iterable<String> values) => values.any((value) =>
-        headingOnly == value ||
-        normalized == value ||
-        normalized.startsWith("$value:") ||
-        normalized.startsWith("$value -"));
+    bool isOneOf(Iterable<String> values) => values.any((value) {
+          return headingOnly == value ||
+              normalized == value ||
+              normalized.startsWith("$value ") ||
+              normalized.startsWith("$value:") ||
+              normalized.startsWith("$value -");
+        });
 
     if (isOneOf(["job description", "description", "about the role"])) {
       return "jobDescription";
@@ -682,7 +898,12 @@ class VacancyImportService {
     ])) {
       return "requiredDocumentsAndCertifications";
     }
-    if (isOneOf(["additional information", "other information"])) {
+    if (isOneOf([
+      "additional information",
+      "other information",
+      "job details",
+      "how to apply",
+    ])) {
       return "additionalInformation";
     }
     return null;
@@ -692,6 +913,17 @@ class VacancyImportService {
     final index = line.indexOf(RegExp(r"[:\\-]"));
     if (index < 0 || index + 1 >= line.length) return "";
     return line.substring(index + 1).trim();
+  }
+
+  static bool _isJobBoardBoilerplate(String line) {
+    final lower = line.toLowerCase();
+    return lower.contains("cv-library") ||
+        lower.contains("cv library") ||
+        lower.contains("job url") ||
+        lower.contains("print job") ||
+        lower.contains("salary/rate") ||
+        lower.startsWith("-library") ||
+        lower.startsWith("this job was found on");
   }
 
   static String? _detectRoleSuggestion(String text) {
@@ -708,6 +940,7 @@ class VacancyImportService {
     return _decodeXmlEntities(value)
         .replaceAll("\u0000", " ")
         .replaceAll("\$", " ")
+        .replaceAll(RegExp(r"[\u001D\u001F\u2580-\u259F]+"), ": ")
         .replaceAll(RegExp(r"[ \t]+"), " ")
         .replaceAll(RegExp(r"\n{3,}"), "\n\n")
         .trim();
