@@ -897,10 +897,11 @@ class _AdminInboxScreenState extends State<AdminInboxScreen>
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> streamFor(String mailbox) {
-    return FirebaseFirestore.instance
-        .collection("admin_messages")
-        .where("threadParticipants", arrayContains: widget.userId)
-        .snapshots();
+    final base = FirebaseFirestore.instance.collection("admin_messages");
+    if (mailbox == "sent") {
+      return base.where("senderId", isEqualTo: widget.userId).snapshots();
+    }
+    return base.where("receiverId", isEqualTo: widget.userId).snapshots();
   }
 
   Widget buildMailbox(String mailbox) {
@@ -1424,112 +1425,128 @@ class AdminInboxMessageScreen extends StatelessWidget {
           stream: FirebaseFirestore.instance
               .collection("admin_messages")
               .where("threadId", isEqualTo: threadId)
+              .where("receiverId", isEqualTo: userId)
               .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
+          builder: (context, incomingSnapshot) {
+            if (incomingSnapshot.hasError) {
               return const Center(child: Text("Could not load message thread"));
             }
-            if (!snapshot.hasData) {
+            if (!incomingSnapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
-
-            final docs = snapshot.data!.docs.where((doc) {
-              final data = doc.data();
-              final isReceived = data["receiverId"] == userId;
-              final isSent = data["senderId"] == userId;
-              if (!isReceived && !isSent) return false;
-              return isReceived
-                  ? data["deletedByReceiver"] != true
-                  : data["deletedBySender"] != true;
-            }).toList()
-              ..sort(_compareUserAdminMailDocs);
-            if (docs.isEmpty) {
-              return const Center(child: Text("Message thread not found"));
-            }
-            final first = docs.first.data();
-            var selectedDoc = docs.last;
-            for (final doc in docs) {
-              if (doc.id == initialMessageId) selectedDoc = doc;
-            }
-            final selectedData = selectedDoc.data();
-            final canReply = selectedData["canReply"] != false;
-            final unreadRefs = docs.where((doc) {
-              final data = doc.data();
-              return data["receiverId"] == userId &&
-                  data["readByReceiver"] != true &&
-                  data["deletedByReceiver"] != true;
-            }).map((doc) => doc.reference);
-            if (unreadRefs.isNotEmpty) {
-              WidgetsBinding.instance.addPostFrameCallback((_) async {
-                for (final ref in unreadRefs) {
-                  await _markUserAdminMailRead(ref);
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection("admin_messages")
+                  .where("threadId", isEqualTo: threadId)
+                  .where("senderId", isEqualTo: userId)
+                  .snapshots(),
+              builder: (context, sentSnapshot) {
+                if (sentSnapshot.hasError) {
+                  return const Center(
+                    child: Text("Could not load message thread"),
+                  );
                 }
-                await _markUserAdminMailNotificationsRead(
-                  userId: userId,
-                  threadId: threadId,
-                );
-              });
-            }
+                if (!sentSnapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
-              children: [
-                StroykaSurface(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                final docs = [
+                  ...incomingSnapshot.data!.docs.where(
+                    (doc) => doc.data()["deletedByReceiver"] != true,
+                  ),
+                  ...sentSnapshot.data!.docs.where(
+                    (doc) => doc.data()["deletedBySender"] != true,
+                  ),
+                ]..sort(_compareUserAdminMailDocs);
+                if (docs.isEmpty) {
+                  return const Center(child: Text("Message thread not found"));
+                }
+                final first = docs.first.data();
+                var selectedDoc = docs.last;
+                for (final doc in docs) {
+                  if (doc.id == initialMessageId) selectedDoc = doc;
+                }
+                final selectedData = selectedDoc.data();
+                final canReply = selectedData["canReply"] != false;
+                final unreadRefs = docs.where((doc) {
+                  final data = doc.data();
+                  return data["receiverId"] == userId &&
+                      data["readByReceiver"] != true &&
+                      data["deletedByReceiver"] != true;
+                }).map((doc) => doc.reference);
+                if (unreadRefs.isNotEmpty) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) async {
+                    for (final ref in unreadRefs) {
+                      await _markUserAdminMailRead(ref);
+                    }
+                    await _markUserAdminMailNotificationsRead(
+                      userId: userId,
+                      threadId: threadId,
+                    );
+                  });
+                }
+
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
+                  children: [
+                    StroykaSurface(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const CircleAvatar(
-                            radius: 24,
-                            backgroundColor: Color(0x297DB9D8),
-                            child: Icon(
-                              Icons.admin_panel_settings_outlined,
-                              color: AppColors.greenDark,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _userAdminMailDisplaySubject(
-                                first["subject"],
+                          Row(
+                            children: [
+                              const CircleAvatar(
+                                radius: 24,
+                                backgroundColor: Color(0x297DB9D8),
+                                child: Icon(
+                                  Icons.admin_panel_settings_outlined,
+                                  color: AppColors.greenDark,
+                                ),
                               ),
-                              style: const TextStyle(
-                                color: AppColors.ink,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  _userAdminMailDisplaySubject(
+                                    first["subject"],
+                                  ),
+                                  style: const TextStyle(
+                                    color: AppColors.ink,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                          _UserAdminMailThreadMenu(
-                            source: selectedData,
-                            selectedRef: selectedDoc.reference,
-                            userId: userId,
-                            role: role,
-                            onReply: () => reply(context, selectedData),
+                              _UserAdminMailThreadMenu(
+                                source: selectedData,
+                                selectedRef: selectedDoc.reference,
+                                userId: userId,
+                                role: role,
+                                onReply: () => reply(context, selectedData),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-                if (!canReply) ...[
-                  const SizedBox(height: 10),
-                  const StroykaSurface(
-                    padding: EdgeInsets.all(12),
-                    child: Text(
-                      "Informational message. Reply is not available.",
-                      style: TextStyle(fontWeight: FontWeight.w800),
                     ),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                ...docs.map((doc) => _UserAdminMailMessageCard(
-                      doc: doc,
-                      selected: doc.id == selectedDoc.id,
-                    )),
-              ],
+                    if (!canReply) ...[
+                      const SizedBox(height: 10),
+                      const StroykaSurface(
+                        padding: EdgeInsets.all(12),
+                        child: Text(
+                          "Informational message. Reply is not available.",
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    ...docs.map((doc) => _UserAdminMailMessageCard(
+                          doc: doc,
+                          selected: doc.id == selectedDoc.id,
+                        )),
+                  ],
+                );
+              },
             );
           },
         ),
