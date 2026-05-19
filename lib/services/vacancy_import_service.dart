@@ -108,7 +108,7 @@ class VacancyImportService {
     };
 
     final cleanText = _normalizePlainText(text);
-    if (cleanText.trim().isEmpty) {
+    if (cleanText.trim().isEmpty || !_hasReadableTextQuality(cleanText)) {
       throw const VacancyImportException(
         "Could not extract readable text. You can still create the vacancy manually.",
       );
@@ -265,6 +265,9 @@ class VacancyImportService {
   }
 
   static String _extractPdf(Uint8List bytes) {
+    final mappedText = _extractPdfWithToUnicode(bytes);
+    if (_hasReadableTextQuality(mappedText)) return mappedText;
+
     final chunks = <String>[];
     final raw = latin1.decode(bytes, allowInvalid: true);
     chunks.addAll(_extractPdfTextObjects(raw));
@@ -298,7 +301,206 @@ class VacancyImportService {
       chunks.add(_extractReadableText(raw));
     }
 
-    return chunks.join("\n");
+    final fallbackText = chunks.join("\n");
+    return _hasReadableTextQuality(fallbackText) ? fallbackText : "";
+  }
+
+  static String _extractPdfWithToUnicode(Uint8List bytes) {
+    final raw = latin1.decode(bytes, allowInvalid: true);
+    final objects = _pdfObjects(raw);
+    final decodedStreams = <String, String>{};
+
+    String decodedStreamFor(String id) {
+      return decodedStreams.putIfAbsent(id, () {
+        final body = objects[id];
+        if (body == null) return "";
+        return _decodePdfStream(body);
+      });
+    }
+
+    final fontObjectMaps = <String, Map<int, String>>{};
+    objects.forEach((id, body) {
+      final match = RegExp(r"/ToUnicode\s+(\d+)\s+0\s+R").firstMatch(body);
+      if (match == null) return;
+      final cmapObjectId = match.group(1);
+      if (cmapObjectId == null) return;
+      final cmap = _parseToUnicodeCMap(decodedStreamFor(cmapObjectId));
+      if (cmap.isNotEmpty) fontObjectMaps[id] = cmap;
+    });
+
+    if (fontObjectMaps.isEmpty) return "";
+
+    final fontResourceMaps = <String, Map<int, String>>{};
+    for (final body in objects.values) {
+      for (final fontBlock
+          in RegExp(r"/Font\s*<<(.*?)>>", dotAll: true).allMatches(body)) {
+        final block = fontBlock.group(1) ?? "";
+        for (final fontMatch
+            in RegExp(r"/(\w+)\s+(\d+)\s+0\s+R").allMatches(block)) {
+          final resourceName = fontMatch.group(1);
+          final fontObjectId = fontMatch.group(2);
+          final cmap = fontObjectMaps[fontObjectId];
+          if (resourceName != null && cmap != null) {
+            fontResourceMaps[resourceName] = cmap;
+          }
+        }
+      }
+    }
+
+    if (fontResourceMaps.isEmpty) return "";
+
+    final chunks = <String>[];
+    for (final entry in objects.entries) {
+      final stream = decodedStreamFor(entry.key);
+      if (!stream.contains("Tj") && !stream.contains("TJ")) continue;
+      chunks.addAll(_extractPdfTextWithFontMaps(stream, fontResourceMaps));
+    }
+
+    final text = chunks.join("\n");
+    return _hasReadableTextQuality(text) ? text : "";
+  }
+
+  static Map<String, String> _pdfObjects(String raw) {
+    final objects = <String, String>{};
+    for (final match
+        in RegExp(r"(\d+)\s+0\s+obj([\s\S]*?)endobj").allMatches(raw)) {
+      final id = match.group(1);
+      final body = match.group(2);
+      if (id != null && body != null) objects[id] = body;
+    }
+    return objects;
+  }
+
+  static String _decodePdfStream(String objectBody) {
+    final match =
+        RegExp(r"stream\r?\n([\s\S]*?)\r?\nendstream").firstMatch(objectBody);
+    if (match == null) return "";
+    final streamText = match.group(1);
+    if (streamText == null) return "";
+    final bytes = latin1.encode(streamText);
+    if (!objectBody.contains("/FlateDecode")) {
+      return latin1.decode(bytes, allowInvalid: true);
+    }
+    try {
+      return latin1.decode(zlib.decode(bytes), allowInvalid: true);
+    } catch (_) {
+      try {
+        return latin1.decode(
+          ZLibCodec(raw: true).decode(bytes),
+          allowInvalid: true,
+        );
+      } catch (_) {
+        return "";
+      }
+    }
+  }
+
+  static Map<int, String> _parseToUnicodeCMap(String cmapText) {
+    final map = <int, String>{};
+
+    for (final match in RegExp(
+      r"<([0-9A-Fa-f]{4})>\s+<([0-9A-Fa-f]{4,})>",
+    ).allMatches(cmapText)) {
+      final from = int.tryParse(match.group(1) ?? "", radix: 16);
+      final to = _unicodeFromHex(match.group(2) ?? "");
+      if (from != null && to.isNotEmpty) map[from] = to;
+    }
+
+    for (final match in RegExp(
+      r"<([0-9A-Fa-f]{4})>\s+<([0-9A-Fa-f]{4})>\s+<([0-9A-Fa-f]{4,})>",
+    ).allMatches(cmapText)) {
+      final start = int.tryParse(match.group(1) ?? "", radix: 16);
+      final end = int.tryParse(match.group(2) ?? "", radix: 16);
+      final target = int.tryParse(match.group(3) ?? "", radix: 16);
+      if (start == null || end == null || target == null || end < start) {
+        continue;
+      }
+      for (var code = start; code <= end; code++) {
+        map[code] = String.fromCharCode(target + code - start);
+      }
+    }
+
+    return map;
+  }
+
+  static String _unicodeFromHex(String hex) {
+    final clean = hex.replaceAll(RegExp(r"\s+"), "");
+    if (clean.length < 4) return "";
+    final units = <int>[];
+    for (var i = 0; i + 3 < clean.length; i += 4) {
+      final unit = int.tryParse(clean.substring(i, i + 4), radix: 16);
+      if (unit != null) units.add(unit);
+    }
+    return String.fromCharCodes(units);
+  }
+
+  static List<String> _extractPdfTextWithFontMaps(
+    String stream,
+    Map<String, Map<int, String>> fontResourceMaps,
+  ) {
+    final chunks = <String>[];
+    Map<int, String>? currentMap;
+    final operatorPattern = RegExp(
+      r"/(\w+)\s+[\d.]+\s+Tf|<([0-9A-Fa-f\s]+)>\s*Tj|\[((?:\s*(?:<[^>]+>|\([^)]*\))\s*-?\d*)+)\]\s*TJ|\((?:\\.|[^\\)])*\)\s*Tj",
+    );
+
+    for (final match in operatorPattern.allMatches(stream)) {
+      final fontName = match.group(1);
+      if (fontName != null) {
+        currentMap = fontResourceMaps[fontName];
+        continue;
+      }
+
+      if (currentMap == null) continue;
+
+      final hexText = match.group(2);
+      if (hexText != null) {
+        chunks.add(_decodePdfCidHex(hexText, currentMap));
+        continue;
+      }
+
+      final arrayText = match.group(3);
+      if (arrayText != null) {
+        final text = RegExp(r"<([0-9A-Fa-f\s]+)>")
+            .allMatches(arrayText)
+            .map((part) => _decodePdfCidHex(part.group(1) ?? "", currentMap!))
+            .join("");
+        chunks.add(text);
+        continue;
+      }
+
+      final token = match.group(0) ?? "";
+      if (token.startsWith("(")) {
+        final end = token.lastIndexOf(")");
+        if (end > 0) chunks.add(_decodePdfLiteral(token.substring(1, end)));
+      }
+    }
+
+    return chunks.map(_cleanPdfMappedChunk).where((chunk) {
+      return chunk.trim().isNotEmpty && RegExp(r"[A-Za-z]{2,}").hasMatch(chunk);
+    }).toList();
+  }
+
+  static String _decodePdfCidHex(String hex, Map<int, String> cmap) {
+    final clean = hex.replaceAll(RegExp(r"\s+"), "");
+    final buffer = StringBuffer();
+    for (var i = 0; i + 3 < clean.length; i += 4) {
+      final code = int.tryParse(clean.substring(i, i + 4), radix: 16);
+      if (code == null) continue;
+      buffer.write(cmap[code] ?? "");
+    }
+    return buffer.toString();
+  }
+
+  static String _cleanPdfMappedChunk(String value) {
+    return value
+        .replaceAll("\$", " ")
+        .replaceAll("É", "£")
+        .replaceAll("R e", "Re")
+        .replaceAll("P ost", "Post")
+        .replaceAll("T empor", "Tempor")
+        .replaceAll(RegExp(r"\s+"), " ")
+        .trim();
   }
 
   static List<String> _extractPdfTextObjects(String value) {
@@ -376,6 +578,20 @@ class VacancyImportService {
         .join("\n");
   }
 
+  static bool _hasReadableTextQuality(String value) {
+    final text = value.trim();
+    if (text.length < 24) return false;
+    final letters = RegExp(r"[A-Za-z]").allMatches(text).length;
+    final controls =
+        RegExp(r"[\u0000-\u0008\u000B-\u001F\u007F]").allMatches(text).length;
+    final replacement =
+        RegExp(r"[\uFFFD\u2580-\u259F]").allMatches(text).length;
+    if (letters < 12) return false;
+    if (controls > text.length * 0.03) return false;
+    if (replacement > text.length * 0.03) return false;
+    return letters / text.length > 0.25;
+  }
+
   static String _decodePdfLiteral(String value) {
     return value
         .replaceAll(r"\(", "(")
@@ -443,6 +659,9 @@ class VacancyImportService {
       "duties",
       "main duties",
       "key responsibilities",
+      "role responsibilities",
+      "role and responsibilities",
+      "role & responsibilities",
     ])) {
       return "responsibilities";
     }
@@ -488,6 +707,7 @@ class VacancyImportService {
   static String _normalizePlainText(String value) {
     return _decodeXmlEntities(value)
         .replaceAll("\u0000", " ")
+        .replaceAll("\$", " ")
         .replaceAll(RegExp(r"[ \t]+"), " ")
         .replaceAll(RegExp(r"\n{3,}"), "\n\n")
         .trim();
