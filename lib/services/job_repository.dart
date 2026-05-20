@@ -18,32 +18,34 @@ class JobRepository {
     return _db
         .collection('jobs')
         .where('moderationStatus', isEqualTo: 'approved')
-        .where('status', isEqualTo: 'active')
+        .where('status', whereIn: ['active', 'published', 'open'])
         .snapshots(includeMetadataChanges: true)
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) {
-            final data = doc.data();
-            final ownerId = data["ownerId"] ??
-                data["employerId"] ??
-                data["createdBy"] ??
-                data["userId"];
+          return snapshot.docs
+              .map((doc) {
+                final data = doc.data();
+                final ownerId = data["ownerId"] ??
+                    data["employerId"] ??
+                    data["createdBy"] ??
+                    data["userId"];
 
-            if (ownerId == null || ownerId.toString().trim().isEmpty) {
-              return null;
-            }
+                if (ownerId == null || ownerId.toString().trim().isEmpty) {
+                  return null;
+                }
 
-            return Job.fromFirestore(doc.id, data);
-          })
-          .whereType<Job>()
-          .where((job) => job.isPubliclyVisible)
-          .toList()
-        ..sort((a, b) {
-          final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-          final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-          return bDate.compareTo(aDate);
+                return Job.fromFirestore(doc.id, data);
+              })
+              .whereType<Job>()
+              .where((job) => job.isPubliclyVisible)
+              .toList()
+            ..sort((a, b) {
+              final aDate =
+                  a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+              final bDate =
+                  b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+              return bDate.compareTo(aDate);
+            });
         });
-    });
   }
 
   /// 🔥 JOBS ПО РАБОТОДАТЕЛЮ (НОВОЕ)

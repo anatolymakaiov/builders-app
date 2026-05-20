@@ -122,14 +122,32 @@ async function backfillJobsModeration() {
 
   for (const doc of snap.docs) {
     const data = doc.data();
-    if (data.moderationStatus) continue;
+    const patch = {};
+
+    if (!data.moderationStatus) {
+      patch.moderationStatus = "approved";
+      patch.moderationReason = "";
+    }
+
+    if (
+      (data.moderationStatus === "approved" || patch.moderationStatus === "approved") &&
+      !data.status
+    ) {
+      patch.status = "active";
+    }
+
+    if (
+      (data.moderationStatus === "approved" || patch.moderationStatus === "approved") &&
+      !data.visibility
+    ) {
+      patch.visibility = "public";
+    }
+
+    if (Object.keys(patch).length === 0) continue;
 
     count += 1;
-    await maybeSet(doc.ref, {
-      moderationStatus: "approved",
-      moderationReason: "",
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    patch.updatedAt = FieldValue.serverTimestamp();
+    await maybeSet(doc.ref, patch);
   }
 
   console.log(`Jobs needing moderation backfill: ${count}`);
