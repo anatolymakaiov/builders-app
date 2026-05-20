@@ -325,6 +325,14 @@ class BillingService {
           requestSnap.data() as Map<String, dynamic>? ?? <String, dynamic>{};
       employerId = requestData["employerId"]?.toString() ?? "";
       planName = requestData["planName"]?.toString() ?? "";
+      final planId = requestData["planId"]?.toString() ?? "";
+
+      Map<String, dynamic> planData = const <String, dynamic>{};
+      if (status == "paid" && planId.isNotEmpty) {
+        final planRef = firestore.collection("plans").doc(planId);
+        final planSnap = await transaction.get(planRef);
+        planData = planSnap.data() ?? <String, dynamic>{};
+      }
 
       transaction.set(
         ref,
@@ -336,16 +344,21 @@ class BillingService {
         SetOptions(merge: true),
       );
 
-      final planId = requestData["planId"]?.toString() ?? "";
       if (employerId.isEmpty) return;
 
       final employerRef = firestore.collection("users").doc(employerId);
       if (status != "paid") {
+        final inactiveStatuses = {
+          "rejected",
+          "cancelled",
+          "failed",
+        };
         transaction.set(
           employerRef,
           {
             "billing": {
               "planRequestStatus": status,
+              if (inactiveStatuses.contains(status)) "status": status,
               "updatedAt": FieldValue.serverTimestamp(),
             },
           },
@@ -355,10 +368,6 @@ class BillingService {
       }
 
       if (planId.isEmpty) return;
-
-      final planRef = firestore.collection("plans").doc(planId);
-      final planSnap = await transaction.get(planRef);
-      final planData = planSnap.data() ?? <String, dynamic>{};
 
       final availableJobPosts = readInt(
         planData["jobPosts"] ?? planData["availableJobPosts"],
@@ -388,12 +397,16 @@ class BillingService {
     });
 
     if (employerId.isNotEmpty) {
-      await NotificationService().notifyEmployerBillingEvent(
-        employerId: employerId,
-        paymentRequestId: ref.id,
-        status: status,
-        planName: planName,
-      );
+      try {
+        await NotificationService().notifyEmployerBillingEvent(
+          employerId: employerId,
+          paymentRequestId: ref.id,
+          status: status,
+          planName: planName,
+        );
+      } catch (_) {
+        // Billing status changes must not be rolled back by notification issues.
+      }
     }
   }
 
