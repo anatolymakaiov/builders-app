@@ -65,6 +65,39 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     return "Applied $day/$month/$year $hour:$minute";
   }
 
+  Job fallbackJobFromApplication(String id, Map<String, dynamic> data) {
+    return Job.fromFirestore(id, {
+      "title": data["jobTitle"] ?? data["title"] ?? data["trade"] ?? "Job",
+      "trade": data["jobTrade"] ?? data["trade"] ?? data["jobTitle"] ?? "Job",
+      "site": data["jobSite"] ?? data["site"] ?? "",
+      "location": data["jobLocation"] ??
+          data["siteAddress"] ??
+          data["jobAddress"] ??
+          data["location"] ??
+          "",
+      "street": data["siteStreet"] ?? data["street"] ?? "",
+      "city": data["siteCity"] ?? data["city"] ?? "",
+      "postcode": data["sitePostcode"] ?? data["postcode"] ?? "",
+      "county": data["siteCounty"] ?? data["county"] ?? "",
+      "rate": data["rate"] ?? data["jobRate"] ?? 0,
+      "companyName": data["companyName"] ??
+          data["employerName"] ??
+          data["ownerName"] ??
+          "",
+      "companyLogo":
+          data["companyLogo"] ?? data["employerLogo"] ?? data["ownerLogo"],
+      "photos": data["jobPhotos"] ?? data["photos"] ?? const [],
+      "jobType": data["jobType"] ?? "hourly",
+      "duration": data["duration"] ?? data["jobDuration"] ?? "",
+      "weeklyHours": data["weeklyHours"] ?? "",
+      "employmentType": data["employmentType"] ?? "",
+      "ownerId": data["ownerId"] ?? data["employerId"] ?? "",
+      "createdAt": data["createdAt"],
+      "status": "active",
+      "moderationStatus": "approved",
+    });
+  }
+
   /// 🔥 ПРАВИЛЬНЫЙ STREAM
   Stream<List<QueryDocumentSnapshot>> getApplicationsStream(String userId) {
     final singleStream = FirebaseFirestore.instance
@@ -273,26 +306,39 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                       );
 
                       final status = canonicalStatus(data["status"]);
-                      final jobId = data["jobId"];
+                      final jobDocId = data["jobId"]?.toString() ?? "";
+                      final fallbackJob = fallbackJobFromApplication(
+                        jobDocId.isEmpty ? apps[index].id : jobDocId,
+                        data,
+                      );
+
+                      if (jobDocId.isEmpty) {
+                        return buildCard(
+                          fallbackJob,
+                          status,
+                          apps[index].id,
+                          appliedAt: data["createdAt"],
+                          isUnread: isUnread,
+                          userId: user.uid,
+                        );
+                      }
 
                       return StreamBuilder<DocumentSnapshot>(
                         stream: FirebaseFirestore.instance
                             .collection("jobs")
-                            .doc(jobId)
+                            .doc(jobDocId)
                             .snapshots(),
                         builder: (context, jobSnapshot) {
-                          if (!jobSnapshot.hasData) {
-                            return const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Center(
-                                child: CircularProgressIndicator(),
-                              ),
-                            );
-                          }
-
-                          if (!jobSnapshot.data!.exists) {
-                            return const ListTile(
-                              title: Text("Job not found"),
+                          if (!jobSnapshot.hasData ||
+                              jobSnapshot.hasError ||
+                              !jobSnapshot.data!.exists) {
+                            return buildCard(
+                              fallbackJob,
+                              status,
+                              apps[index].id,
+                              appliedAt: data["createdAt"],
+                              isUnread: isUnread,
+                              userId: user.uid,
                             );
                           }
 

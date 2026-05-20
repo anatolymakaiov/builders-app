@@ -30,6 +30,7 @@ class OfferAcceptanceService {
   }) async {
     var accepted = false;
     final db = FirebaseFirestore.instance;
+    String? acceptedJobId;
 
     await db.runTransaction((transaction) async {
       final appRef = db.collection("applications").doc(applicationId);
@@ -70,17 +71,49 @@ class OfferAcceptanceService {
         ),
       });
 
-      transaction.update(jobRef, {
-        "filledPositions": filled + slotCount,
-        "remainingPositions": (safePositions - filled - slotCount)
-            .clamp(0, safePositions)
-            .toInt(),
-        "updatedAt": FieldValue.serverTimestamp(),
-      });
-
+      acceptedJobId = jobId;
       accepted = true;
     });
 
+    if (accepted && acceptedJobId != null) {
+      await _syncAcceptedSlotCounters(acceptedJobId!);
+    }
+
     return accepted;
+  }
+
+  static Future<void> _syncAcceptedSlotCounters(String jobId) async {
+    final db = FirebaseFirestore.instance;
+
+    try {
+      final jobRef = db.collection("jobs").doc(jobId);
+      final jobSnap = await jobRef.get();
+      if (!jobSnap.exists) return;
+
+      final jobData = jobSnap.data() as Map<String, dynamic>;
+      final positions = readInt(jobData["positions"]);
+      final safePositions = positions <= 0 ? 1 : positions;
+
+      final acceptedApps = await db
+          .collection("applications")
+          .where("jobId", isEqualTo: jobId)
+          .where("status",
+              whereIn: ["offer_accepted", "accepted", "hired"]).get();
+
+      final filled = acceptedApps.docs.fold<int>(0, (total, doc) {
+        return total + applicationSlotCount(doc.data());
+      }).clamp(0, safePositions);
+
+      await jobRef.update({
+        "filledPositions": filled,
+        "remainingPositions":
+            (safePositions - filled).clamp(0, safePositions).toInt(),
+        "updatedAt": FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // Worker acceptance must not fail just because job counters are owner-managed
+      // or temporarily unavailable.
+      return;
+    }
   }
 }

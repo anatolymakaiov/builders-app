@@ -58,7 +58,12 @@ service cloud.firestore {
     function isJobOwner(jobId) {
       return signedIn()
         && exists(jobPath(jobId))
-        && get(jobPath(jobId)).data.ownerId == uid();
+        && (
+          get(jobPath(jobId)).data.ownerId == uid()
+          || get(jobPath(jobId)).data.employerId == uid()
+          || get(jobPath(jobId)).data.createdBy == uid()
+          || get(jobPath(jobId)).data.userId == uid()
+        );
     }
 
     function teamPath(teamId) {

@@ -158,21 +158,37 @@ class ApplicationDetailsScreen extends StatelessWidget {
       final updatedData = updatedApplication.data();
       if (updatedData != null) {
         final offer = updatedData["offer"];
-        await NotificationService().notifyEmployerOfferDecision(
-          applicationId: applicationId,
-          applicationData: updatedData,
-          status: "offer_accepted",
-        );
-        if (offer is Map<String, dynamic>) {
-          await NotificationService().scheduleWorkerStartReminders(
+        try {
+          await NotificationService().notifyEmployerOfferDecision(
             applicationId: applicationId,
             applicationData: updatedData,
-            offer: offer,
+            status: "offer_accepted",
           );
-          if (!context.mounted) return;
-          await addEmployerOfferToCalendar(context, updatedData);
+        } catch (e) {
+          debugPrint("OFFER ACCEPTED NOTIFICATION ERROR: $e");
+        }
+        if (offer is Map<String, dynamic>) {
+          try {
+            await NotificationService().scheduleWorkerStartReminders(
+              applicationId: applicationId,
+              applicationData: updatedData,
+              offer: offer,
+            );
+          } catch (e) {
+            debugPrint("WORKER START REMINDER ERROR: $e");
+          }
+          try {
+            if (!context.mounted) return;
+            await addEmployerOfferToCalendar(context, updatedData);
+          } catch (e) {
+            debugPrint("OFFER CALENDAR ERROR: $e");
+          }
         }
       }
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Offer accepted")),
+      );
     } catch (e) {
       debugPrint("ACCEPT OFFER ERROR: $e");
       if (!context.mounted) return;

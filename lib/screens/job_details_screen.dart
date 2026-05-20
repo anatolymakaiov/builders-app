@@ -1359,18 +1359,34 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       final offer = appData?["offer"];
 
       if (appData != null && offer is Map<String, dynamic>) {
-        await NotificationService().notifyEmployerOfferDecision(
-          applicationId: applicationId,
-          applicationData: appData,
-          status: "offer_accepted",
-        );
-        await NotificationService().scheduleWorkerStartReminders(
-          applicationId: applicationId,
-          applicationData: appData,
-          offer: offer,
-        );
-        await addOfferToCalendar(offer);
+        try {
+          await NotificationService().notifyEmployerOfferDecision(
+            applicationId: applicationId,
+            applicationData: appData,
+            status: "offer_accepted",
+          );
+        } catch (e) {
+          debugPrint("OFFER ACCEPTED NOTIFICATION ERROR: $e");
+        }
+        try {
+          await NotificationService().scheduleWorkerStartReminders(
+            applicationId: applicationId,
+            applicationData: appData,
+            offer: offer,
+          );
+        } catch (e) {
+          debugPrint("WORKER START REMINDER ERROR: $e");
+        }
+        try {
+          await addOfferToCalendar(offer);
+        } catch (e) {
+          debugPrint("OFFER CALENDAR ERROR: $e");
+        }
       }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Offer accepted")),
+      );
     } catch (e) {
       debugPrint("ACCEPT OFFER ERROR: $e");
       if (!mounted) return;
