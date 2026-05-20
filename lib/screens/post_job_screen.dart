@@ -325,6 +325,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
         builder: (_) => EmployerProfileScreen(
           userId: employerId,
           initialTab: 4,
+          showBackButton: true,
         ),
       ),
     );

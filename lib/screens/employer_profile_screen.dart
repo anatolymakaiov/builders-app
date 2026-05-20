@@ -20,11 +20,13 @@ import '../widgets/profile_hamburger_menu.dart';
 class EmployerProfileScreen extends StatefulWidget {
   final String userId;
   final int initialTab;
+  final bool showBackButton;
 
   const EmployerProfileScreen({
     super.key,
     required this.userId,
     this.initialTab = 0,
+    this.showBackButton = false,
   });
 
   @override
@@ -149,9 +151,11 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
       drawer: isMyCompany ? const ProfileHamburgerMenu(role: "employer") : null,
       appBar: AppBar(
         leading: isMyCompany
-            ? Builder(
-                builder: (context) => const ProfileHamburgerButton(),
-              )
+            ? widget.showBackButton
+                ? const BackButton()
+                : Builder(
+                    builder: (context) => const ProfileHamburgerButton(),
+                  )
             : null,
         title: const Text("Company Profile"),
         actions: [
@@ -487,7 +491,7 @@ class _BillingSection extends StatelessWidget {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text("Trial activated. Plan request is pending approval."),
+        content: Text("Plan request submitted. It is pending admin approval."),
       ),
     );
   }

@@ -10,7 +10,10 @@ class BillingLimitException implements Exception {
 
 class BillingService {
   static const inactiveBillingMessage =
-      "Your billing plan is not active. Please open Billing and choose or activate a plan before posting a job.";
+      "Choose a billing plan before posting a job. After admin approval, you can publish vacancies.";
+
+  static const pendingBillingMessage =
+      "Your billing plan request is under review. You can browse the app while waiting for approval.";
 
   static const postingLimitMessage =
       "You have reached your job posting limit. Please open Billing and choose a plan with more job posts.";
@@ -291,11 +294,12 @@ class BillingService {
             "planName": selectedPlanName,
             "paymentMode": paymentMode,
             "directDebitEnabled": paymentMode == "direct_debit",
-            "availableJobPosts": availableJobPosts,
+            "availableJobPosts": 0,
+            "requestedJobPosts": availableJobPosts,
             "usedJobPosts": usedJobPosts,
-            "activeUntil": activeUntil,
-            "status": "active",
-            "trialActive": true,
+            "requestedActiveUntil": activeUntil,
+            "status": "pending",
+            "trialActive": false,
             "planRequestStatus": "pending",
             "paymentRequestId": paymentRequestRef.id,
             "trialStartedAt": FieldValue.serverTimestamp(),
@@ -401,8 +405,13 @@ class BillingService {
 
     final billing = billingFromUserData(userData);
     final status = billing["status"]?.toString() ?? "";
+    final planRequestStatus = billing["planRequestStatus"]?.toString() ?? "";
     final availableJobPosts = readInt(billing["availableJobPosts"]);
     final usedJobPosts = readInt(billing["usedJobPosts"]);
+
+    if (status == "pending" || planRequestStatus == "pending") {
+      throw const BillingLimitException(pendingBillingMessage);
+    }
 
     if (status != "active") {
       throw const BillingLimitException(inactiveBillingMessage);

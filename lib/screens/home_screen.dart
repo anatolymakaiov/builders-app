@@ -15,6 +15,7 @@ import 'employer_applications_screen.dart';
 import 'post_job_screen.dart';
 import 'employer_profile_screen.dart';
 import 'admin_dashboard_screen.dart';
+import '../services/billing_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -38,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _lastNotificationCount = 0;
   int _lastChatCount = 0;
   int _lastApplicationCount = 0;
+  int employerProfileInitialTab = 0;
 
   @override
   void initState() {
@@ -244,6 +246,63 @@ class _HomeScreenState extends State<HomeScreen> {
     return controller.stream;
   }
 
+  Future<void> openPostJobOrBilling() async {
+    final employerId = userId;
+    if (employerId == null) return;
+
+    try {
+      await BillingService().assertEmployerCanPost(employerId);
+    } on BillingLimitException catch (e) {
+      if (!mounted) return;
+
+      final openBilling = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Choose billing plan first"),
+          content: Text(e.message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Not now"),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Open Billing"),
+            ),
+          ],
+        ),
+      );
+
+      if (!mounted || openBilling != true) return;
+
+      setState(() {
+        employerProfileInitialTab = 4;
+        currentIndex = 5;
+      });
+      return;
+    } catch (e) {
+      debugPrint("Billing pre-check error: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Could not check billing plan. Please try again."),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PostJobScreen(
+          onJobCreated: (_) {},
+        ),
+      ),
+    );
+  }
+
   Stream<int> getUnviewedEmployerApplications(String employerId) {
     final controller = StreamController<int>();
     final applicationsRef =
@@ -314,7 +373,9 @@ class _HomeScreenState extends State<HomeScreen> {
         const NotificationsScreen(),
         const MyChatsScreen(),
         EmployerProfileScreen(
+          key: ValueKey("employer-profile-$employerProfileInitialTab"),
           userId: userId!,
+          initialTab: employerProfileInitialTab,
         ),
       ];
     }
@@ -507,16 +568,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       floatingActionButton:
                           role == "employer" && currentIndex == 0
                               ? FloatingActionButton(
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => PostJobScreen(
-                                          onJobCreated: (_) {},
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                  onPressed: openPostJobOrBilling,
                                   child: const Icon(Icons.add),
                                 )
                               : null,
@@ -550,6 +602,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             showUnselectedLabels: true,
                             onTap: (index) {
                               setState(() {
+                                if (role == "employer" &&
+                                    index == 5 &&
+                                    currentIndex != 5) {
+                                  employerProfileInitialTab = 0;
+                                }
                                 currentIndex = index;
                               });
                             },
