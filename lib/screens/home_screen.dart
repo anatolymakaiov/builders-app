@@ -74,8 +74,16 @@ class _HomeScreenState extends State<HomeScreen> {
         final rawRole = data?["role"]?.toString();
         role =
             rawRole == "admin" || rawRole == "employer" ? rawRole! : "worker";
+        final hasProfile = data?["profileComplete"] == true ||
+            data?["onboardingComplete"] == true ||
+            data?["profileCreated"] == true ||
+            (role == "worker" &&
+                (data?["name"]?.toString().trim() ?? "").isNotEmpty) ||
+            (role == "employer" &&
+                (data?["companyName"]?.toString().trim() ?? "").isNotEmpty);
 
-        if (role != "admin" &&
+        if (hasProfile &&
+            role != "admin" &&
             !LegalDocuments.hasAcceptedCurrentVersion(data, role)) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             promptForUpdatedLegalDocuments();
