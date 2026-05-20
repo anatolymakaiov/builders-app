@@ -8,6 +8,7 @@ import '../services/job_repository.dart';
 import 'job_details_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/job_card.dart';
+import '../widgets/quiet_tile_provider.dart';
 
 class MapJobsScreen extends StatefulWidget {
   const MapJobsScreen({super.key});
@@ -112,6 +113,7 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
                     urlTemplate:
                         "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
                     userAgentPackageName: "builder.jobs.app",
+                    tileProvider: QuietTileProvider(),
                   ),
                   MarkerClusterLayerWidget(
                     options: MarkerClusterLayerOptions(
