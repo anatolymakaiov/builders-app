@@ -260,6 +260,7 @@ class LegalDocuments {
           "acceptedLanguage": language,
           "acceptedDocuments": acceptedMapForRole(role),
           "acceptedDocumentIds": acceptedIdsForRole(role),
+          "onboardingLegalStepComplete": true,
         },
         SetOptions(merge: true));
 
@@ -390,6 +391,7 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
   late final List<LegalDocument> documents;
   late final Map<String, bool> accepted;
   String language = LegalDocuments.defaultLanguage;
+  bool validationAttempted = false;
 
   @override
   void initState() {
@@ -401,6 +403,23 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
   }
 
   bool get allAccepted => accepted.values.every((value) => value);
+
+  void continueIfValid() {
+    if (!allAccepted) {
+      setState(() => validationAttempted = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please accept all required documents to continue."),
+        ),
+      );
+      return;
+    }
+
+    Navigator.pop(
+      context,
+      LegalAcceptanceResult(language: language),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -465,9 +484,11 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
                   ),
                   const SizedBox(height: 16),
                   ...documents.map((doc) {
+                    final isAccepted = accepted[doc.key] ?? false;
                     return _LegalAcceptanceTile(
                       document: doc,
-                      accepted: accepted[doc.key] ?? false,
+                      accepted: isAccepted,
+                      highlightMissing: validationAttempted && !isAccepted,
                       onChanged: (value) {
                         setState(() => accepted[doc.key] = value ?? false);
                       },
@@ -485,12 +506,7 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
           child: SizedBox(
             height: 50,
             child: ElevatedButton(
-              onPressed: allAccepted
-                  ? () => Navigator.pop(
-                        context,
-                        LegalAcceptanceResult(language: language),
-                      )
-                  : null,
+              onPressed: continueIfValid,
               child: const Text("Continue"),
             ),
           ),
@@ -503,11 +519,13 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
 class _LegalAcceptanceTile extends StatelessWidget {
   final LegalDocument document;
   final bool accepted;
+  final bool highlightMissing;
   final ValueChanged<bool?> onChanged;
 
   const _LegalAcceptanceTile({
     required this.document,
     required this.accepted,
+    required this.highlightMissing,
     required this.onChanged,
   });
 
@@ -516,9 +534,16 @@ class _LegalAcceptanceTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.68),
+        color: highlightMissing
+            ? AppColors.danger.withValues(alpha: 0.08)
+            : Colors.white.withValues(alpha: 0.68),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+        border: Border.all(
+          color: highlightMissing
+              ? AppColors.danger
+              : Colors.black.withValues(alpha: 0.08),
+          width: highlightMissing ? 1.5 : 1,
+        ),
       ),
       child: CheckboxListTile(
         value: accepted,
@@ -545,7 +570,11 @@ class _LegalAcceptanceTile extends StatelessWidget {
             );
           },
           icon: const Icon(Icons.description_outlined, size: 18),
-          label: const Text("Open and read full document"),
+          label: Text(
+            highlightMissing
+                ? "Required: open and accept this document"
+                : "Open and read full document",
+          ),
         ),
         secondary: const Icon(Icons.check_circle_outline),
       ),

@@ -480,11 +480,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
 
-      await LegalDocuments.saveAcceptances(
-        userId: userId,
-        role: role,
-        language: accepted.language,
-      );
+      try {
+        await LegalDocuments.saveAcceptances(
+          userId: userId,
+          role: role,
+          language: accepted.language,
+        );
+        legalAcceptedForCurrentVersion = true;
+      } catch (e) {
+        debugPrint("Legal acceptance save error: $e");
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Could not save legal acceptance. Please try again."),
+          ),
+        );
+        return;
+      }
     }
 
     setState(() => loading = true);
@@ -554,6 +566,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (firstProfileCreation) {
         profileData.addAll({
           "profileCreated": true,
+          "profileComplete": true,
+          "onboardingComplete": true,
           if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
             "legalAccepted": true,
           if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
@@ -566,6 +580,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             "acceptedDocumentIds": LegalDocuments.acceptedIdsForRole(role),
           if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
             "legalVersion": LegalDocuments.policyVersion,
+          if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
+            "onboardingLegalStepComplete": true,
+        });
+      } else {
+        profileData.addAll({
+          "profileComplete": true,
+          "onboardingComplete": true,
         });
       }
 
@@ -582,7 +603,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         headerImageFile = null;
         extraPhones = cleanedPhones;
         firstProfileCreation = false;
-        if (shouldRequestLegalAcceptance) {
+        if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion) {
           legalAcceptedForCurrentVersion = true;
         }
       });

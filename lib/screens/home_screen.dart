@@ -121,11 +121,25 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    await LegalDocuments.saveAcceptances(
-      userId: userId!,
-      role: role,
-      language: result.language,
-    );
+    try {
+      await LegalDocuments.saveAcceptances(
+        userId: userId!,
+        role: role,
+        language: result.language,
+      );
+    } catch (e) {
+      debugPrint("LEGAL PROMPT SAVE ERROR: $e");
+      legalPromptShown = false;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Could not save legal acceptance. Please try again."),
+        ),
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        promptForUpdatedLegalDocuments();
+      });
+    }
   }
 
   /// 🔔 NOTIFICATIONS
