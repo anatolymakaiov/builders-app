@@ -263,6 +263,9 @@ class ProfileHamburgerMenu extends StatelessWidget {
                     onTap: () async {
                       Navigator.pop(context);
                       await FirebaseAuth.instance.signOut();
+                      if (!context.mounted) return;
+                      Navigator.of(context, rootNavigator: true)
+                          .popUntil((route) => route.isFirst);
                     },
                   ),
                   _MenuTile(
@@ -452,6 +455,9 @@ class MyAccountScreen extends StatelessWidget {
                         child: OutlinedButton.icon(
                           onPressed: () async {
                             await FirebaseAuth.instance.signOut();
+                            if (!context.mounted) return;
+                            Navigator.of(context, rootNavigator: true)
+                                .popUntil((route) => route.isFirst);
                           },
                           icon: const Icon(Icons.logout),
                           label: const Text("Logout"),

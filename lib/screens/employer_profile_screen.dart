@@ -184,6 +184,9 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
               icon: const Icon(Icons.logout),
               onPressed: () async {
                 await FirebaseAuth.instance.signOut();
+                if (!context.mounted) return;
+                Navigator.of(context, rootNavigator: true)
+                    .popUntil((route) => route.isFirst);
               },
             ),
           ] else ...[

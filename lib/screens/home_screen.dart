@@ -15,6 +15,7 @@ import 'employer_applications_screen.dart';
 import 'post_job_screen.dart';
 import 'employer_profile_screen.dart';
 import 'admin_dashboard_screen.dart';
+import '../services/app_navigation.dart';
 import '../services/billing_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
@@ -23,14 +24,21 @@ import '../widgets/legal_documents.dart';
 import '../widgets/profile_hamburger_menu.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final int initialIndex;
+  final int employerProfileInitialTab;
+
+  const HomeScreen({
+    super.key,
+    this.initialIndex = 0,
+    this.employerProfileInitialTab = 0,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int currentIndex = 0;
+  late int currentIndex;
 
   String role = "worker";
   String? userId;
@@ -39,12 +47,37 @@ class _HomeScreenState extends State<HomeScreen> {
   int _lastNotificationCount = 0;
   int _lastChatCount = 0;
   int _lastApplicationCount = 0;
-  int employerProfileInitialTab = 0;
+  late int employerProfileInitialTab;
 
   @override
   void initState() {
     super.initState();
+    currentIndex = widget.initialIndex;
+    employerProfileInitialTab = widget.employerProfileInitialTab;
+    shellNavigationCommand.addListener(handleShellNavigationCommand);
     initUser();
+  }
+
+  @override
+  void dispose() {
+    shellNavigationCommand.removeListener(handleShellNavigationCommand);
+    super.dispose();
+  }
+
+  void handleShellNavigationCommand() {
+    final command = shellNavigationCommand.value;
+    if (command == null || !mounted) return;
+    if (command.role != null && command.role != role) {
+      return;
+    }
+
+    setState(() {
+      currentIndex = command.tabIndex;
+      if (command.employerProfileInitialTab != null) {
+        employerProfileInitialTab = command.employerProfileInitialTab!;
+      }
+    });
+    shellNavigationCommand.value = null;
   }
 
   Future<void> initUser() async {
@@ -98,6 +131,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (!mounted) return;
+
+    handleShellNavigationCommand();
 
     setState(() {
       loading = false;

@@ -4,11 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'application_details_screen.dart';
 import 'chat_screen.dart';
-import 'employer_profile_screen.dart';
 import 'job_details_screen.dart';
 import 'worker_profile_screen.dart';
 import '../models/job.dart';
 import '../services/calendar_service.dart';
+import '../services/app_navigation.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -288,12 +288,13 @@ class NotificationsScreen extends StatelessWidget {
       return;
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => EmployerProfileScreen(userId: uid, initialTab: 4),
-      ),
+    shellNavigationCommand.value = const ShellNavigationCommand(
+      role: "employer",
+      tabIndex: 5,
+      employerProfileInitialTab: 4,
     );
+    Navigator.of(context, rootNavigator: true)
+        .popUntil((route) => route.isFirst);
   }
 
   void openNotificationDetails(
