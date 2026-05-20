@@ -511,6 +511,10 @@ class _BillingSection extends StatelessWidget {
         : planId;
     final paymentMode = billing["paymentMode"]?.toString() ?? "Not set";
     final status = billing["status"]?.toString() ?? "Not set";
+    final billingPlanStatus =
+        billing["billingPlanStatus"]?.toString() ?? status;
+    final paymentStatus = billing["paymentStatus"]?.toString() ?? "Not set";
+    final invoiceStatus = billing["invoiceStatus"]?.toString() ?? "Not set";
     final planRequestStatus =
         billing["planRequestStatus"]?.toString() ?? "not_requested";
     final trialActive = billing["trialActive"] == true;
@@ -539,8 +543,8 @@ class _BillingSection extends StatelessWidget {
               Row(
                 children: [
                   _BillingPill(
-                    label: BillingService.formatLabel(status),
-                    active: status == "active",
+                    label: BillingService.formatLabel(billingPlanStatus),
+                    active: billingPlanStatus == "approved",
                   ),
                   if (trialActive) ...[
                     const SizedBox(width: 8),
@@ -576,13 +580,30 @@ class _BillingSection extends StatelessWidget {
                 value: BillingService.formatLabel(paymentMode),
               ),
               _BillingRow(
-                label: "Billing status",
-                value: BillingService.formatLabel(status),
+                label: "Plan status",
+                value: BillingService.formatLabel(billingPlanStatus),
+              ),
+              _BillingRow(
+                label: "Payment status",
+                value: BillingService.formatLabel(paymentStatus),
+              ),
+              _BillingRow(
+                label: "Invoice status",
+                value: BillingService.formatLabel(invoiceStatus),
               ),
               _BillingRow(
                 label: "Plan request",
                 value: BillingService.formatLabel(planRequestStatus),
               ),
+              _BillingRow(
+                label: "Next billing date",
+                value: BillingService.formatDate(billing["nextBillingDate"]),
+              ),
+              if ((billing["lastInvoicePdfUrl"]?.toString() ?? "").isNotEmpty)
+                const _BillingRow(
+                  label: "Latest invoice",
+                  value: "PDF available",
+                ),
               if (trialActive)
                 _BillingRow(
                   label: "Trial days left",

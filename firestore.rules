@@ -122,6 +122,16 @@ service cloud.firestore {
         allow create, read, update: if isAdmin() || isSelf(userId);
         allow delete: if isAdmin();
       }
+
+      match /billing/{billingDocId} {
+        allow read, create, update: if isAdmin() || isSelf(userId);
+        allow delete: if isAdmin();
+
+        match /invoices/{invoiceId} {
+          allow read, create, update: if isAdmin() || isSelf(userId);
+          allow delete: if isAdmin();
+        }
+      }
     }
 
     match /saved_jobs/{userId}/jobs/{jobId} {
@@ -227,6 +237,16 @@ service cloud.firestore {
         && request.resource.data.status == "pending";
       allow read: if isAdmin() || resource.data.employerId == uid();
       allow update, delete: if isAdmin();
+    }
+
+    match /invoices/{invoiceId} {
+      allow create, update, delete: if isAdmin();
+      allow read: if isAdmin() || resource.data.employerId == uid();
+    }
+
+    match /payments/{paymentId} {
+      allow create, update, delete: if isAdmin();
+      allow read: if isAdmin() || resource.data.employerId == uid();
     }
 
     match /plans/{planId} {

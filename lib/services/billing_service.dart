@@ -1,4 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import 'notification_service.dart';
 
@@ -6,6 +9,12 @@ class BillingLimitException implements Exception {
   final String message;
 
   const BillingLimitException(this.message);
+}
+
+class BillingApprovalException implements Exception {
+  final String message;
+
+  const BillingApprovalException(this.message);
 }
 
 class BillingService {
@@ -53,16 +62,33 @@ class BillingService {
     const fields = [
       "planId",
       "planName",
+      "activePlanId",
+      "activePlanName",
       "paymentMode",
+      "paymentMethod",
+      "billingPlanStatus",
+      "paymentStatus",
+      "invoiceStatus",
       "directDebitEnabled",
+      "directDebitMandateId",
+      "mandateStatus",
       "availableJobPosts",
+      "includedJobSlots",
       "usedJobPosts",
       "activeUntil",
+      "nextBillingDate",
+      "billingCycle",
+      "monthlyPrice",
+      "currency",
       "status",
       "trialActive",
       "planRequestStatus",
       "paymentRequestId",
+      "lastInvoiceId",
+      "lastInvoicePdfUrl",
       "trialStartedAt",
+      "approvedAt",
+      "approvedBy",
       "updatedAt",
     ];
 
@@ -99,6 +125,163 @@ class BillingService {
         Duration(days: durationDays > 0 ? durationDays : 30),
       ),
     );
+  }
+
+  static double readMoney(dynamic value) {
+    if (value is num) return value.toDouble();
+    final cleaned = value?.toString().replaceAll(RegExp(r"[^0-9.]"), "") ?? "";
+    return double.tryParse(cleaned) ?? 0;
+  }
+
+  static Timestamp nextMonthlyBillingDate() {
+    final now = DateTime.now();
+    return Timestamp.fromDate(DateTime(now.year, now.month + 1, now.day));
+  }
+
+  static String invoiceNumber(String invoiceId) {
+    final now = DateTime.now();
+    return "STK-${now.year}${now.month.toString().padLeft(2, "0")}-${invoiceId.substring(0, 6).toUpperCase()}";
+  }
+
+  static bool hasDirectDebitMandate(Map<String, dynamic> data) {
+    final billing = billingFromUserData(data);
+    final mandateId = (billing["directDebitMandateId"] ??
+            billing["mandateId"] ??
+            data["directDebitMandateId"] ??
+            data["mandateId"])
+        ?.toString()
+        .trim();
+    final mandateStatus = (billing["mandateStatus"] ??
+            data["mandateStatus"] ??
+            data["directDebitMandateStatus"])
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    return mandateId != null &&
+        mandateId.isNotEmpty &&
+        (mandateStatus == null ||
+            mandateStatus.isEmpty ||
+            mandateStatus == "active" ||
+            mandateStatus == "verified" ||
+            mandateStatus == "set_up");
+  }
+
+  Future<String> createManualInvoicePdf({
+    required String invoiceId,
+    required String invoiceNumber,
+    required Map<String, dynamic> employerData,
+    required Map<String, dynamic> planData,
+    required String planName,
+    required String currency,
+    required double amount,
+    required Timestamp invoiceDate,
+    required Timestamp dueDate,
+  }) async {
+    final employerName =
+        (employerData["companyName"] ?? employerData["name"] ?? "Employer")
+            .toString();
+    final employerAddress =
+        (employerData["location"] ?? employerData["address"] ?? "").toString();
+    final pdf = pw.Document();
+    final invoiceDateText = formatDate(invoiceDate);
+    final dueDateText = formatDate(dueDate);
+
+    pdf.addPage(
+      pw.Page(
+        build: (context) => pw.Padding(
+          padding: const pw.EdgeInsets.all(28),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                "INVOICE",
+                style: pw.TextStyle(
+                  fontSize: 28,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 12),
+              pw.Text("Invoice number: $invoiceNumber"),
+              pw.Text("Invoice date: $invoiceDateText"),
+              pw.Text("Payment due date: $dueDateText"),
+              pw.SizedBox(height: 20),
+              pw.Text("Seller",
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              pw.Text("Stroyka UK Ltd"),
+              pw.Text("Company number: [TO BE ADDED]"),
+              pw.Text("Registered office: [TO BE ADDED]"),
+              pw.Text("VAT number: [TO BE ADDED IF VAT REGISTERED]"),
+              pw.Text(
+                  "VAT note: VAT is not charged unless VAT registration is confirmed."),
+              pw.SizedBox(height: 20),
+              pw.Text("Customer",
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              pw.Text(employerName),
+              if (employerAddress.trim().isNotEmpty) pw.Text(employerAddress),
+              pw.SizedBox(height: 20),
+              pw.Text("Description of service",
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              pw.Text("$planName monthly service plan"),
+              pw.Text("Billing cycle: Monthly"),
+              pw.Text(
+                  "Included job slots: ${readInt(planData["jobPosts"] ?? planData["availableJobPosts"])}"),
+              pw.SizedBox(height: 12),
+              pw.Table(
+                border: pw.TableBorder.all(),
+                children: [
+                  pw.TableRow(
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text("Item"),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text("Amount"),
+                      ),
+                    ],
+                  ),
+                  pw.TableRow(
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text("$planName subscription"),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child:
+                            pw.Text("$currency ${amount.toStringAsFixed(2)}"),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 12),
+              pw.Align(
+                alignment: pw.Alignment.centerRight,
+                child: pw.Text(
+                  "Total due: $currency ${amount.toStringAsFixed(2)}",
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                ),
+              ),
+              pw.SizedBox(height: 20),
+              pw.Text("Payment instructions",
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              pw.Text("[TO BE ADDED]"),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final bytes = await pdf.save();
+    final ref =
+        FirebaseStorage.instance.ref().child("billing_invoices/$invoiceId.pdf");
+    await ref.putData(
+      bytes,
+      SettableMetadata(contentType: "application/pdf"),
+    );
+    return ref.getDownloadURL();
   }
 
   Future<void> assertEmployerCanPost(String employerId) async {
@@ -318,6 +501,69 @@ class BillingService {
     final firestore = FirebaseFirestore.instance;
     var employerId = "";
     var planName = "";
+    var notificationStatus = status;
+    String? invoiceId;
+    String? invoicePdfUrl;
+    String? invoiceNo;
+    Map<String, dynamic> preloadedRequest = const <String, dynamic>{};
+    Map<String, dynamic> preloadedPlan = const <String, dynamic>{};
+    Map<String, dynamic> preloadedEmployer = const <String, dynamic>{};
+
+    if (status == "approved") {
+      final requestSnap = await ref.get();
+      preloadedRequest =
+          requestSnap.data() as Map<String, dynamic>? ?? <String, dynamic>{};
+      employerId = preloadedRequest["employerId"]?.toString() ?? "";
+      final planId = preloadedRequest["planId"]?.toString() ?? "";
+      if (employerId.isEmpty || planId.isEmpty) {
+        throw const BillingApprovalException(
+          "Billing request is missing employer or plan details.",
+        );
+      }
+
+      final employerSnap =
+          await firestore.collection("users").doc(employerId).get();
+      preloadedEmployer = employerSnap.data() ?? <String, dynamic>{};
+
+      final paymentMode =
+          preloadedRequest["paymentMode"]?.toString() ?? "manual_invoice";
+      if (paymentMode == "direct_debit" &&
+          !hasDirectDebitMandate(preloadedEmployer)) {
+        throw const BillingApprovalException(
+          "Direct Debit mandate is not set up.",
+        );
+      }
+
+      final planSnap = await firestore.collection("plans").doc(planId).get();
+      preloadedPlan = planSnap.data() ?? <String, dynamic>{};
+
+      if (paymentMode == "manual_invoice") {
+        final invoiceRef = firestore.collection("invoices").doc();
+        invoiceId = invoiceRef.id;
+        invoiceNo = invoiceNumber(invoiceRef.id);
+        final invoiceDate = Timestamp.now();
+        final dueDate = Timestamp.fromDate(
+          DateTime.now().add(const Duration(days: 14)),
+        );
+        final amount = readMoney(preloadedPlan["price"]);
+        final currency = preloadedPlan["currency"]?.toString() ?? "GBP";
+        planName = preloadedRequest["planName"]?.toString() ??
+            preloadedPlan["name"]?.toString() ??
+            "Selected plan";
+
+        invoicePdfUrl = await createManualInvoicePdf(
+          invoiceId: invoiceRef.id,
+          invoiceNumber: invoiceNo,
+          employerData: preloadedEmployer,
+          planData: preloadedPlan,
+          planName: planName,
+          currency: currency,
+          amount: amount,
+          invoiceDate: invoiceDate,
+          dueDate: dueDate,
+        );
+      }
+    }
 
     await firestore.runTransaction((transaction) async {
       final requestSnap = await transaction.get(ref);
@@ -328,36 +574,63 @@ class BillingService {
       final planId = requestData["planId"]?.toString() ?? "";
 
       Map<String, dynamic> planData = const <String, dynamic>{};
-      if (status == "paid" && planId.isNotEmpty) {
+      Map<String, dynamic> employerData = const <String, dynamic>{};
+      final employerRef = firestore.collection("users").doc(employerId);
+      if (employerId.isNotEmpty) {
+        final employerSnap = await transaction.get(employerRef);
+        employerData = employerSnap.data() ?? <String, dynamic>{};
+      }
+      if (status == "approved" && planId.isNotEmpty) {
         final planRef = firestore.collection("plans").doc(planId);
         final planSnap = await transaction.get(planRef);
         planData = planSnap.data() ?? <String, dynamic>{};
+      }
+
+      final paymentMode =
+          requestData["paymentMode"]?.toString() ?? "manual_invoice";
+      if (status == "approved" &&
+          paymentMode == "direct_debit" &&
+          !hasDirectDebitMandate(employerData)) {
+        throw const BillingApprovalException(
+          "Direct Debit mandate is not set up.",
+        );
       }
 
       transaction.set(
         ref,
         {
           "status": status,
+          "billingPlanStatus": status,
+          "paymentMethod": paymentMode,
+          "paymentStatus": status == "approved" ? "unpaid" : "pending",
+          if (paymentMode == "manual_invoice" && status == "approved")
+            "invoiceStatus": "issued",
           "updatedAt": FieldValue.serverTimestamp(),
-          if (status == "paid") "paidAt": FieldValue.serverTimestamp(),
+          if (status == "approved") "approvedAt": FieldValue.serverTimestamp(),
+          if (status == "approved")
+            "approvedBy": FirebaseAuth.instance.currentUser?.uid,
+          if (invoiceId != null) "invoiceId": invoiceId,
+          if (invoiceNo != null) "invoiceNumber": invoiceNo,
+          if (invoicePdfUrl != null) "invoicePdfUrl": invoicePdfUrl,
         },
         SetOptions(merge: true),
       );
 
       if (employerId.isEmpty) return;
 
-      final employerRef = firestore.collection("users").doc(employerId);
-      if (status != "paid") {
+      if (status != "approved") {
         final inactiveStatuses = {
           "rejected",
           "cancelled",
           "failed",
+          "on_hold",
         };
         transaction.set(
           employerRef,
           {
             "billing": {
               "planRequestStatus": status,
+              "billingPlanStatus": status,
               if (inactiveStatuses.contains(status)) "status": status,
               "updatedAt": FieldValue.serverTimestamp(),
             },
@@ -372,36 +645,124 @@ class BillingService {
       final availableJobPosts = readInt(
         planData["jobPosts"] ?? planData["availableJobPosts"],
       );
-      final activeUntil = activeUntilForPlan(planData);
+      final nextBillingDate = nextMonthlyBillingDate();
+      final amount = readMoney(planData["price"]);
+      final currency = planData["currency"]?.toString() ?? "GBP";
+      final activePlanName =
+          requestData["planName"] ?? planData["name"] ?? planName;
 
       transaction.set(
         employerRef,
         {
           "billing": {
             "planId": planId,
-            "planName": requestData["planName"],
-            "paymentMode": requestData["paymentMode"],
-            "directDebitEnabled":
-                requestData["paymentMode"]?.toString() == "direct_debit",
+            "planName": activePlanName,
+            "activePlanId": planId,
+            "activePlanName": activePlanName,
+            "paymentMode": paymentMode,
+            "paymentMethod": paymentMode,
+            "directDebitEnabled": paymentMode == "direct_debit",
             "availableJobPosts": availableJobPosts,
+            "includedJobSlots": availableJobPosts,
             "usedJobPosts": 0,
-            "activeUntil": activeUntil,
+            "monthlyPrice": amount,
+            "currency": currency,
+            "billingCycle": "monthly",
+            "nextBillingDate": nextBillingDate,
             "status": "active",
+            "billingPlanStatus": "approved",
+            "paymentStatus":
+                paymentMode == "manual_invoice" ? "unpaid" : "pending",
+            if (paymentMode == "manual_invoice") "invoiceStatus": "issued",
+            if (paymentMode == "direct_debit") "mandateStatus": "active",
             "trialActive": false,
-            "planRequestStatus": status,
+            "planRequestStatus": "approved",
+            "approvedAt": FieldValue.serverTimestamp(),
+            "approvedBy": FirebaseAuth.instance.currentUser?.uid,
+            if (invoiceId != null) "lastInvoiceId": invoiceId,
+            if (invoicePdfUrl != null) "lastInvoicePdfUrl": invoicePdfUrl,
             "updatedAt": FieldValue.serverTimestamp(),
           },
         },
         SetOptions(merge: true),
       );
+
+      if (invoiceId != null) {
+        final invoiceRef = firestore.collection("invoices").doc(invoiceId);
+        final invoiceDate = Timestamp.now();
+        final dueDate = Timestamp.fromDate(
+          DateTime.now().add(const Duration(days: 14)),
+        );
+        transaction.set(invoiceRef, {
+          "invoiceId": invoiceId,
+          "invoiceNumber": invoiceNo,
+          "employerId": employerId,
+          "paymentRequestId": ref.id,
+          "planId": planId,
+          "planName": activePlanName,
+          "amount": amount,
+          "currency": currency,
+          "status": "issued",
+          "paymentStatus": "unpaid",
+          "invoiceStatus": "issued",
+          "billingCycle": "monthly",
+          "invoiceDate": invoiceDate,
+          "dueDate": dueDate,
+          "pdfUrl": invoicePdfUrl,
+          "createdAt": FieldValue.serverTimestamp(),
+          "updatedAt": FieldValue.serverTimestamp(),
+        });
+        transaction.set(
+          employerRef.collection("billing").doc("currentPlan"),
+          {
+            "activePlanId": planId,
+            "activePlanName": activePlanName,
+            "billingPlanStatus": "approved",
+            "paymentMethod": paymentMode,
+            "paymentStatus": "unpaid",
+            "invoiceStatus": "issued",
+            "includedJobSlots": availableJobPosts,
+            "monthlyPrice": amount,
+            "currency": currency,
+            "billingCycle": "monthly",
+            "nextBillingDate": nextBillingDate,
+            "lastInvoiceId": invoiceId,
+            "lastInvoicePdfUrl": invoicePdfUrl,
+            "updatedAt": FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+        transaction.set(
+          employerRef
+              .collection("billing")
+              .doc("currentPlan")
+              .collection("invoices")
+              .doc(invoiceId),
+          {
+            "invoiceId": invoiceId,
+            "invoiceNumber": invoiceNo,
+            "status": "issued",
+            "paymentStatus": "unpaid",
+            "pdfUrl": invoicePdfUrl,
+            "amount": amount,
+            "currency": currency,
+            "invoiceDate": invoiceDate,
+            "dueDate": dueDate,
+            "createdAt": FieldValue.serverTimestamp(),
+          },
+        );
+      }
     });
 
+    if (status == "approved" && invoiceId != null) {
+      notificationStatus = "invoice_issued";
+    }
     if (employerId.isNotEmpty) {
       try {
         await NotificationService().notifyEmployerBillingEvent(
           employerId: employerId,
           paymentRequestId: ref.id,
-          status: status,
+          status: notificationStatus,
           planName: planName,
         );
       } catch (_) {
@@ -418,15 +779,18 @@ class BillingService {
 
     final billing = billingFromUserData(userData);
     final status = billing["status"]?.toString() ?? "";
+    final billingPlanStatus = billing["billingPlanStatus"]?.toString() ?? "";
     final planRequestStatus = billing["planRequestStatus"]?.toString() ?? "";
     final availableJobPosts = readInt(billing["availableJobPosts"]);
     final usedJobPosts = readInt(billing["usedJobPosts"]);
 
-    if (status == "pending" || planRequestStatus == "pending") {
+    if (status == "pending" ||
+        billingPlanStatus == "pending" ||
+        planRequestStatus == "pending") {
       throw const BillingLimitException(pendingBillingMessage);
     }
 
-    if (status != "active") {
+    if (status != "active" && billingPlanStatus != "approved") {
       throw const BillingLimitException(inactiveBillingMessage);
     }
 

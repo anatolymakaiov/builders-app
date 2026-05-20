@@ -32,6 +32,7 @@ dependencies:
   # NETWORK
   http: ^1.2.0
   file_picker: ^8.1.7
+  pdf: ^3.11.1
 
   # EXTERNAL LINKS
   url_launcher: ^6.3.0

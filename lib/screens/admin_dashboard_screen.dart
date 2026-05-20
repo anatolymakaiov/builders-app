@@ -2301,8 +2301,9 @@ class _PaymentRequestCard extends StatelessWidget {
 
   static const statuses = [
     "pending",
-    "paid",
+    "approved",
     "failed",
+    "on_hold",
     "cancelled",
     "rejected",
     "pending_user_reply",
@@ -2310,8 +2311,12 @@ class _PaymentRequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = data["status"]?.toString();
+    final rawStatus = data["status"]?.toString();
+    final status = rawStatus == "paid" ? "approved" : rawStatus;
     final selectedStatus = statuses.contains(status) ? status! : "pending";
+    final planApprovalStatus =
+        data["billingPlanStatus"]?.toString() ?? selectedStatus;
+    final paymentStatus = data["paymentStatus"]?.toString() ?? "pending";
     final planName = data["planName"]?.toString().trim() ?? "Plan";
     final paymentMode = data["paymentMode"]?.toString().trim() ?? "";
     final employerId = data["employerId"]?.toString() ?? "";
@@ -2337,7 +2342,7 @@ class _PaymentRequestCard extends StatelessWidget {
         return _AdminRequestListCard(
           title: companyName,
           subtitle: "$planName • ${BillingService.formatLabel(paymentMode)}",
-          status: selectedStatus,
+          status: planApprovalStatus,
           unread: unread,
           dateText: _adminMailTimeLabel(createdAt),
           leading: _AdminAvatar(
@@ -2348,6 +2353,10 @@ class _PaymentRequestCard extends StatelessWidget {
             _ReportMetaChip(label: "Plan", value: planName),
             _ReportMetaChip(
               label: "Payment",
+              value: BillingService.formatLabel(paymentStatus),
+            ),
+            _ReportMetaChip(
+              label: "Method",
               value: BillingService.formatLabel(paymentMode),
             ),
           ],
@@ -2366,7 +2375,7 @@ class _PaymentRequestCard extends StatelessWidget {
                   data: data,
                   companyName: companyName,
                   employerId: employerId,
-                  status: selectedStatus,
+                  status: planApprovalStatus,
                   onStatusChanged: onStatusChanged,
                 ),
               ),
@@ -2460,6 +2469,12 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
           "updatedAt": FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       }
+    } on BillingApprovalException catch (e) {
+      debugPrint("Billing approval blocked: ${e.message}");
+      messenger.showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+      return;
     } catch (e) {
       debugPrint("Billing status update error: $e");
       messenger.showSnackBar(
@@ -2481,6 +2496,9 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
     final planName = data["planName"]?.toString().trim() ?? "Plan";
     final planId = data["planId"]?.toString().trim() ?? "";
     final paymentMode = data["paymentMode"]?.toString().trim() ?? "";
+    final planApprovalStatus = data["billingPlanStatus"]?.toString() ?? status;
+    final paymentStatus = data["paymentStatus"]?.toString() ?? "pending";
+    final invoiceStatus = data["invoiceStatus"]?.toString() ?? "";
 
     return Scaffold(
       appBar: AppBar(
@@ -2495,7 +2513,7 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
                 return;
               }
               if (value == "approve") {
-                await changeStatus(context, "paid", optionalNote: true);
+                await changeStatus(context, "approved", optionalNote: true);
                 return;
               }
               if (value == "reject") {
@@ -2505,7 +2523,7 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
               if (value == "hold") {
                 await changeStatus(
                   context,
-                  "pending_user_reply",
+                  "on_hold",
                   requireMessage: true,
                 );
               }
@@ -2583,7 +2601,7 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                      _AdminStatusPill(status),
+                      _AdminStatusPill(planApprovalStatus),
                     ],
                   ),
                   const SizedBox(height: 14),
@@ -2597,8 +2615,16 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
                   _AdminMetaLine(label: "Requested plan", value: planName),
                   _AdminMetaLine(label: "Plan ID", value: planId),
                   _AdminMetaLine(
-                    label: "Payment mode",
+                    label: "Payment method",
                     value: BillingService.formatLabel(paymentMode),
+                  ),
+                  _AdminMetaLine(
+                    label: "Plan approval status",
+                    value: BillingService.formatLabel(planApprovalStatus),
+                  ),
+                  _AdminMetaLine(
+                    label: "Payment status",
+                    value: BillingService.formatLabel(paymentStatus),
                   ),
                   _AdminMetaLine(
                     label: "Direct debit",
@@ -2606,7 +2632,16 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
                         ? "Configured"
                         : "Not configured",
                   ),
-                  _AdminMetaLine(label: "Invoice status", value: status),
+                  if (invoiceStatus.isNotEmpty)
+                    _AdminMetaLine(
+                      label: "Invoice status",
+                      value: BillingService.formatLabel(invoiceStatus),
+                    ),
+                  if ((data["invoicePdfUrl"]?.toString() ?? "").isNotEmpty)
+                    _AdminMetaLine(
+                      label: "Invoice PDF",
+                      value: data["invoicePdfUrl"].toString(),
+                    ),
                   _AdminMetaLine(label: "Request ID", value: ref.id),
                 ],
               ),
@@ -4193,8 +4228,11 @@ class _AdminReportsData {
   bool _isActivePaidEmployer(Map<String, dynamic> data) {
     final billing = BillingService.billingFromUserData(data);
     final status = billing["status"]?.toString() ?? "";
-    final planId = billing["planId"]?.toString() ?? "";
-    return planId.isNotEmpty && status == "active";
+    final billingPlanStatus = billing["billingPlanStatus"]?.toString() ?? "";
+    final planId =
+        (billing["activePlanId"] ?? billing["planId"])?.toString() ?? "";
+    return planId.isNotEmpty &&
+        (status == "active" || billingPlanStatus == "approved");
   }
 
   bool _usesDirectDebit(Map<String, dynamic> data) {

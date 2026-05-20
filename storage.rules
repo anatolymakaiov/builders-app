@@ -66,6 +66,11 @@ service firebase.storage {
       allow write: if signedIn();
     }
 
+    match /billing_invoices/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
     match /{allPaths=**} {
       allow read: if signedIn();
       allow write: if false;

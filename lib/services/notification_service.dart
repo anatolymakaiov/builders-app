@@ -753,10 +753,11 @@ class NotificationService {
         ? planName!.trim()
         : "Selected plan";
     final title = switch (status) {
-      "paid" => "Plan approved",
+      "approved" => "Plan approved",
       "failed" => "Payment failed",
       "cancelled" => "Plan request cancelled",
       "rejected" => "Plan rejected",
+      "on_hold" => "Plan request on hold",
       "invoice_issued" => "Invoice issued",
       "payment_received" => "Payment received",
       "upcoming_direct_debit" => "Upcoming direct debit",
@@ -764,10 +765,11 @@ class NotificationService {
     };
 
     final message = switch (status) {
-      "paid" => "$plan has been approved and payment was received.",
+      "approved" => "$plan has been approved.",
       "failed" => "Payment for $plan failed.",
       "cancelled" => "$plan request was cancelled.",
       "rejected" => "$plan request was rejected.",
+      "on_hold" => "$plan request is on hold.",
       "invoice_issued" => "An invoice has been issued for $plan.",
       "payment_received" => "Payment for $plan was received.",
       "upcoming_direct_debit" => "Direct debit for $plan is coming up.",
