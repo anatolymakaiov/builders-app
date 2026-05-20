@@ -880,6 +880,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     if (text.contains("Job not found")) {
       return "Job is no longer available";
     }
+    if (text.contains("permission-denied")) {
+      return "Could not send team application because access was denied. Please try again.";
+    }
+    if (text.contains("failed-precondition")) {
+      return "Could not send team application because this query needs updating. Please try again.";
+    }
     return "Could not send application";
   }
 

@@ -175,7 +175,25 @@ service cloud.firestore {
           || isJobOwner(request.resource.data.jobId)
           || (request.resource.data.members is list && uid() in request.resource.data.members)
         );
-      allow read, update, delete: if isAdmin()
+      allow get: if signedIn()
+        && (
+          !exists(/databases/$(database)/documents/applications/$(applicationId))
+          || isAdmin()
+          || resource.data.workerId == uid()
+          || resource.data.employerId == uid()
+          || resource.data.ownerId == uid()
+          || isJobOwner(resource.data.jobId)
+          || (resource.data.members is list && uid() in resource.data.members)
+          || isTeamMember(resource.data.teamId)
+        );
+      allow list: if isAdmin()
+        || resource.data.workerId == uid()
+        || resource.data.employerId == uid()
+        || resource.data.ownerId == uid()
+        || isJobOwner(resource.data.jobId)
+        || (resource.data.members is list && uid() in resource.data.members)
+        || isTeamMember(resource.data.teamId);
+      allow update, delete: if isAdmin()
         || resource.data.workerId == uid()
         || resource.data.employerId == uid()
         || resource.data.ownerId == uid()
