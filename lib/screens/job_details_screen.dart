@@ -452,33 +452,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           members.add(uid);
         }
 
-        final existingTeamApplication = await FirebaseFirestore.instance
-            .collection("applications")
-            .where("teamId", isEqualTo: teamId)
-            .get();
-
-        final duplicateTeamApplication =
-            existingTeamApplication.docs.where((doc) {
-          final data = doc.data();
-          return applicationBelongsToJob(data) &&
-              isActiveApplicationData(data) &&
-              data["type"]?.toString() == "team";
-        }).toList();
-
-        if (duplicateTeamApplication.isNotEmpty) {
-          if (mounted) {
-            setState(() {
-              isApplying = false;
-              isApplied = true;
-              currentApplicationId = duplicateTeamApplication.first.id;
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("You already applied")),
-            );
-          }
-          return;
-        }
-
         /// ❗ проверка мест
         if (members.length > remainingPositions) {
           if (mounted) {

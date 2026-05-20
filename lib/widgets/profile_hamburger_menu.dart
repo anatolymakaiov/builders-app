@@ -10,6 +10,7 @@ import '../screens/edit_profile_screen.dart';
 import '../screens/login_screen.dart';
 import '../services/auth_preferences_service.dart';
 import '../services/billing_service.dart';
+import '../services/job_alert_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -239,6 +240,20 @@ class ProfileHamburgerMenu extends StatelessWidget {
                               ),
                             );
                           },
+                        );
+                      },
+                    ),
+                  if (role == "worker" && uid != null)
+                    _MenuTile(
+                      icon: Icons.notifications_active_outlined,
+                      title: "Subscribes",
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => JobSubscribesScreen(userId: uid),
+                          ),
                         );
                       },
                     ),
@@ -872,6 +887,148 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   }
 }
 
+class JobSubscribesScreen extends StatelessWidget {
+  final String userId;
+
+  const JobSubscribesScreen({
+    super.key,
+    required this.userId,
+  });
+
+  String subscriptionTitle(Map<String, dynamic> data) {
+    final trade = data["trade"]?.toString().trim() ?? "";
+    return trade.isEmpty || trade == "All" ? "All trades" : trade;
+  }
+
+  String subscriptionSubtitle(Map<String, dynamic> data) {
+    final jobType = data["jobType"]?.toString().trim() ?? "All";
+    final distance = data["distance"];
+    final distanceText = distance is num
+        ? "${distance.toStringAsFixed(distance % 1 == 0 ? 0 : 1)} mi"
+        : "${distance?.toString() ?? "50"} mi";
+    return [
+      "Type: ${jobType.isEmpty ? "All" : BillingService.formatLabel(jobType)}",
+      "Distance: $distanceText",
+    ].join(" • ");
+  }
+
+  Future<void> deleteSubscription(
+    BuildContext context,
+    String alertId,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Delete subscription?"),
+        content: const Text(
+          "This job subscription will stop sending matching job alerts.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Delete"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await JobAlertService().deleteWorkerAlert(
+      userId: userId,
+      alertId: alertId,
+    );
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Subscription deleted")),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Subscribes")),
+      body: StroykaScreenBody(
+        child: StroykaSurface(
+          margin: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: JobAlertService().workerAlertsStream(userId),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return const Center(
+                  child: Text("Could not load subscriptions"),
+                );
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final docs = snapshot.data!.docs.toList()
+                ..sort((a, b) {
+                  final aDate = a.data()["createdAt"];
+                  final bDate = b.data()["createdAt"];
+                  final aMs =
+                      aDate is Timestamp ? aDate.millisecondsSinceEpoch : 0;
+                  final bMs =
+                      bDate is Timestamp ? bDate.millisecondsSinceEpoch : 0;
+                  return bMs.compareTo(aMs);
+                });
+
+              if (docs.isEmpty) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text("No job subscriptions yet"),
+                  ),
+                );
+              }
+
+              return ListView.separated(
+                itemCount: docs.length,
+                separatorBuilder: (_, __) => Divider(
+                  height: 1,
+                  color: AppColors.muted.withValues(alpha: 0.18),
+                ),
+                itemBuilder: (context, index) {
+                  final doc = docs[index];
+                  final data = doc.data();
+                  return ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0x297DB9D8),
+                      child: Icon(
+                        Icons.notifications_active_outlined,
+                        color: AppColors.greenDark,
+                      ),
+                    ),
+                    title: Text(
+                      subscriptionTitle(data),
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    subtitle: Text(subscriptionSubtitle(data)),
+                    trailing: IconButton(
+                      tooltip: "Delete subscription",
+                      icon: const Icon(Icons.remove_circle_outline),
+                      onPressed: () => deleteSubscription(context, doc.id),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class AdminInboxScreen extends StatefulWidget {
   final String userId;
   final String role;
@@ -1474,6 +1631,15 @@ class AdminInboxMessageScreen extends StatelessWidget {
                 }
                 final selectedData = selectedDoc.data();
                 final canReply = selectedData["canReply"] != false;
+                DocumentReference<Map<String, dynamic>>? markUnreadRef;
+                for (final doc in docs.reversed) {
+                  final data = doc.data();
+                  if (data["receiverId"] == userId &&
+                      data["deletedByReceiver"] != true) {
+                    markUnreadRef = doc.reference;
+                    break;
+                  }
+                }
                 final unreadRefs = docs.where((doc) {
                   final data = doc.data();
                   return data["receiverId"] == userId &&
@@ -1526,6 +1692,7 @@ class AdminInboxMessageScreen extends StatelessWidget {
                               _UserAdminMailThreadMenu(
                                 source: selectedData,
                                 selectedRef: selectedDoc.reference,
+                                markUnreadRef: markUnreadRef,
                                 userId: userId,
                                 role: role,
                                 onReply: () => reply(context, selectedData),
@@ -1684,6 +1851,7 @@ class _UserAdminMailMessageCard extends StatelessWidget {
 class _UserAdminMailThreadMenu extends StatelessWidget {
   final Map<String, dynamic> source;
   final DocumentReference<Map<String, dynamic>> selectedRef;
+  final DocumentReference<Map<String, dynamic>>? markUnreadRef;
   final String userId;
   final String role;
   final VoidCallback onReply;
@@ -1691,6 +1859,7 @@ class _UserAdminMailThreadMenu extends StatelessWidget {
   const _UserAdminMailThreadMenu({
     required this.source,
     required this.selectedRef,
+    this.markUnreadRef,
     required this.userId,
     required this.role,
     required this.onReply,
@@ -1712,8 +1881,9 @@ class _UserAdminMailThreadMenu extends StatelessWidget {
           return;
         }
         if (value == "unread") {
-          await _markUserAdminMailUnread(selectedRef);
-          if (context.mounted) Navigator.pop(context);
+          final navigator = Navigator.of(context);
+          navigator.pop();
+          await _markUserAdminMailUnread(markUnreadRef ?? selectedRef);
           return;
         }
         if (value == "delete") {

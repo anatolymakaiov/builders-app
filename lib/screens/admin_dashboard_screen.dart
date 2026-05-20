@@ -1517,6 +1517,15 @@ class _AdminMailThreadScreen extends StatelessWidget {
               }
             }
             final selectedData = selectedDoc.data();
+            DocumentReference? markUnreadRef;
+            for (final doc in docs.reversed) {
+              final data = doc.data();
+              if (data["direction"] == "incoming" &&
+                  data["deletedByAdmin"] != true) {
+                markUnreadRef = doc.reference;
+                break;
+              }
+            }
             final unreadRefs = docs.where((doc) {
               final data = doc.data();
               return data["direction"] == "incoming" &&
@@ -1584,6 +1593,7 @@ class _AdminMailThreadScreen extends StatelessWidget {
                             source: selectedData,
                             threadId: threadId,
                             selectedRef: selectedDoc.reference,
+                            markUnreadRef: markUnreadRef,
                           ),
                         ],
                       ),
@@ -1619,11 +1629,13 @@ class _AdminMailThreadActionsMenu extends StatelessWidget {
   final Map<String, dynamic> source;
   final String threadId;
   final DocumentReference selectedRef;
+  final DocumentReference? markUnreadRef;
 
   const _AdminMailThreadActionsMenu({
     required this.source,
     required this.threadId,
     required this.selectedRef,
+    this.markUnreadRef,
   });
 
   @override
@@ -1650,8 +1662,9 @@ class _AdminMailThreadActionsMenu extends StatelessWidget {
             );
             break;
           case "unread":
-            await _markAdminMessageUnread(selectedRef);
-            if (context.mounted) Navigator.pop(context);
+            final navigator = Navigator.of(context);
+            navigator.pop();
+            await _markAdminMessageUnread(markUnreadRef ?? selectedRef);
             break;
           case "delete":
             await _deleteAdminMessage(selectedRef);

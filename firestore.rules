@@ -137,6 +137,15 @@ service cloud.firestore {
           allow delete: if isAdmin();
         }
       }
+
+      match /job_alerts/{alertId} {
+        allow create: if isAdmin()
+          || (
+            isSelf(userId)
+            && request.resource.data.userId == uid()
+          );
+        allow read, update, delete: if isAdmin() || isSelf(userId);
+      }
     }
 
     match /saved_jobs/{userId}/jobs/{jobId} {

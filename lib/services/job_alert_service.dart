@@ -12,12 +12,12 @@ class JobAlertService {
     required double lat,
     required double lng,
   }) async {
-    await _db
-        .collection("users")
-        .doc(userId)
-        .collection("job_alerts")
-        .doc("default")
-        .set({
+    final ref =
+        _db.collection("users").doc(userId).collection("job_alerts").doc();
+
+    await ref.set({
+      "alertId": ref.id,
+      "userId": userId,
       "trade": trade,
       "jobType": jobType,
       "distance": distance,
@@ -26,7 +26,30 @@ class JobAlertService {
       "active": true,
       "updatedAt": FieldValue.serverTimestamp(),
       "createdAt": FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    });
+  }
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> workerAlertsStream(
+    String userId,
+  ) {
+    return _db
+        .collection("users")
+        .doc(userId)
+        .collection("job_alerts")
+        .where("active", isEqualTo: true)
+        .snapshots();
+  }
+
+  Future<void> deleteWorkerAlert({
+    required String userId,
+    required String alertId,
+  }) async {
+    await _db
+        .collection("users")
+        .doc(userId)
+        .collection("job_alerts")
+        .doc(alertId)
+        .delete();
   }
 
   Future<void> notifyMatchingWorkers({
