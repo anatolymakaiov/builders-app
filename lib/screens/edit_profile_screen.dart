@@ -40,6 +40,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// 🔥 NEW
   final websiteController = TextEditingController();
+  final billingEmailController = TextEditingController();
   final contactPersonController = TextEditingController();
   final companyGoalsController = TextEditingController();
   final companyAdvantagesController = TextEditingController();
@@ -65,6 +66,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool uploadingCompanyPhotos = false;
   bool firstProfileCreation = false;
   bool legalAcceptedForCurrentVersion = false;
+  bool billingEmailVerified = false;
+  String loadedBillingEmail = "";
 
   String get userId => FirebaseAuth.instance.currentUser!.uid;
 
@@ -122,6 +125,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       locationController.text = data["location"] ?? "";
 
       websiteController.text = data["website"] ?? "";
+      final billing = data["billing"] is Map
+          ? Map<String, dynamic>.from(data["billing"] as Map)
+          : <String, dynamic>{};
+      loadedBillingEmail = (data["billingEmail"] ??
+              billing["billingEmail"] ??
+              data["email"] ??
+              FirebaseAuth.instance.currentUser?.email ??
+              "")
+          .toString();
+      billingEmailController.text = loadedBillingEmail;
+      billingEmailVerified = data["billingEmailVerified"] == true ||
+          billing["billingEmailVerified"] == true;
       contactPersonController.text = data["contactPerson"] ?? "";
       companyGoalsController.text = data["companyGoals"] ?? "";
       companyAdvantagesController.text = data["companyAdvantages"] ?? "";
@@ -459,6 +474,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
 
+    final billingEmail = billingEmailController.text.trim();
+    final validBillingEmail =
+        RegExp(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").hasMatch(billingEmail);
+    if (role == "employer" && !validBillingEmail) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter a valid billing email")),
+      );
+      return;
+    }
+
     final shouldRequestLegalAcceptance =
         firstProfileCreation && !legalAcceptedForCurrentVersion;
 
@@ -546,8 +571,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       if (role == "employer") {
+        final authUser = FirebaseAuth.instance.currentUser;
+        final verifiedByAuth =
+            authUser?.email?.toLowerCase() == billingEmail.toLowerCase() &&
+                authUser?.emailVerified == true;
+        final nextBillingEmailVerified = verifiedByAuth ||
+            (billingEmailVerified &&
+                billingEmail.toLowerCase() == loadedBillingEmail.toLowerCase());
         profileData.addAll({
           "companyName": companyName,
+          "email": billingEmail,
+          "billingEmail": billingEmail,
+          "billingEmailProvided": true,
+          "billingEmailVerified": nextBillingEmailVerified,
+          if (nextBillingEmailVerified)
+            "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
+          "billing": {
+            "billingEmail": billingEmail,
+            "billingEmailVerified": nextBillingEmailVerified,
+            if (nextBillingEmailVerified)
+              "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
+            "updatedAt": FieldValue.serverTimestamp(),
+          },
           "website": websiteController.text.trim(),
           "contactPerson": contactPersonController.text.trim(),
           "phones": cleanedPhones,
@@ -603,6 +648,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         headerImageFile = null;
         extraPhones = cleanedPhones;
         firstProfileCreation = false;
+        billingEmailVerified = (FirebaseAuth.instance.currentUser?.email
+                        ?.toLowerCase() ==
+                    billingEmail.toLowerCase() &&
+                FirebaseAuth.instance.currentUser?.emailVerified == true) ||
+            (billingEmailVerified &&
+                billingEmail.toLowerCase() == loadedBillingEmail.toLowerCase());
+        loadedBillingEmail = billingEmail;
         if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion) {
           legalAcceptedForCurrentVersion = true;
         }
@@ -1060,6 +1112,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           TextField(
             controller: companyController,
             decoration: const InputDecoration(labelText: "Company name"),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: billingEmailController,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            decoration: const InputDecoration(
+              labelText: "Company billing email *",
+              helperText: "Invoices and billing notices will use this email.",
+            ),
           ),
           const SizedBox(height: 12),
           TextField(

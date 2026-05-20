@@ -69,6 +69,9 @@ class BillingService {
       "billingPlanStatus",
       "paymentStatus",
       "invoiceStatus",
+      "billingEmail",
+      "billingEmailVerified",
+      "billingEmailVerifiedAt",
       "directDebitEnabled",
       "directDebitMandateId",
       "mandateStatus",
@@ -82,6 +85,8 @@ class BillingService {
       "currency",
       "status",
       "trialActive",
+      "trialStatus",
+      "trialEndsAt",
       "planRequestStatus",
       "paymentRequestId",
       "lastInvoiceId",
@@ -136,6 +141,32 @@ class BillingService {
   static Timestamp nextMonthlyBillingDate() {
     final now = DateTime.now();
     return Timestamp.fromDate(DateTime(now.year, now.month + 1, now.day));
+  }
+
+  static DateTime addOneMonth(DateTime date) {
+    return DateTime(
+      date.year,
+      date.month + 1,
+      date.day,
+      date.hour,
+      date.minute,
+      date.second,
+      date.millisecond,
+      date.microsecond,
+    );
+  }
+
+  static String billingEmailFromUserData(Map<String, dynamic> data) {
+    final billing = billingFromUserData(data);
+    final email =
+        (billing["billingEmail"] ?? data["billingEmail"] ?? data["email"] ?? "")
+            .toString()
+            .trim();
+    return email;
+  }
+
+  static bool isValidEmail(String email) {
+    return RegExp(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").hasMatch(email.trim());
   }
 
   static String invoiceNumber(String invoiceId) {
@@ -464,6 +495,10 @@ class BillingService {
         "planId": plan.id,
         "planName": selectedPlanName,
         "paymentMode": paymentMode,
+        "billingEmail": billingEmailFromUserData(
+          {"billing": currentBilling},
+        ),
+        "billingEmailVerified": currentBilling["billingEmailVerified"] == true,
         "status": "pending",
         "createdAt": FieldValue.serverTimestamp(),
         "updatedAt": FieldValue.serverTimestamp(),
@@ -477,6 +512,11 @@ class BillingService {
             "planName": selectedPlanName,
             "paymentMode": paymentMode,
             "directDebitEnabled": paymentMode == "direct_debit",
+            "billingEmail": billingEmailFromUserData(
+              {"billing": currentBilling},
+            ),
+            "billingEmailVerified":
+                currentBilling["billingEmailVerified"] == true,
             "availableJobPosts": 0,
             "requestedJobPosts": availableJobPosts,
             "usedJobPosts": usedJobPosts,
@@ -494,6 +534,114 @@ class BillingService {
     });
   }
 
+  void _writeBillingSchedules({
+    required Transaction transaction,
+    required FirebaseFirestore firestore,
+    required String employerId,
+    required String paymentRequestId,
+    required String planId,
+    required String planName,
+    required String paymentMode,
+    required String billingEmail,
+    required double amount,
+    required String currency,
+    required DateTime nextBillingDate,
+  }) {
+    final scheduleBase = {
+      "employerId": employerId,
+      "paymentRequestId": paymentRequestId,
+      "planId": planId,
+      "planName": planName,
+      "paymentMode": paymentMode,
+      "billingEmail": billingEmail,
+      "amount": amount,
+      "currency": currency,
+      "nextBillingDate": Timestamp.fromDate(nextBillingDate),
+      "status": "pending",
+      "createdAt": FieldValue.serverTimestamp(),
+      "updatedAt": FieldValue.serverTimestamp(),
+    };
+
+    final reminder10Days = nextBillingDate.subtract(const Duration(days: 10));
+    final reminder2Days = nextBillingDate.subtract(const Duration(days: 2));
+    final overdueCheck = nextBillingDate.add(const Duration(days: 1));
+
+    if (paymentMode == "manual_invoice") {
+      transaction.set(
+        firestore.collection("billing_schedules").doc(),
+        {
+          ...scheduleBase,
+          "type": "manual_invoice_issue",
+          "scheduledAt": Timestamp.fromDate(reminder10Days),
+          "dueDate": Timestamp.fromDate(nextBillingDate),
+          "emailDeliveryRequired": true,
+          "message":
+              "Issue invoice and email it to $billingEmail 10 days before the subscription due date.",
+        },
+      );
+      transaction.set(
+        firestore.collection("billing_schedules").doc(),
+        {
+          ...scheduleBase,
+          "type": "manual_invoice_due_reminder",
+          "scheduledAt": Timestamp.fromDate(reminder2Days),
+          "dueDate": Timestamp.fromDate(nextBillingDate),
+          "emailDeliveryRequired": true,
+          "message": "Send a 2 day invoice payment reminder to $billingEmail.",
+        },
+      );
+      transaction.set(
+        firestore.collection("billing_schedules").doc(),
+        {
+          ...scheduleBase,
+          "type": "manual_invoice_overdue_check",
+          "scheduledAt": Timestamp.fromDate(overdueCheck),
+          "dueDate": Timestamp.fromDate(nextBillingDate),
+          "emailDeliveryRequired": true,
+          "message":
+              "Check whether the invoice remains unpaid after the due date and notify the employer if overdue.",
+        },
+      );
+      return;
+    }
+
+    if (paymentMode == "direct_debit" || paymentMode == "card") {
+      transaction.set(
+        firestore.collection("billing_schedules").doc(),
+        {
+          ...scheduleBase,
+          "type": "${paymentMode}_reminder_10_days",
+          "scheduledAt": Timestamp.fromDate(reminder10Days),
+          "emailDeliveryRequired": false,
+          "message":
+              "Your subscription payment is scheduled for ${formatDate(Timestamp.fromDate(nextBillingDate))}. Please ensure your payment method remains active.",
+        },
+      );
+      transaction.set(
+        firestore.collection("billing_schedules").doc(),
+        {
+          ...scheduleBase,
+          "type": "${paymentMode}_reminder_2_days",
+          "scheduledAt": Timestamp.fromDate(reminder2Days),
+          "emailDeliveryRequired": false,
+          "message":
+              "Your subscription payment is scheduled in 2 days. Please ensure your payment method remains active.",
+        },
+      );
+      transaction.set(
+        firestore.collection("billing_schedules").doc(),
+        {
+          ...scheduleBase,
+          "type": "${paymentMode}_payment_check",
+          "scheduledAt": Timestamp.fromDate(overdueCheck),
+          "emailDeliveryRequired": false,
+          "message":
+              "Check whether the scheduled subscription payment has been confirmed and flag overdue/failed status if needed.",
+        },
+      );
+    }
+  }
+
   Future<void> updatePaymentRequestStatus(
     DocumentReference ref,
     String status,
@@ -502,11 +650,7 @@ class BillingService {
     var employerId = "";
     var planName = "";
     var notificationStatus = status;
-    String? invoiceId;
-    String? invoicePdfUrl;
-    String? invoiceNo;
     Map<String, dynamic> preloadedRequest = const <String, dynamic>{};
-    Map<String, dynamic> preloadedPlan = const <String, dynamic>{};
     Map<String, dynamic> preloadedEmployer = const <String, dynamic>{};
 
     if (status == "approved") {
@@ -531,36 +675,6 @@ class BillingService {
           !hasDirectDebitMandate(preloadedEmployer)) {
         throw const BillingApprovalException(
           "Direct Debit mandate is not set up.",
-        );
-      }
-
-      final planSnap = await firestore.collection("plans").doc(planId).get();
-      preloadedPlan = planSnap.data() ?? <String, dynamic>{};
-
-      if (paymentMode == "manual_invoice") {
-        final invoiceRef = firestore.collection("invoices").doc();
-        invoiceId = invoiceRef.id;
-        invoiceNo = invoiceNumber(invoiceRef.id);
-        final invoiceDate = Timestamp.now();
-        final dueDate = Timestamp.fromDate(
-          DateTime.now().add(const Duration(days: 14)),
-        );
-        final amount = readMoney(preloadedPlan["price"]);
-        final currency = preloadedPlan["currency"]?.toString() ?? "GBP";
-        planName = preloadedRequest["planName"]?.toString() ??
-            preloadedPlan["name"]?.toString() ??
-            "Selected plan";
-
-        invoicePdfUrl = await createManualInvoicePdf(
-          invoiceId: invoiceRef.id,
-          invoiceNumber: invoiceNo,
-          employerData: preloadedEmployer,
-          planData: preloadedPlan,
-          planName: planName,
-          currency: currency,
-          amount: amount,
-          invoiceDate: invoiceDate,
-          dueDate: dueDate,
         );
       }
     }
@@ -588,6 +702,16 @@ class BillingService {
 
       final paymentMode =
           requestData["paymentMode"]?.toString() ?? "manual_invoice";
+      final billingEmail = (requestData["billingEmail"] ??
+              billingEmailFromUserData(employerData))
+          .toString()
+          .trim();
+      if (status == "approved" && !isValidEmail(billingEmail)) {
+        throw const BillingApprovalException(
+          "Employer billing email is missing or invalid.",
+        );
+      }
+
       if (status == "approved" &&
           paymentMode == "direct_debit" &&
           !hasDirectDebitMandate(employerData)) {
@@ -602,16 +726,19 @@ class BillingService {
           "status": status,
           "billingPlanStatus": status,
           "paymentMethod": paymentMode,
-          "paymentStatus": status == "approved" ? "unpaid" : "pending",
+          "billingEmail": billingEmail,
+          "billingEmailVerified": requestData["billingEmailVerified"] == true ||
+              BillingService.billingFromUserData(
+                    employerData,
+                  )["billingEmailVerified"] ==
+                  true,
+          "paymentStatus": "pending",
           if (paymentMode == "manual_invoice" && status == "approved")
-            "invoiceStatus": "issued",
+            "invoiceStatus": "scheduled",
           "updatedAt": FieldValue.serverTimestamp(),
           if (status == "approved") "approvedAt": FieldValue.serverTimestamp(),
           if (status == "approved")
             "approvedBy": FirebaseAuth.instance.currentUser?.uid,
-          if (invoiceId != null) "invoiceId": invoiceId,
-          if (invoiceNo != null) "invoiceNumber": invoiceNo,
-          if (invoicePdfUrl != null) "invoicePdfUrl": invoicePdfUrl,
         },
         SetOptions(merge: true),
       );
@@ -645,11 +772,20 @@ class BillingService {
       final availableJobPosts = readInt(
         planData["jobPosts"] ?? planData["availableJobPosts"],
       );
-      final nextBillingDate = nextMonthlyBillingDate();
+      final approvedAt = DateTime.now();
+      final trialEndsAt = addOneMonth(approvedAt);
+      final nextBillingDate = Timestamp.fromDate(trialEndsAt);
+      final trialStartedAt = Timestamp.fromDate(approvedAt);
       final amount = readMoney(planData["price"]);
       final currency = planData["currency"]?.toString() ?? "GBP";
       final activePlanName =
           requestData["planName"] ?? planData["name"] ?? planName;
+      final billingEmailVerified =
+          requestData["billingEmailVerified"] == true ||
+              BillingService.billingFromUserData(
+                    employerData,
+                  )["billingEmailVerified"] ==
+                  true;
 
       transaction.set(
         employerRef,
@@ -669,94 +805,66 @@ class BillingService {
             "currency": currency,
             "billingCycle": "monthly",
             "nextBillingDate": nextBillingDate,
+            "billingEmail": billingEmail,
+            "billingEmailVerified": billingEmailVerified,
             "status": "active",
             "billingPlanStatus": "approved",
-            "paymentStatus":
-                paymentMode == "manual_invoice" ? "unpaid" : "pending",
-            if (paymentMode == "manual_invoice") "invoiceStatus": "issued",
+            "paymentStatus": "pending",
+            if (paymentMode == "manual_invoice") "invoiceStatus": "scheduled",
             if (paymentMode == "direct_debit") "mandateStatus": "active",
-            "trialActive": false,
+            "trialActive": true,
+            "trialStatus": "active",
+            "trialStartedAt": trialStartedAt,
+            "trialEndsAt": nextBillingDate,
+            "activeUntil": nextBillingDate,
             "planRequestStatus": "approved",
             "approvedAt": FieldValue.serverTimestamp(),
             "approvedBy": FirebaseAuth.instance.currentUser?.uid,
-            if (invoiceId != null) "lastInvoiceId": invoiceId,
-            if (invoicePdfUrl != null) "lastInvoicePdfUrl": invoicePdfUrl,
             "updatedAt": FieldValue.serverTimestamp(),
           },
         },
         SetOptions(merge: true),
       );
 
-      if (invoiceId != null) {
-        final invoiceRef = firestore.collection("invoices").doc(invoiceId);
-        final invoiceDate = Timestamp.now();
-        final dueDate = Timestamp.fromDate(
-          DateTime.now().add(const Duration(days: 14)),
-        );
-        transaction.set(invoiceRef, {
-          "invoiceId": invoiceId,
-          "invoiceNumber": invoiceNo,
-          "employerId": employerId,
-          "paymentRequestId": ref.id,
-          "planId": planId,
-          "planName": activePlanName,
-          "amount": amount,
+      transaction.set(
+        employerRef.collection("billing").doc("currentPlan"),
+        {
+          "activePlanId": planId,
+          "activePlanName": activePlanName,
+          "billingPlanStatus": "approved",
+          "paymentMethod": paymentMode,
+          "paymentStatus": "pending",
+          if (paymentMode == "manual_invoice") "invoiceStatus": "scheduled",
+          "includedJobSlots": availableJobPosts,
+          "monthlyPrice": amount,
           "currency": currency,
-          "status": "issued",
-          "paymentStatus": "unpaid",
-          "invoiceStatus": "issued",
           "billingCycle": "monthly",
-          "invoiceDate": invoiceDate,
-          "dueDate": dueDate,
-          "pdfUrl": invoicePdfUrl,
-          "createdAt": FieldValue.serverTimestamp(),
+          "nextBillingDate": nextBillingDate,
+          "billingEmail": billingEmail,
+          "billingEmailVerified": billingEmailVerified,
+          "trialStatus": "active",
+          "trialStartedAt": trialStartedAt,
+          "trialEndsAt": nextBillingDate,
           "updatedAt": FieldValue.serverTimestamp(),
-        });
-        transaction.set(
-          employerRef.collection("billing").doc("currentPlan"),
-          {
-            "activePlanId": planId,
-            "activePlanName": activePlanName,
-            "billingPlanStatus": "approved",
-            "paymentMethod": paymentMode,
-            "paymentStatus": "unpaid",
-            "invoiceStatus": "issued",
-            "includedJobSlots": availableJobPosts,
-            "monthlyPrice": amount,
-            "currency": currency,
-            "billingCycle": "monthly",
-            "nextBillingDate": nextBillingDate,
-            "lastInvoiceId": invoiceId,
-            "lastInvoicePdfUrl": invoicePdfUrl,
-            "updatedAt": FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
-        transaction.set(
-          employerRef
-              .collection("billing")
-              .doc("currentPlan")
-              .collection("invoices")
-              .doc(invoiceId),
-          {
-            "invoiceId": invoiceId,
-            "invoiceNumber": invoiceNo,
-            "status": "issued",
-            "paymentStatus": "unpaid",
-            "pdfUrl": invoicePdfUrl,
-            "amount": amount,
-            "currency": currency,
-            "invoiceDate": invoiceDate,
-            "dueDate": dueDate,
-            "createdAt": FieldValue.serverTimestamp(),
-          },
-        );
-      }
+        },
+        SetOptions(merge: true),
+      );
+
+      _writeBillingSchedules(
+        transaction: transaction,
+        firestore: firestore,
+        employerId: employerId,
+        paymentRequestId: ref.id,
+        planId: planId,
+        planName: activePlanName.toString(),
+        paymentMode: paymentMode,
+        billingEmail: billingEmail,
+        amount: amount,
+        currency: currency,
+        nextBillingDate: trialEndsAt,
+      );
     });
 
-    if (status == "approved" && invoiceId != null) {
-      notificationStatus = "invoice_issued";
-    }
     if (employerId.isNotEmpty) {
       try {
         await NotificationService().notifyEmployerBillingEvent(

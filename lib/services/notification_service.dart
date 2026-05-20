@@ -754,25 +754,39 @@ class NotificationService {
         : "Selected plan";
     final title = switch (status) {
       "approved" => "Plan approved",
+      "trial_started" => "Trial started",
       "failed" => "Payment failed",
       "cancelled" => "Plan request cancelled",
       "rejected" => "Plan rejected",
       "on_hold" => "Plan request on hold",
       "invoice_issued" => "Invoice issued",
+      "invoice_reminder" => "Invoice reminder",
       "payment_received" => "Payment received",
       "upcoming_direct_debit" => "Upcoming direct debit",
+      "upcoming_card_payment" => "Upcoming card payment",
+      "overdue" => "Payment overdue",
       _ => "Billing request updated",
     };
 
     final message = switch (status) {
-      "approved" => "$plan has been approved.",
+      "approved" =>
+        "$plan has been approved. Your one month free trial has started.",
+      "trial_started" =>
+        "Your one month free trial for $plan has started. Your next billing date is scheduled after the trial.",
       "failed" => "Payment for $plan failed.",
       "cancelled" => "$plan request was cancelled.",
       "rejected" => "$plan request was rejected.",
       "on_hold" => "$plan request is on hold.",
-      "invoice_issued" => "An invoice has been issued for $plan.",
+      "invoice_issued" =>
+        "Your invoice for $plan has been issued and sent to your billing email.",
+      "invoice_reminder" =>
+        "Your invoice for $plan is due soon. Please complete payment before the due date.",
       "payment_received" => "Payment for $plan was received.",
-      "upcoming_direct_debit" => "Direct debit for $plan is coming up.",
+      "upcoming_direct_debit" =>
+        "Your subscription payment for $plan is scheduled. Please ensure your Direct Debit remains active.",
+      "upcoming_card_payment" =>
+        "Your subscription payment for $plan is scheduled. Please ensure your card remains active.",
+      "overdue" => "Payment for $plan is overdue.",
       _ => "$plan billing status changed to $status.",
     };
 

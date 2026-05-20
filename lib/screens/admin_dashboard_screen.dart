@@ -2499,6 +2499,8 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
     final planApprovalStatus = data["billingPlanStatus"]?.toString() ?? status;
     final paymentStatus = data["paymentStatus"]?.toString() ?? "pending";
     final invoiceStatus = data["invoiceStatus"]?.toString() ?? "";
+    final billingEmail = data["billingEmail"]?.toString().trim() ?? "";
+    final billingEmailVerified = data["billingEmailVerified"] == true;
 
     return Scaffold(
       appBar: AppBar(
@@ -2617,6 +2619,14 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
                   _AdminMetaLine(
                     label: "Payment method",
                     value: BillingService.formatLabel(paymentMode),
+                  ),
+                  _AdminMetaLine(
+                    label: "Billing email",
+                    value: billingEmail.isEmpty ? "Missing" : billingEmail,
+                  ),
+                  _AdminMetaLine(
+                    label: "Billing email status",
+                    value: billingEmailVerified ? "Verified" : "Provided",
                   ),
                   _AdminMetaLine(
                     label: "Plan approval status",
@@ -4146,7 +4156,7 @@ class _AdminReportsData {
   Map<String, double> _revenueByModeForMonth(DateTime month) {
     final map = <String, double>{};
     for (final payment in payments) {
-      if (_status(payment) != "paid") continue;
+      if (!_isConfirmedReceivedPayment(payment)) continue;
       if (!_isInMonth(_paymentDate(payment), month)) continue;
       final mode = payment["paymentMode"]?.toString() ?? "manual_invoice";
       map[mode] = (map[mode] ?? 0) + _paymentValue(payment);
@@ -4156,12 +4166,34 @@ class _AdminReportsData {
 
   double _revenueForRange(DateTime start, DateTime end) {
     return payments.where((payment) {
-      return _status(payment) == "paid" &&
+      return _isConfirmedReceivedPayment(payment) &&
           _isInRange(_paymentDate(payment), start, end);
     }).fold<double>(
       0,
       (total, payment) => total + _paymentValue(payment),
     );
+  }
+
+  bool _isConfirmedReceivedPayment(Map<String, dynamic> payment) {
+    final status = _status(payment);
+    final paymentStatus =
+        payment["paymentStatus"]?.toString().trim().toLowerCase() ?? "";
+    final invoiceStatus =
+        payment["invoiceStatus"]?.toString().trim().toLowerCase() ?? "";
+    final hasConfirmedDate = _date(payment["paidAt"]) != null ||
+        _date(payment["confirmedAt"]) != null ||
+        _date(payment["providerPaidAt"]) != null;
+    final hasProviderReference =
+        (payment["providerPaymentId"]?.toString().trim().isNotEmpty == true) ||
+            (payment["transactionId"]?.toString().trim().isNotEmpty == true) ||
+            (payment["paymentIntentId"]?.toString().trim().isNotEmpty == true);
+
+    if (status == "paid" ||
+        paymentStatus == "paid" ||
+        invoiceStatus == "paid") {
+      return hasConfirmedDate || hasProviderReference;
+    }
+    return false;
   }
 
   double _paymentValue(Map<String, dynamic> payment) {
@@ -4175,6 +4207,8 @@ class _AdminReportsData {
 
   DateTime? _paymentDate(Map<String, dynamic> payment) {
     return _date(payment["paidAt"]) ??
+        _date(payment["confirmedAt"]) ??
+        _date(payment["providerPaidAt"]) ??
         _date(payment["updatedAt"]) ??
         _date(payment["createdAt"]);
   }

@@ -432,6 +432,17 @@ class _BillingSection extends StatelessWidget {
     if (!paymentModes.contains(paymentMode)) {
       paymentMode = paymentModes.first;
     }
+    final billingEmail = (billing["billingEmail"] ?? "").toString().trim();
+    if (!BillingService.isValidEmail(billingEmail)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Add a valid company billing email before requesting a plan.",
+          ),
+        ),
+      );
+      return;
+    }
 
     final confirmedMode = await showDialog<String>(
       context: context,
@@ -518,9 +529,13 @@ class _BillingSection extends StatelessWidget {
         billing["billingPlanStatus"]?.toString() ?? status;
     final paymentStatus = billing["paymentStatus"]?.toString() ?? "Not set";
     final invoiceStatus = billing["invoiceStatus"]?.toString() ?? "Not set";
+    final billingEmail = billing["billingEmail"]?.toString() ?? "Not set";
+    final billingEmailVerified = billing["billingEmailVerified"] == true;
     final planRequestStatus =
         billing["planRequestStatus"]?.toString() ?? "not_requested";
     final trialActive = billing["trialActive"] == true;
+    final trialStatus = billing["trialStatus"]?.toString() ??
+        (trialActive ? "active" : "not_started");
     final availableJobPosts =
         BillingService.readInt(billing["availableJobPosts"]);
     final activeUntil = BillingService.formatDate(billing["activeUntil"]);
@@ -583,8 +598,24 @@ class _BillingSection extends StatelessWidget {
                 value: BillingService.formatLabel(paymentMode),
               ),
               _BillingRow(
+                label: "Billing email",
+                value: billingEmail,
+              ),
+              _BillingRow(
+                label: "Billing email status",
+                value: billingEmailVerified ? "Verified" : "Provided",
+              ),
+              _BillingRow(
                 label: "Plan status",
                 value: BillingService.formatLabel(billingPlanStatus),
+              ),
+              _BillingRow(
+                label: "Trial status",
+                value: BillingService.formatLabel(trialStatus),
+              ),
+              _BillingRow(
+                label: "Trial end date",
+                value: BillingService.formatDate(billing["trialEndsAt"]),
               ),
               _BillingRow(
                 label: "Payment status",

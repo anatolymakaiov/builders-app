@@ -249,6 +249,11 @@ service cloud.firestore {
       allow read: if isAdmin() || resource.data.employerId == uid();
     }
 
+    match /billing_schedules/{scheduleId} {
+      allow create, update, delete: if isAdmin();
+      allow read: if isAdmin() || resource.data.employerId == uid();
+    }
+
     match /plans/{planId} {
       allow read: if signedIn();
       allow create, update, delete: if isAdmin();
