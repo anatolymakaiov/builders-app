@@ -72,6 +72,132 @@ class WorkerProfileScreen extends StatelessWidget {
     );
   }
 
+  Widget buildWorkerContactsSection(Map<String, dynamic> data) {
+    final rows = <Widget>[];
+
+    void addTextRow(String label, IconData icon, dynamic value) {
+      final text = value?.toString().trim() ?? "";
+      if (text.isEmpty) return;
+
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: AppColors.greenDark, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      text,
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final phone = data["phone"]?.toString().trim() ?? "";
+    if (phone.isNotEmpty) {
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Phone",
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              PhoneLink(phone: phone),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final extraPhones = List<String>.from(data["phones"] ?? [])
+        .map((phone) => phone.trim())
+        .where((phone) => phone.isNotEmpty)
+        .toList();
+    if (extraPhones.isNotEmpty) {
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Additional phones",
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              ...extraPhones.map(
+                (phone) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: PhoneLink(phone: phone, compact: true),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    addTextRow("Email", Icons.email_outlined, data["email"]);
+    addTextRow("Location", Icons.place_outlined, data["location"]);
+    addTextRow("Contact name", Icons.person_outline, data["name"]);
+    addTextRow("Contact person", Icons.badge_outlined, data["contactPerson"]);
+    addTextRow(
+      "Nickname",
+      Icons.alternate_email,
+      data["nickname"] ?? data["username"] ?? data["nickName"],
+    );
+
+    if (rows.isEmpty) {
+      return const Text(
+        "No contact details available",
+        style: TextStyle(
+          color: AppColors.muted,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: rows,
+    );
+  }
+
   List<Widget> buildOfferDetails(Map<String, dynamic> offer) {
     final rows = <Widget>[];
 
@@ -1506,7 +1632,7 @@ class WorkerProfileScreen extends StatelessWidget {
               jobId != null;
 
           return DefaultTabController(
-            length: 3,
+            length: 4,
             child: StroykaScreenBody(
               child: Column(
                 children: [
@@ -1524,7 +1650,9 @@ class WorkerProfileScreen extends StatelessWidget {
                           )
                         : null,
                   ),
-                  const StroykaTabBar(labels: ["Info", "Photos", "Teams"]),
+                  const StroykaTabBar(
+                    labels: ["Info", "Contacts", "Photos", "Teams"],
+                  ),
                   const SizedBox(height: 10),
                   Expanded(
                     child: TabBarView(
@@ -1563,6 +1691,15 @@ class WorkerProfileScreen extends StatelessWidget {
                               padding: const EdgeInsets.all(18),
                               child: buildReviewsSection(
                                   !isMyProfile && currentRole == "employer"),
+                            ),
+                          ],
+                        ),
+                        ListView(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+                          children: [
+                            StroykaSurface(
+                              padding: const EdgeInsets.all(18),
+                              child: buildWorkerContactsSection(data),
                             ),
                           ],
                         ),
