@@ -6,10 +6,6 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    function uid() {
-      return request.auth.uid;
-    }
-
     match /profile_photos/{fileName} {
       allow read: if signedIn();
       allow write: if signedIn();
@@ -20,7 +16,7 @@ service firebase.storage {
       allow write: if signedIn();
     }
 
-    match /company_photos/{fileName} {
+    match /company_photos/{allPaths=**} {
       allow read: if signedIn();
       allow write: if signedIn();
     }

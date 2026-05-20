@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
@@ -60,6 +61,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   File? headerImageFile;
   List<String> portfolio = [];
   List<String> companyPhotos = [];
+  bool uploadingAvatar = false;
   bool uploadingCompanyPhotos = false;
   bool firstProfileCreation = false;
   bool legalAcceptedForCurrentVersion = false;
@@ -269,23 +271,96 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// AVATAR
   Future<void> pickAndUploadAvatar() async {
-    final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked == null) return;
+    if (uploadingAvatar) return;
 
-    final file = File(picked.path);
+    try {
+      final picked = await picker.pickImage(source: ImageSource.gallery);
+      if (picked == null) return;
 
-    final ref =
-        FirebaseStorage.instance.ref().child("profile_photos/$userId.jpg");
+      setState(() => uploadingAvatar = true);
 
-    await ref.putFile(file);
-    final url = await ref.getDownloadURL();
+      final url = await uploadProfileImage(
+        picked,
+        folder: "profile_photos",
+        fileName: "$userId.jpg",
+      );
 
-    await FirebaseFirestore.instance
-        .collection("users")
-        .doc(userId)
-        .set({"photo": url}, SetOptions(merge: true));
+      await FirebaseFirestore.instance.collection("users").doc(userId).set({
+        "photo": url,
+        "avatarUrl": url,
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
-    setState(() => photoUrl = url);
+      if (!mounted) return;
+      setState(() => photoUrl = url);
+    } catch (e) {
+      debugPrint("Profile photo upload error: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(photoUploadMessage(e))),
+      );
+    } finally {
+      if (mounted) setState(() => uploadingAvatar = false);
+    }
+  }
+
+  Future<String> uploadProfileImage(
+    XFile image, {
+    required String folder,
+    required String fileName,
+  }) async {
+    final extension = image.name.split(".").last.toLowerCase();
+    final supportedExtensions = {"jpg", "jpeg", "png", "heic", "heif", "webp"};
+    if (!supportedExtensions.contains(extension)) {
+      throw const FormatException("unsupported-image-format");
+    }
+
+    final size = await image.length();
+    const maxSize = 15 * 1024 * 1024;
+    if (size > maxSize) {
+      throw const FormatException("image-too-large");
+    }
+
+    final contentType = switch (extension) {
+      "png" => "image/png",
+      "webp" => "image/webp",
+      "heic" || "heif" => "image/heic",
+      _ => "image/jpeg",
+    };
+    final safeName = fileName.replaceAll(RegExp(r"[^A-Za-z0-9._-]"), "_");
+    final ref = FirebaseStorage.instance.ref().child("$folder/$safeName");
+    await ref.putFile(
+      File(image.path),
+      SettableMetadata(contentType: contentType),
+    );
+    return ref.getDownloadURL();
+  }
+
+  String photoUploadMessage(Object error) {
+    if (error is FormatException) {
+      if (error.message == "unsupported-image-format") {
+        return "Unsupported image format.";
+      }
+      if (error.message == "image-too-large") {
+        return "Image is too large.";
+      }
+    }
+    if (error is PlatformException) {
+      final code = error.code.toLowerCase();
+      if (code.contains("denied") || code.contains("permission")) {
+        return "Permission denied.";
+      }
+    }
+    if (error is FirebaseException) {
+      final code = error.code.toLowerCase();
+      if (code.contains("denied") || code.contains("unauthorized")) {
+        return "Permission denied.";
+      }
+      if (code.contains("network") || code.contains("unavailable")) {
+        return "No internet connection.";
+      }
+    }
+    return "Photo upload failed. Please try again.";
   }
 
   Future<void> pickHeaderImage() async {
@@ -307,12 +382,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final uploadedUrls = <String>[];
       for (final image in picked) {
         final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final ref = FirebaseStorage.instance
-            .ref()
-            .child("company_photos/$userId/${timestamp}_${image.name}");
-
-        await ref.putFile(File(image.path));
-        uploadedUrls.add(await ref.getDownloadURL());
+        final url = await uploadProfileImage(
+          image,
+          folder: "company_photos/$userId",
+          fileName: "${timestamp}_${image.name}",
+        );
+        uploadedUrls.add(url);
       }
 
       if (uploadedUrls.isEmpty) return;
@@ -330,7 +405,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       debugPrint("Company gallery upload error: $e");
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Could not upload company photos")),
+        SnackBar(content: Text(photoUploadMessage(e))),
       );
     } finally {
       if (mounted) setState(() => uploadingCompanyPhotos = false);
@@ -573,12 +648,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget buildAvatar() {
     return GestureDetector(
-      onTap: pickAndUploadAvatar,
+      onTap: uploadingAvatar ? null : pickAndUploadAvatar,
       child: CircleAvatar(
         radius: 50,
         backgroundColor: Colors.grey.shade300,
         backgroundImage: photoUrl != null ? NetworkImage(photoUrl!) : null,
-        child: photoUrl == null ? const Icon(Icons.camera_alt, size: 30) : null,
+        child: uploadingAvatar
+            ? const CircularProgressIndicator()
+            : photoUrl == null
+                ? const Icon(Icons.camera_alt, size: 30)
+                : null,
       ),
     );
   }
