@@ -18,6 +18,7 @@ class JobRepository {
     return _db
         .collection('jobs')
         .where('moderationStatus', isEqualTo: 'approved')
+        .where('status', isEqualTo: 'active')
         .snapshots(includeMetadataChanges: true)
         .map((snapshot) {
       return snapshot.docs
@@ -35,6 +36,7 @@ class JobRepository {
             return Job.fromFirestore(doc.id, data);
           })
           .whereType<Job>()
+          .where((job) => job.isPubliclyVisible)
           .toList()
         ..sort((a, b) {
           final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);

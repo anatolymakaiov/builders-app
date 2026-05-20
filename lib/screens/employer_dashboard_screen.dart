@@ -422,7 +422,9 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     BuildContext context,
     Job job,
     Map<String, dynamic>? employerData,
+    String ownerId,
   ) {
+    final isOwnJob = job.ownerId == ownerId;
     final isClosed = job.isClosed;
 
     return InkWell(
@@ -437,7 +439,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
       child: AppCard(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         padding: const EdgeInsets.all(16),
-        dimmed: isClosed,
+        dimmed: isOwnJob && isClosed,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -450,8 +452,10 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      buildStatusBadge(job),
-                      const SizedBox(height: 6),
+                      if (isOwnJob) ...[
+                        buildStatusBadge(job),
+                        const SizedBox(height: 6),
+                      ],
                       Text(
                         job.displayTitle,
                         style: const TextStyle(
@@ -474,29 +478,31 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                     ],
                   ),
                 ),
-                StroykaPopupMenuButton<String>(
-                  actions: [
-                    if (job.moderationStatus == "approved")
-                      StroykaMenuAction<String>(
-                        value: "toggle",
-                        label: isClosed ? "Make active" : "Make inactive",
-                        icon: isClosed ? Icons.play_circle : Icons.pause_circle,
+                if (isOwnJob)
+                  StroykaPopupMenuButton<String>(
+                    actions: [
+                      if (job.moderationStatus == "approved")
+                        StroykaMenuAction<String>(
+                          value: "toggle",
+                          label: isClosed ? "Make active" : "Make inactive",
+                          icon:
+                              isClosed ? Icons.play_circle : Icons.pause_circle,
+                        ),
+                      const StroykaMenuAction<String>(
+                        value: "delete",
+                        label: "Delete vacancy",
+                        icon: Icons.delete_outline,
+                        danger: true,
                       ),
-                    const StroykaMenuAction<String>(
-                      value: "delete",
-                      label: "Delete vacancy",
-                      icon: Icons.delete_outline,
-                      danger: true,
-                    ),
-                  ],
-                  onSelected: (value) {
-                    if (value == "delete") {
-                      deleteJob(context, job);
-                    } else if (value == "toggle") {
-                      setJobActive(job, isClosed);
-                    }
-                  },
-                ),
+                    ],
+                    onSelected: (value) {
+                      if (value == "delete") {
+                        deleteJob(context, job);
+                      } else if (value == "toggle") {
+                        setJobActive(job, isClosed);
+                      }
+                    },
+                  ),
               ],
             ),
             const SizedBox(height: 12),
@@ -651,7 +657,10 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                               return buildJobCard(
                                 context,
                                 pageJobs[index],
-                                employerData,
+                                pageJobs[index].ownerId == ownerId
+                                    ? employerData
+                                    : null,
+                                ownerId,
                               );
                             },
                           ),

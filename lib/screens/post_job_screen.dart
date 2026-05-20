@@ -441,8 +441,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
       "photos": photoUrls,
       "lat": lat,
       "lng": lng,
+      if (widget.existingJob == null) "status": "active",
+      if (widget.existingJob == null) "visibility": "public",
       if (widget.existingJob == null) "moderationStatus": "pending_review",
       if (widget.existingJob == null) "moderationReason": "",
+      if (widget.existingJob == null) "viewedByAdmin": false,
       "updatedAt": FieldValue.serverTimestamp(),
     };
 

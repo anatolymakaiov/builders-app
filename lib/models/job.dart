@@ -160,6 +160,15 @@ class Job {
 
   bool get isApproved => moderationStatus == "approved";
 
+  bool get isPubliclyVisible {
+    final normalizedStatus = status.trim().toLowerCase();
+    return moderationStatus == "approved" &&
+        (normalizedStatus.isEmpty ||
+            normalizedStatus == "active" ||
+            normalizedStatus == "published" ||
+            normalizedStatus == "open");
+  }
+
   String get moderationLabel {
     switch (moderationStatus) {
       case "pending_review":

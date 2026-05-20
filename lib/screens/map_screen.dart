@@ -463,6 +463,124 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  List<Job> mergeMapJobs(List<Job> publicJobs, List<Job> ownerJobs) {
+    final byId = <String, Job>{};
+    for (final job in publicJobs) {
+      byId[job.id] = job;
+    }
+    for (final job in ownerJobs) {
+      byId[job.id] = job;
+    }
+    return byId.values.toList();
+  }
+
+  Widget buildMapContent(List<Job> jobs) {
+    allJobs = jobs;
+
+    List<Job> visibleJobs = getVisibleJobs();
+
+    if (visibleJobs.isEmpty) {
+      visibleJobs = allJobs;
+    }
+
+    visibleJobs = applyFilters(visibleJobs);
+    currentVisibleJobs = visibleJobs;
+
+    final jobMarkers = <Marker>[];
+
+    for (int i = 0; i < visibleJobs.length; i++) {
+      final job = visibleJobs[i];
+
+      jobMarkers.add(
+        Marker(
+          width: 80,
+          height: 40,
+          point: LatLng(job.lat, job.lng),
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                selectedJobId = job.id;
+                selectedJob = job;
+              });
+
+              mapController.move(
+                LatLng(job.lat, job.lng),
+                16,
+              );
+
+              Future.delayed(const Duration(milliseconds: 50), () {
+                if (sheetController.isAttached) {
+                  sheetController.animateTo(
+                    0.5,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  );
+                }
+              });
+
+              scrollToJob(i);
+            },
+            child: buildMarker(job),
+          ),
+        ),
+      );
+    }
+
+    final userMarker = buildUserMarker();
+
+    final center = userLat != null
+        ? LatLng(userLat!, userLng!)
+        : const LatLng(53.4808, -2.2426);
+
+    return Stack(
+      children: [
+        buildMap(center, jobMarkers, userMarker),
+        if (showSearchButton)
+          Positioned(
+            top: 10,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    searchBounds = mapBounds;
+                    showSearchButton = false;
+                  });
+                },
+                child: const Text("Search this area"),
+              ),
+            ),
+          ),
+        buildBottomSheet(visibleJobs),
+        if (!isEmployer)
+          Positioned(
+            top: 10,
+            right: 0,
+            child: Row(
+              children: [
+                FloatingActionButton(
+                  heroTag: "location",
+                  mini: true,
+                  onPressed: () {
+                    if (userLat == null || userLng == null) return;
+                    setState(() {
+                      showUserLocationMarker = true;
+                    });
+                    mapController.move(
+                      LatLng(userLat!, userLng!),
+                      15,
+                    );
+                  },
+                  child: const Icon(Icons.my_location),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -474,109 +592,24 @@ class _MapScreenState extends State<MapScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          allJobs = snapshot.data!;
-
-          List<Job> visibleJobs = getVisibleJobs();
-
-          if (visibleJobs.isEmpty) {
-            visibleJobs = allJobs;
+          final publicJobs = snapshot.data!;
+          final employerId = currentUserId;
+          if (!isEmployer || employerId == null) {
+            return buildMapContent(publicJobs);
           }
 
-          visibleJobs = applyFilters(visibleJobs);
-          currentVisibleJobs = visibleJobs;
+          return StreamBuilder<List<Job>>(
+            stream: jobRepository.getJobsByOwner(employerId),
+            builder: (context, ownerSnapshot) {
+              if (ownerSnapshot.connectionState == ConnectionState.waiting &&
+                  !ownerSnapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          final jobMarkers = <Marker>[];
-
-          for (int i = 0; i < visibleJobs.length; i++) {
-            final job = visibleJobs[i];
-
-            jobMarkers.add(
-              Marker(
-                width: 80,
-                height: 40,
-                point: LatLng(job.lat, job.lng),
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      selectedJobId = job.id;
-                      selectedJob = job;
-                    });
-
-                    mapController.move(
-                      LatLng(job.lat, job.lng),
-                      16,
-                    );
-
-                    Future.delayed(const Duration(milliseconds: 50), () {
-                      if (sheetController.isAttached) {
-                        sheetController.animateTo(
-                          0.5,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                        );
-                      }
-                    });
-
-                    scrollToJob(i);
-                  },
-                  child: buildMarker(job),
-                ),
-              ),
-            );
-          }
-
-          final userMarker = buildUserMarker();
-
-          final center = userLat != null
-              ? LatLng(userLat!, userLng!)
-              : const LatLng(53.4808, -2.2426);
-
-          return Stack(
-            children: [
-              buildMap(center, jobMarkers, userMarker),
-              if (showSearchButton)
-                Positioned(
-                  top: 10,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          searchBounds = mapBounds;
-                          showSearchButton = false;
-                        });
-                      },
-                      child: const Text("Search this area"),
-                    ),
-                  ),
-                ),
-              buildBottomSheet(visibleJobs),
-              if (!isEmployer)
-                Positioned(
-                  top: 10,
-                  right: 0,
-                  child: Row(
-                    children: [
-                      FloatingActionButton(
-                        heroTag: "location",
-                        mini: true,
-                        onPressed: () {
-                          if (userLat == null || userLng == null) return;
-                          setState(() {
-                            showUserLocationMarker = true;
-                          });
-                          mapController.move(
-                            LatLng(userLat!, userLng!),
-                            15,
-                          );
-                        },
-                        child: const Icon(Icons.my_location),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
+              return buildMapContent(
+                mergeMapJobs(publicJobs, ownerSnapshot.data ?? const <Job>[]),
+              );
+            },
           );
         },
       ),

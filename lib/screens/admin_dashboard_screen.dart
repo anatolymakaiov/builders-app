@@ -29,6 +29,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final data = {
       "moderationStatus": "approved",
       "moderationReason": "",
+      "status": "active",
+      "visibility": "public",
       "moderatedAt": FieldValue.serverTimestamp(),
       "updatedAt": FieldValue.serverTimestamp(),
     };
@@ -291,8 +293,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
             label: "Inbox",
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.fact_check_outlined),
+          NavigationDestination(
+            icon: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection("jobs")
+                  .where("moderationStatus", isEqualTo: "pending_review")
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final count = snapshot.data?.docs.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return data["viewedByAdmin"] != true;
+                    }).length ??
+                    0;
+                if (count == 0) return const Icon(Icons.fact_check_outlined);
+                return Badge.count(
+                  count: count,
+                  child: const Icon(Icons.fact_check_outlined),
+                );
+              },
+            ),
             label: "Jobs",
           ),
           const NavigationDestination(

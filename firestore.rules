@@ -38,6 +38,11 @@ service cloud.firestore {
       return signedIn() && uid() == userId;
     }
 
+    function isPublicJob(data) {
+      return data.moderationStatus == "approved"
+        && (!("status" in data) || data.status in ["active", "published", "open"]);
+    }
+
     function isAdminMailParticipant(data) {
       return signedIn()
         && (
@@ -141,7 +146,12 @@ service cloud.firestore {
     match /jobs/{jobId} {
       allow create: if isAdmin()
         || (isEmployer() && request.resource.data.ownerId == uid());
-      allow read: if signedIn();
+      allow read: if signedIn()
+        && (
+          isAdmin()
+          || resource.data.ownerId == uid()
+          || isPublicJob(resource.data)
+        );
       allow update, delete: if isAdmin()
         || (isEmployer() && resource.data.ownerId == uid());
     }
