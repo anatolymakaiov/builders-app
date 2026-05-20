@@ -258,13 +258,20 @@ class NotificationService {
       },
     }, SetOptions(merge: true));
 
-    await _db.collection('users').doc(userId).set({
-      "notificationState.unreadCount": FieldValue.increment(1),
-      "notificationState.updatedAt": FieldValue.serverTimestamp(),
-      "notificationState.lastNotificationId": ref.id,
-    }, SetOptions(merge: true));
+    try {
+      await _db.collection('users').doc(userId).set({
+        "notificationState.unreadCount": FieldValue.increment(1),
+        "notificationState.updatedAt": FieldValue.serverTimestamp(),
+        "notificationState.lastNotificationId": ref.id,
+      }, SetOptions(merge: true));
 
-    await syncUnreadBadgeCount(userId);
+      await syncUnreadBadgeCount(userId);
+    } on FirebaseException catch (e) {
+      if (e.code != "permission-denied") rethrow;
+      debugPrint(
+        "Notification badge sync skipped for $userId: ${e.code}",
+      );
+    }
   }
 
   Future<Map<String, bool>> notificationPreferences(String? userId) async {

@@ -427,10 +427,19 @@ class ApplicationDetailsScreen extends StatelessWidget {
         extra: {"offer": offer},
       );
 
-      await NotificationService().notifyOfferCreated(
-        applicationId: applicationId,
-        applicationData: source,
-        offer: notificationOffer,
+      try {
+        await NotificationService().notifyOfferCreated(
+          applicationId: applicationId,
+          applicationData: source,
+          offer: notificationOffer,
+        );
+      } catch (e) {
+        debugPrint("OFFER NOTIFICATION ERROR: $e");
+      }
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Offer sent")),
       );
     } catch (e) {
       debugPrint("MAKE OFFER ERROR: $e");
