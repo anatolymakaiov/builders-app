@@ -429,6 +429,7 @@ Future<String?> _askAdminReply(
       );
     },
   );
+  await Future<void>.delayed(const Duration(milliseconds: 16));
   controller.dispose();
   return result;
 }
@@ -902,6 +903,34 @@ String _normalizeAdminSupportStatus(dynamic value) {
   if (status == "rejected") return "closed";
   if (status.isEmpty) return "open";
   return status;
+}
+
+DateTime _adminRequestSortDate(Map<String, dynamic> data) {
+  final value = data["createdAt"] ?? data["updatedAt"];
+  if (value is Timestamp) return value.toDate();
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value) ?? DateTime(0);
+  return DateTime(0);
+}
+
+bool _adminRequestUnread(Map<String, dynamic> data) {
+  return data["readByAdmin"] != true && data["viewedByAdmin"] != true;
+}
+
+class _AdminSupportListItem {
+  final QueryDocumentSnapshot doc;
+  final String kind;
+  final DateTime createdAt;
+  final bool unread;
+
+  const _AdminSupportListItem({
+    required this.doc,
+    required this.kind,
+    required this.createdAt,
+    required this.unread,
+  });
+
+  Map<String, dynamic> get data => doc.data() as Map<String, dynamic>;
 }
 
 class _AdminInboxTab extends StatefulWidget {
@@ -2400,6 +2429,7 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
     bool requireMessage = false,
     bool optionalNote = false,
   }) async {
+    final messenger = ScaffoldMessenger.of(context);
     String? message;
     if (requireMessage || optionalNote) {
       message = await _askAdminReply(
@@ -2414,24 +2444,34 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
       if (message == null) return;
     }
 
-    await onStatusChanged(nextStatus);
-    if (message != null && message.trim().isNotEmpty) {
-      await _sendAdminInboxMessage(
-        userId: employerId,
-        title: "Billing request update",
-        message: message.trim(),
-        audience: "employer",
-        relatedTargetType: "payment_request",
-        relatedTargetId: ref.id,
+    try {
+      await onStatusChanged(nextStatus);
+      if (message != null && message.trim().isNotEmpty) {
+        await _sendAdminInboxMessage(
+          userId: employerId,
+          title: "Billing request update",
+          message: message.trim(),
+          audience: "employer",
+          relatedTargetType: "payment_request",
+          relatedTargetId: ref.id,
+        );
+        await ref.set({
+          "adminReply": message.trim(),
+          "updatedAt": FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+    } catch (e) {
+      debugPrint("Billing status update error: $e");
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text("Could not update billing request. Please try again."),
+        ),
       );
-      await ref.set({
-        "adminReply": message.trim(),
-        "updatedAt": FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      return;
     }
 
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       SnackBar(content: Text("Billing request changed to $nextStatus")),
     );
   }
@@ -2447,21 +2487,23 @@ class _PaymentRequestDetailScreen extends StatelessWidget {
         title: const Text("Billing request"),
         actions: [
           PopupMenuButton<String>(
-            onSelected: (value) {
+            onSelected: (value) async {
+              await Future<void>.delayed(const Duration(milliseconds: 120));
+              if (!context.mounted) return;
               if (value == "message") {
-                reply(context);
+                await reply(context);
                 return;
               }
               if (value == "approve") {
-                changeStatus(context, "paid", optionalNote: true);
+                await changeStatus(context, "paid", optionalNote: true);
                 return;
               }
               if (value == "reject") {
-                changeStatus(context, "rejected", requireMessage: true);
+                await changeStatus(context, "rejected", requireMessage: true);
                 return;
               }
               if (value == "hold") {
-                changeStatus(
+                await changeStatus(
                   context,
                   "pending_user_reply",
                   requireMessage: true,
@@ -3235,10 +3277,42 @@ class _SupportRequestsSectionState extends State<_SupportRequestsSection> {
                       return matchesFilter("billing") &&
                           data["deletedByAdmin"] != true;
                     }).toList();
+                    final items = [
+                      ...supportDocs.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return _AdminSupportListItem(
+                          doc: doc,
+                          kind: "support",
+                          createdAt: _adminRequestSortDate(data),
+                          unread: _adminRequestUnread(data),
+                        );
+                      }),
+                      ...reportDocs.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return _AdminSupportListItem(
+                          doc: doc,
+                          kind: "report",
+                          createdAt: _adminRequestSortDate(data),
+                          unread: _adminRequestUnread(data),
+                        );
+                      }),
+                      ...paymentDocs.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return _AdminSupportListItem(
+                          doc: doc,
+                          kind: "payment",
+                          createdAt: _adminRequestSortDate(data),
+                          unread: _adminRequestUnread(data),
+                        );
+                      }),
+                    ]..sort((a, b) {
+                        if (a.unread != b.unread) {
+                          return a.unread ? -1 : 1;
+                        }
+                        return b.createdAt.compareTo(a.createdAt);
+                      });
 
-                    if (supportDocs.isEmpty &&
-                        reportDocs.isEmpty &&
-                        paymentDocs.isEmpty) {
+                    if (items.isEmpty) {
                       return const Align(
                         alignment: Alignment.centerLeft,
                         child: Text("No support requests in this filter"),
@@ -3247,46 +3321,44 @@ class _SupportRequestsSectionState extends State<_SupportRequestsSection> {
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ...supportDocs.map((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
+                      children: items.map((item) {
+                        final data = item.data;
+                        if (item.kind == "support") {
                           return _SupportRequestCard(
                             data: data,
-                            ref: doc.reference,
+                            ref: item.doc.reference,
                             onStatusChanged: (status) {
                               widget.onSupportStatusChanged(
-                                doc.reference,
+                                item.doc.reference,
                                 status,
                               );
                             },
                           );
-                        }),
-                        ...reportDocs.map((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
+                        }
+
+                        if (item.kind == "report") {
                           return _ReportCard(
                             data: data,
-                            ref: doc.reference,
+                            ref: item.doc.reference,
                             onStatusChanged: (status) {
                               widget.onReportStatusChanged(
-                                doc.reference,
+                                item.doc.reference,
                                 status,
                               );
                             },
                           );
-                        }),
-                        ...paymentDocs.map((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          return _PaymentRequestCard(
-                            data: data,
-                            ref: doc.reference,
-                            onStatusChanged: (status) =>
-                                widget.onPaymentStatusChanged(
-                              doc.reference,
-                              status,
-                            ),
-                          );
-                        }),
-                      ],
+                        }
+
+                        return _PaymentRequestCard(
+                          data: data,
+                          ref: item.doc.reference,
+                          onStatusChanged: (status) =>
+                              widget.onPaymentStatusChanged(
+                            item.doc.reference,
+                            status,
+                          ),
+                        );
+                      }).toList(),
                     );
                   },
                 );

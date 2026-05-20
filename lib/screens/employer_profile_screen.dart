@@ -389,6 +389,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                           _BillingSection(
                             employerId: widget.userId,
                             billing: billing,
+                            closeAfterPlanRequest: widget.showBackButton,
                           ),
                       ],
                     ),
@@ -406,10 +407,12 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
 class _BillingSection extends StatelessWidget {
   final String employerId;
   final Map<String, dynamic> billing;
+  final bool closeAfterPlanRequest;
 
   const _BillingSection({
     required this.employerId,
     required this.billing,
+    this.closeAfterPlanRequest = false,
   });
 
   static const paymentModes = [
@@ -494,6 +497,10 @@ class _BillingSection extends StatelessWidget {
         content: Text("Plan request submitted. It is pending admin approval."),
       ),
     );
+
+    if (closeAfterPlanRequest && Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
   }
 
   @override
