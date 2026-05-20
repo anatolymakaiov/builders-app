@@ -1,35 +1,27 @@
 Title: Employer Posting Policy
-Version: 0.1 draft
-UpdatedAt: 2026-05-07
+Version: 2026-05-20
+EffectiveDate: 2026-05-20
 
 # Employer Posting Policy
 
-This is a draft document for a UK-based construction jobs marketplace app. It must be reviewed by a qualified legal professional before production launch.
+Template document — legal review required before public launch.
 
-## Employer Responsibility
+## Accurate Job Posts
 
-Employers and company users are responsible for posting accurate job information, including trade, work format, rate or price basis, hours, duration, physical site address, project/site name, candidate requirements, required documents, certifications, photos, and start details.
+Employers must post accurate construction job information, including canonical trade/role, work format, rate or price basis, hours, duration, physical site address, project/site name, candidate requirements, required documents, certifications, photos, and start details.
 
 ## Moderation
 
-Job posts may be reviewed by admins before publication. Admins may approve, reject, pause, deactivate, or remove job posts that are incomplete, misleading, unlawful, discriminatory, unsafe, spam-like, or inconsistent with platform rules.
+Job posts may be reviewed before publication. Admins may approve, reject, hold, deactivate, or remove posts that are incomplete, misleading, unlawful, discriminatory, unsafe, spam-like, duplicated in bad faith, or inconsistent with platform rules.
 
-## Prohibited Job Posts
+## Visibility
 
-Employers must not post jobs that are illegal, discriminatory, misleading, unsafe, exploitative, fake, duplicated in bad faith, or unrelated to construction work.
+Pending, held, rejected, inactive, or expired posts may be hidden from workers. Employers may still see their own posts with moderation status where supported.
 
-## Pay and Terms
+## Prohibited Posts
 
-Employers must clearly state whether work is daywork, price work, negotiable, or another supported format. Offers should include work period, hours, schedule, start date, physical site address, first-day requirements, and offer validity.
+Employers must not post fake jobs, discriminatory jobs, unsafe jobs, illegal work, misleading pay, unavailable jobs, or roles unrelated to construction marketplace purposes.
 
-## Applications and Hiring
+## Employer Responsibility
 
-Employers may review single worker and team applications. They may message, negotiate, make offers, withdraw offers, or reject applications according to app functionality.
-
-## Billing and Publication
-
-Job posting may require an active plan, trial, available posting slots, payment request approval, Stripe payment, or another future payment provider. Posting may be restricted if billing is inactive or limits are reached.
-
-## Company Profile
-
-Company profile data, photos, contact details, website, company description, clients, goals, advantages, and history must be accurate and lawful.
+Employers remain responsible for legal compliance, worker checks, right-to-work checks, site safety, insurance, payment, tax, CIS, employment status, and written agreements.

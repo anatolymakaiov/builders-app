@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -8,94 +9,172 @@ class LegalDocument {
   final String key;
   final String title;
   final String assetPath;
+  final String version;
+  final String effectiveDate;
+  final List<String> requiredForRoles;
 
   const LegalDocument({
     required this.key,
     required this.title,
     required this.assetPath,
+    required this.version,
+    required this.effectiveDate,
+    this.requiredForRoles = const ["worker", "employer"],
   });
 }
 
 class LegalDocuments {
-  static const policyVersion = "2026-05-07";
+  static const policyVersion = "2026-05-20";
+  static const defaultLanguage = "en";
+  static const templateNotice =
+      "Template document — legal review required before public launch.";
 
   static const privacyPolicy = LegalDocument(
     key: "privacyPolicy",
-    title: "Privacy Policy",
+    title: "Privacy Policy / Privacy Notice",
     assetPath: "assets/legal/privacy_policy.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
   );
-  static const termsOfUse = LegalDocument(
-    key: "termsOfUse",
-    title: "Terms of Use",
+  static const termsAndConditions = LegalDocument(
+    key: "termsAndConditions",
+    title: "Terms and Conditions",
     assetPath: "assets/legal/terms_of_use.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
+  );
+  static const dataProcessingConsentNotice = LegalDocument(
+    key: "dataProcessingConsentNotice",
+    title: "Data Processing & Consent Notice",
+    assetPath: "assets/legal/data_processing_consent_notice.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
   );
   static const codeOfConduct = LegalDocument(
     key: "codeOfConduct",
-    title: "Code of Conduct",
+    title: "Acceptable Use Policy / Code of Conduct",
     assetPath: "assets/legal/code_of_conduct.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
   );
   static const workerTerms = LegalDocument(
     key: "workerTerms",
     title: "Worker Terms",
     assetPath: "assets/legal/worker_terms.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
+    requiredForRoles: ["worker"],
+  );
+  static const employerTerms = LegalDocument(
+    key: "employerTerms",
+    title: "Employer Terms",
+    assetPath: "assets/legal/employer_terms.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
+    requiredForRoles: ["employer"],
   );
   static const employerPostingPolicy = LegalDocument(
     key: "employerPostingPolicy",
     title: "Employer Posting Policy",
     assetPath: "assets/legal/employer_posting_policy.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
+    requiredForRoles: ["employer"],
+  );
+  static const billingPaymentTerms = LegalDocument(
+    key: "billingPaymentTerms",
+    title: "Billing & Payment Terms",
+    assetPath: "assets/legal/billing_payment_terms.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
+    requiredForRoles: ["employer"],
   );
   static const refundPolicy = LegalDocument(
     key: "refundPolicy",
     title: "Refund Policy",
     assetPath: "assets/legal/refund_policy.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
+    requiredForRoles: ["employer"],
   );
   static const complaintsPolicy = LegalDocument(
     key: "complaintsPolicy",
     title: "Complaints Policy",
     assetPath: "assets/legal/complaints_policy.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
   );
   static const cookiePolicy = LegalDocument(
     key: "cookiePolicy",
-    title: "Cookie Policy",
+    title: "Cookie Policy placeholder for future web version",
     assetPath: "assets/legal/cookie_policy.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
   );
   static const dataRetentionPolicy = LegalDocument(
     key: "dataRetentionPolicy",
     title: "Data Retention Policy",
     assetPath: "assets/legal/data_retention_policy.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
   );
-  static const ukPrivacyNotice = LegalDocument(
-    key: "ukPrivacyNotice",
-    title: "UK Privacy Notice",
-    assetPath: "assets/legal/uk_privacy_notice.md",
+  static const accountDeletionPolicy = LegalDocument(
+    key: "accountDeletionPolicy",
+    title: "Account Deletion Notice",
+    assetPath: "assets/legal/account_deletion_policy.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
+  );
+  static const safetyAbuseReportingPolicy = LegalDocument(
+    key: "safetyAbuseReportingPolicy",
+    title: "Safety & Abuse Reporting Policy",
+    assetPath: "assets/legal/safety_abuse_reporting_policy.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
+  );
+  static const moderationPolicy = LegalDocument(
+    key: "moderationPolicy",
+    title: "Moderation Policy",
+    assetPath: "assets/legal/moderation_policy.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
   );
   static const companyInformation = LegalDocument(
     key: "companyInformation",
     title: "Company Information",
     assetPath: "assets/legal/company_information.md",
+    version: policyVersion,
+    effectiveDate: "2026-05-20",
+    requiredForRoles: [],
   );
 
   static const commonRequired = [
     privacyPolicy,
-    termsOfUse,
+    termsAndConditions,
+    dataProcessingConsentNotice,
     codeOfConduct,
     dataRetentionPolicy,
-    ukPrivacyNotice,
+    accountDeletionPolicy,
     complaintsPolicy,
     cookiePolicy,
   ];
 
   static const all = [
     privacyPolicy,
-    termsOfUse,
+    termsAndConditions,
+    dataProcessingConsentNotice,
     codeOfConduct,
     workerTerms,
+    employerTerms,
     employerPostingPolicy,
+    billingPaymentTerms,
     refundPolicy,
     complaintsPolicy,
+    safetyAbuseReportingPolicy,
+    moderationPolicy,
     cookiePolicy,
     dataRetentionPolicy,
-    ukPrivacyNotice,
+    accountDeletionPolicy,
     companyInformation,
   ];
 
@@ -103,7 +182,9 @@ class LegalDocuments {
     if (role == "employer") {
       return [
         ...commonRequired,
+        employerTerms,
         employerPostingPolicy,
+        billingPaymentTerms,
         refundPolicy,
       ];
     }
@@ -119,6 +200,79 @@ class LegalDocuments {
       for (final doc in requiredForRole(role)) doc.key: true,
     };
   }
+
+  static List<String> acceptedIdsForRole(String role) {
+    return requiredForRole(role).map((doc) => doc.key).toList();
+  }
+
+  static bool hasAcceptedCurrentVersion(
+    Map<String, dynamic>? data,
+    String role,
+  ) {
+    if (data == null) return false;
+    final acceptedDocuments =
+        Map<String, dynamic>.from(data["acceptedDocuments"] ?? {});
+    final acceptedIds = List<String>.from(data["acceptedDocumentIds"] ?? []);
+    final acceptedVersion = data["acceptedPolicyVersion"] ??
+        data["legalVersion"] ??
+        data["policyVersion"];
+    if (data["legalAccepted"] != true ||
+        acceptedVersion != LegalDocuments.policyVersion) {
+      return false;
+    }
+    return requiredForRole(role).every((doc) {
+      return acceptedDocuments[doc.key] == true ||
+          acceptedIds.contains(doc.key);
+    });
+  }
+
+  static Future<void> saveAcceptances({
+    required String userId,
+    required String role,
+    String language = defaultLanguage,
+  }) async {
+    final docs = requiredForRole(role);
+    final userRef = FirebaseFirestore.instance.collection("users").doc(userId);
+    final batch = FirebaseFirestore.instance.batch();
+
+    for (final doc in docs) {
+      batch.set(
+          userRef.collection("legalAcceptances").doc(doc.key),
+          {
+            "documentId": doc.key,
+            "documentTitle": doc.title,
+            "documentVersion": doc.version,
+            "role": role,
+            "language": language,
+            "acceptedAt": FieldValue.serverTimestamp(),
+            "required": true,
+          },
+          SetOptions(merge: true));
+    }
+
+    batch.set(
+        userRef,
+        {
+          "legalAccepted": true,
+          "legalAcceptedAt": FieldValue.serverTimestamp(),
+          "legalVersion": policyVersion,
+          "acceptedPolicyVersion": policyVersion,
+          "acceptedLanguage": language,
+          "acceptedDocuments": acceptedMapForRole(role),
+          "acceptedDocumentIds": acceptedIdsForRole(role),
+        },
+        SetOptions(merge: true));
+
+    await batch.commit();
+  }
+}
+
+class LegalAcceptanceResult {
+  final String language;
+
+  const LegalAcceptanceResult({
+    required this.language,
+  });
 }
 
 class LegalDocumentScreen extends StatelessWidget {
@@ -165,6 +319,8 @@ class LegalDocumentScreen extends StatelessWidget {
             final content = snapshot.data!;
             final metadata = parseMetadata(content);
             final body = bodyWithoutMetadata(content);
+            final effectiveDate =
+                metadata["EffectiveDate"] ?? document.effectiveDate;
 
             return ListView(
               padding: const EdgeInsets.all(12),
@@ -189,11 +345,11 @@ class LegalDocumentScreen extends StatelessWidget {
                         children: [
                           _LegalMetaChip(
                             label: "Version",
-                            value: metadata["Version"] ?? "Draft",
+                            value: metadata["Version"] ?? document.version,
                           ),
                           _LegalMetaChip(
-                            label: "Updated",
-                            value: metadata["UpdatedAt"] ?? "",
+                            label: "Effective",
+                            value: effectiveDate,
                           ),
                         ],
                       ),
@@ -233,6 +389,7 @@ class LegalAcceptanceScreen extends StatefulWidget {
 class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
   late final List<LegalDocument> documents;
   late final Map<String, bool> accepted;
+  String language = LegalDocuments.defaultLanguage;
 
   @override
   void initState() {
@@ -259,7 +416,39 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    "Please read and accept the required documents",
+                    "Step 1: choose language",
+                    style: TextStyle(
+                      color: AppColors.ink,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: "en", label: Text("English")),
+                      ButtonSegment(
+                        value: "ru",
+                        label: Text("Russian / Coming soon"),
+                      ),
+                    ],
+                    selected: {language},
+                    onSelectionChanged: (value) {
+                      final next = value.first;
+                      if (next != "en") {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Russian documents are coming soon"),
+                          ),
+                        );
+                        return;
+                      }
+                      setState(() => language = next);
+                    },
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    "Step 2: review and accept required documents",
                     style: TextStyle(
                       color: AppColors.ink,
                       fontSize: 20,
@@ -268,7 +457,7 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    "You only need to do this during first profile creation, or when the policy version changes.",
+                    "Company: Stroyka UK Ltd\nVersion: ${LegalDocuments.policyVersion}\n${LegalDocuments.templateNotice}",
                     style: TextStyle(
                       color: AppColors.muted,
                       fontWeight: FontWeight.w600,
@@ -296,8 +485,12 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
           child: SizedBox(
             height: 50,
             child: ElevatedButton(
-              onPressed:
-                  allAccepted ? () => Navigator.pop(context, true) : null,
+              onPressed: allAccepted
+                  ? () => Navigator.pop(
+                        context,
+                        LegalAcceptanceResult(language: language),
+                      )
+                  : null,
               child: const Text("Continue"),
             ),
           ),

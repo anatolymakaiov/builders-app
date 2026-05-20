@@ -1,43 +1,31 @@
 Title: Data Retention Policy
-Version: 0.1 draft
-UpdatedAt: 2026-05-07
+Version: 2026-05-20
+EffectiveDate: 2026-05-20
 
 # Data Retention Policy
 
-This is a draft document for a UK-based construction jobs marketplace app. It must be reviewed by a qualified legal professional before production launch.
+Template document — legal review required before public launch.
 
-## Purpose
+## Principle
 
-This policy explains how long the app may keep account data, profile data, job posts, applications, chats, media uploads, reports, support requests, moderation records, billing records, and technical logs.
-
-## General Principle
-
-We aim to keep data only for as long as needed for the purpose collected, including service operation, legal compliance, billing, safety, moderation, support, complaints, dispute handling, fraud prevention, and security.
+Stroyka UK Ltd aims to keep personal data only for as long as needed for account operation, legal compliance, billing, safety, moderation, complaints, support, disputes, fraud prevention, backups, and security.
 
 ## Account and Profile Data
 
-Account and profile data may be retained while the account is active. After account deletion, some information may be removed or anonymised, while limited records may be retained where required.
+Account, worker profile, employer profile, team, portfolio, gallery, and settings data may be retained while the account is active and for a reasonable period after deletion where needed for legal, safety, billing, complaints, audit, or dispute reasons.
 
-## Job Posts and Applications
+## Jobs, Applications, Offers, and Chats
 
-Job posts, applications, offers, status changes, and moderation records may be retained to support job history, disputes, billing, complaints, and platform safety.
-
-## Chat and Media Uploads
-
-Chat messages, photos, videos, voice messages, links, and uploaded files in Firebase Storage may be retained while needed for communication, evidence, moderation, support, complaints, or legal compliance.
+Job posts, applications, offers, messages, attachments, photos, videos, voice messages, and files may be retained while needed for marketplace operation, evidence, support, safety, moderation, disputes, or legal compliance.
 
 ## Billing and Payments
 
-Billing and payment request records may be retained for accounting, audit, tax, fraud prevention, and dispute purposes. Stripe or a future payment provider may keep separate records.
-
-## Support and Complaints
-
-Support requests, complaints, reports, and admin decisions may be retained to manage safety, repeated misconduct, legal claims, and compliance.
+Billing requests, plan records, invoices, payment metadata, refund records, direct debit status, and accounting records may be retained for legal, tax, accounting, audit, and dispute purposes.
 
 ## Backups
 
-Deleted data may remain in encrypted backups for a limited period before permanent deletion.
+Deleted data may remain in backups for a limited period before deletion according to technical backup cycles.
 
 ## Review
 
-Retention periods should be reviewed before production launch and documented in a final retention schedule.
+Specific retention periods must be reviewed and finalised before public launch.

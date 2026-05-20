@@ -1,39 +1,29 @@
 Title: Worker Terms
-Version: 0.1 draft
-UpdatedAt: 2026-05-07
+Version: 2026-05-20
+EffectiveDate: 2026-05-20
 
 # Worker Terms
 
-This is a draft document for a UK-based construction jobs marketplace app. It must be reviewed by a qualified legal professional before production launch.
+Template document — legal review required before public launch.
 
 ## Worker Profiles
 
-Workers may create profiles with trade, experience, qualifications, certifications, education, permits, previous work, references, photos, portfolio images, location, phone number, and availability. Workers must keep this information accurate.
+Workers may create profiles with name, contact details, trade, experience, qualifications, certifications, permits, education, previous work, references, location, photos, portfolio images, and availability. Workers must keep this information accurate and must not misrepresent skills or legal eligibility.
 
-## Applications
+## Applications and Offers
 
-Workers may apply for jobs individually or through a team where available. Applications may move through statuses such as pending, negotiation, offer sent, hired, rejected, or withdrawn.
+Workers may apply for jobs individually or as part of a team. Application statuses may include in review, negotiation, offer received, offer accepted, offer rejected, rejected, hired, or withdrawn.
+
+Accepting an offer may create notifications, reminders, and calendar-related data. Workers remain responsible for checking site address, pay terms, start date, documents, certifications, tools, PPE, tax position, right to work, insurance, and any written agreement.
 
 ## Teams
 
-Workers may create or join teams. Team leaders and members are responsible for ensuring team information, members, portfolio photos, and team applications are accurate.
+Workers creating teams must have permission from team members to include their information. Team applications should accurately reflect who is available.
 
-## Offers
+## No Guarantee
 
-Employers may send offers with work format, rate, hours, schedule, start date, physical site address, requirements for the first day, validity period, and description. Workers should review offer details before accepting or rejecting.
+STROYKA does not guarantee that workers will receive offers, be hired, be paid, or be suitable for any job. Employers remain responsible for their decisions and obligations.
 
-## Worker Responsibilities
+## Conduct and Safety
 
-Workers are responsible for checking job details, site location, pay terms, documents, certifications, tools, PPE, right-to-work status, tax status, insurance, and any legal or safety requirements before accepting work.
-
-## Chat and Media
-
-Workers may use chat for negotiation and communication. Uploaded photos, videos, voice messages, and links must be lawful, relevant, and respectful.
-
-## No Guarantee of Work
-
-The app does not guarantee job availability, hiring, payment, work duration, or employer suitability.
-
-## Account Deletion
-
-Workers may request account deletion. Some data may be retained for legal, billing, safety, complaint, or dispute reasons.
+Workers must follow the Code of Conduct, site rules, legal requirements, health and safety rules, and reasonable lawful instructions agreed with an employer or site contact.

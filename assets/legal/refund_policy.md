@@ -1,35 +1,27 @@
 Title: Refund Policy
-Version: 0.1 draft
-UpdatedAt: 2026-05-07
+Version: 2026-05-20
+EffectiveDate: 2026-05-20
 
 # Refund Policy
 
-This is a draft document for a UK-based construction jobs marketplace app. It must be reviewed by a qualified legal professional before production launch.
+Template document — legal review required before public launch.
 
 ## Scope
 
-This policy applies to employer billing, plans, job posting packages, publication requests, extensions, and related payment requests where payments are introduced through Stripe or another future payment provider.
+This policy applies to employer billing, plans, job posting packages, publication requests, extensions, manual invoices, direct debit requests, and related payment requests where payment features are introduced.
 
-## Trial Periods
+## Payment Provider
 
-Trial periods, if offered, may allow limited job posting without immediate payment. Trial terms, duration, and limits should be shown in the billing section.
+Payments may be processed by Stripe or another future payment provider. STROYKA must not store full payment card details.
 
-## Payment Requests
+## Refund Assessment
 
-Before real payment integration is enabled, payment requests may be reviewed by admins. Once Stripe or a future provider is integrated, payments may be subject to provider processing rules.
+Refunds may be considered where a payment error occurred, a service was not provided, or required by law. Refunds may not be available where a job post was published and used, the service period has ended, the employer breached policy, or the issue was caused by inaccurate employer information.
 
-## Refund Requests
+## Requests
 
-Employers may request a refund through support. Refunds may be considered where there is duplicate payment, technical failure, incorrect charge, service not provided, or another fair reason.
+Refund requests should be submitted through support. We may request account details, company details, payment reference, plan details, invoice details, and explanation.
 
-## Non-Refundable Situations
+## Legal Review
 
-Refunds may not be available where a job post was published and used, where the employer breached policy, where the service period has ended, or where the issue was caused by inaccurate employer data.
-
-## Admin Review
-
-Admins may review billing records, payment request status, job publication status, support requests, and account history before making a refund decision.
-
-## Timing
-
-Refund timing will depend on the payment provider and bank processing rules.
+Final refund rights, cooling-off terms, business customer terms, and payment provider rules must be legally reviewed before production launch.

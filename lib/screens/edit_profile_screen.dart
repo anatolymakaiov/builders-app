@@ -87,18 +87,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final hasWorkerProfile = (data["name"]?.toString().trim() ?? "").isNotEmpty;
     final hasEmployerProfile =
         (data["companyName"]?.toString().trim() ?? "").isNotEmpty;
-    final acceptedDocuments =
-        Map<String, dynamic>.from(data["acceptedDocuments"] ?? {});
-    final acceptedCurrentVersion = data["legalAccepted"] == true &&
-        data["acceptedPolicyVersion"] == LegalDocuments.policyVersion;
+    final acceptedCurrentVersion =
+        LegalDocuments.hasAcceptedCurrentVersion(data, existingRole);
 
     setState(() {
       role = existingRole;
       firstProfileCreation = !hasWorkerProfile && !hasEmployerProfile;
-      legalAcceptedForCurrentVersion = acceptedCurrentVersion &&
-          LegalDocuments.requiredForRole(existingRole).every(
-            (doc) => acceptedDocuments[doc.key] == true,
-          );
+      legalAcceptedForCurrentVersion = acceptedCurrentVersion;
 
       nameController.text = data["name"] ?? "";
       phoneController.text = data["phone"] ?? "";
@@ -393,14 +388,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         firstProfileCreation && !legalAcceptedForCurrentVersion;
 
     if (shouldRequestLegalAcceptance) {
-      final accepted = await Navigator.push<bool>(
+      final accepted = await Navigator.push<LegalAcceptanceResult>(
         context,
         MaterialPageRoute(
           builder: (_) => LegalAcceptanceScreen(role: role),
         ),
       );
 
-      if (accepted != true) {
+      if (accepted == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -409,6 +404,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
         return;
       }
+
+      await LegalDocuments.saveAcceptances(
+        userId: userId,
+        role: role,
+        language: accepted.language,
+      );
     }
 
     setState(() => loading = true);
@@ -486,6 +487,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             "acceptedPolicyVersion": LegalDocuments.policyVersion,
           if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
             "acceptedDocuments": LegalDocuments.acceptedMapForRole(role),
+          if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
+            "acceptedDocumentIds": LegalDocuments.acceptedIdsForRole(role),
+          if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
+            "legalVersion": LegalDocuments.policyVersion,
         });
       }
 

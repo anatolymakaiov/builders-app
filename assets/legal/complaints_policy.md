@@ -1,31 +1,23 @@
 Title: Complaints Policy
-Version: 0.1 draft
-UpdatedAt: 2026-05-07
+Version: 2026-05-20
+EffectiveDate: 2026-05-20
 
 # Complaints Policy
 
-This is a draft document for a UK-based construction jobs marketplace app. It must be reviewed by a qualified legal professional before production launch.
+Template document — legal review required before public launch.
 
-## Making a Complaint
+## Complaints
 
-Users may submit complaints or reports about another participant, employer, company, worker, team, job post, advertisement, chat content, media upload, billing issue, or technical issue.
+Users may submit complaints about workers, teams, employers, companies, job posts, advertisements, applications, offers, chats, media uploads, billing, support handling, safety, abuse, or platform conduct.
 
-## Complaint Data
+## Information Collected
 
-Complaints may include user ID, role, type, message, related job, related application, related chat, related report, support request, timestamps, and admin status.
+Complaints may include user ID, role, name/company, request type, message, attachments, related job, application, chat, report, support request, timestamps, and admin actions.
 
-## Review Process
+## Review
 
-Admins may review complaint details, related profiles, job posts, applications, chats, media uploads, support requests, and previous moderation history.
+Admins may review complaint information, contact users for more information, send admin inbox messages, restrict content, reject job posts, warn users, suspend accounts, or close complaints.
 
-## Possible Outcomes
+## Outcomes
 
-Outcomes may include no action, request for more information, warning, content removal, job rejection, account restriction, billing review, suspension, or referral to legal authorities where required.
-
-## Fairness
-
-The app aims to handle complaints fairly and proportionately. Users should provide accurate information and must not submit false or malicious complaints.
-
-## Records and Retention
-
-Complaint records may be retained for safety, legal compliance, dispute handling, moderation, fraud prevention, and audit purposes.
+Outcomes may include no action, more information requested, warning, content removal, job rejection, account restriction, billing review, suspension, or referral to authorities where required.

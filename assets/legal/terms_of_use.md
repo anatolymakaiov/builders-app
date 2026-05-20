@@ -1,51 +1,56 @@
-Title: Terms of Use
-Version: 0.1 draft
-UpdatedAt: 2026-05-07
+Title: Terms and Conditions
+Version: 2026-05-20
+EffectiveDate: 2026-05-20
 
-# Terms of Use
+# Terms and Conditions
 
-This is a draft document for a UK-based construction jobs marketplace app. It must be reviewed by a qualified legal professional before production launch.
+Template document — legal review required before public launch.
 
-## About These Terms
+## Operator
 
-These Terms of Use apply to workers, employers, company users, team members, and admins using STROYKA. By using the app, users agree to use it lawfully, honestly, and safely.
+The STROYKA app is operated by Stroyka UK Ltd.
 
-## Marketplace Role
+- Company number: [TO BE ADDED]
+- Registered office: [TO BE ADDED]
+- Contact email: [TO BE ADDED]
+- Support email: [TO BE ADDED]
 
-STROYKA provides a marketplace for construction job posts, worker profiles, team applications, company profiles, applications, offers, negotiation, chat, notifications, support requests, reports, and billing requests. The app does not guarantee that any worker will be hired, that any job is available, or that any employer or worker is suitable.
+## Platform
+
+STROYKA is a UK construction jobs marketplace. It helps workers, teams, employers, companies, and administrators manage profiles, job posts, applications, offers, chats, alerts, support requests, complaints, moderation, and billing or payment requests.
+
+STROYKA is a technology platform. Unless confirmed by reviewed legal terms, it does not guarantee job placement, worker availability, employer suitability, payment, site access, qualifications, right-to-work checks, or that a role will result in employment.
 
 ## Accounts
 
-Users must provide accurate account and profile information. Workers are responsible for their qualifications, certifications, experience, documents, availability, and profile content. Employers are responsible for their company information, job posts, rates, site addresses, work requirements, and offer terms.
+Users must provide accurate information, keep login credentials secure, and use the app only for lawful construction marketplace purposes. Users are responsible for the accuracy of profile data, company data, job posts, applications, offers, messages, uploaded media, and documents.
 
-## Job Posts and Applications
+## Jobs, Applications, Offers, and Chats
 
-Employers may post jobs subject to moderation, billing limits, and app rules. Workers may apply individually or as part of a team where the feature is available. Applications, offers, acceptances, rejections, and withdrawals are recorded in the app.
+Employers are responsible for job accuracy, pay information, site address, health and safety requirements, worker requirements, and any contractual terms. Workers are responsible for checking job details, legal right to work, certifications, PPE, site rules, tax status, and any agreement before accepting work.
 
-## Chat and Media
+Chats and uploaded files may be used to negotiate, clarify, and evidence platform activity. Users must not upload illegal, abusive, misleading, discriminatory, unsafe, confidential, or infringing content.
 
-Users may communicate through chat and upload text, links, photos, videos, or voice messages where supported. Users must not upload illegal, abusive, discriminatory, misleading, unsafe, or infringing content.
+## Teams
 
-## Moderation
+Workers may create teams or apply as part of a team where supported. The person submitting team information is responsible for having permission to provide member information and for keeping team details accurate.
 
-Admins may review, approve, reject, pause, remove, or restrict job posts, profiles, applications, support requests, complaints, reports, and other content where needed to protect the marketplace or comply with rules.
+## Moderation and Suspension
 
-## Billing and Payments
+Admins may review job posts, profiles, applications, support requests, reports, complaints, chats, media, and billing requests where needed to operate the service, protect users, enforce policies, and comply with law. Accounts or content may be restricted, suspended, rejected, removed, or deleted for misuse, fraud, non-payment, safety concerns, policy breaches, legal requests, or security reasons.
 
-Employer access to job posting may depend on a plan, trial, billing status, payment mode, or payment request. Stripe or another future payment provider may process payments. The app may restrict posting if billing is inactive or limits are reached.
+## Payments
 
-## No Employment Advice
+Where billing or payment features are used, employers remain responsible for paying applicable charges. STROYKA does not store full payment card details. Payment processing may be handled by Stripe or another future payment provider.
 
-The app does not provide legal, tax, immigration, health and safety, employment status, payroll, insurance, or CIS advice. Users should take professional advice where needed.
+## Notifications and Document Updates
 
-## Suspension and Termination
-
-Accounts may be suspended, limited, or deleted for misuse, fraud, unsafe conduct, non-payment, policy breaches, legal requests, or platform security.
+The app may send in-app notifications and push notifications for applications, offers, chats, admin messages, support replies, billing, job moderation, policy updates, and safety notices. Users may be asked to accept updated legal documents when versions change.
 
 ## Liability
 
-To the extent permitted by law, the app is provided as a marketplace and technology service. Users remain responsible for their own decisions, contracts, work, safety, payments, and legal compliance.
+To the extent permitted by law, STROYKA is provided as a marketplace and software service. Users remain responsible for their own decisions, contracts, work, safety, tax, insurance, immigration, certifications, payments, and legal compliance. Nothing in these terms excludes liability that cannot be excluded under UK law.
 
-## Changes
+## Contact
 
-These terms may be updated. Material changes should be communicated through the app or other reasonable means.
+For support, contact: [TO BE ADDED].

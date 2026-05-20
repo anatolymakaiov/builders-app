@@ -1,31 +1,19 @@
-Title: Cookie Policy
-Version: 0.1 draft
-UpdatedAt: 2026-05-07
+Title: Cookie Policy placeholder for future web version
+Version: 2026-05-20
+EffectiveDate: 2026-05-20
 
-# Cookie Policy
+# Cookie Policy placeholder for future web version
 
-This is a draft document for a UK-based construction jobs marketplace app. It must be reviewed by a qualified legal professional before production launch.
+Template document — legal review required before public launch.
 
-## Cookies and Similar Technologies
+## Current App
 
-The app may use cookies, local storage, device identifiers, Firebase tokens, analytics tools, and similar technologies to keep users signed in, secure the service, remember settings, deliver notifications, and improve performance.
+The mobile app may use local storage, authentication tokens, device identifiers, Firebase tokens, notification preferences, and similar technologies to keep users signed in, secure the service, remember settings, deliver notifications, and improve reliability.
 
-## Firebase
+## Firebase and Notifications
 
-Firebase services may use device identifiers, authentication tokens, messaging tokens, and technical logs. Firebase Cloud Messaging may support push notifications and alert delivery.
+Firebase services may use authentication tokens, messaging tokens, technical logs, and device information. Firebase Cloud Messaging may support push notifications and badge counts.
 
-## Essential Technologies
+## Future Web Version
 
-Some technologies are necessary for login, security, fraud prevention, session management, chat, notifications, and app operation.
-
-## Analytics and Performance
-
-Future analytics may be used to understand app usage, detect errors, improve job search, improve profile flows, and support product development.
-
-## Payment Providers
-
-Stripe or another future payment provider may use cookies or similar technologies for payment security, fraud prevention, and compliance.
-
-## User Choices
-
-Where legally required, users should be given choices for non-essential cookies or similar technologies before production launch.
+If a web version is launched, cookies and similar technologies may be used for sign-in, security, preferences, analytics, and performance. Non-essential cookies may require consent depending on final implementation.

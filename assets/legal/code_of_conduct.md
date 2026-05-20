@@ -1,35 +1,27 @@
-Title: Code of Conduct
-Version: 0.1 draft
-UpdatedAt: 2026-05-07
+Title: Acceptable Use Policy / Code of Conduct
+Version: 2026-05-20
+EffectiveDate: 2026-05-20
 
-# Code of Conduct
+# Acceptable Use Policy / Code of Conduct
 
-This is a draft document for a UK-based construction jobs marketplace app. It must be reviewed by a qualified legal professional before production launch.
+Template document — legal review required before public launch.
 
-## Expected Behaviour
+## Standard of Behaviour
 
-Users must communicate professionally, honestly, and respectfully. Workers, employers, teams, and admins should treat each other fairly and avoid harassment, threats, intimidation, discrimination, or abusive language.
+Users must communicate professionally, honestly, and respectfully. Harassment, threats, discrimination, hate speech, intimidation, fraud, spam, scams, impersonation, and unsafe behaviour are prohibited.
 
-## Construction Site Standards
+## Construction Marketplace Rules
 
-Users should follow applicable site rules, health and safety requirements, legal work requirements, right-to-work checks, certifications, PPE requirements, and reasonable employer instructions.
+Workers and employers must provide accurate information about identity, experience, qualifications, certifications, job terms, site location, pay basis, availability, right-to-work status where relevant, tools, PPE, and safety requirements.
 
-## Job Posts and Profiles
+## Prohibited Content
 
-Job posts, worker profiles, company profiles, team descriptions, portfolio photos, certifications, references, and previous work must be accurate and not misleading.
+Users must not upload or send illegal, abusive, discriminatory, misleading, unsafe, explicit, confidential, infringing, malware, spam, or exploitative content. This applies to profiles, job posts, applications, chats, photos, videos, documents, support requests, reports, and admin inbox messages.
 
-## Chat and Media Uploads
+## Moderation
 
-Chat text, links, images, videos, audio messages, job photos, company photos, worker portfolio images, and team portfolio files must not include illegal content, hate speech, explicit abuse, confidential information, malware, spam, or content that violates another person's rights.
+Stroyka UK Ltd may warn users, restrict features, remove content, reject or hold job posts, suspend accounts, close accounts, or refer issues to authorities where required.
 
-## Discrimination
+## Reporting
 
-Users must not discriminate based on protected characteristics under UK law. This applies to job posts, application decisions, negotiation, chat, offers, and reviews.
-
-## Complaints and Reports
-
-Users may submit complaints or reports where they believe another participant, employer, worker, team, job post, or chat content breaches these standards. Admins may review and take action.
-
-## Enforcement
-
-The app may warn, restrict, suspend, remove content, reject job posts, or close accounts where this Code of Conduct is breached.
+Users should report abuse, safety concerns, fake jobs, discrimination, suspected fraud, or harmful content through support or reporting tools.

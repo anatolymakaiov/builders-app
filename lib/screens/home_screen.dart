@@ -18,6 +18,7 @@ import 'admin_dashboard_screen.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/legal_documents.dart';
 import '../widgets/profile_hamburger_menu.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String role = "worker";
   String? userId;
   bool loading = true;
+  bool legalPromptShown = false;
   int _lastNotificationCount = 0;
   int _lastChatCount = 0;
   int _lastApplicationCount = 0;
@@ -72,6 +74,13 @@ class _HomeScreenState extends State<HomeScreen> {
         final rawRole = data?["role"]?.toString();
         role =
             rawRole == "admin" || rawRole == "employer" ? rawRole! : "worker";
+
+        if (role != "admin" &&
+            !LegalDocuments.hasAcceptedCurrentVersion(data, role)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            promptForUpdatedLegalDocuments();
+          });
+        }
       }
     } catch (e) {
       debugPrint("INIT USER ERROR: $e");
@@ -83,6 +92,40 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       loading = false;
     });
+  }
+
+  Future<void> promptForUpdatedLegalDocuments() async {
+    if (!mounted || legalPromptShown || userId == null || role == "admin") {
+      return;
+    }
+    legalPromptShown = true;
+
+    final result = await Navigator.push<LegalAcceptanceResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LegalAcceptanceScreen(role: role),
+      ),
+    );
+
+    if (result == null) {
+      legalPromptShown = false;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please accept required legal documents to continue"),
+        ),
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        promptForUpdatedLegalDocuments();
+      });
+      return;
+    }
+
+    await LegalDocuments.saveAcceptances(
+      userId: userId!,
+      role: role,
+      language: result.language,
+    );
   }
 
   /// 🔔 NOTIFICATIONS
