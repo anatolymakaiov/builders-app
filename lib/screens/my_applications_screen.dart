@@ -65,6 +65,40 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     return "Applied $day/$month/$year $hour:$minute";
   }
 
+  bool jobUnavailableForWorker(Job job) {
+    return job.isClosed || job.moderationStatus == "rejected";
+  }
+
+  String unavailableJobMessage(Job job) {
+    final status = job.status.trim().toLowerCase();
+    if (status == "deleted" || status == "archived") {
+      return "Employer removed this vacancy.";
+    }
+    return "Employer deactivated this vacancy.";
+  }
+
+  Widget unavailableJobNotice(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppColors.warning.withValues(alpha: 0.45),
+        ),
+      ),
+      child: Text(
+        message,
+        style: const TextStyle(
+          color: AppColors.ink,
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+        ),
+      ),
+    );
+  }
+
   Job fallbackJobFromApplication(String id, Map<String, dynamic> data) {
     return Job.fromFirestore(id, {
       "title": data["jobTitle"] ?? data["title"] ?? data["trade"] ?? "Job",
@@ -428,15 +462,26 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     required bool isUnread,
     required String userId,
   }) {
+    final unavailable = jobUnavailableForWorker(job);
+    final unavailableMessage = unavailableJobMessage(job);
+
     return JobCard(
       job: job,
       unread: isUnread,
       statusText: statusLabel(status),
       statusColor: getStatusColor(status),
       detailText: applicationDateText(appliedAt),
+      bottomAction:
+          unavailable ? unavailableJobNotice(unavailableMessage) : null,
       onTap: () async {
         await ApplicationActivityService.markRead(applicationId, userId);
         if (!mounted) return;
+        if (unavailable) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(unavailableMessage)),
+          );
+          return;
+        }
         await openJobDetails(context, job.id, applicationId);
       },
     );

@@ -156,7 +156,18 @@ class Job {
   int get remainingPositions =>
       (positions - filledPositions).clamp(0, positions);
 
-  bool get isClosed => status == "completed" || status == "closed";
+  bool get isClosed {
+    final normalizedStatus = status.trim().toLowerCase();
+    return normalizedStatus == "completed" ||
+        normalizedStatus == "closed" ||
+        normalizedStatus == "inactive" ||
+        normalizedStatus == "deactivated" ||
+        normalizedStatus == "deleted" ||
+        normalizedStatus == "archived" ||
+        normalizedStatus == "cancelled" ||
+        normalizedStatus == "suspended" ||
+        normalizedStatus == "expired";
+  }
 
   bool get isApproved => moderationStatus == "approved";
 
