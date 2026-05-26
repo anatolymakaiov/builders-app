@@ -191,120 +191,125 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         FractionalTranslation(
                           translation: const Offset(0, 0.08),
-                          child: StroykaSurface(
-                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-                            texture: "assets/branding/texture_light_cloud.jpg",
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (showSessionGate) ...[
-                                  Icon(
-                                    widget.sessionMode ==
-                                            AuthPreferenceMethod.biometric
-                                        ? Icons.fingerprint
-                                        : Icons.login,
-                                    size: 44,
-                                    color: AppColors.greenDark,
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    sessionTitle,
-                                    style: const TextStyle(
-                                      color: AppColors.ink,
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w900,
+                          child: FractionallySizedBox(
+                            widthFactor: 0.88,
+                            child: StroykaSurface(
+                              padding:
+                                  const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                              texture:
+                                  "assets/branding/texture_light_cloud.jpg",
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (showSessionGate) ...[
+                                    Icon(
+                                      widget.sessionMode ==
+                                              AuthPreferenceMethod.biometric
+                                          ? Icons.fingerprint
+                                          : Icons.login,
+                                      size: 44,
+                                      color: AppColors.greenDark,
                                     ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    sessionSubtitle,
-                                    textAlign: TextAlign.center,
-                                    style:
-                                        const TextStyle(color: AppColors.muted),
-                                  ),
-                                ] else ...[
-                                  StroykaInputField(
-                                    controller: emailController,
-                                    hintText: "Email",
-                                    prefixIcon: Icons.mail_outline,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  StroykaInputField(
-                                    controller: passwordController,
-                                    hintText: "Password",
-                                    prefixIcon: Icons.lock_outline,
-                                    isPassword: true,
-                                  ),
-                                  if (!isLogin) ...[
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      sessionTitle,
+                                      style: const TextStyle(
+                                        color: AppColors.ink,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      sessionSubtitle,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                          color: AppColors.muted),
+                                    ),
+                                  ] else ...[
+                                    StroykaInputField(
+                                      controller: emailController,
+                                      hintText: "Email",
+                                      prefixIcon: Icons.mail_outline,
+                                    ),
                                     const SizedBox(height: 12),
-                                    StroykaDropdown(
-                                      value: role,
-                                      items: const ["worker", "employer"],
-                                      onChanged: (value) {
-                                        if (value == null) return;
-                                        setState(() => role = value);
-                                      },
+                                    StroykaInputField(
+                                      controller: passwordController,
+                                      hintText: "Password",
+                                      prefixIcon: Icons.lock_outline,
+                                      isPassword: true,
                                     ),
+                                    if (!isLogin) ...[
+                                      const SizedBox(height: 12),
+                                      StroykaDropdown(
+                                        value: role,
+                                        items: const ["worker", "employer"],
+                                        onChanged: (value) {
+                                          if (value == null) return;
+                                          setState(() => role = value);
+                                        },
+                                      ),
+                                    ],
                                   ],
-                                ],
-                                const SizedBox(height: 22),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: StroykaButton(
-                                    onPressed: loading
-                                        ? null
-                                        : showSessionGate
-                                            ? (widget.sessionMode ==
-                                                    AuthPreferenceMethod
-                                                        .biometric
-                                                ? enterWithBiometric
-                                                : enterWithSession)
-                                            : submit,
+                                  const SizedBox(height: 22),
+                                  SizedBox(
                                     width: double.infinity,
-                                    child: loading
-                                        ? const SizedBox(
-                                            width: 20,
-                                            height: 20,
-                                            child: CircularProgressIndicator(
-                                              color: Colors.white,
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : Text(showSessionGate
-                                            ? (widget.sessionMode ==
-                                                    AuthPreferenceMethod
-                                                        .biometric
-                                                ? "Use Face ID / Touch ID"
-                                                : "Enter")
-                                            : isLogin
-                                                ? "Sign in"
-                                                : "Create account"),
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                if (showSessionGate)
-                                  TextButton(
-                                    onPressed: () {
-                                      setState(
-                                          () => usePasswordFallback = true);
-                                    },
-                                    child: const Text("Use password instead"),
-                                  )
-                                else
-                                  TextButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        isLogin = !isLogin;
-                                        usePasswordFallback = false;
-                                      });
-                                    },
-                                    child: Text(
-                                      isLogin
-                                          ? "No account? Create one"
-                                          : "Already have an account? Sign in",
+                                    child: StroykaButton(
+                                      onPressed: loading
+                                          ? null
+                                          : showSessionGate
+                                              ? (widget.sessionMode ==
+                                                      AuthPreferenceMethod
+                                                          .biometric
+                                                  ? enterWithBiometric
+                                                  : enterWithSession)
+                                              : submit,
+                                      width: double.infinity,
+                                      child: loading
+                                          ? const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                color: Colors.white,
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : Text(showSessionGate
+                                              ? (widget.sessionMode ==
+                                                      AuthPreferenceMethod
+                                                          .biometric
+                                                  ? "Use Face ID / Touch ID"
+                                                  : "Enter")
+                                              : isLogin
+                                                  ? "Sign in"
+                                                  : "Create account"),
                                     ),
                                   ),
-                              ],
+                                  const SizedBox(height: 14),
+                                  if (showSessionGate)
+                                    TextButton(
+                                      onPressed: () {
+                                        setState(
+                                            () => usePasswordFallback = true);
+                                      },
+                                      child: const Text("Use password instead"),
+                                    )
+                                  else
+                                    TextButton(
+                                      onPressed: () {
+                                        setState(() {
+                                          isLogin = !isLogin;
+                                          usePasswordFallback = false;
+                                        });
+                                      },
+                                      child: Text(
+                                        isLogin
+                                            ? "No account? Create one"
+                                            : "Already have an account? Sign in",
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
