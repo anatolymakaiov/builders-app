@@ -112,6 +112,8 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
                   TileLayer(
                     urlTemplate:
                         "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    fallbackUrl:
+                        "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
                     userAgentPackageName: "builder.jobs.app",
                     tileProvider: QuietTileProvider(),
                   ),

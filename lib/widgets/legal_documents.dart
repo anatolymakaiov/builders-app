@@ -389,27 +389,24 @@ class LegalAcceptanceScreen extends StatefulWidget {
 
 class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
   late final List<LegalDocument> documents;
-  late final Map<String, bool> accepted;
   String language = LegalDocuments.defaultLanguage;
   bool validationAttempted = false;
+  bool consentAccepted = false;
 
   @override
   void initState() {
     super.initState();
     documents = LegalDocuments.requiredForRole(widget.role);
-    accepted = {
-      for (final doc in documents) doc.key: false,
-    };
   }
 
-  bool get allAccepted => accepted.values.every((value) => value);
-
   void continueIfValid() {
-    if (!allAccepted) {
+    if (!consentAccepted) {
       setState(() => validationAttempted = true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Please accept all required documents to continue."),
+          content: Text(
+            "You must accept the Terms & Conditions before continuing.",
+          ),
         ),
       );
       return;
@@ -421,79 +418,238 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
     );
   }
 
+  List<LegalDocument> get compactDocuments {
+    final keys = <String>{
+      LegalDocuments.termsAndConditions.key,
+      LegalDocuments.privacyPolicy.key,
+      LegalDocuments.codeOfConduct.key,
+      LegalDocuments.dataProcessingConsentNotice.key,
+      if (widget.role == "employer") LegalDocuments.billingPaymentTerms.key,
+    };
+
+    return LegalDocuments.all.where((doc) => keys.contains(doc.key)).toList();
+  }
+
+  String documentShortTitle(LegalDocument document) {
+    switch (document.key) {
+      case "termsAndConditions":
+        return "Terms & Conditions";
+      case "privacyPolicy":
+        return "Privacy Policy";
+      case "codeOfConduct":
+        return "Community Rules";
+      case "dataProcessingConsentNotice":
+        return "Data Consent";
+      case "billingPaymentTerms":
+        return "Billing & Subscription Terms";
+      default:
+        return document.title;
+    }
+  }
+
+  void openDocument(LegalDocument document) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LegalDocumentScreen(document: document),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Legal documents")),
+      appBar: AppBar(title: const Text("Create account")),
       body: StroykaScreenBody(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 110),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
           children: [
+            Center(
+              child: Column(
+                children: [
+                  const StroykaAvatar(
+                    fallbackIcon: Icons.construction_outlined,
+                    size: 70,
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "STROYKA UK Ltd",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.role == "employer"
+                        ? "Employer registration"
+                        : "Worker registration",
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             StroykaSurface(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "Step 1: choose language",
-                    style: TextStyle(
-                      color: AppColors.ink,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceAlt.withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: "en", label: Text("English")),
-                      ButtonSegment(
-                        value: "ru",
-                        label: Text("Russian / Coming soon"),
-                      ),
-                    ],
-                    selected: {language},
-                    onSelectionChanged: (value) {
-                      final next = value.first;
-                      if (next != "en") {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Russian documents are coming soon"),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            decoration: BoxDecoration(
+                              color: AppColors.greenDark,
+                              borderRadius: BorderRadius.circular(9),
+                            ),
+                            child: const Text(
+                              "Sign Up",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
                           ),
-                        );
-                        return;
-                      }
-                      setState(() => language = next);
-                    },
+                        ),
+                        Expanded(
+                          child: Container(
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: const Text(
+                              "Sign In",
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 18),
                   const Text(
-                    "Step 2: review and accept required documents",
+                    "Legal consent",
                     style: TextStyle(
                       color: AppColors.ink,
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   const Text(
-                    "Company: Stroyka UK Ltd\nVersion: ${LegalDocuments.policyVersion}\n${LegalDocuments.templateNotice}",
+                    "Please confirm you are over 18 and agree to the required platform documents before continuing.",
                     style: TextStyle(
                       color: AppColors.muted,
                       fontWeight: FontWeight.w600,
+                      height: 1.35,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  ...documents.map((doc) {
-                    final isAccepted = accepted[doc.key] ?? false;
-                    return _LegalAcceptanceTile(
-                      document: doc,
-                      accepted: isAccepted,
-                      highlightMissing: validationAttempted && !isAccepted,
+                  const SizedBox(height: 14),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: validationAttempted && !consentAccepted
+                          ? AppColors.danger.withValues(alpha: 0.08)
+                          : Colors.white.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: validationAttempted && !consentAccepted
+                            ? AppColors.danger
+                            : Colors.black.withValues(alpha: 0.08),
+                      ),
+                    ),
+                    child: CheckboxListTile(
+                      value: consentAccepted,
                       onChanged: (value) {
-                        setState(() => accepted[doc.key] = value ?? false);
+                        setState(() {
+                          consentAccepted = value ?? false;
+                          if (consentAccepted) validationAttempted = false;
+                        });
                       },
-                    );
-                  }),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: const Text(
+                        "I confirm that I am over 18 years old and agree to the required legal documents.",
+                        style: TextStyle(
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w800,
+                          height: 1.25,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: compactDocuments.map((doc) {
+                      return ActionChip(
+                        avatar: const Icon(Icons.description_outlined),
+                        label: Text(documentShortTitle(doc)),
+                        onPressed: () => openDocument(doc),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    "Version ${LegalDocuments.policyVersion}. ${LegalDocuments.templateNotice}",
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            StroykaSurface(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  const Icon(Icons.language, color: AppColors.greenDark),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      "Language",
+                      style: TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: language,
+                      items: const [
+                        DropdownMenuItem(
+                          value: "en",
+                          child: Text("English"),
+                        ),
+                        DropdownMenuItem(
+                          value: "ru",
+                          enabled: false,
+                          child: Text("Russian soon"),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => language = value);
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -511,72 +667,6 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _LegalAcceptanceTile extends StatelessWidget {
-  final LegalDocument document;
-  final bool accepted;
-  final bool highlightMissing;
-  final ValueChanged<bool?> onChanged;
-
-  const _LegalAcceptanceTile({
-    required this.document,
-    required this.accepted,
-    required this.highlightMissing,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: highlightMissing
-            ? AppColors.danger.withValues(alpha: 0.08)
-            : Colors.white.withValues(alpha: 0.68),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: highlightMissing
-              ? AppColors.danger
-              : Colors.black.withValues(alpha: 0.08),
-          width: highlightMissing ? 1.5 : 1,
-        ),
-      ),
-      child: CheckboxListTile(
-        value: accepted,
-        onChanged: onChanged,
-        controlAffinity: ListTileControlAffinity.leading,
-        title: Text(
-          document.title,
-          style: const TextStyle(
-            color: AppColors.ink,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        subtitle: TextButton.icon(
-          style: TextButton.styleFrom(
-            padding: EdgeInsets.zero,
-            alignment: Alignment.centerLeft,
-          ),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => LegalDocumentScreen(document: document),
-              ),
-            );
-          },
-          icon: const Icon(Icons.description_outlined, size: 18),
-          label: Text(
-            highlightMissing
-                ? "Required: open and accept this document"
-                : "Open and read full document",
-          ),
-        ),
-        secondary: const Icon(Icons.check_circle_outline),
       ),
     );
   }

@@ -15,6 +15,7 @@ class QuietTileProvider extends TileProvider {
   ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
     return _QuietTileImageProvider(
       url: getTileUrl(coordinates, options),
+      fallbackUrl: getTileFallbackUrl(coordinates, options),
       headers: headers,
       client: _client,
     );
@@ -99,11 +100,13 @@ class _QuietTileImageProvider extends ImageProvider<_QuietTileImageProvider> {
   ]);
 
   final String url;
+  final String? fallbackUrl;
   final Map<String, String> headers;
   final http.Client client;
 
   const _QuietTileImageProvider({
     required this.url,
+    required this.fallbackUrl,
     required this.headers,
     required this.client,
   });
@@ -133,7 +136,19 @@ class _QuietTileImageProvider extends ImageProvider<_QuietTileImageProvider> {
     try {
       bytes = await client.readBytes(Uri.parse(key.url), headers: key.headers);
     } catch (_) {
-      bytes = _transparentPng;
+      final fallback = key.fallbackUrl;
+      if (fallback == null || fallback.isEmpty) {
+        bytes = _transparentPng;
+      } else {
+        try {
+          bytes = await client.readBytes(
+            Uri.parse(fallback),
+            headers: key.headers,
+          );
+        } catch (_) {
+          bytes = _transparentPng;
+        }
+      }
     }
     return decode(await ImmutableBuffer.fromUint8List(bytes));
   }
@@ -141,8 +156,10 @@ class _QuietTileImageProvider extends ImageProvider<_QuietTileImageProvider> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is _QuietTileImageProvider && url == other.url;
+      other is _QuietTileImageProvider &&
+          url == other.url &&
+          fallbackUrl == other.fallbackUrl;
 
   @override
-  int get hashCode => url.hashCode;
+  int get hashCode => Object.hash(url, fallbackUrl);
 }
