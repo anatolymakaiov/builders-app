@@ -35,15 +35,24 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   int currentPage = 1;
 
   Widget buildCompanyAvatar(Job job, Map<String, dynamic>? employerData) {
-    final avatarUrl = job.companyLogo ??
-        employerData?["companyLogo"] ??
+    final avatarUrl = employerData?["companyLogo"] ??
         employerData?["photo"] ??
-        employerData?["avatarUrl"];
+        employerData?["avatarUrl"] ??
+        job.companyLogo;
     return StroykaAvatar(
       imageUrl: avatarUrl?.toString(),
       fallbackIcon: Icons.business,
       size: 64,
     );
+  }
+
+  String companyNameFor(Job job, Map<String, dynamic>? employerData) {
+    return (employerData?["companyName"] ??
+            employerData?["name"] ??
+            employerData?["displayName"] ??
+            job.companyName)
+        .toString()
+        .trim();
   }
 
   Widget buildMetaChip({
@@ -424,8 +433,33 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     Map<String, dynamic>? employerData,
     String ownerId,
   ) {
+    if (employerData == null &&
+        job.ownerId.isNotEmpty &&
+        job.ownerId != "unknown") {
+      return FutureBuilder<DocumentSnapshot>(
+        future: FirebaseFirestore.instance
+            .collection("users")
+            .doc(job.ownerId)
+            .get(),
+        builder: (context, snapshot) {
+          final data = snapshot.data?.data() as Map<String, dynamic>?;
+          return buildJobCardContent(context, job, data, ownerId);
+        },
+      );
+    }
+
+    return buildJobCardContent(context, job, employerData, ownerId);
+  }
+
+  Widget buildJobCardContent(
+    BuildContext context,
+    Job job,
+    Map<String, dynamic>? employerData,
+    String ownerId,
+  ) {
     final isOwnJob = job.ownerId == ownerId;
     final isClosed = job.isClosed;
+    final companyName = companyNameFor(job, employerData);
 
     return InkWell(
       onTap: () {
@@ -464,6 +498,19 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                           fontWeight: FontWeight.w800,
                         ),
                       ),
+                      if (companyName.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          companyName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 5),
                       Text(
                         [
