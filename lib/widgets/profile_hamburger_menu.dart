@@ -8,6 +8,7 @@ import 'dart:io';
 
 import '../screens/edit_profile_screen.dart';
 import '../screens/login_screen.dart';
+import '../services/account_deletion_service.dart';
 import '../services/auth_preferences_service.dart';
 import '../services/billing_service.dart';
 import '../services/job_alert_service.dart';
@@ -38,34 +39,12 @@ class ProfileHamburgerMenu extends StatelessWidget {
   }
 
   static Future<bool> _confirmDeleteAccount(BuildContext context) async {
-    final first = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text("Are you sure you want to delete your account?"),
         content: const Text(
-          "Deleting your account is permanent. All profile data will be deleted from the database where legally possible. Your profile cannot be restored. Only continue if you are sure.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text("Cancel"),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text("Continue"),
-          ),
-        ],
-      ),
-    );
-
-    if (first != true || !context.mounted) return false;
-
-    final second = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text("This action is permanent and cannot be undone."),
-        content: const Text(
-          "Your account will be marked as deleted, your profile will be hidden and anonymized, and you will be signed out.",
+          "Are you sure you want to delete your account? This action cannot be undone. Your profile and related data will be permanently removed or anonymised according to our data retention policy.",
         ),
         actions: [
           TextButton(
@@ -75,108 +54,77 @@ class ProfileHamburgerMenu extends StatelessWidget {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text("Delete account"),
+            child: const Text("Delete Account"),
           ),
         ],
       ),
     );
 
-    return second == true;
-  }
-
-  static Future<void> _deletePortfolioDocuments(String uid) async {
-    final portfolio = await FirebaseFirestore.instance
-        .collection("users")
-        .doc(uid)
-        .collection("portfolio")
-        .get();
-    if (portfolio.docs.isEmpty) return;
-
-    final batch = FirebaseFirestore.instance.batch();
-    for (final doc in portfolio.docs) {
-      batch.delete(doc.reference);
-    }
-    await batch.commit();
-  }
-
-  static Future<void> _deleteLegalAcceptanceDocuments(String uid) async {
-    final acceptances = await FirebaseFirestore.instance
-        .collection("users")
-        .doc(uid)
-        .collection("legalAcceptances")
-        .get();
-    if (acceptances.docs.isEmpty) return;
-
-    final batch = FirebaseFirestore.instance.batch();
-    for (final doc in acceptances.docs) {
-      batch.delete(doc.reference);
-    }
-    await batch.commit();
+    return confirmed == true;
   }
 
   static Future<void> _softDeleteAccount(BuildContext context) async {
-    final user = FirebaseAuth.instance.currentUser;
-    final uid = user?.uid;
-    if (uid == null) return;
-
     final confirmed = await _confirmDeleteAccount(context);
     if (!confirmed) return;
 
+    if (!context.mounted) return;
+
+    var loadingOpen = true;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
     try {
-      await _deletePortfolioDocuments(uid);
-      await _deleteLegalAcceptanceDocuments(uid);
-
-      await FirebaseFirestore.instance.collection("users").doc(uid).set({
-        "accountDeleted": true,
-        "profileHidden": true,
-        "profileComplete": false,
-        "profileCreated": false,
-        "onboardingComplete": false,
-        "legalAccepted": false,
-        "onboardingLegalStepComplete": false,
-        "deletedAt": FieldValue.serverTimestamp(),
-        "isOnline": false,
-        "lastSeen": FieldValue.serverTimestamp(),
-        "legalAcceptedAt": FieldValue.delete(),
-        "legalVersion": FieldValue.delete(),
-        "acceptedPolicyVersion": FieldValue.delete(),
-        "acceptedLanguage": FieldValue.delete(),
-        "acceptedDocuments": FieldValue.delete(),
-        "acceptedDocumentIds": FieldValue.delete(),
-        "name": "Deleted account",
-        "companyName": "Deleted account",
-        "bio": FieldValue.delete(),
-        "about": FieldValue.delete(),
-        "phone": FieldValue.delete(),
-        "phones": <String>[],
-        "location": FieldValue.delete(),
-        "website": FieldValue.delete(),
-        "contactPerson": FieldValue.delete(),
-        "photo": FieldValue.delete(),
-        "avatarUrl": FieldValue.delete(),
-        "headerImageUrl": FieldValue.delete(),
-        "companyPhotos": <String>[],
-        "companyGoals": FieldValue.delete(),
-        "companyAdvantages": FieldValue.delete(),
-        "companyClients": FieldValue.delete(),
-        "companyWhoWeAre": FieldValue.delete(),
-        "companyHistory": FieldValue.delete(),
-      }, SetOptions(merge: true));
-
-      await FirebaseAuth.instance.signOut();
+      await AccountDeletionService().deleteCurrentAccount();
 
       if (!context.mounted) return;
+      if (loadingOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingOpen = false;
+      }
       Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
         (_) => false,
       );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Your account has been deleted.")),
+      );
+    } on AccountDeletionRequiresRecentLogin {
+      if (!context.mounted) return;
+      if (loadingOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingOpen = false;
+      }
+      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (_) => false,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "For security, please sign in again before deleting your account.",
+          ),
+        ),
+      );
     } on FirebaseAuthException catch (e) {
       if (!context.mounted) return;
+      if (loadingOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingOpen = false;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message ?? "Could not delete account")),
       );
     } catch (e) {
       if (!context.mounted) return;
+      if (loadingOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+        loadingOpen = false;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Could not delete account")),
       );
