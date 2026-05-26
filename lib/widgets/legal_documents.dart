@@ -377,10 +377,14 @@ class LegalDocumentScreen extends StatelessWidget {
 
 class LegalAcceptanceScreen extends StatefulWidget {
   final String role;
+  final String? userId;
+  final Future<void> Function(LegalAcceptanceResult result)? onAccepted;
 
   const LegalAcceptanceScreen({
     super.key,
     required this.role,
+    this.userId,
+    this.onAccepted,
   });
 
   @override
@@ -392,6 +396,7 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
   String language = LegalDocuments.defaultLanguage;
   bool validationAttempted = false;
   bool consentAccepted = false;
+  bool saving = false;
 
   @override
   void initState() {
@@ -399,23 +404,47 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
     documents = LegalDocuments.requiredForRole(widget.role);
   }
 
-  void continueIfValid() {
+  Future<void> continueIfValid() async {
     if (!consentAccepted) {
       setState(() => validationAttempted = true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            "You must accept the Terms & Conditions before continuing.",
+            "You must confirm that you have read and agree to the required documents before continuing.",
           ),
         ),
       );
       return;
     }
 
-    Navigator.pop(
-      context,
-      LegalAcceptanceResult(language: language),
-    );
+    final result = LegalAcceptanceResult(language: language);
+
+    if (widget.userId != null || widget.onAccepted != null) {
+      setState(() => saving = true);
+      try {
+        if (widget.userId != null) {
+          await LegalDocuments.saveAcceptances(
+            userId: widget.userId!,
+            role: widget.role,
+            language: result.language,
+          );
+        }
+        await widget.onAccepted?.call(result);
+      } catch (e) {
+        debugPrint("Legal acceptance save error: $e");
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Could not save legal acceptance. Please try again."),
+          ),
+        );
+      } finally {
+        if (mounted) setState(() => saving = false);
+      }
+      return;
+    }
+
+    Navigator.pop(context, result);
   }
 
   List<LegalDocument> get compactDocuments {
@@ -662,8 +691,14 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
           child: SizedBox(
             height: 50,
             child: ElevatedButton(
-              onPressed: continueIfValid,
-              child: const Text("Continue"),
+              onPressed: saving ? null : continueIfValid,
+              child: saving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text("Continue"),
             ),
           ),
         ),

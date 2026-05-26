@@ -12,7 +12,12 @@ import '../theme/stroyka_background.dart';
 import '../widgets/legal_documents.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final VoidCallback? onProfileSaved;
+
+  const ProfileScreen({
+    super.key,
+    this.onProfileSaved,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -488,40 +493,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         firstProfileCreation && !legalAcceptedForCurrentVersion;
 
     if (shouldRequestLegalAcceptance) {
-      final accepted = await Navigator.push<LegalAcceptanceResult>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => LegalAcceptanceScreen(role: role),
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please accept required legal documents first."),
         ),
       );
-
-      if (accepted == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Please accept required legal documents"),
-          ),
-        );
-        return;
-      }
-
-      try {
-        await LegalDocuments.saveAcceptances(
-          userId: userId,
-          role: role,
-          language: accepted.language,
-        );
-        legalAcceptedForCurrentVersion = true;
-      } catch (e) {
-        debugPrint("Legal acceptance save error: $e");
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Could not save legal acceptance. Please try again."),
-          ),
-        );
-        return;
-      }
+      return;
     }
 
     setState(() => loading = true);
@@ -660,7 +637,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       });
 
-      Navigator.pop(context, true);
+      if (widget.onProfileSaved != null) {
+        widget.onProfileSaved!.call();
+      } else {
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       debugPrint("Save profile error: $e");
       if (!mounted) return;

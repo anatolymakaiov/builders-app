@@ -99,6 +99,21 @@ class ProfileHamburgerMenu extends StatelessWidget {
     await batch.commit();
   }
 
+  static Future<void> _deleteLegalAcceptanceDocuments(String uid) async {
+    final acceptances = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(uid)
+        .collection("legalAcceptances")
+        .get();
+    if (acceptances.docs.isEmpty) return;
+
+    final batch = FirebaseFirestore.instance.batch();
+    for (final doc in acceptances.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
+  }
+
   static Future<void> _softDeleteAccount(BuildContext context) async {
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid;
@@ -109,13 +124,25 @@ class ProfileHamburgerMenu extends StatelessWidget {
 
     try {
       await _deletePortfolioDocuments(uid);
+      await _deleteLegalAcceptanceDocuments(uid);
 
       await FirebaseFirestore.instance.collection("users").doc(uid).set({
         "accountDeleted": true,
         "profileHidden": true,
+        "profileComplete": false,
+        "profileCreated": false,
+        "onboardingComplete": false,
+        "legalAccepted": false,
+        "onboardingLegalStepComplete": false,
         "deletedAt": FieldValue.serverTimestamp(),
         "isOnline": false,
         "lastSeen": FieldValue.serverTimestamp(),
+        "legalAcceptedAt": FieldValue.delete(),
+        "legalVersion": FieldValue.delete(),
+        "acceptedPolicyVersion": FieldValue.delete(),
+        "acceptedLanguage": FieldValue.delete(),
+        "acceptedDocuments": FieldValue.delete(),
+        "acceptedDocumentIds": FieldValue.delete(),
         "name": "Deleted account",
         "companyName": "Deleted account",
         "bio": FieldValue.delete(),

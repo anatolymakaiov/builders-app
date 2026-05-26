@@ -7,10 +7,12 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'services/app_navigation.dart';
 import 'services/auth_preferences_service.dart';
 import 'services/notification_service.dart';
+import 'screens/edit_profile_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/stroyka_background.dart';
+import 'widgets/legal_documents.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -147,6 +149,41 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
                 onSessionUnlocked: () {
                   if (!mounted) return;
                   setState(() => sessionUnlocked = true);
+                },
+              );
+            }
+
+            final role = userData?["role"]?.toString() == "admin" ||
+                    userData?["role"]?.toString() == "employer"
+                ? userData!["role"].toString()
+                : "worker";
+
+            if (role != "admin" &&
+                !LegalDocuments.hasAcceptedCurrentVersion(userData, role)) {
+              return LegalAcceptanceScreen(
+                role: role,
+                userId: user.uid,
+                onAccepted: (_) async {
+                  if (!mounted) return;
+                  setState(() {});
+                },
+              );
+            }
+
+            final hasCompletedProfile = userData?["profileComplete"] == true ||
+                userData?["onboardingComplete"] == true ||
+                userData?["profileCreated"] == true ||
+                (role == "worker" &&
+                    (userData?["name"]?.toString().trim() ?? "").isNotEmpty) ||
+                (role == "employer" &&
+                    (userData?["companyName"]?.toString().trim() ?? "")
+                        .isNotEmpty);
+
+            if (role != "admin" && !hasCompletedProfile) {
+              return ProfileScreen(
+                onProfileSaved: () {
+                  if (!mounted) return;
+                  setState(() {});
                 },
               );
             }

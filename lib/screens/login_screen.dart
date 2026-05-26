@@ -132,6 +132,10 @@ class _LoginScreenState extends State<LoginScreen> {
             .set({
           "role": role,
           "email": email,
+          "legalAccepted": false,
+          "onboardingLegalStepComplete": false,
+          "profileComplete": false,
+          "onboardingComplete": false,
           "authMethod": AuthPreferenceMethod.password,
           "settings": {
             "authMethod": AuthPreferenceMethod.password,
