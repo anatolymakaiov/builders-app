@@ -189,8 +189,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Transform.translate(
-                          offset: const Offset(0, 18),
+                        FractionalTranslation(
+                          translation: const Offset(0, 0.33),
                           child: StroykaSurface(
                             padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
                             texture: "assets/branding/texture_light_cloud.jpg",
