@@ -65,14 +65,15 @@ class ProfileHamburgerMenu extends StatelessWidget {
   }
 
   static Future<void> _softDeleteAccount(BuildContext context) async {
-    final confirmed = await _confirmDeleteAccount(context);
+    final rootContext = appNavigatorKey.currentContext ?? context;
+    final confirmed = await _confirmDeleteAccount(rootContext);
     if (!confirmed) return;
 
-    if (!context.mounted) return;
+    if (!rootContext.mounted) return;
 
     var loadingOpen = true;
     showDialog<void>(
-      context: context,
+      context: rootContext,
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
@@ -86,14 +87,14 @@ class ProfileHamburgerMenu extends StatelessWidget {
     } on AccountDeletionRequiresRecentLogin {
       _closeRootDialogIfOpen(loadingOpen);
       loadingOpen = false;
-      if (!context.mounted) {
+      if (!rootContext.mounted) {
         _resetToLoginWithMessage(
           "For security, please sign in again before deleting your account.",
         );
         return;
       }
-      final reauthenticated = await _reauthenticateForDeletion(context);
-      if (!context.mounted) return;
+      final reauthenticated = await _reauthenticateForDeletion(rootContext);
+      if (!rootContext.mounted) return;
 
       if (!reauthenticated) {
         await FirebaseAuth.instance.signOut();
@@ -105,7 +106,7 @@ class ProfileHamburgerMenu extends StatelessWidget {
 
       var retryLoadingOpen = true;
       showDialog<void>(
-        context: context,
+        context: rootContext,
         barrierDismissible: false,
         builder: (_) => const Center(child: CircularProgressIndicator()),
       );
@@ -355,8 +356,12 @@ class ProfileHamburgerMenu extends StatelessWidget {
                     title: "Delete Account",
                     danger: true,
                     onTap: () async {
+                      final rootContext = appNavigatorKey.currentContext;
                       Navigator.pop(context);
-                      await _softDeleteAccount(context);
+                      if (rootContext == null) return;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _softDeleteAccount(rootContext);
+                      });
                     },
                   ),
                 ],
