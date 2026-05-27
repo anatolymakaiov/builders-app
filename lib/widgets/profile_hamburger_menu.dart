@@ -9,6 +9,7 @@ import 'dart:io';
 import '../screens/edit_profile_screen.dart';
 import '../screens/login_screen.dart';
 import '../services/account_deletion_service.dart';
+import '../services/app_navigation.dart';
 import '../services/auth_preferences_service.dart';
 import '../services/billing_service.dart';
 import '../services/job_alert_service.dart';
@@ -79,55 +80,146 @@ class ProfileHamburgerMenu extends StatelessWidget {
     try {
       await AccountDeletionService().deleteCurrentAccount();
 
-      if (!context.mounted) return;
-      if (loadingOpen) {
-        Navigator.of(context, rootNavigator: true).pop();
-        loadingOpen = false;
-      }
-      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (_) => false,
-      );
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Your account has been deleted.")),
-      );
+      _closeRootDialogIfOpen(loadingOpen);
+      loadingOpen = false;
+      _resetToLoginWithMessage("Your account has been deleted.");
     } on AccountDeletionRequiresRecentLogin {
-      if (!context.mounted) return;
-      if (loadingOpen) {
-        Navigator.of(context, rootNavigator: true).pop();
-        loadingOpen = false;
+      _closeRootDialogIfOpen(loadingOpen);
+      loadingOpen = false;
+      if (!context.mounted) {
+        _resetToLoginWithMessage(
+          "For security, please sign in again before deleting your account.",
+        );
+        return;
       }
-      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (_) => false,
-      );
+      final reauthenticated = await _reauthenticateForDeletion(context);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "For security, please sign in again before deleting your account.",
+
+      if (!reauthenticated) {
+        await FirebaseAuth.instance.signOut();
+        _resetToLoginWithMessage(
+          "For security, please sign in again before deleting your account.",
+        );
+        return;
+      }
+
+      var retryLoadingOpen = true;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+      try {
+        await AccountDeletionService().deleteCurrentAccount(
+          runFullCleanup: false,
+        );
+        _closeRootDialogIfOpen(retryLoadingOpen);
+        retryLoadingOpen = false;
+        _resetToLoginWithMessage("Your account has been deleted.");
+      } catch (e) {
+        _closeRootDialogIfOpen(retryLoadingOpen);
+        retryLoadingOpen = false;
+        _showRootSnackBar("Could not delete account");
+      }
+    } on FirebaseAuthException catch (e) {
+      _closeRootDialogIfOpen(loadingOpen);
+      loadingOpen = false;
+      _showRootSnackBar(e.message ?? "Could not delete account");
+    } catch (e) {
+      _closeRootDialogIfOpen(loadingOpen);
+      loadingOpen = false;
+      _showRootSnackBar("Could not delete account");
+    }
+  }
+
+  static void _closeRootDialogIfOpen(bool isOpen) {
+    if (!isOpen) return;
+    final navigator = appNavigatorKey.currentState;
+    if (navigator?.canPop() == true) {
+      navigator!.pop();
+    }
+  }
+
+  static void _resetToLoginWithMessage(String message) {
+    appNavigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+    _showRootSnackBar(message);
+  }
+
+  static void _showRootSnackBar(String message) {
+    final context = appNavigatorKey.currentContext;
+    if (context == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  static Future<bool> _reauthenticateForDeletion(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final email = user?.email;
+    if (user == null || email == null || email.trim().isEmpty) {
+      return false;
+    }
+
+    final passwordController = TextEditingController();
+    try {
+      final password = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text("Confirm account deletion"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "For security, enter your password to delete this account.",
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: "Password",
+                ),
+              ),
+            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text("Cancel"),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                passwordController.text,
+              ),
+              child: const Text("Delete Account"),
+            ),
+          ],
         ),
       );
+
+      if (password == null || password.trim().isEmpty) return false;
+
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: password.trim(),
+      );
+      await user.reauthenticateWithCredential(credential);
+      return true;
     } on FirebaseAuthException catch (e) {
-      if (!context.mounted) return;
-      if (loadingOpen) {
-        Navigator.of(context, rootNavigator: true).pop();
-        loadingOpen = false;
-      }
+      if (!context.mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? "Could not delete account")),
+        SnackBar(content: Text(e.message ?? "Could not confirm password")),
       );
-    } catch (e) {
-      if (!context.mounted) return;
-      if (loadingOpen) {
-        Navigator.of(context, rootNavigator: true).pop();
-        loadingOpen = false;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Could not delete account")),
-      );
+      return false;
+    } finally {
+      passwordController.dispose();
     }
   }
 

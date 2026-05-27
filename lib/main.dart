@@ -125,9 +125,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
             }
 
             if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
-              return const Scaffold(
-                body: Center(child: Text("User profile not found")),
-              );
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                FirebaseAuth.instance.signOut();
+              });
+              return const LoginScreen();
             }
 
             final userData = userSnapshot.data!.data() as Map<String, dynamic>?;

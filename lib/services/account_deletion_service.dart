@@ -14,7 +14,7 @@ class AccountDeletionService {
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
 
-  Future<void> deleteCurrentAccount() async {
+  Future<void> deleteCurrentAccount({bool runFullCleanup = true}) async {
     final user = _auth.currentUser;
     if (user == null) {
       throw FirebaseAuthException(
@@ -29,13 +29,17 @@ class AccountDeletionService {
     final userData = snapshot.data() ?? <String, dynamic>{};
     final role = userData["role"]?.toString() ?? "worker";
 
-    await _runFirestoreCleanup(uid: uid, role: role, userRef: userRef);
+    await _anonymiseUserDocument(userRef, role);
+    if (runFullCleanup) {
+      await _runBestEffortCleanup(uid: uid);
+    }
+
+    await _deleteUserDocument(userRef);
 
     try {
       await user.delete();
     } on FirebaseAuthException catch (e) {
       if (e.code == "requires-recent-login") {
-        await _auth.signOut();
         throw AccountDeletionRequiresRecentLogin();
       }
       rethrow;
@@ -48,25 +52,29 @@ class AccountDeletionService {
     }
   }
 
-  Future<void> _runFirestoreCleanup({
-    required String uid,
-    required String role,
-    required DocumentReference<Map<String, dynamic>> userRef,
-  }) async {
-    await _deleteUserSubcollection(uid, "portfolio");
-    await _deleteUserSubcollection(uid, "legalAcceptances");
-    await _deleteUserSubcollection(uid, "deviceTokens");
+  Future<void> _runBestEffortCleanup({required String uid}) async {
+    final steps = <Future<void> Function()>[
+      () => _deleteUserSubcollection(uid, "portfolio"),
+      () => _deleteUserSubcollection(uid, "legalAcceptances"),
+      () => _deleteUserSubcollection(uid, "deviceTokens"),
+      () => _archiveOwnedJobs(uid),
+      () => _anonymiseOwnedTeams(uid),
+      () => _withdrawWorkerApplications(uid),
+      () => _closeEmployerApplications(uid),
+      () => _cancelBilling(uid),
+      () => _removeNotificationTokens(uid),
+      () => _markUserMailDeleted(uid),
+      () => _markSupportRequestsDeleted(uid),
+      () => _markChatsDeleted(uid),
+    ];
 
-    await _anonymiseUserDocument(userRef, role);
-    await _archiveOwnedJobs(uid);
-    await _anonymiseOwnedTeams(uid);
-    await _withdrawWorkerApplications(uid);
-    await _closeEmployerApplications(uid);
-    await _cancelBilling(uid);
-    await _removeNotificationTokens(uid);
-    await _markUserMailDeleted(uid);
-    await _markSupportRequestsDeleted(uid);
-    await _markChatsDeleted(uid);
+    for (final step in steps) {
+      try {
+        await step();
+      } catch (e) {
+        debugPrint("Account deletion cleanup step skipped: $e");
+      }
+    }
   }
 
   Future<void> _deleteUserSubcollection(String uid, String name) async {
@@ -76,6 +84,12 @@ class AccountDeletionService {
       snapshot.docs,
       (batch, doc) => batch.delete(doc.reference),
     );
+  }
+
+  Future<void> _deleteUserDocument(
+    DocumentReference<Map<String, dynamic>> userRef,
+  ) async {
+    await userRef.delete();
   }
 
   Future<void> _anonymiseUserDocument(
