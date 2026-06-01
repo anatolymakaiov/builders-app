@@ -97,93 +97,104 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
             );
           }).toList();
 
-          return Stack(
-            children: [
-              FlutterMap(
-                mapController: mapController,
-                options: MapOptions(
-                  initialCenter: center,
-                  initialZoom: 12,
-                  interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+          return DecoratedBox(
+            decoration: const BoxDecoration(
+              image: DecorationImage(
+                image: AssetImage(AppAssets.backgroundWorkersCity),
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
+              ),
+            ),
+            child: Stack(
+              children: [
+                FlutterMap(
+                  mapController: mapController,
+                  options: MapOptions(
+                    initialCenter: center,
+                    initialZoom: 12,
+                    backgroundColor: Colors.transparent,
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                    ),
                   ),
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate:
-                        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                    fallbackUrl:
-                        "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-                    userAgentPackageName: "builder.jobs.app",
-                    tileProvider: QuietTileProvider(),
-                  ),
-                  MarkerClusterLayerWidget(
-                    options: MarkerClusterLayerOptions(
-                      maxClusterRadius: 45,
-                      size: const Size(40, 40),
-                      markers: markers,
-                      builder: (context, cluster) {
-                        return Container(
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.green,
-                          ),
-                          child: Center(
-                            child: Text(
-                              cluster.length.toString(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                      fallbackUrl:
+                          "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+                      userAgentPackageName: "builder.jobs.app",
+                      tileProvider: QuietTileProvider(),
+                    ),
+                    MarkerClusterLayerWidget(
+                      options: MarkerClusterLayerOptions(
+                        maxClusterRadius: 45,
+                        size: const Size(40, 40),
+                        markers: markers,
+                        builder: (context, cluster) {
+                          return Container(
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppColors.green,
+                            ),
+                            child: Center(
+                              child: Text(
+                                cluster.length.toString(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                          ),
-                        );
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Container(
+                    height: 220,
+                    decoration: BoxDecoration(
+                      color: AppColors.deep.withValues(alpha: 0.96),
+                      image: DecorationImage(
+                        image:
+                            const AssetImage(AppAssets.backgroundWorkersCity),
+                        fit: BoxFit.cover,
+                        alignment: Alignment.center,
+                        colorFilter: ColorFilter.mode(
+                          AppColors.deep.withValues(alpha: 0.72),
+                          BlendMode.srcOver,
+                        ),
+                      ),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
+                      border: Border(
+                        top: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.10),
+                        ),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          blurRadius: 26,
+                          color: Colors.black.withValues(alpha: 0.28),
+                          offset: const Offset(0, -8),
+                        )
+                      ],
+                    ),
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: jobs.length,
+                      itemBuilder: (context, index) {
+                        return buildJobCard(jobs[index]);
                       },
                     ),
                   ),
-                ],
-              ),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Container(
-                  height: 220,
-                  decoration: BoxDecoration(
-                    color: AppColors.deep.withValues(alpha: 0.96),
-                    image: DecorationImage(
-                      image: const AssetImage(AppAssets.backgroundWorkersCity),
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                      colorFilter: ColorFilter.mode(
-                        AppColors.deep.withValues(alpha: 0.72),
-                        BlendMode.srcOver,
-                      ),
-                    ),
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(20),
-                    ),
-                    border: Border(
-                      top: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.10),
-                      ),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        blurRadius: 26,
-                        color: Colors.black.withValues(alpha: 0.28),
-                        offset: const Offset(0, -8),
-                      )
-                    ],
-                  ),
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: jobs.length,
-                    itemBuilder: (context, index) {
-                      return buildJobCard(jobs[index]);
-                    },
-                  ),
-                ),
-              )
-            ],
+                )
+              ],
+            ),
           );
         },
       ),

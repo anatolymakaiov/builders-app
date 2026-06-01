@@ -132,25 +132,30 @@ class _QuietTileImageProvider extends ImageProvider<_QuietTileImageProvider> {
     _QuietTileImageProvider key,
     ImageDecoderCallback decode,
   ) async {
-    Uint8List bytes;
-    try {
-      bytes = await client.readBytes(Uri.parse(key.url), headers: key.headers);
-    } catch (_) {
-      final fallback = key.fallbackUrl;
-      if (fallback == null || fallback.isEmpty) {
-        bytes = _transparentPng;
-      } else {
+    final urls = [
+      key.url,
+      if (key.fallbackUrl != null && key.fallbackUrl!.isNotEmpty)
+        key.fallbackUrl!,
+    ];
+
+    for (var attempt = 0; attempt < 3; attempt += 1) {
+      for (final url in urls) {
         try {
-          bytes = await client.readBytes(
-            Uri.parse(fallback),
+          final bytes = await client.readBytes(
+            Uri.parse(url),
             headers: key.headers,
           );
+          return decode(await ImmutableBuffer.fromUint8List(bytes));
         } catch (_) {
-          bytes = _transparentPng;
+          // Initial tile requests may be cancelled while the map settles.
+          // Retry before falling back so the first viewport is not cached blank.
         }
       }
+
+      await Future<void>.delayed(Duration(milliseconds: 180 * (attempt + 1)));
     }
-    return decode(await ImmutableBuffer.fromUint8List(bytes));
+
+    return decode(await ImmutableBuffer.fromUint8List(_transparentPng));
   }
 
   @override

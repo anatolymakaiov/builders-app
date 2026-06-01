@@ -299,6 +299,7 @@ class _MapScreenState extends State<MapScreen> {
         initialZoom: 10,
         minZoom: 3,
         maxZoom: 18,
+        backgroundColor: Colors.transparent,
         interactionOptions: const InteractionOptions(
           flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
         ),
@@ -545,52 +546,61 @@ class _MapScreenState extends State<MapScreen> {
         ? LatLng(userLat!, userLng!)
         : const LatLng(53.4808, -2.2426);
 
-    return Stack(
-      children: [
-        buildMap(center, jobMarkers, userMarker),
-        if (showSearchButton)
-          Positioned(
-            top: 10,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    searchBounds = mapBounds;
-                    showSearchButton = false;
-                  });
-                },
-                child: const Text("Search this area"),
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage(AppAssets.backgroundForkliftSite),
+          fit: BoxFit.cover,
+          alignment: Alignment.center,
+        ),
+      ),
+      child: Stack(
+        children: [
+          buildMap(center, jobMarkers, userMarker),
+          if (showSearchButton)
+            Positioned(
+              top: 10,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      searchBounds = mapBounds;
+                      showSearchButton = false;
+                    });
+                  },
+                  child: const Text("Search this area"),
+                ),
               ),
             ),
-          ),
-        buildBottomSheet(visibleJobs),
-        if (!isEmployer)
-          Positioned(
-            top: 10,
-            right: 0,
-            child: Row(
-              children: [
-                FloatingActionButton(
-                  heroTag: "location",
-                  mini: true,
-                  onPressed: () {
-                    if (userLat == null || userLng == null) return;
-                    setState(() {
-                      showUserLocationMarker = true;
-                    });
-                    mapController.move(
-                      LatLng(userLat!, userLng!),
-                      15,
-                    );
-                  },
-                  child: const Icon(Icons.my_location),
-                ),
-              ],
+          buildBottomSheet(visibleJobs),
+          if (!isEmployer)
+            Positioned(
+              top: 10,
+              right: 0,
+              child: Row(
+                children: [
+                  FloatingActionButton(
+                    heroTag: "location",
+                    mini: true,
+                    onPressed: () {
+                      if (userLat == null || userLng == null) return;
+                      setState(() {
+                        showUserLocationMarker = true;
+                      });
+                      mapController.move(
+                        LatLng(userLat!, userLng!),
+                        15,
+                      );
+                    },
+                    child: const Icon(Icons.my_location),
+                  ),
+                ],
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 
