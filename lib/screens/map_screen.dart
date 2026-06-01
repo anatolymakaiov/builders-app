@@ -11,7 +11,6 @@ import '../services/job_repository.dart';
 import '../services/job_taxonomy_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/job_card.dart';
-import '../widgets/quiet_tile_provider.dart';
 import '../widgets/smart_job_search.dart';
 
 class MapScreen extends StatefulWidget {
@@ -321,7 +320,6 @@ class _MapScreenState extends State<MapScreen> {
           fallbackUrl:
               "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
           userAgentPackageName: "builder.jobs.app",
-          tileProvider: QuietTileProvider(),
         ),
         MarkerClusterLayerWidget(
           options: MarkerClusterLayerOptions(
