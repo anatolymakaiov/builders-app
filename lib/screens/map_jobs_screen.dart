@@ -149,6 +149,15 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
                   height: 220,
                   decoration: BoxDecoration(
                     color: AppColors.deep.withValues(alpha: 0.96),
+                    image: DecorationImage(
+                      image: const AssetImage(AppAssets.backgroundWorkersCity),
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                      colorFilter: ColorFilter.mode(
+                        AppColors.deep.withValues(alpha: 0.72),
+                        BlendMode.srcOver,
+                      ),
+                    ),
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(20),
                     ),

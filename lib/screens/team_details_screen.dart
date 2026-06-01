@@ -607,151 +607,154 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
         final canEdit = canEditTeam(team, members);
         final isMember = isTeamMember(members);
 
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text("Team"),
-            actions: [
-              if (canEdit)
-                IconButton(
-                  tooltip: "Add member",
-                  icon: const Icon(Icons.person_add_alt),
-                  onPressed: addingMember ? null : () => addMember(members),
-                ),
-              if (canEdit)
-                IconButton(
-                  tooltip: "Delete team",
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: deletingTeam ? null : deleteTeam,
-                ),
-            ],
-          ),
-          body: StroykaScreenBody(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                GestureDetector(
-                  onTap: canEdit ? updateTeamAvatar : null,
-                  child: StroykaProfileHeader(
-                    title: name,
-                    subtitle: "${members.length} members",
-                    avatarUrl: avatar?.toString(),
-                    fallbackIcon: Icons.groups,
-                    margin: EdgeInsets.zero,
+        return StroykaBackground(
+          asset: AppAssets.backgroundCranesYard,
+          child: Scaffold(
+            appBar: AppBar(
+              title: const Text("Team"),
+              actions: [
+                if (canEdit)
+                  IconButton(
+                    tooltip: "Add member",
+                    icon: const Icon(Icons.person_add_alt),
+                    onPressed: addingMember ? null : () => addMember(members),
                   ),
-                ),
-                const SizedBox(height: 18),
-                if (widget.showInternalChat) ...[
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: members.isEmpty
-                          ? null
-                          : () => openInternalChat(name, members),
-                      icon: const Icon(Icons.forum),
-                      label: const Text("Team chat"),
-                    ),
+                if (canEdit)
+                  IconButton(
+                    tooltip: "Delete team",
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: deletingTeam ? null : deleteTeam,
                   ),
-                  const SizedBox(height: 18),
-                ],
-                if (canEdit || isMember) ...[
-                  StroykaSurface(
-                    padding: const EdgeInsets.all(14),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red),
-                        ),
-                        onPressed: canEdit
-                            ? (deletingTeam ? null : deleteTeam)
-                            : () => leaveTeam(team, members),
-                        icon: Icon(
-                          canEdit ? Icons.delete_outline : Icons.logout,
-                        ),
-                        label: Text(canEdit ? "Delete team" : "Leave team"),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                ],
-                StroykaSurface(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              "Team description",
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          if (canEdit)
-                            IconButton(
-                              tooltip: "Edit description",
-                              icon: const Icon(Icons.edit),
-                              onPressed: () =>
-                                  updateTeamDescription(description),
-                            ),
-                        ],
-                      ),
-                      if (description.isEmpty)
-                        const Text("No team description yet")
-                      else
-                        Text(description),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                StroykaSurface(
-                  padding: const EdgeInsets.all(18),
-                  child: buildTeamPortfolio(canEdit),
-                ),
-                const SizedBox(height: 24),
-                StroykaSurface(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              "Team members",
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          if (canEdit)
-                            TextButton.icon(
-                              onPressed: addingMember
-                                  ? null
-                                  : () => addMember(members),
-                              icon: const Icon(Icons.person_add_alt),
-                              label: const Text("Add"),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      if (members.isEmpty)
-                        const Text("No members yet")
-                      else
-                        ...members.map((memberId) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: buildMemberCard(
-                              context,
-                              memberId,
-                              canEdit && memberId != currentUserId,
-                              memberId == team["ownerId"] ||
-                                  memberId == team["createdBy"],
-                            ),
-                          );
-                        }),
-                    ],
-                  ),
-                ),
               ],
+            ),
+            body: StroykaScreenBody(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  GestureDetector(
+                    onTap: canEdit ? updateTeamAvatar : null,
+                    child: StroykaProfileHeader(
+                      title: name,
+                      subtitle: "${members.length} members",
+                      avatarUrl: avatar?.toString(),
+                      fallbackIcon: Icons.groups,
+                      margin: EdgeInsets.zero,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  if (widget.showInternalChat) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: members.isEmpty
+                            ? null
+                            : () => openInternalChat(name, members),
+                        icon: const Icon(Icons.forum),
+                        label: const Text("Team chat"),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                  ],
+                  if (canEdit || isMember) ...[
+                    StroykaSurface(
+                      padding: const EdgeInsets.all(14),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                          ),
+                          onPressed: canEdit
+                              ? (deletingTeam ? null : deleteTeam)
+                              : () => leaveTeam(team, members),
+                          icon: Icon(
+                            canEdit ? Icons.delete_outline : Icons.logout,
+                          ),
+                          label: Text(canEdit ? "Delete team" : "Leave team"),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                  ],
+                  StroykaSurface(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                "Team description",
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            if (canEdit)
+                              IconButton(
+                                tooltip: "Edit description",
+                                icon: const Icon(Icons.edit),
+                                onPressed: () =>
+                                    updateTeamDescription(description),
+                              ),
+                          ],
+                        ),
+                        if (description.isEmpty)
+                          const Text("No team description yet")
+                        else
+                          Text(description),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  StroykaSurface(
+                    padding: const EdgeInsets.all(18),
+                    child: buildTeamPortfolio(canEdit),
+                  ),
+                  const SizedBox(height: 24),
+                  StroykaSurface(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                "Team members",
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            if (canEdit)
+                              TextButton.icon(
+                                onPressed: addingMember
+                                    ? null
+                                    : () => addMember(members),
+                                icon: const Icon(Icons.person_add_alt),
+                                label: const Text("Add"),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        if (members.isEmpty)
+                          const Text("No members yet")
+                        else
+                          ...members.map((memberId) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: buildMemberCard(
+                                context,
+                                memberId,
+                                canEdit && memberId != currentUserId,
+                                memberId == team["ownerId"] ||
+                                    memberId == team["createdBy"],
+                              ),
+                            );
+                          }),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );

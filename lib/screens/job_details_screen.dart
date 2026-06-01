@@ -2445,54 +2445,58 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }) {
     return DefaultTabController(
       length: hasOffer ? 4 : 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text("Job"),
-          actions: [
-            IconButton(
-              tooltip: "Report job",
-              icon: const Icon(Icons.flag_outlined),
-              onPressed: () => ReportService.showReportDialog(
-                context,
-                type: "job",
-                againstUserId: widget.job.ownerId,
-                jobId: widget.job.id,
-                applicationId: widget.applicationId,
-              ),
-            ),
-          ],
-        ),
-        body: StroykaScreenBody(
-          child: Column(
-            children: [
-              StroykaTabBar(
-                margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                labels: [
-                  if (hasOffer) "Offer",
-                  "Info",
-                  "Photos",
-                  "About company",
-                ],
-              ),
-              buildWorkerJobActionHeader(),
-              Expanded(
-                child: TabBarView(
-                  children: [
-                    if (hasOffer && appData != null) buildYourOfferTab(appData),
-                    buildInfoTab(),
-                    buildPhotosTab(),
-                    buildCompanyTab(),
-                  ],
+      child: StroykaBackground(
+        asset: AppAssets.backgroundForkliftSite,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text("Job"),
+            actions: [
+              IconButton(
+                tooltip: "Report job",
+                icon: const Icon(Icons.flag_outlined),
+                onPressed: () => ReportService.showReportDialog(
+                  context,
+                  type: "job",
+                  againstUserId: widget.job.ownerId,
+                  jobId: widget.job.id,
+                  applicationId: widget.applicationId,
                 ),
               ),
             ],
           ),
+          body: StroykaScreenBody(
+            child: Column(
+              children: [
+                StroykaTabBar(
+                  margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                  labels: [
+                    if (hasOffer) "Offer",
+                    "Info",
+                    "Photos",
+                    "About company",
+                  ],
+                ),
+                buildWorkerJobActionHeader(),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      if (hasOffer && appData != null)
+                        buildYourOfferTab(appData),
+                      buildInfoTab(),
+                      buildPhotosTab(),
+                      buildCompanyTab(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          bottomNavigationBar: userId == widget.job.ownerId
+              ? SafeArea(
+                  child: buildActionPanel(),
+                )
+              : null,
         ),
-        bottomNavigationBar: userId == widget.job.ownerId
-            ? SafeArea(
-                child: buildActionPanel(),
-              )
-            : null,
       ),
     );
   }

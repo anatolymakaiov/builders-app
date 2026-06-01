@@ -9,7 +9,7 @@ class StroykaBackground extends StatelessWidget {
   const StroykaBackground({
     super.key,
     required this.child,
-    this.asset = "assets/branding/bg_dark_workspace.jpg",
+    this.asset = AppAssets.backgroundCranesYard,
   });
 
   @override

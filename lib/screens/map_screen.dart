@@ -368,6 +368,15 @@ class _MapScreenState extends State<MapScreen> {
         return Container(
           decoration: BoxDecoration(
             color: AppColors.deep.withValues(alpha: 0.96),
+            image: DecorationImage(
+              image: const AssetImage(AppAssets.backgroundForkliftSite),
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+              colorFilter: ColorFilter.mode(
+                AppColors.deep.withValues(alpha: 0.72),
+                BlendMode.srcOver,
+              ),
+            ),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             border: Border(
               top: BorderSide(

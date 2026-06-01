@@ -996,472 +996,477 @@ class ApplicationDetailsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text("Application")),
-      body: StroykaScreenBody(
-        child: StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection("applications")
-              .doc(applicationId)
-              .snapshots(),
-          builder: (context, applicationSnapshot) {
-            if (!applicationSnapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            if (!applicationSnapshot.data!.exists ||
-                applicationSnapshot.data!.data() == null) {
-              return const Center(child: Text("Application not found"));
-            }
-
-            final liveData =
-                applicationSnapshot.data!.data() as Map<String, dynamic>;
-
-            if (currentUserId != null) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                ApplicationActivityService.markRead(
-                  applicationId,
-                  currentUserId,
-                );
-                NotificationService().markApplicationNotificationsRead(
-                  userId: currentUserId,
-                  applicationId: applicationId,
-                );
-              });
-            }
-
-            final isTeam = (liveData["type"] ?? "single") == "team";
-            final workerId = liveData["workerId"] ??
-                liveData["userId"] ??
-                (liveData["members"] != null && liveData["members"].isNotEmpty
-                    ? liveData["members"][0]
-                    : null);
-            final employerId = liveData["employerId"]?.toString();
-            final isEmployerViewer =
-                currentUserId != null && currentUserId == employerId;
-            if (isEmployerViewer && liveData["viewedByEmployer"] != true) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                ApplicationActivityService.markViewedByEmployer(applicationId);
-              });
-            }
-            final status = canonicalStatus(liveData["status"]);
-            final selectedMembers = <String>{};
-
-            Widget statusBadge({required bool forEmployer}) {
-              Color color;
-              switch (status) {
-                case "negotiation":
-                  color = AppColors.purple;
-                  break;
-                case "offer_sent":
-                  color = AppColors.greenDark;
-                  break;
-                case "offer_withdrawn":
-                  color = AppColors.warning;
-                  break;
-                case "offer_accepted":
-                case "accepted":
-                  color = AppColors.success;
-                  break;
-                case "offer_rejected":
-                  color = AppColors.danger;
-                  break;
-                case "rejected":
-                  color = AppColors.danger;
-                  break;
-                case "withdrawn":
-                  color = AppColors.muted;
-                  break;
-                default:
-                  color = AppColors.greenDark;
+    return StroykaBackground(
+      asset: AppAssets.backgroundHighriseSunset,
+      child: Scaffold(
+        appBar: AppBar(title: const Text("Application")),
+        body: StroykaScreenBody(
+          child: StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection("applications")
+                .doc(applicationId)
+                .snapshots(),
+            builder: (context, applicationSnapshot) {
+              if (!applicationSnapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
               }
 
-              final label = ApplicationStatusUtils.getStatusDisplayLabel(
-                status,
-                forEmployer ? "employer" : "worker",
-              );
-              return AppChip.status(label, color: color);
-            }
-
-            Future<void> setEmployerStatus(String nextStatus) async {
-              await ApplicationActivityService.updateStatus(
-                applicationId: applicationId,
-                status: nextStatus,
-                unreadFor: ApplicationActivityService.workerRecipients(
-                  liveData,
-                ),
-              );
-
-              await NotificationService().notifyApplicationStatus(
-                applicationId: applicationId,
-                applicationData: liveData,
-                status: nextStatus,
-              );
-            }
-
-            Future<void> startNegotiationAndOpenChat() async {
-              await setEmployerStatus("negotiation");
-              if (!context.mounted) return;
-              await openChat(context, liveData);
-            }
-
-            Future<void> reopenRejectedApplication() async {
-              await ApplicationActivityService.updateStatus(
-                applicationId: applicationId,
-                status: "negotiation",
-                unreadFor: ApplicationActivityService.workerRecipients(
-                  liveData,
-                ),
-              );
-
-              await NotificationService().notifyApplicationReopened(
-                applicationId: applicationId,
-                applicationData: liveData,
-              );
-            }
-
-            List<
-                ({
-                  bool danger,
-                  IconData icon,
-                  String label,
-                  Future<void> Function() run
-                })> employerMenuActions() {
-              final canRestartNegotiation = status == "pending" ||
-                  status == "offer_withdrawn" ||
-                  status == "offer_rejected";
-
-              if (status == "rejected") {
-                return [
-                  (
-                    danger: false,
-                    icon: Icons.chat_bubble_outline,
-                    label: "Message",
-                    run: () => openChat(context, liveData),
-                  ),
-                  (
-                    danger: false,
-                    icon: Icons.replay_outlined,
-                    label: "Reopen Application",
-                    run: reopenRejectedApplication,
-                  ),
-                ];
+              if (!applicationSnapshot.data!.exists ||
+                  applicationSnapshot.data!.data() == null) {
+                return const Center(child: Text("Application not found"));
               }
 
-              if (canRestartNegotiation) {
-                return [
-                  (
-                    danger: false,
-                    icon: Icons.forum_outlined,
-                    label: "Message / Negotiation",
-                    run: startNegotiationAndOpenChat,
-                  ),
-                  (
-                    danger: false,
-                    icon: Icons.local_offer_outlined,
-                    label: "Make Offer",
-                    run: () => openOfferDialog(context, liveData),
-                  ),
-                  (
-                    danger: true,
-                    icon: Icons.close,
-                    label: "Reject",
-                    run: () => setEmployerStatus("rejected"),
-                  ),
-                ];
-              }
+              final liveData =
+                  applicationSnapshot.data!.data() as Map<String, dynamic>;
 
-              if (status == "negotiation") {
-                return [
-                  (
-                    danger: false,
-                    icon: Icons.chat_bubble_outline,
-                    label: "Message",
-                    run: () => openChat(context, liveData),
-                  ),
-                  (
-                    danger: false,
-                    icon: Icons.local_offer_outlined,
-                    label: "Make Offer",
-                    run: () => openOfferDialog(context, liveData),
-                  ),
-                  (
-                    danger: true,
-                    icon: Icons.close,
-                    label: "Reject",
-                    run: () => setEmployerStatus("rejected"),
-                  ),
-                ];
-              }
-
-              if (status == "offer_sent") {
-                return [
-                  (
-                    danger: false,
-                    icon: Icons.chat_bubble_outline,
-                    label: "Message",
-                    run: () => openChat(context, liveData),
-                  ),
-                  (
-                    danger: true,
-                    icon: Icons.undo,
-                    label: "Withdraw Offer",
-                    run: () => setEmployerStatus("offer_withdrawn"),
-                  ),
-                ];
-              }
-
-              if (status == "offer_accepted" || status == "accepted") {
-                return [
-                  (
-                    danger: false,
-                    icon: Icons.chat_bubble_outline,
-                    label: "Message",
-                    run: () => openChat(context, liveData),
-                  ),
-                  (
-                    danger: false,
-                    icon: Icons.calendar_month_outlined,
-                    label: "Add to Calendar",
-                    run: () => addEmployerOfferToCalendar(context, liveData),
-                  ),
-                ];
-              }
-
-              return [];
-            }
-
-            List<
-                ({
-                  bool danger,
-                  IconData icon,
-                  String label,
-                  Future<void> Function() run
-                })> workerMenuActions() {
-              if (status == "pending") {
-                return [
-                  (
-                    danger: false,
-                    icon: Icons.undo,
-                    label: "Withdraw Application",
-                    run: () => withdrawWorkerApplication(context),
-                  ),
-                ];
-              }
-
-              if (status == "negotiation") {
-                return [
-                  (
-                    danger: false,
-                    icon: Icons.chat_bubble_outline,
-                    label: "Message",
-                    run: () => openChat(context, liveData),
-                  ),
-                ];
-              }
-
-              if (status == "offer_sent") {
-                return [
-                  (
-                    danger: false,
-                    icon: Icons.check_circle_outline,
-                    label: "Accept Offer",
-                    run: () => acceptOfferFromWorker(
-                          context,
-                          liveData,
-                        ),
-                  ),
-                  (
-                    danger: true,
-                    icon: Icons.cancel_outlined,
-                    label: "Reject Offer",
-                    run: () => updateWorkerActionStatus(
-                          status: "offer_rejected",
-                          source: liveData,
-                        ),
-                  ),
-                ];
-              }
-
-              if (status == "offer_accepted" ||
-                  status == "accepted" ||
-                  status == "offer_rejected" ||
-                  status == "offer_withdrawn" ||
-                  status == "rejected" ||
-                  status == "withdrawn") {
-                return [
-                  (
-                    danger: false,
-                    icon: Icons.chat_bubble_outline,
-                    label: "Message",
-                    run: () => openChat(context, liveData),
-                  ),
-                ];
-              }
-
-              return [];
-            }
-
-            Widget headerControls({required bool forEmployer}) {
-              final actions =
-                  forEmployer ? employerMenuActions() : workerMenuActions();
-
-              return Row(
-                children: [
-                  statusBadge(forEmployer: forEmployer),
-                  const Spacer(),
-                  if (actions.isEmpty)
-                    const IconButton(
-                      tooltip: "No actions available",
-                      onPressed: null,
-                      icon: Icon(Icons.more_vert),
-                      color: AppColors.ink,
-                    )
-                  else
-                    Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.surface.withValues(alpha: 0.88),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color:
-                              AppColors.blueprintLine.withValues(alpha: 0.36),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.glow.withValues(alpha: 0.12),
-                            blurRadius: 12,
-                          ),
-                        ],
-                      ),
-                      child: StroykaPopupMenuButton<int>(
-                        tooltip: "Actions",
-                        actions: [
-                          for (var i = 0; i < actions.length; i++)
-                            StroykaMenuAction<int>(
-                              value: i,
-                              label: actions[i].label,
-                              icon: actions[i].icon,
-                              danger: actions[i].danger,
-                            ),
-                        ],
-                        onSelected: (index) async {
-                          await actions[index].run();
-                        },
-                      ),
-                    ),
-                ],
-              );
-            }
-
-            Widget profileBody(Map<String, dynamic> user) {
-              final name = user["name"] ?? "Worker";
-              final trade = user["trade"] ?? "";
-              final bio = user["bio"] ?? "";
-              final location = user["location"] ?? "";
-              final photo = user["photo"];
-              final phone = user["phone"];
-              final experience = user["experience"];
-              final experienceDuration = experienceDurationText(user);
-              final permits = user["permits"];
-              final qualifications = user["qualifications"];
-              final certifications = textFromListOrString(
-                user["certificationsText"] ?? user["certifications"],
-              );
-              final education = user["education"];
-              final previousWork = user["previousWork"];
-              final references = user["references"];
-
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: StroykaSurface(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (!isTeam) ...[
-                        applicationHeaderCard(
-                          headerControls:
-                              headerControls(forEmployer: isEmployerViewer),
-                          avatar: CircleAvatar(
-                            radius: 44,
-                            backgroundColor: Colors.grey.shade300,
-                            backgroundImage:
-                                photo != null ? NetworkImage(photo) : null,
-                            child: photo == null
-                                ? const Icon(Icons.person, size: 38)
-                                : null,
-                          ),
-                          title: name.toString(),
-                          subtitle: trade.toString(),
-                        ),
-                        const SizedBox(height: 30),
-                        buildWorkerPhoneSection(phone),
-                        buildWorkerInfoSection("Location", location),
-                        buildWorkerInfoSection("About worker", bio),
-                        buildWorkerInfoSection(
-                            "Work experience", experienceDuration),
-                        buildWorkerInfoSection(
-                            "Experience details", experience),
-                        buildWorkerInfoSection("Permits / licences", permits),
-                        buildWorkerInfoSection(
-                            "Qualifications", qualifications),
-                        buildWorkerInfoSection(
-                            "Certifications", certifications),
-                        buildWorkerInfoSection(
-                            "Education (optional)", education),
-                        buildWorkerInfoSection("Previous work", previousWork),
-                        buildReferencesSection(references),
-                      ],
-                      if (isTeam)
-                        buildTeamProfile(
-                          context,
-                          selectedMembers,
-                          liveData,
-                          headerControls(forEmployer: isEmployerViewer),
-                        )
-                      else
-                        buildPortfolioGallery(workerId.toString()),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            if (workerId == null) {
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: StroykaSurface(
-                  padding: const EdgeInsets.all(18),
-                  child: headerControls(forEmployer: isEmployerViewer),
-                ),
-              );
-            }
-
-            return StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection("users")
-                  .doc(workerId)
-                  .snapshots(),
-              builder: (context, userSnapshot) {
-                if (!userSnapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (!userSnapshot.data!.exists) {
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: StroykaSurface(
-                      padding: const EdgeInsets.all(18),
-                      child: headerControls(forEmployer: isEmployerViewer),
-                    ),
+              if (currentUserId != null) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  ApplicationActivityService.markRead(
+                    applicationId,
+                    currentUserId,
                   );
+                  NotificationService().markApplicationNotificationsRead(
+                    userId: currentUserId,
+                    applicationId: applicationId,
+                  );
+                });
+              }
+
+              final isTeam = (liveData["type"] ?? "single") == "team";
+              final workerId = liveData["workerId"] ??
+                  liveData["userId"] ??
+                  (liveData["members"] != null && liveData["members"].isNotEmpty
+                      ? liveData["members"][0]
+                      : null);
+              final employerId = liveData["employerId"]?.toString();
+              final isEmployerViewer =
+                  currentUserId != null && currentUserId == employerId;
+              if (isEmployerViewer && liveData["viewedByEmployer"] != true) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  ApplicationActivityService.markViewedByEmployer(
+                      applicationId);
+                });
+              }
+              final status = canonicalStatus(liveData["status"]);
+              final selectedMembers = <String>{};
+
+              Widget statusBadge({required bool forEmployer}) {
+                Color color;
+                switch (status) {
+                  case "negotiation":
+                    color = AppColors.purple;
+                    break;
+                  case "offer_sent":
+                    color = AppColors.greenDark;
+                    break;
+                  case "offer_withdrawn":
+                    color = AppColors.warning;
+                    break;
+                  case "offer_accepted":
+                  case "accepted":
+                    color = AppColors.success;
+                    break;
+                  case "offer_rejected":
+                    color = AppColors.danger;
+                    break;
+                  case "rejected":
+                    color = AppColors.danger;
+                    break;
+                  case "withdrawn":
+                    color = AppColors.muted;
+                    break;
+                  default:
+                    color = AppColors.greenDark;
                 }
 
-                final user = userSnapshot.data!.data() as Map<String, dynamic>;
-                return profileBody(user);
-              },
-            );
-          },
+                final label = ApplicationStatusUtils.getStatusDisplayLabel(
+                  status,
+                  forEmployer ? "employer" : "worker",
+                );
+                return AppChip.status(label, color: color);
+              }
+
+              Future<void> setEmployerStatus(String nextStatus) async {
+                await ApplicationActivityService.updateStatus(
+                  applicationId: applicationId,
+                  status: nextStatus,
+                  unreadFor: ApplicationActivityService.workerRecipients(
+                    liveData,
+                  ),
+                );
+
+                await NotificationService().notifyApplicationStatus(
+                  applicationId: applicationId,
+                  applicationData: liveData,
+                  status: nextStatus,
+                );
+              }
+
+              Future<void> startNegotiationAndOpenChat() async {
+                await setEmployerStatus("negotiation");
+                if (!context.mounted) return;
+                await openChat(context, liveData);
+              }
+
+              Future<void> reopenRejectedApplication() async {
+                await ApplicationActivityService.updateStatus(
+                  applicationId: applicationId,
+                  status: "negotiation",
+                  unreadFor: ApplicationActivityService.workerRecipients(
+                    liveData,
+                  ),
+                );
+
+                await NotificationService().notifyApplicationReopened(
+                  applicationId: applicationId,
+                  applicationData: liveData,
+                );
+              }
+
+              List<
+                  ({
+                    bool danger,
+                    IconData icon,
+                    String label,
+                    Future<void> Function() run
+                  })> employerMenuActions() {
+                final canRestartNegotiation = status == "pending" ||
+                    status == "offer_withdrawn" ||
+                    status == "offer_rejected";
+
+                if (status == "rejected") {
+                  return [
+                    (
+                      danger: false,
+                      icon: Icons.chat_bubble_outline,
+                      label: "Message",
+                      run: () => openChat(context, liveData),
+                    ),
+                    (
+                      danger: false,
+                      icon: Icons.replay_outlined,
+                      label: "Reopen Application",
+                      run: reopenRejectedApplication,
+                    ),
+                  ];
+                }
+
+                if (canRestartNegotiation) {
+                  return [
+                    (
+                      danger: false,
+                      icon: Icons.forum_outlined,
+                      label: "Message / Negotiation",
+                      run: startNegotiationAndOpenChat,
+                    ),
+                    (
+                      danger: false,
+                      icon: Icons.local_offer_outlined,
+                      label: "Make Offer",
+                      run: () => openOfferDialog(context, liveData),
+                    ),
+                    (
+                      danger: true,
+                      icon: Icons.close,
+                      label: "Reject",
+                      run: () => setEmployerStatus("rejected"),
+                    ),
+                  ];
+                }
+
+                if (status == "negotiation") {
+                  return [
+                    (
+                      danger: false,
+                      icon: Icons.chat_bubble_outline,
+                      label: "Message",
+                      run: () => openChat(context, liveData),
+                    ),
+                    (
+                      danger: false,
+                      icon: Icons.local_offer_outlined,
+                      label: "Make Offer",
+                      run: () => openOfferDialog(context, liveData),
+                    ),
+                    (
+                      danger: true,
+                      icon: Icons.close,
+                      label: "Reject",
+                      run: () => setEmployerStatus("rejected"),
+                    ),
+                  ];
+                }
+
+                if (status == "offer_sent") {
+                  return [
+                    (
+                      danger: false,
+                      icon: Icons.chat_bubble_outline,
+                      label: "Message",
+                      run: () => openChat(context, liveData),
+                    ),
+                    (
+                      danger: true,
+                      icon: Icons.undo,
+                      label: "Withdraw Offer",
+                      run: () => setEmployerStatus("offer_withdrawn"),
+                    ),
+                  ];
+                }
+
+                if (status == "offer_accepted" || status == "accepted") {
+                  return [
+                    (
+                      danger: false,
+                      icon: Icons.chat_bubble_outline,
+                      label: "Message",
+                      run: () => openChat(context, liveData),
+                    ),
+                    (
+                      danger: false,
+                      icon: Icons.calendar_month_outlined,
+                      label: "Add to Calendar",
+                      run: () => addEmployerOfferToCalendar(context, liveData),
+                    ),
+                  ];
+                }
+
+                return [];
+              }
+
+              List<
+                  ({
+                    bool danger,
+                    IconData icon,
+                    String label,
+                    Future<void> Function() run
+                  })> workerMenuActions() {
+                if (status == "pending") {
+                  return [
+                    (
+                      danger: false,
+                      icon: Icons.undo,
+                      label: "Withdraw Application",
+                      run: () => withdrawWorkerApplication(context),
+                    ),
+                  ];
+                }
+
+                if (status == "negotiation") {
+                  return [
+                    (
+                      danger: false,
+                      icon: Icons.chat_bubble_outline,
+                      label: "Message",
+                      run: () => openChat(context, liveData),
+                    ),
+                  ];
+                }
+
+                if (status == "offer_sent") {
+                  return [
+                    (
+                      danger: false,
+                      icon: Icons.check_circle_outline,
+                      label: "Accept Offer",
+                      run: () => acceptOfferFromWorker(
+                            context,
+                            liveData,
+                          ),
+                    ),
+                    (
+                      danger: true,
+                      icon: Icons.cancel_outlined,
+                      label: "Reject Offer",
+                      run: () => updateWorkerActionStatus(
+                            status: "offer_rejected",
+                            source: liveData,
+                          ),
+                    ),
+                  ];
+                }
+
+                if (status == "offer_accepted" ||
+                    status == "accepted" ||
+                    status == "offer_rejected" ||
+                    status == "offer_withdrawn" ||
+                    status == "rejected" ||
+                    status == "withdrawn") {
+                  return [
+                    (
+                      danger: false,
+                      icon: Icons.chat_bubble_outline,
+                      label: "Message",
+                      run: () => openChat(context, liveData),
+                    ),
+                  ];
+                }
+
+                return [];
+              }
+
+              Widget headerControls({required bool forEmployer}) {
+                final actions =
+                    forEmployer ? employerMenuActions() : workerMenuActions();
+
+                return Row(
+                  children: [
+                    statusBadge(forEmployer: forEmployer),
+                    const Spacer(),
+                    if (actions.isEmpty)
+                      const IconButton(
+                        tooltip: "No actions available",
+                        onPressed: null,
+                        icon: Icon(Icons.more_vert),
+                        color: AppColors.ink,
+                      )
+                    else
+                      Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.surface.withValues(alpha: 0.88),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color:
+                                AppColors.blueprintLine.withValues(alpha: 0.36),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.glow.withValues(alpha: 0.12),
+                              blurRadius: 12,
+                            ),
+                          ],
+                        ),
+                        child: StroykaPopupMenuButton<int>(
+                          tooltip: "Actions",
+                          actions: [
+                            for (var i = 0; i < actions.length; i++)
+                              StroykaMenuAction<int>(
+                                value: i,
+                                label: actions[i].label,
+                                icon: actions[i].icon,
+                                danger: actions[i].danger,
+                              ),
+                          ],
+                          onSelected: (index) async {
+                            await actions[index].run();
+                          },
+                        ),
+                      ),
+                  ],
+                );
+              }
+
+              Widget profileBody(Map<String, dynamic> user) {
+                final name = user["name"] ?? "Worker";
+                final trade = user["trade"] ?? "";
+                final bio = user["bio"] ?? "";
+                final location = user["location"] ?? "";
+                final photo = user["photo"];
+                final phone = user["phone"];
+                final experience = user["experience"];
+                final experienceDuration = experienceDurationText(user);
+                final permits = user["permits"];
+                final qualifications = user["qualifications"];
+                final certifications = textFromListOrString(
+                  user["certificationsText"] ?? user["certifications"],
+                );
+                final education = user["education"];
+                final previousWork = user["previousWork"];
+                final references = user["references"];
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: StroykaSurface(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (!isTeam) ...[
+                          applicationHeaderCard(
+                            headerControls:
+                                headerControls(forEmployer: isEmployerViewer),
+                            avatar: CircleAvatar(
+                              radius: 44,
+                              backgroundColor: Colors.grey.shade300,
+                              backgroundImage:
+                                  photo != null ? NetworkImage(photo) : null,
+                              child: photo == null
+                                  ? const Icon(Icons.person, size: 38)
+                                  : null,
+                            ),
+                            title: name.toString(),
+                            subtitle: trade.toString(),
+                          ),
+                          const SizedBox(height: 30),
+                          buildWorkerPhoneSection(phone),
+                          buildWorkerInfoSection("Location", location),
+                          buildWorkerInfoSection("About worker", bio),
+                          buildWorkerInfoSection(
+                              "Work experience", experienceDuration),
+                          buildWorkerInfoSection(
+                              "Experience details", experience),
+                          buildWorkerInfoSection("Permits / licences", permits),
+                          buildWorkerInfoSection(
+                              "Qualifications", qualifications),
+                          buildWorkerInfoSection(
+                              "Certifications", certifications),
+                          buildWorkerInfoSection(
+                              "Education (optional)", education),
+                          buildWorkerInfoSection("Previous work", previousWork),
+                          buildReferencesSection(references),
+                        ],
+                        if (isTeam)
+                          buildTeamProfile(
+                            context,
+                            selectedMembers,
+                            liveData,
+                            headerControls(forEmployer: isEmployerViewer),
+                          )
+                        else
+                          buildPortfolioGallery(workerId.toString()),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              if (workerId == null) {
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: StroykaSurface(
+                    padding: const EdgeInsets.all(18),
+                    child: headerControls(forEmployer: isEmployerViewer),
+                  ),
+                );
+              }
+
+              return StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection("users")
+                    .doc(workerId)
+                    .snapshots(),
+                builder: (context, userSnapshot) {
+                  if (!userSnapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (!userSnapshot.data!.exists) {
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: StroykaSurface(
+                        padding: const EdgeInsets.all(18),
+                        child: headerControls(forEmployer: isEmployerViewer),
+                      ),
+                    );
+                  }
+
+                  final user =
+                      userSnapshot.data!.data() as Map<String, dynamic>;
+                  return profileBody(user);
+                },
+              );
+            },
+          ),
         ),
       ),
     );

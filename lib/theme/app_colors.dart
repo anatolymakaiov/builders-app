@@ -53,12 +53,19 @@ class AppColors {
 
 class AppAssets {
   static const logo = "assets/branding/stroyka_logo.svg";
+  static const backgroundCranesYard = "assets/branding/app_bg_cranes_yard.png";
+  static const backgroundWorkersCity =
+      "assets/branding/app_bg_workers_city.png";
+  static const backgroundForkliftSite =
+      "assets/branding/app_bg_forklift_site.png";
+  static const backgroundHighriseSunset =
+      "assets/branding/app_bg_highrise_sunset.png";
 
   static const darkBackgrounds = [
-    "assets/branding/app_bg_cranes_yard.png",
-    "assets/branding/app_bg_workers_city.png",
-    "assets/branding/app_bg_forklift_site.png",
-    "assets/branding/app_bg_highrise_sunset.png",
+    backgroundCranesYard,
+    backgroundWorkersCity,
+    backgroundForkliftSite,
+    backgroundHighriseSunset,
   ];
 
   static const lightTextures = [
