@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_preferences_service.dart';
+import 'password_recovery_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -22,9 +23,12 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+  final registrationNameController = TextEditingController();
+  final phoneController = TextEditingController();
   final authPreferences = AuthPreferencesService();
 
   String role = "worker";
+  String? selectedAction;
   bool isLogin = true;
   bool loading = false;
   bool usePasswordFallback = false;
@@ -45,12 +49,19 @@ class _LoginScreenState extends State<LoginScreen> {
     if (user != null && emailController.text.trim().isEmpty) {
       emailController.text = user.email ?? "";
     }
+    if (widget.sessionMode != null) {
+      selectedAction = widget.sessionMode == AuthPreferenceMethod.biometric
+          ? "biometric"
+          : "password";
+    }
   }
 
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
+    registrationNameController.dispose();
+    phoneController.dispose();
     super.dispose();
   }
 
@@ -120,11 +131,29 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         /// REGISTER
         final email = authPreferences.normalizeEmail(emailController.text);
+        final password = passwordController.text.trim();
+        final registrationName = registrationNameController.text.trim();
+        final phone = phoneController.text.trim();
+
+        if (registrationName.isEmpty ||
+            email.isEmpty ||
+            phone.isEmpty ||
+            password.isEmpty) {
+          if (mounted) setState(() => loading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Enter name, email, phone and password"),
+            ),
+          );
+          return;
+        }
+
         final result =
             await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: email,
-          password: passwordController.text.trim(),
+          password: password,
         );
+        await result.user?.sendEmailVerification();
 
         await FirebaseFirestore.instance
             .collection("users")
@@ -132,6 +161,12 @@ class _LoginScreenState extends State<LoginScreen> {
             .set({
           "role": role,
           "email": email,
+          "registrationName": registrationName,
+          "phone": phone,
+          "emailVerified": result.user?.emailVerified ?? false,
+          "phoneVerified": false,
+          "phoneVerificationRequired": false,
+          "phoneVerificationProviderConfigured": false,
           "legalAccepted": false,
           "onboardingLegalStepComplete": false,
           "profileComplete": false,
@@ -148,6 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
             "biometricLoginEnabled": false,
             "email": email,
             "emailVerified": result.user?.emailVerified ?? false,
+            "emailVerificationSentAt": FieldValue.serverTimestamp(),
             "updatedAt": FieldValue.serverTimestamp(),
           },
           "createdAt": FieldValue.serverTimestamp(),
@@ -162,6 +198,66 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
     setState(() => loading = false);
+  }
+
+  Future<void> openPasswordRecovery() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PasswordRecoveryScreen()),
+    );
+  }
+
+  Widget buildStartChoices() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        StroykaButton(
+          onPressed: () {
+            setState(() {
+              selectedAction = "password";
+              isLogin = true;
+              usePasswordFallback = true;
+            });
+          },
+          width: double.infinity,
+          child: const Text("Sign in with email and password"),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: hasValidSession
+              ? () {
+                  setState(() {
+                    selectedAction = "biometric";
+                    isLogin = true;
+                    usePasswordFallback = false;
+                  });
+                  enterWithBiometric();
+                }
+              : () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        "Biometric login is available after signing in and enabling it in Settings.",
+                      ),
+                    ),
+                  );
+                },
+          icon: const Icon(Icons.fingerprint),
+          label: const Text("Sign in with biometrics"),
+        ),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: () {
+            setState(() {
+              selectedAction = "register";
+              isLogin = false;
+              usePasswordFallback = true;
+            });
+          },
+          child: const Text("Register"),
+        ),
+      ],
+    );
   }
 
   @override
@@ -205,7 +301,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (showSessionGate) ...[
+                                  if (!showSessionGate &&
+                                      selectedAction == null) ...[
+                                    buildStartChoices(),
+                                  ] else if (showSessionGate) ...[
                                     Icon(
                                       widget.sessionMode ==
                                               AuthPreferenceMethod.biometric
@@ -231,6 +330,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                           color: AppColors.muted),
                                     ),
                                   ] else ...[
+                                    if (!isLogin) ...[
+                                      StroykaInputField(
+                                        controller: registrationNameController,
+                                        hintText: "First name / contact name",
+                                        prefixIcon: Icons.person_outline,
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
                                     StroykaInputField(
                                       controller: emailController,
                                       hintText: "Email",
@@ -245,6 +352,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                     if (!isLogin) ...[
                                       const SizedBox(height: 12),
+                                      StroykaInputField(
+                                        controller: phoneController,
+                                        hintText: "Phone",
+                                        prefixIcon: Icons.phone_outlined,
+                                      ),
+                                      const SizedBox(height: 12),
                                       StroykaDropdown(
                                         value: role,
                                         items: const ["worker", "employer"],
@@ -255,63 +368,73 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     ],
                                   ],
-                                  const SizedBox(height: 22),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: StroykaButton(
-                                      onPressed: loading
-                                          ? null
-                                          : showSessionGate
-                                              ? (widget.sessionMode ==
-                                                      AuthPreferenceMethod
-                                                          .biometric
-                                                  ? enterWithBiometric
-                                                  : enterWithSession)
-                                              : submit,
+                                  if (selectedAction != null ||
+                                      showSessionGate) ...[
+                                    const SizedBox(height: 22),
+                                    SizedBox(
                                       width: double.infinity,
-                                      child: loading
-                                          ? const SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                color: Colors.white,
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : Text(showSessionGate
-                                              ? (widget.sessionMode ==
-                                                      AuthPreferenceMethod
-                                                          .biometric
-                                                  ? "Use Face ID / Touch ID"
-                                                  : "Enter")
-                                              : isLogin
-                                                  ? "Sign in"
-                                                  : "Create account"),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  if (showSessionGate)
-                                    TextButton(
-                                      onPressed: () {
-                                        setState(
-                                            () => usePasswordFallback = true);
-                                      },
-                                      child: const Text("Use password instead"),
-                                    )
-                                  else
-                                    TextButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          isLogin = !isLogin;
-                                          usePasswordFallback = false;
-                                        });
-                                      },
-                                      child: Text(
-                                        isLogin
-                                            ? "No account? Create one"
-                                            : "Already have an account? Sign in",
+                                      child: StroykaButton(
+                                        onPressed: loading
+                                            ? null
+                                            : showSessionGate
+                                                ? (widget.sessionMode ==
+                                                        AuthPreferenceMethod
+                                                            .biometric
+                                                    ? enterWithBiometric
+                                                    : enterWithSession)
+                                                : submit,
+                                        width: double.infinity,
+                                        child: loading
+                                            ? const SizedBox(
+                                                width: 20,
+                                                height: 20,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  color: Colors.white,
+                                                  strokeWidth: 2,
+                                                ),
+                                              )
+                                            : Text(showSessionGate
+                                                ? (widget.sessionMode ==
+                                                        AuthPreferenceMethod
+                                                            .biometric
+                                                    ? "Use Face ID / Touch ID"
+                                                    : "Enter")
+                                                : isLogin
+                                                    ? "Sign in"
+                                                    : "Create account"),
                                       ),
                                     ),
+                                    const SizedBox(height: 8),
+                                    if (isLogin && !showSessionGate)
+                                      TextButton(
+                                        onPressed: openPasswordRecovery,
+                                        child: const Text("Forgot password?"),
+                                      ),
+                                    const SizedBox(height: 6),
+                                    if (showSessionGate)
+                                      TextButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            selectedAction = "password";
+                                            usePasswordFallback = true;
+                                          });
+                                        },
+                                        child:
+                                            const Text("Use password instead"),
+                                      )
+                                    else
+                                      TextButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            selectedAction = null;
+                                            isLogin = true;
+                                            usePasswordFallback = false;
+                                          });
+                                        },
+                                        child: const Text("Back"),
+                                      ),
+                                  ],
                                 ],
                               ),
                             ),

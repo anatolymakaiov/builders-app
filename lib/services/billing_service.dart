@@ -208,11 +208,30 @@ class BillingService {
     required Timestamp invoiceDate,
     required Timestamp dueDate,
   }) async {
-    final employerName =
-        (employerData["companyName"] ?? employerData["name"] ?? "Employer")
-            .toString();
-    final employerAddress =
-        (employerData["location"] ?? employerData["address"] ?? "").toString();
+    final billing = billingFromUserData(employerData);
+    final invoiceDetails = billing["invoiceDetails"] is Map
+        ? Map<String, dynamic>.from(billing["invoiceDetails"] as Map)
+        : employerData["invoiceDetails"] is Map
+            ? Map<String, dynamic>.from(employerData["invoiceDetails"] as Map)
+            : <String, dynamic>{};
+    final employerName = (invoiceDetails["legalCompanyName"] ??
+            employerData["companyName"] ??
+            employerData["name"] ??
+            "Employer")
+        .toString();
+    final tradingName = invoiceDetails["tradingName"]?.toString() ?? "";
+    final companyNumber =
+        invoiceDetails["companyRegistrationNumber"]?.toString() ?? "";
+    final employerAddress = (invoiceDetails["billingAddress"] ??
+            employerData["location"] ??
+            employerData["address"] ??
+            "")
+        .toString();
+    final registeredOffice =
+        invoiceDetails["registeredOfficeAddress"]?.toString() ?? "";
+    final vatNumber = invoiceDetails["vatNumber"]?.toString() ?? "";
+    final purchaseOrder =
+        invoiceDetails["purchaseOrderReference"]?.toString() ?? "";
     final pdf = pw.Document();
     final invoiceDateText = formatDate(invoiceDate);
     final dueDateText = formatDate(dueDate);
@@ -248,7 +267,17 @@ class BillingService {
               pw.Text("Customer",
                   style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
               pw.Text(employerName),
+              if (tradingName.trim().isNotEmpty)
+                pw.Text("Trading name: $tradingName"),
+              if (companyNumber.trim().isNotEmpty)
+                pw.Text("Company number: $companyNumber"),
               if (employerAddress.trim().isNotEmpty) pw.Text(employerAddress),
+              if (registeredOffice.trim().isNotEmpty)
+                pw.Text("Registered office: $registeredOffice"),
+              if (vatNumber.trim().isNotEmpty)
+                pw.Text("VAT number: $vatNumber"),
+              if (purchaseOrder.trim().isNotEmpty)
+                pw.Text("PO/reference: $purchaseOrder"),
               pw.SizedBox(height: 20),
               pw.Text("Description of service",
                   style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
@@ -485,6 +514,9 @@ class BillingService {
         currentStatus == "active" ? readInt(currentBilling["usedJobPosts"]) : 0;
     final activeUntil = activeUntilForPlan(planData);
     final selectedPlanName = planName(plan);
+    final invoiceDetails = currentBilling["invoiceDetails"] is Map
+        ? Map<String, dynamic>.from(currentBilling["invoiceDetails"] as Map)
+        : <String, dynamic>{};
 
     await firestore.runTransaction((transaction) async {
       final userRef = firestore.collection("users").doc(employerId);
@@ -499,6 +531,7 @@ class BillingService {
           {"billing": currentBilling},
         ),
         "billingEmailVerified": currentBilling["billingEmailVerified"] == true,
+        if (paymentMode == "manual_invoice") "invoiceDetails": invoiceDetails,
         "status": "pending",
         "createdAt": FieldValue.serverTimestamp(),
         "updatedAt": FieldValue.serverTimestamp(),
@@ -517,6 +550,8 @@ class BillingService {
             ),
             "billingEmailVerified":
                 currentBilling["billingEmailVerified"] == true,
+            if (paymentMode == "manual_invoice")
+              "invoiceDetails": invoiceDetails,
             "availableJobPosts": 0,
             "requestedJobPosts": availableJobPosts,
             "usedJobPosts": usedJobPosts,
@@ -563,6 +598,7 @@ class BillingService {
     };
 
     final reminder10Days = nextBillingDate.subtract(const Duration(days: 10));
+    final reminder5Days = nextBillingDate.subtract(const Duration(days: 5));
     final reminder2Days = nextBillingDate.subtract(const Duration(days: 2));
     final overdueCheck = nextBillingDate.add(const Duration(days: 1));
 
@@ -583,7 +619,18 @@ class BillingService {
         firestore.collection("billing_schedules").doc(),
         {
           ...scheduleBase,
-          "type": "manual_invoice_due_reminder",
+          "type": "manual_invoice_due_reminder_5_days",
+          "scheduledAt": Timestamp.fromDate(reminder5Days),
+          "dueDate": Timestamp.fromDate(nextBillingDate),
+          "emailDeliveryRequired": true,
+          "message": "Send a 5 day invoice payment reminder to $billingEmail.",
+        },
+      );
+      transaction.set(
+        firestore.collection("billing_schedules").doc(),
+        {
+          ...scheduleBase,
+          "type": "manual_invoice_due_reminder_2_days",
           "scheduledAt": Timestamp.fromDate(reminder2Days),
           "dueDate": Timestamp.fromDate(nextBillingDate),
           "emailDeliveryRequired": true,

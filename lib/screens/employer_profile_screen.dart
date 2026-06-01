@@ -424,6 +424,18 @@ class _BillingSection extends StatelessWidget {
     "card",
   ];
 
+  bool _hasManualInvoiceDetails(Map<String, dynamic> billing) {
+    final details = billing["invoiceDetails"] is Map
+        ? Map<String, dynamic>.from(billing["invoiceDetails"] as Map)
+        : <String, dynamic>{};
+    final legalName = details["legalCompanyName"]?.toString().trim() ?? "";
+    final billingAddress = details["billingAddress"]?.toString().trim() ?? "";
+    final contactName = details["billingContactName"]?.toString().trim() ?? "";
+    return legalName.isNotEmpty &&
+        billingAddress.isNotEmpty &&
+        contactName.isNotEmpty;
+  }
+
   Future<void> _choosePlan(
     BuildContext context,
     QueryDocumentSnapshot plan,
@@ -496,6 +508,18 @@ class _BillingSection extends StatelessWidget {
     );
 
     if (confirmedMode == null) return;
+    if (confirmedMode == "manual_invoice" &&
+        !_hasManualInvoiceDetails(billing)) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Add manual invoice company details in your company profile before requesting Manual Invoice billing.",
+          ),
+        ),
+      );
+      return;
+    }
 
     await BillingService().createPaymentRequest(
       employerId: employerId,

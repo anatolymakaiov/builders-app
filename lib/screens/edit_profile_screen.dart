@@ -46,6 +46,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// 🔥 NEW
   final websiteController = TextEditingController();
   final billingEmailController = TextEditingController();
+  final invoiceLegalCompanyNameController = TextEditingController();
+  final invoiceTradingNameController = TextEditingController();
+  final invoiceCompanyNumberController = TextEditingController();
+  final invoiceRegisteredOfficeController = TextEditingController();
+  final invoiceBillingAddressController = TextEditingController();
+  final invoiceBillingContactNameController = TextEditingController();
+  final invoiceVatNumberController = TextEditingController();
+  final invoicePurchaseOrderController = TextEditingController();
+  final invoicePaymentPhoneController = TextEditingController();
   final contactPersonController = TextEditingController();
   final companyGoalsController = TextEditingController();
   final companyAdvantagesController = TextEditingController();
@@ -72,6 +81,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool firstProfileCreation = false;
   bool legalAcceptedForCurrentVersion = false;
   bool billingEmailVerified = false;
+  bool sendingEmailVerification = false;
   String loadedBillingEmail = "";
 
   String get userId => FirebaseAuth.instance.currentUser!.uid;
@@ -80,6 +90,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     loadProfile();
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    phoneController.dispose();
+    nicknameController.dispose();
+    tradeController.dispose();
+    companyController.dispose();
+    bioController.dispose();
+    experienceController.dispose();
+    experienceYearsController.dispose();
+    experienceMonthsController.dispose();
+    permitsController.dispose();
+    qualificationsController.dispose();
+    certificationsController.dispose();
+    educationController.dispose();
+    previousWorkController.dispose();
+    rateController.dispose();
+    locationController.dispose();
+    websiteController.dispose();
+    billingEmailController.dispose();
+    invoiceLegalCompanyNameController.dispose();
+    invoiceTradingNameController.dispose();
+    invoiceCompanyNumberController.dispose();
+    invoiceRegisteredOfficeController.dispose();
+    invoiceBillingAddressController.dispose();
+    invoiceBillingContactNameController.dispose();
+    invoiceVatNumberController.dispose();
+    invoicePurchaseOrderController.dispose();
+    invoicePaymentPhoneController.dispose();
+    contactPersonController.dispose();
+    companyGoalsController.dispose();
+    companyAdvantagesController.dispose();
+    companyClientsController.dispose();
+    companyWhoWeAreController.dispose();
+    companyHistoryController.dispose();
+    super.dispose();
   }
 
   /// LOAD PROFILE
@@ -133,6 +181,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final billing = data["billing"] is Map
           ? Map<String, dynamic>.from(data["billing"] as Map)
           : <String, dynamic>{};
+      final invoiceDetails = billing["invoiceDetails"] is Map
+          ? Map<String, dynamic>.from(billing["invoiceDetails"] as Map)
+          : data["invoiceDetails"] is Map
+              ? Map<String, dynamic>.from(data["invoiceDetails"] as Map)
+              : <String, dynamic>{};
       loadedBillingEmail = (data["billingEmail"] ??
               billing["billingEmail"] ??
               data["email"] ??
@@ -142,6 +195,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
       billingEmailController.text = loadedBillingEmail;
       billingEmailVerified = data["billingEmailVerified"] == true ||
           billing["billingEmailVerified"] == true;
+      invoiceLegalCompanyNameController.text =
+          invoiceDetails["legalCompanyName"]?.toString() ??
+              data["companyName"]?.toString() ??
+              "";
+      invoiceTradingNameController.text =
+          invoiceDetails["tradingName"]?.toString() ?? "";
+      invoiceCompanyNumberController.text =
+          invoiceDetails["companyRegistrationNumber"]?.toString() ?? "";
+      invoiceRegisteredOfficeController.text =
+          invoiceDetails["registeredOfficeAddress"]?.toString() ?? "";
+      invoiceBillingAddressController.text =
+          invoiceDetails["billingAddress"]?.toString() ??
+              data["location"]?.toString() ??
+              "";
+      invoiceBillingContactNameController.text =
+          invoiceDetails["billingContactName"]?.toString() ?? "";
+      invoiceVatNumberController.text =
+          invoiceDetails["vatNumber"]?.toString() ?? "";
+      invoicePurchaseOrderController.text =
+          invoiceDetails["purchaseOrderReference"]?.toString() ?? "";
+      invoicePaymentPhoneController.text =
+          invoiceDetails["paymentContactPhone"]?.toString() ??
+              data["phone"]?.toString() ??
+              "";
       contactPersonController.text = data["contactPerson"] ?? "";
       companyGoalsController.text = data["companyGoals"] ?? "";
       companyAdvantagesController.text = data["companyAdvantages"] ?? "";
@@ -383,6 +460,108 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return "Photo upload failed. Please try again.";
   }
 
+  Future<void> sendEmailVerification() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || sendingEmailVerification) return;
+
+    setState(() => sendingEmailVerification = true);
+    try {
+      await user.reload();
+      final refreshed = FirebaseAuth.instance.currentUser ?? user;
+      if (refreshed.emailVerified) {
+        await FirebaseFirestore.instance.collection("users").doc(userId).set({
+          "emailVerified": true,
+          "emailVerifiedAt": FieldValue.serverTimestamp(),
+          if (role == "employer" &&
+              refreshed.email?.toLowerCase() ==
+                  billingEmailController.text.trim().toLowerCase()) ...{
+            "billingEmailVerified": true,
+            "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
+            "billing": {
+              "billingEmailVerified": true,
+              "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
+              "updatedAt": FieldValue.serverTimestamp(),
+            },
+          },
+        }, SetOptions(merge: true));
+        if (!mounted) return;
+        setState(() => billingEmailVerified = role == "employer"
+            ? refreshed.email?.toLowerCase() ==
+                billingEmailController.text.trim().toLowerCase()
+            : billingEmailVerified);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Email verified")),
+        );
+        return;
+      }
+
+      await refreshed.sendEmailVerification();
+      await FirebaseFirestore.instance.collection("users").doc(userId).set({
+        "emailVerificationSentAt": FieldValue.serverTimestamp(),
+        "authPreferences": {
+          "email": refreshed.email,
+          "emailVerified": false,
+          "emailVerificationSentAt": FieldValue.serverTimestamp(),
+          "updatedAt": FieldValue.serverTimestamp(),
+        },
+      }, SetOptions(merge: true));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Verification email sent")),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message ?? "Could not send verification email"),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => sendingEmailVerification = false);
+    }
+  }
+
+  Future<void> refreshEmailVerification() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    await user.reload();
+    final refreshed = FirebaseAuth.instance.currentUser ?? user;
+    final verified = refreshed.emailVerified;
+    final billingMatches = refreshed.email?.toLowerCase() ==
+        billingEmailController.text.trim().toLowerCase();
+
+    await FirebaseFirestore.instance.collection("users").doc(userId).set({
+      "emailVerified": verified,
+      if (verified) "emailVerifiedAt": FieldValue.serverTimestamp(),
+      "authPreferences": {
+        "email": refreshed.email,
+        "emailVerified": verified,
+        "updatedAt": FieldValue.serverTimestamp(),
+      },
+      if (role == "employer" && billingMatches) ...{
+        "billingEmailVerified": verified,
+        if (verified) "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
+        "billing": {
+          "billingEmailVerified": verified,
+          if (verified) "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
+          "updatedAt": FieldValue.serverTimestamp(),
+        },
+      },
+    }, SetOptions(merge: true));
+
+    if (!mounted) return;
+    setState(() {
+      if (role == "employer" && billingMatches) {
+        billingEmailVerified = verified;
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content:
+              Text(verified ? "Email verified" : "Email not verified yet")),
+    );
+  }
+
   Future<void> pickHeaderImage() async {
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
@@ -479,6 +658,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
 
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter phone number")),
+      );
+      return;
+    }
+
     final billingEmail = billingEmailController.text.trim();
     final validBillingEmail =
         RegExp(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").hasMatch(billingEmail);
@@ -555,6 +741,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final nextBillingEmailVerified = verifiedByAuth ||
             (billingEmailVerified &&
                 billingEmail.toLowerCase() == loadedBillingEmail.toLowerCase());
+        final invoiceDetails = {
+          "legalCompanyName": invoiceLegalCompanyNameController.text.trim(),
+          "tradingName": invoiceTradingNameController.text.trim(),
+          "companyRegistrationNumber":
+              invoiceCompanyNumberController.text.trim(),
+          "registeredOfficeAddress":
+              invoiceRegisteredOfficeController.text.trim(),
+          "billingAddress": invoiceBillingAddressController.text.trim(),
+          "billingContactName": invoiceBillingContactNameController.text.trim(),
+          "billingEmail": billingEmail,
+          "vatNumber": invoiceVatNumberController.text.trim(),
+          "purchaseOrderReference": invoicePurchaseOrderController.text.trim(),
+          "paymentContactPhone": invoicePaymentPhoneController.text.trim(),
+        };
         profileData.addAll({
           "companyName": companyName,
           "email": billingEmail,
@@ -568,8 +768,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             "billingEmailVerified": nextBillingEmailVerified,
             if (nextBillingEmailVerified)
               "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
+            "invoiceDetails": invoiceDetails,
             "updatedAt": FieldValue.serverTimestamp(),
           },
+          "invoiceDetails": invoiceDetails,
           "website": websiteController.text.trim(),
           "contactPerson": contactPersonController.text.trim(),
           "phones": cleanedPhones,
@@ -861,12 +1063,151 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget buildVerificationPanel() {
+    final authUser = FirebaseAuth.instance.currentUser;
+    final emailVerified = authUser?.emailVerified == true;
+    return StroykaSurface(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            "Verification",
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(
+                emailVerified ? Icons.verified : Icons.mark_email_unread,
+                color: emailVerified ? AppColors.success : AppColors.warning,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  emailVerified ? "Email verified" : "Email not verified",
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              TextButton(
+                onPressed: sendingEmailVerification
+                    ? null
+                    : (emailVerified
+                        ? refreshEmailVerification
+                        : sendEmailVerification),
+                child: Text(emailVerified ? "Refresh" : "Send link"),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Row(
+            children: [
+              Icon(
+                Icons.sms_failed_outlined,
+                color: AppColors.warning,
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "Phone verification prepared. SMS provider is not configured yet.",
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildInvoiceDetailsForm() {
+    if (role != "employer") return const SizedBox();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 18),
+        const Text(
+          "Manual invoice company details",
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          "Used for UK-style invoices if you choose Manual Invoice billing.",
+          style: TextStyle(color: AppColors.muted),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: invoiceLegalCompanyNameController,
+          decoration: const InputDecoration(labelText: "Legal company name"),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: invoiceTradingNameController,
+          decoration: const InputDecoration(
+            labelText: "Trading name if different",
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: invoiceCompanyNumberController,
+          decoration: const InputDecoration(
+            labelText: "Company registration number if Ltd",
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: invoiceRegisteredOfficeController,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: "Registered office address",
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: invoiceBillingAddressController,
+          maxLines: 2,
+          decoration: const InputDecoration(labelText: "Billing address"),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: invoiceBillingContactNameController,
+          decoration: const InputDecoration(labelText: "Billing contact name"),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: invoiceVatNumberController,
+          decoration: const InputDecoration(
+            labelText: "VAT number if VAT registered",
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: invoicePurchaseOrderController,
+          decoration: const InputDecoration(
+            labelText: "Purchase order / reference if applicable",
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: invoicePaymentPhoneController,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            labelText: "Payment contact phone",
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget buildForm() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         buildAvatar(),
         buildHeaderBackgroundPicker(),
+        buildVerificationPanel(),
         const SizedBox(height: 20),
 
         DropdownButtonFormField<String>(
@@ -1104,6 +1445,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
               helperText: "Invoices and billing notices will use this email.",
             ),
           ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(
+                billingEmailVerified ? Icons.verified : Icons.info_outline,
+                color: billingEmailVerified
+                    ? AppColors.success
+                    : AppColors.warning,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  billingEmailVerified
+                      ? "Billing email verified"
+                      : "Billing email must match a verified Firebase account email or be verified later.",
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          buildInvoiceDetailsForm(),
           const SizedBox(height: 12),
           TextField(
             controller: websiteController,
