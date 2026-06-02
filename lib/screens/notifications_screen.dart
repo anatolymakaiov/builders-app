@@ -14,8 +14,34 @@ import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/profile_hamburger_menu.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
+
+  Future<void> handleNotificationTap(
+    BuildContext context,
+    DocumentReference reference,
+    Map<String, dynamic> data,
+  ) {
+    return _NotificationsScreenState().handleNotificationTap(
+      context,
+      reference,
+      data,
+    );
+  }
+
+  void openNotificationDetails(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
+    _NotificationsScreenState().openNotificationDetails(context, data);
+  }
+
+  @override
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  final Set<String> expandedNotifications = {};
 
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
 
@@ -492,6 +518,201 @@ class NotificationsScreen extends StatelessWidget {
     openNotificationDetails(context, data);
   }
 
+  Future<void> expandNotification(
+    DocumentReference reference,
+    String notificationId,
+    Map<String, dynamic> data,
+  ) async {
+    final isExpanded = expandedNotifications.contains(notificationId);
+
+    setState(() {
+      if (isExpanded) {
+        expandedNotifications.remove(notificationId);
+      } else {
+        expandedNotifications.add(notificationId);
+      }
+    });
+
+    if (!isExpanded && data["read"] != true) {
+      await reference.set({
+        "read": true,
+        "readAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      final uid = userId;
+      if (uid != null) {
+        await NotificationService().syncUnreadBadgeCount(uid);
+      }
+    }
+  }
+
+  String notificationBody(Map<String, dynamic> data) {
+    return (data["body"] ?? data["message"] ?? "Tap to read")?.toString() ??
+        "Tap to read";
+  }
+
+  String notificationTimeLabel(dynamic value) {
+    DateTime? date;
+    if (value is Timestamp) {
+      date = value.toDate();
+    } else if (value is DateTime) {
+      date = value;
+    }
+    if (date == null) return "";
+
+    final now = DateTime.now();
+    final isToday =
+        now.year == date.year && now.month == date.month && now.day == date.day;
+    String two(int number) => number.toString().padLeft(2, "0");
+    if (isToday) return "${two(date.hour)}:${two(date.minute)}";
+    return "${two(date.day)}/${two(date.month)}";
+  }
+
+  Widget buildNotificationCard({
+    required BuildContext context,
+    required QueryDocumentSnapshot doc,
+    required Map<String, dynamic> data,
+  }) {
+    final read = data["read"] == true;
+    final type = data["type"]?.toString() ?? "";
+    final body = notificationBody(data);
+    final titleText = notificationTitle(data);
+    final isExpanded = expandedNotifications.contains(doc.id);
+    final timeLabel = notificationTimeLabel(data["createdAt"]);
+    final canAddCalendar =
+        (type == "work_start" || type == "offer" || type == "offer_accepted") &&
+            data["offer"] is Map;
+
+    return StroykaSurface(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      texture: read
+          ? "assets/branding/texture_light_triangles.jpg"
+          : "assets/branding/texture_light_dots.jpg",
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 190),
+        curve: Curves.easeOutCubic,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => expandNotification(doc.reference, doc.id, data),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!read)
+                      Container(
+                        width: 9,
+                        height: 9,
+                        margin: const EdgeInsets.only(top: 7, right: 9),
+                        decoration: const BoxDecoration(
+                          color: AppColors.green,
+                          shape: BoxShape.circle,
+                        ),
+                      )
+                    else
+                      const SizedBox(width: 18),
+                    Expanded(
+                      child: Text(
+                        titleText,
+                        maxLines: isExpanded ? null : 1,
+                        overflow: isExpanded
+                            ? TextOverflow.visible
+                            : TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.ink,
+                          fontSize: 16,
+                          fontWeight: read ? FontWeight.w700 : FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    if (timeLabel.isNotEmpty) ...[
+                      const SizedBox(width: 10),
+                      Text(
+                        timeLabel,
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(width: 6),
+                    Icon(
+                      isExpanded ? Icons.expand_less : Icons.more_horiz,
+                      color: AppColors.blueprint,
+                      size: 22,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: isExpanded ? 0 : 42,
+                  ),
+                  child: Text(
+                    body,
+                    maxLines: isExpanded ? null : 2,
+                    overflow: isExpanded
+                        ? TextOverflow.visible
+                        : TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.ink,
+                      fontSize: 14,
+                      height: 1.32,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (isExpanded) ...[
+                  const SizedBox(height: 12),
+                  Divider(
+                    color: AppColors.blueprintLine.withValues(alpha: 0.35),
+                    height: 1,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => expandNotification(
+                          doc.reference,
+                          doc.id,
+                          {...data, "read": true},
+                        ),
+                        icon: const Icon(Icons.expand_less, size: 18),
+                        label: const Text("Collapse"),
+                      ),
+                      const Spacer(),
+                      if (canAddCalendar)
+                        IconButton(
+                          tooltip: "Add to calendar",
+                          icon: const Icon(Icons.calendar_month),
+                          onPressed: () => addNotificationOfferToCalendar(
+                            context,
+                            data,
+                          ),
+                        ),
+                      ElevatedButton.icon(
+                        onPressed: () => handleNotificationTap(
+                          context,
+                          doc.reference,
+                          data,
+                        ),
+                        icon: const Icon(Icons.open_in_new, size: 17),
+                        label: const Text("Open"),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> addNotificationOfferToCalendar(
     BuildContext context,
     Map<String, dynamic> data,
@@ -564,66 +785,10 @@ class NotificationsScreen extends StatelessWidget {
                 final doc = docs[index];
                 final data = doc.data() as Map<String, dynamic>;
 
-                final bool read = data["read"] ?? false;
-                final String type = data["type"] ?? "";
-
-                final String? body =
-                    (data["body"] ?? data["message"])?.toString();
-
-                final titleText = notificationTitle(data);
-                final canAddCalendar = (type == "work_start" ||
-                        type == "offer" ||
-                        type == "offer_accepted") &&
-                    data["offer"] is Map;
-
-                return StroykaSurface(
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  texture: read
-                      ? "assets/branding/texture_light_triangles.jpg"
-                      : "assets/branding/texture_light_dots.jpg",
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 8,
-                    ),
-                    title: Text(
-                      titleText,
-                      style: const TextStyle(
-                        color: AppColors.ink,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    subtitle: Text(body ?? "Tap to open"),
-                    trailing: canAddCalendar || !read
-                        ? Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (canAddCalendar)
-                                IconButton(
-                                  tooltip: "Add to calendar",
-                                  icon: const Icon(Icons.calendar_month),
-                                  onPressed: () =>
-                                      addNotificationOfferToCalendar(
-                                    context,
-                                    data,
-                                  ),
-                                ),
-                              if (!read)
-                                const Icon(
-                                  Icons.circle,
-                                  color: AppColors.green,
-                                  size: 10,
-                                ),
-                            ],
-                          )
-                        : null,
-                    onTap: () => handleNotificationTap(
-                      context,
-                      doc.reference,
-                      data,
-                    ),
-                  ),
+                return buildNotificationCard(
+                  context: context,
+                  doc: doc,
+                  data: data,
                 );
               },
             );
