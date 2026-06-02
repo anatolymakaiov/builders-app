@@ -1740,21 +1740,45 @@ Future<void> showCreateTeamDialog(
   BuildContext context,
   String userId,
 ) async {
+  await showDialog<bool>(
+    context: context,
+    barrierDismissible: true,
+    builder: (_) => _CreateTeamDialog(userId: userId),
+  );
+}
+
+class _CreateTeamDialog extends StatefulWidget {
+  final String userId;
+
+  const _CreateTeamDialog({required this.userId});
+
+  @override
+  State<_CreateTeamDialog> createState() => _CreateTeamDialogState();
+}
+
+class _CreateTeamDialogState extends State<_CreateTeamDialog> {
   final controller = TextEditingController();
   final descriptionController = TextEditingController();
   final picker = ImagePicker();
   XFile? pickedAvatar;
   String? previewPath;
-  var isSaving = false;
-  var createRequestInProgress = false;
+  bool isSaving = false;
+  bool createRequestInProgress = false;
   String? validationError;
+
+  @override
+  void dispose() {
+    controller.dispose();
+    descriptionController.dispose();
+    super.dispose();
+  }
 
   Future<bool> teamAlreadyExists(String name) async {
     final normalizedName = name.trim().toLowerCase();
 
     final snap = await FirebaseFirestore.instance
         .collection("teams")
-        .where("ownerId", isEqualTo: userId)
+        .where("ownerId", isEqualTo: widget.userId)
         .get();
 
     return snap.docs.any((doc) {
@@ -1766,177 +1790,153 @@ Future<void> showCreateTeamDialog(
     });
   }
 
-  await showDialog(
-    context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (dialogContext, setDialogState) {
-        return AlertDialog(
-          title: const Text("Create team"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: isSaving
-                      ? null
-                      : () async {
-                          final picked = await picker.pickImage(
-                            source: ImageSource.gallery,
-                          );
-                          if (picked == null) return;
-                          if (!dialogContext.mounted) return;
+  Future<void> pickAvatar() async {
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (!mounted || picked == null) return;
 
-                          setDialogState(() {
-                            pickedAvatar = picked;
-                            previewPath = picked.path;
-                          });
-                        },
-                  child: CircleAvatar(
-                    radius: 38,
-                    backgroundColor: Colors.grey.shade300,
-                    backgroundImage: previewPath != null
-                        ? FileImage(File(previewPath!))
-                        : null,
-                    child: previewPath == null
-                        ? const Icon(Icons.add_a_photo, size: 28)
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: controller,
-                  enabled: !isSaving,
-                  textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(
-                    labelText: "Team name",
-                    errorText: validationError,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: descriptionController,
-                  enabled: !isSaving,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: "Team description",
-                    hintText: "Trades, skills, availability, typical projects",
-                  ),
-                ),
-                if (isSaving) ...[
-                  const SizedBox(height: 16),
-                  const LinearProgressIndicator(),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: isSaving
-                  ? null
-                  : () async {
-                      if (createRequestInProgress) return;
+    setState(() {
+      pickedAvatar = picked;
+      previewPath = picked.path;
+    });
+  }
 
-                      final name = controller.text.trim();
-                      if (name.isEmpty) {
-                        setDialogState(() {
-                          validationError = "Enter team name";
-                        });
-                        return;
-                      }
+  Future<void> createTeam() async {
+    if (isSaving || createRequestInProgress) return;
 
-                      createRequestInProgress = true;
-                      setDialogState(() {
-                        isSaving = true;
-                        validationError = null;
-                      });
+    final name = controller.text.trim();
+    if (name.isEmpty) {
+      setState(() => validationError = "Enter team name");
+      return;
+    }
 
-                      try {
-                        final duplicate = await teamAlreadyExists(name);
-                        if (!dialogContext.mounted) return;
-                        if (duplicate) {
-                          createRequestInProgress = false;
-                          setDialogState(() {
-                            isSaving = false;
-                            validationError = "Team already exists";
-                          });
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Team already exists"),
-                              ),
-                            );
-                          }
-                          return;
-                        }
+    createRequestInProgress = true;
+    setState(() {
+      isSaving = true;
+      validationError = null;
+    });
 
-                        String? avatarUrl;
-
-                        if (pickedAvatar != null) {
-                          final ref = FirebaseStorage.instance.ref().child(
-                              "team_avatars/${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg");
-
-                          await ref.putFile(File(pickedAvatar!.path));
-                          avatarUrl = await ref.getDownloadURL();
-                          if (!dialogContext.mounted) return;
-                        }
-
-                        await FirebaseFirestore.instance
-                            .collection("teams")
-                            .add({
-                          "name": name,
-                          "nameLower": name.toLowerCase(),
-                          "description": descriptionController.text.trim(),
-                          "ownerId": userId,
-                          "createdBy": userId,
-                          "members": [userId],
-                          "memberKey": userId,
-                          "memberStatuses": {userId: "active"},
-                          if (avatarUrl != null) "avatarUrl": avatarUrl,
-                          if (avatarUrl != null) "photo": avatarUrl,
-                          "createdAt": FieldValue.serverTimestamp(),
-                          "updatedAt": FieldValue.serverTimestamp(),
-                        });
-
-                        if (!dialogContext.mounted) return;
-
-                        Navigator.pop(dialogContext);
-
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Team created")),
-                        );
-                      } catch (e) {
-                        debugPrint("CREATE TEAM ERROR: $e");
-                        createRequestInProgress = false;
-                        if (!dialogContext.mounted) return;
-                        setDialogState(() {
-                          isSaving = false;
-                        });
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text("Could not create team")),
-                        );
-                      }
-                    },
-              child: isSaving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text("Create"),
-            ),
-          ],
+    try {
+      final duplicate = await teamAlreadyExists(name);
+      if (!mounted) return;
+      if (duplicate) {
+        createRequestInProgress = false;
+        setState(() {
+          isSaving = false;
+          validationError = "Team already exists";
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Team already exists")),
         );
-      },
-    ),
-  );
+        return;
+      }
 
-  controller.dispose();
-  descriptionController.dispose();
+      String? avatarUrl;
+      final avatar = pickedAvatar;
+      if (avatar != null) {
+        final ref = FirebaseStorage.instance.ref().child(
+              "team_avatars/${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg",
+            );
+
+        await ref.putFile(File(avatar.path));
+        avatarUrl = await ref.getDownloadURL();
+        if (!mounted) return;
+      }
+
+      await FirebaseFirestore.instance.collection("teams").add({
+        "name": name,
+        "nameLower": name.toLowerCase(),
+        "description": descriptionController.text.trim(),
+        "ownerId": widget.userId,
+        "createdBy": widget.userId,
+        "members": [widget.userId],
+        "memberKey": widget.userId,
+        "memberStatuses": {widget.userId: "active"},
+        if (avatarUrl != null) "avatarUrl": avatarUrl,
+        if (avatarUrl != null) "photo": avatarUrl,
+        "createdAt": FieldValue.serverTimestamp(),
+        "updatedAt": FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      Navigator.pop(context, true);
+      messenger?.showSnackBar(
+        const SnackBar(content: Text("Team created")),
+      );
+    } catch (e) {
+      debugPrint("CREATE TEAM ERROR: $e");
+      createRequestInProgress = false;
+      if (!mounted) return;
+      setState(() => isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not create team")),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text("Create team"),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GestureDetector(
+              onTap: isSaving ? null : pickAvatar,
+              child: CircleAvatar(
+                radius: 38,
+                backgroundColor: Colors.grey.shade300,
+                backgroundImage:
+                    previewPath != null ? FileImage(File(previewPath!)) : null,
+                child: previewPath == null
+                    ? const Icon(Icons.add_a_photo, size: 28)
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              enabled: !isSaving,
+              textInputAction: TextInputAction.next,
+              decoration: InputDecoration(
+                labelText: "Team name",
+                errorText: validationError,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: descriptionController,
+              enabled: !isSaving,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: "Team description",
+                hintText: "Trades, skills, availability, typical projects",
+              ),
+            ),
+            if (isSaving) ...[
+              const SizedBox(height: 16),
+              const LinearProgressIndicator(),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: isSaving ? null : () => Navigator.pop(context, false),
+          child: const Text("Cancel"),
+        ),
+        ElevatedButton(
+          onPressed: isSaving ? null : createTeam,
+          child: isSaving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text("Create"),
+        ),
+      ],
+    );
+  }
 }
