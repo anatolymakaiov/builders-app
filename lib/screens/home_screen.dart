@@ -67,6 +67,26 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  void selectBottomTab(int index) {
+    if (index == currentIndex) return;
+    setState(() {
+      if (role == "employer" && index == 5 && currentIndex != 5) {
+        employerProfileInitialTab = 0;
+      }
+      currentIndex = index;
+    });
+  }
+
+  void handleBodySwipe(DragEndDetails details, int itemCount) {
+    if (_showOnboardingTour) return;
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity.abs() < 700) return;
+
+    final nextIndex = velocity < 0 ? currentIndex + 1 : currentIndex - 1;
+    if (nextIndex < 0 || nextIndex >= itemCount) return;
+    selectBottomTab(nextIndex);
+  }
+
   void handleShellNavigationCommand() {
     final command = shellNavigationCommand.value;
     if (command == null || !mounted) return;
@@ -838,12 +858,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     return Stack(
                       children: [
                         Scaffold(
-                          body: StroykaBackground(
-                            asset: AppAssets.darkBackgrounds[currentIndex %
-                                AppAssets.darkBackgrounds.length],
-                            child: IndexedStack(
-                              index: currentIndex,
-                              children: screens,
+                          body: GestureDetector(
+                            behavior: HitTestBehavior.deferToChild,
+                            onHorizontalDragEnd: (details) =>
+                                handleBodySwipe(details, items.length),
+                            child: StroykaBackground(
+                              asset: AppAssets.darkBackgrounds[currentIndex %
+                                  AppAssets.darkBackgrounds.length],
+                              child: IndexedStack(
+                                index: currentIndex,
+                                children: screens,
+                              ),
                             ),
                           ),
                           floatingActionButton:
@@ -881,16 +906,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 unselectedItemColor:
                                     Colors.white.withValues(alpha: 0.82),
                                 showUnselectedLabels: true,
-                                onTap: (index) {
-                                  setState(() {
-                                    if (role == "employer" &&
-                                        index == 5 &&
-                                        currentIndex != 5) {
-                                      employerProfileInitialTab = 0;
-                                    }
-                                    currentIndex = index;
-                                  });
-                                },
+                                onTap: selectBottomTab,
                               ),
                             ),
                           ),

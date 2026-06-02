@@ -1420,128 +1420,138 @@ class _UserAdminMailRow extends StatelessWidget {
         ? (data["receiverName"]?.toString() ?? "Admin")
         : (data["senderName"]?.toString() ?? "Admin");
 
-    return InkWell(
-      onTap: () async {
-        if (unread) {
-          for (final ref in thread.unreadRefs) {
-            await _markUserAdminMailRead(ref);
-          }
-          await _markUserAdminMailNotificationsRead(
-            userId: userId,
-            threadId: data["threadId"]?.toString() ?? thread.latestDoc.id,
-          );
-        }
-        if (!context.mounted) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => AdminInboxMessageScreen(
-              userId: userId,
-              role: role,
-              threadId: data["threadId"]?.toString() ?? thread.latestDoc.id,
-              initialMessageId: thread.latestDoc.id,
-              normalizedSubject: thread.normalizedSubject,
-            ),
-          ),
-        );
-      },
-      onLongPress: () => _showUserAdminMailActions(
+    return Dismissible(
+      key: ValueKey("admin-mail-${thread.mailbox}-${thread.key}"),
+      direction: DismissDirection.endToStart,
+      background: _userAdminMailDeleteBackground(),
+      confirmDismiss: (_) => _deleteUserAdminMailThread(
         context,
-        thread.latestDoc.reference,
-        unread: unread,
-        important: important,
-        deleted: data["deletedByReceiver"] == true,
+        thread,
+        userId,
       ),
-      child: Container(
-        color: unread
-            ? AppColors.blueprintLine.withValues(alpha: 0.12)
-            : Colors.transparent,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              icon: Icon(
-                important ? Icons.star : Icons.star_border,
-                color: important ? AppColors.warning : AppColors.muted,
-              ),
-              onPressed: () => _toggleUserAdminMailImportant(
-                thread.latestDoc.reference,
-                important,
+      child: InkWell(
+        onTap: () async {
+          if (unread) {
+            for (final ref in thread.unreadRefs) {
+              await _markUserAdminMailRead(ref);
+            }
+            await _markUserAdminMailNotificationsRead(
+              userId: userId,
+              threadId: data["threadId"]?.toString() ?? thread.latestDoc.id,
+            );
+          }
+          if (!context.mounted) return;
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AdminInboxMessageScreen(
+                userId: userId,
+                role: role,
+                threadId: data["threadId"]?.toString() ?? thread.latestDoc.id,
+                initialMessageId: thread.latestDoc.id,
+                normalizedSubject: thread.normalizedSubject,
               ),
             ),
-            Expanded(
-              flex: 3,
-              child: Text(
-                displayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: AppColors.ink,
-                  fontWeight: unread ? FontWeight.w900 : FontWeight.w700,
+          );
+        },
+        onLongPress: () => _showUserAdminMailActions(
+          context,
+          thread.latestDoc.reference,
+          unread: unread,
+          important: important,
+          deleted: data["deletedByReceiver"] == true,
+        ),
+        child: Container(
+          color: unread
+              ? AppColors.blueprintLine.withValues(alpha: 0.12)
+              : Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  important ? Icons.star : Icons.star_border,
+                  color: important ? AppColors.warning : AppColors.muted,
+                ),
+                onPressed: () => _toggleUserAdminMailImportant(
+                  thread.latestDoc.reference,
+                  important,
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              flex: 5,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          thread.docs.length > 1
-                              ? "$subject (${thread.docs.length})"
-                              : subject,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: AppColors.ink,
-                            fontWeight:
-                                unread ? FontWeight.w900 : FontWeight.w700,
+              Expanded(
+                flex: 3,
+                child: Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.ink,
+                    fontWeight: unread ? FontWeight.w900 : FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 5,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            thread.docs.length > 1
+                                ? "$subject (${thread.docs.length})"
+                                : subject,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: AppColors.ink,
+                              fontWeight:
+                                  unread ? FontWeight.w900 : FontWeight.w700,
+                            ),
                           ),
                         ),
-                      ),
-                      if (attachments.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        const Icon(
-                          Icons.attach_file,
-                          size: 16,
-                          color: AppColors.greenDark,
-                        ),
+                        if (attachments.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          const Icon(
+                            Icons.attach_file,
+                            size: 16,
+                            color: AppColors.greenDark,
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    message,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: AppColors.muted,
-                      fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 52,
-              child: Text(
-                _userAdminMailTimeLabel(createdAt),
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 12,
-                  fontWeight: unread ? FontWeight.w900 : FontWeight.w600,
+                    const SizedBox(height: 3),
+                    Text(
+                      message,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.muted,
+                        fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 52,
+                child: Text(
+                  _userAdminMailTimeLabel(createdAt),
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 12,
+                    fontWeight: unread ? FontWeight.w900 : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2309,6 +2319,52 @@ Future<void> _deleteUserAdminMail(
     data["senderId"] == userId ? "deletedBySender" : "deletedByReceiver": true,
     "deletedAt": FieldValue.serverTimestamp(),
   }, SetOptions(merge: true));
+}
+
+Widget _userAdminMailDeleteBackground() {
+  return Container(
+    color: AppColors.danger.withValues(alpha: 0.88),
+    padding: const EdgeInsets.symmetric(horizontal: 20),
+    alignment: Alignment.centerRight,
+    child: const Icon(
+      Icons.delete_outline,
+      color: Colors.white,
+    ),
+  );
+}
+
+Future<bool> _confirmUserAdminMailDelete(BuildContext context) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text("Delete"),
+      content: const Text("Are you sure you want to delete this item?"),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text("Cancel"),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text("Delete"),
+        ),
+      ],
+    ),
+  );
+  return confirmed == true;
+}
+
+Future<bool> _deleteUserAdminMailThread(
+  BuildContext context,
+  _UserAdminMailThread thread,
+  String userId,
+) async {
+  final confirmed = await _confirmUserAdminMailDelete(context);
+  if (!confirmed) return false;
+  for (final doc in thread.docs) {
+    await _deleteUserAdminMail(doc.reference, userId);
+  }
+  return true;
 }
 
 Future<void> _markUserAdminMailNotificationsRead({

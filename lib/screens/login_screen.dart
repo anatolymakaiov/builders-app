@@ -220,10 +220,44 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget buildStartChoices() {
+    Widget actionButton({
+      required String label,
+      required VoidCallback onPressed,
+    }) {
+      return SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: OutlinedButton(
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            backgroundColor: AppColors.surface.withValues(alpha: 0.92),
+            foregroundColor: AppColors.ink,
+            side: BorderSide(
+              color: AppColors.blueprintLine.withValues(alpha: 0.7),
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          child: Text(label),
+        ),
+      );
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        StroykaButton(
+        actionButton(
+          label: "Login",
+          onPressed: openPasswordLogin,
+        ),
+        const SizedBox(height: 12),
+        actionButton(
+          label: "Biometric",
           onPressed: hasValidSession
               ? () {
                   setState(() {
@@ -242,17 +276,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   );
                 },
-          width: double.infinity,
-          child: const Text("Sign In with Biometrics"),
         ),
         const SizedBox(height: 12),
-        StroykaButton(
-          onPressed: openPasswordLogin,
-          width: double.infinity,
-          child: const Text("Sign In with Email & Password"),
-        ),
-        const SizedBox(height: 12),
-        TextButton(
+        actionButton(
+          label: "Registration",
           onPressed: () {
             setState(() {
               selectedAction = "register";
@@ -260,7 +287,6 @@ class _LoginScreenState extends State<LoginScreen> {
               usePasswordFallback = true;
             });
           },
-          child: const Text("Register"),
         ),
       ],
     );

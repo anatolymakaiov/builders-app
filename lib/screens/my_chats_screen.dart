@@ -46,6 +46,11 @@ class MyChatsScreen extends StatelessWidget {
   }
 
   bool chatBelongsToUser(Map<String, dynamic> data, String uid) {
+    final hiddenForUsers = data["hiddenForUsers"];
+    if (hiddenForUsers is List && hiddenForUsers.contains(uid)) {
+      return false;
+    }
+
     bool containsId(dynamic value) {
       return value is List &&
           value.map((item) => item.toString()).contains(uid);
@@ -105,6 +110,69 @@ class MyChatsScreen extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  Future<bool> confirmDeleteItem(BuildContext context) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Delete item"),
+        content: const Text("Are you sure you want to delete this item?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+            child: const Text("Delete"),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
+  Widget deleteBackground() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: AppColors.danger,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      alignment: Alignment.centerRight,
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Icon(Icons.delete_outline, color: Colors.white),
+          SizedBox(width: 8),
+          Text(
+            "Delete",
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> hideChatForCurrentUser(
+    BuildContext context,
+    QueryDocumentSnapshot chat,
+    String uid,
+  ) async {
+    final confirmed = await confirmDeleteItem(context);
+    if (!confirmed) return false;
+    await chat.reference.set({
+      "hiddenForUsers": FieldValue.arrayUnion([uid]),
+      "unreadFor": FieldValue.arrayRemove([uid]),
+      "deletedAtForUser.$uid": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    return true;
   }
 
   @override
@@ -223,130 +291,143 @@ class MyChatsScreen extends StatelessWidget {
                                 "Worker");
                     final isTyping = otherTyping && isOnline;
 
-                    return StroykaSurface(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      padding: EdgeInsets.zero,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ChatScreen(chatId: chat.id),
-                            ),
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 12),
-                          child: Row(
-                            children: [
-                              chatAvatar(
-                                avatarUrl: avatarUrl,
-                                isOnline: isOnline,
-                                fallbackIcon:
-                                    showTeamAvatar ? Icons.group : Icons.person,
+                    return Dismissible(
+                      key: ValueKey("chat-${chat.id}"),
+                      direction: DismissDirection.endToStart,
+                      background: deleteBackground(),
+                      confirmDismiss: (_) => hideChatForCurrentUser(
+                        context,
+                        chat,
+                        uid,
+                      ),
+                      child: StroykaSurface(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        padding: EdgeInsets.zero,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatScreen(chatId: chat.id),
                               ),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 12),
+                            child: Row(
+                              children: [
+                                chatAvatar(
+                                  avatarUrl: avatarUrl,
+                                  isOnline: isOnline,
+                                  fallbackIcon: showTeamAvatar
+                                      ? Icons.group
+                                      : Icons.person,
+                                ),
 
-                              const SizedBox(width: 12),
+                                const SizedBox(width: 12),
 
-                              /// 💬 TEXT
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    /// NAME + TIME
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            chatName,
-                                            style: TextStyle(
-                                              fontWeight: unread > 0
-                                                  ? FontWeight.bold
-                                                  : FontWeight.w500,
-                                              fontSize: 16,
+                                /// 💬 TEXT
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      /// NAME + TIME
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              chatName,
+                                              style: TextStyle(
+                                                fontWeight: unread > 0
+                                                    ? FontWeight.bold
+                                                    : FontWeight.w500,
+                                                fontSize: 16,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
                                             ),
-                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                        ),
-                                        Text(
-                                          formatTime(updatedAt),
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-
-                                    const SizedBox(height: 4),
-
-                                    /// MESSAGE
-                                    Row(
-                                      children: [
-                                        if (!isTyping &&
-                                            lastMessageType != "text")
-                                          const Padding(
-                                            padding: EdgeInsets.only(right: 4),
-                                            child: Icon(
-                                              Icons.attach_file,
-                                              size: 16,
+                                          Text(
+                                            formatTime(updatedAt),
+                                            style: const TextStyle(
+                                              fontSize: 12,
                                               color: Colors.grey,
                                             ),
                                           ),
-                                        Expanded(
-                                          child: Text(
-                                            isTyping
-                                                ? "typing..."
-                                                : lastMessagePreview(
-                                                    lastMessageType,
-                                                    lastMessage,
-                                                  ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: isTyping
-                                                  ? Colors.green
-                                                  : Colors.grey[700],
-                                              fontStyle: isTyping
-                                                  ? FontStyle.italic
-                                                  : FontStyle.normal,
-                                              fontWeight: unread > 0
-                                                  ? FontWeight.w600
-                                                  : FontWeight.normal,
+                                        ],
+                                      ),
+
+                                      const SizedBox(height: 4),
+
+                                      /// MESSAGE
+                                      Row(
+                                        children: [
+                                          if (!isTyping &&
+                                              lastMessageType != "text")
+                                            const Padding(
+                                              padding:
+                                                  EdgeInsets.only(right: 4),
+                                              child: Icon(
+                                                Icons.attach_file,
+                                                size: 16,
+                                                color: Colors.grey,
+                                              ),
                                             ),
-                                          ),
-                                        ),
-                                        if (unread > 0)
-                                          Container(
-                                            margin:
-                                                const EdgeInsets.only(left: 8),
-                                            padding: const EdgeInsets.all(6),
-                                            decoration: const BoxDecoration(
-                                              color: AppColors.green,
-                                              shape: BoxShape.circle,
-                                            ),
+                                          Expanded(
                                             child: Text(
-                                              unread > 9
-                                                  ? "9+"
-                                                  : unread.toString(),
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 10,
+                                              isTyping
+                                                  ? "typing..."
+                                                  : lastMessagePreview(
+                                                      lastMessageType,
+                                                      lastMessage,
+                                                    ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                color: isTyping
+                                                    ? Colors.green
+                                                    : Colors.grey[700],
+                                                fontStyle: isTyping
+                                                    ? FontStyle.italic
+                                                    : FontStyle.normal,
+                                                fontWeight: unread > 0
+                                                    ? FontWeight.w600
+                                                    : FontWeight.normal,
                                               ),
                                             ),
                                           ),
-                                      ],
-                                    ),
-                                  ],
+                                          if (unread > 0)
+                                            Container(
+                                              margin: const EdgeInsets.only(
+                                                  left: 8),
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: const BoxDecoration(
+                                                color: AppColors.green,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Text(
+                                                unread > 9
+                                                    ? "9+"
+                                                    : unread.toString(),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),

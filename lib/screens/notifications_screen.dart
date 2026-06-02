@@ -567,6 +567,74 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return "${two(date.day)}/${two(date.month)}";
   }
 
+  Future<bool> confirmDeleteItem(BuildContext context) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Delete item"),
+        content: const Text("Are you sure you want to delete this item?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+            child: const Text("Delete"),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
+  Widget deleteBackground() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: AppColors.danger,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      alignment: Alignment.centerRight,
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Icon(Icons.delete_outline, color: Colors.white),
+          SizedBox(width: 8),
+          Text(
+            "Delete",
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> deleteNotification(
+    BuildContext context,
+    QueryDocumentSnapshot doc,
+    Map<String, dynamic> data,
+  ) async {
+    final confirmed = await confirmDeleteItem(context);
+    if (!confirmed) return false;
+    final uid = userId;
+    await doc.reference.set({
+      "deleted": true,
+      if (uid != null) "hiddenForUsers": FieldValue.arrayUnion([uid]),
+      "read": true,
+      "deletedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    if (uid != null) {
+      await NotificationService().syncUnreadBadgeCount(uid);
+    }
+    return true;
+  }
+
   Widget buildNotificationCard({
     required BuildContext context,
     required QueryDocumentSnapshot doc,
@@ -582,130 +650,137 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         (type == "work_start" || type == "offer" || type == "offer_accepted") &&
             data["offer"] is Map;
 
-    return StroykaSurface(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      texture: read
-          ? "assets/branding/texture_light_triangles.jpg"
-          : "assets/branding/texture_light_dots.jpg",
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 190),
-        curve: Curves.easeOutCubic,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => expandNotification(doc.reference, doc.id, data),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 14, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (!read)
-                      Container(
-                        width: 9,
-                        height: 9,
-                        margin: const EdgeInsets.only(top: 7, right: 9),
-                        decoration: const BoxDecoration(
-                          color: AppColors.green,
-                          shape: BoxShape.circle,
-                        ),
-                      )
-                    else
-                      const SizedBox(width: 18),
-                    Expanded(
-                      child: Text(
-                        titleText,
-                        maxLines: isExpanded ? null : 1,
-                        overflow: isExpanded
-                            ? TextOverflow.visible
-                            : TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: AppColors.ink,
-                          fontSize: 16,
-                          fontWeight: read ? FontWeight.w700 : FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    if (timeLabel.isNotEmpty) ...[
-                      const SizedBox(width: 10),
-                      Text(
-                        timeLabel,
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(width: 6),
-                    Icon(
-                      isExpanded ? Icons.expand_less : Icons.more_horiz,
-                      color: AppColors.blueprint,
-                      size: 22,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: isExpanded ? 0 : 42,
-                  ),
-                  child: Text(
-                    body,
-                    maxLines: isExpanded ? null : 2,
-                    overflow: isExpanded
-                        ? TextOverflow.visible
-                        : TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontSize: 14,
-                      height: 1.32,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (isExpanded) ...[
-                  const SizedBox(height: 12),
-                  Divider(
-                    color: AppColors.blueprintLine.withValues(alpha: 0.35),
-                    height: 1,
-                  ),
-                  const SizedBox(height: 10),
+    return Dismissible(
+      key: ValueKey("notification-${doc.id}"),
+      direction: DismissDirection.endToStart,
+      background: deleteBackground(),
+      confirmDismiss: (_) => deleteNotification(context, doc, data),
+      child: StroykaSurface(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        texture: read
+            ? "assets/branding/texture_light_triangles.jpg"
+            : "assets/branding/texture_light_dots.jpg",
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 190),
+          curve: Curves.easeOutCubic,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => expandNotification(doc.reference, doc.id, data),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 14, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      TextButton.icon(
-                        onPressed: () => expandNotification(
-                          doc.reference,
-                          doc.id,
-                          {...data, "read": true},
-                        ),
-                        icon: const Icon(Icons.expand_less, size: 18),
-                        label: const Text("Collapse"),
-                      ),
-                      const Spacer(),
-                      if (canAddCalendar)
-                        IconButton(
-                          tooltip: "Add to calendar",
-                          icon: const Icon(Icons.calendar_month),
-                          onPressed: () => addNotificationOfferToCalendar(
-                            context,
-                            data,
+                      if (!read)
+                        Container(
+                          width: 9,
+                          height: 9,
+                          margin: const EdgeInsets.only(top: 7, right: 9),
+                          decoration: const BoxDecoration(
+                            color: AppColors.green,
+                            shape: BoxShape.circle,
+                          ),
+                        )
+                      else
+                        const SizedBox(width: 18),
+                      Expanded(
+                        child: Text(
+                          titleText,
+                          maxLines: isExpanded ? null : 1,
+                          overflow: isExpanded
+                              ? TextOverflow.visible
+                              : TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: AppColors.ink,
+                            fontSize: 16,
+                            fontWeight:
+                                read ? FontWeight.w700 : FontWeight.w900,
                           ),
                         ),
-                      ElevatedButton.icon(
-                        onPressed: () => handleNotificationTap(
-                          context,
-                          doc.reference,
-                          data,
+                      ),
+                      if (timeLabel.isNotEmpty) ...[
+                        const SizedBox(width: 10),
+                        Text(
+                          timeLabel,
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                        icon: const Icon(Icons.open_in_new, size: 17),
-                        label: const Text("Open"),
+                      ],
+                      const SizedBox(width: 6),
+                      Icon(
+                        isExpanded ? Icons.expand_less : Icons.more_horiz,
+                        color: AppColors.blueprint,
+                        size: 22,
                       ),
                     ],
                   ),
+                  const SizedBox(height: 6),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: isExpanded ? 0 : 42,
+                    ),
+                    child: Text(
+                      body,
+                      maxLines: isExpanded ? null : 2,
+                      overflow: isExpanded
+                          ? TextOverflow.visible
+                          : TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontSize: 14,
+                        height: 1.32,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  if (isExpanded) ...[
+                    const SizedBox(height: 12),
+                    Divider(
+                      color: AppColors.blueprintLine.withValues(alpha: 0.35),
+                      height: 1,
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => expandNotification(
+                            doc.reference,
+                            doc.id,
+                            {...data, "read": true},
+                          ),
+                          icon: const Icon(Icons.expand_less, size: 18),
+                          label: const Text("Collapse"),
+                        ),
+                        const Spacer(),
+                        if (canAddCalendar)
+                          IconButton(
+                            tooltip: "Add to calendar",
+                            icon: const Icon(Icons.calendar_month),
+                            onPressed: () => addNotificationOfferToCalendar(
+                              context,
+                              data,
+                            ),
+                          ),
+                        ElevatedButton.icon(
+                          onPressed: () => handleNotificationTap(
+                            context,
+                            doc.reference,
+                            data,
+                          ),
+                          icon: const Icon(Icons.open_in_new, size: 17),
+                          label: const Text("Open"),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -773,7 +848,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final docs = snapshot.data?.docs ?? [];
+            final docs = (snapshot.data?.docs ?? []).where((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              final hiddenForUsers = data["hiddenForUsers"];
+              return data["deleted"] != true &&
+                  !(hiddenForUsers is List && hiddenForUsers.contains(userId));
+            }).toList();
 
             if (docs.isEmpty) {
               return const Center(child: Text("No notifications"));
