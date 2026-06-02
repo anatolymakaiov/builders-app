@@ -962,7 +962,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             : "Worker account");
     final headerImage = profileHeaderImageProvider();
     final hasHeaderImage = headerImage != null;
-    final hasAvatar = photoUrl?.trim().isNotEmpty == true;
 
     return AppCard(
       margin: const EdgeInsets.fromLTRB(0, 0, 0, 16),
@@ -1085,21 +1084,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Positioned(
                           right: 0,
                           bottom: 0,
-                          child: OutlinedButton.icon(
-                            onPressed: pickHeaderImage,
-                            icon: const Icon(Icons.image_outlined, size: 18),
-                            label: const Text("Choose background"),
-                          ),
-                        ),
-                        Positioned(
-                          left: 0,
-                          bottom: 0,
-                          child: OutlinedButton.icon(
-                            onPressed:
-                                uploadingAvatar ? null : pickAndUploadAvatar,
-                            icon: const Icon(Icons.person_outline, size: 18),
-                            label: Text(
-                              hasAvatar ? "Change avatar" : "Choose avatar",
+                          child: Tooltip(
+                            message: "Choose background",
+                            child: Material(
+                              color: AppColors.navy.withValues(alpha: 0.90),
+                              shape: const CircleBorder(),
+                              child: IconButton(
+                                onPressed: pickHeaderImage,
+                                icon: const Icon(
+                                  Icons.photo_camera_outlined,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
                             ),
                           ),
                         ),
