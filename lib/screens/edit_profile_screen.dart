@@ -154,12 +154,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       firstProfileCreation = !hasWorkerProfile && !hasEmployerProfile;
       legalAcceptedForCurrentVersion = acceptedCurrentVersion;
 
-      nameController.text = data["name"] ?? "";
+      final registrationName = data["registrationName"]?.toString() ?? "";
+      nameController.text = data["name"]?.toString().trim().isNotEmpty == true
+          ? data["name"].toString()
+          : registrationName;
       phoneController.text = data["phone"] ?? "";
       nicknameController.text =
           data["nickname"] ?? data["username"] ?? data["nickName"] ?? "";
 
-      tradeController.text = data["trade"] ?? "";
+      tradeController.text = (data["trade"] ??
+              data["position"] ??
+              data["registrationPosition"] ??
+              "")
+          .toString();
       companyController.text = data["companyName"] ?? "";
 
       bioController.text = data["bio"] ?? "";
@@ -211,7 +218,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               data["location"]?.toString() ??
               "";
       invoiceBillingContactNameController.text =
-          invoiceDetails["billingContactName"]?.toString() ?? "";
+          invoiceDetails["billingContactName"]?.toString().trim().isNotEmpty ==
+                  true
+              ? invoiceDetails["billingContactName"].toString()
+              : registrationName;
       invoiceVatNumberController.text =
           invoiceDetails["vatNumber"]?.toString() ?? "";
       invoicePurchaseOrderController.text =
@@ -220,7 +230,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           invoiceDetails["paymentContactPhone"]?.toString() ??
               data["phone"]?.toString() ??
               "";
-      contactPersonController.text = data["contactPerson"] ?? "";
+      contactPersonController.text =
+          data["contactPerson"]?.toString().trim().isNotEmpty == true
+              ? data["contactPerson"].toString()
+              : registrationName;
       companyGoalsController.text = data["companyGoals"] ?? "";
       companyAdvantagesController.text = data["companyAdvantages"] ?? "";
       companyClientsController.text = data["companyClients"] ?? "";
@@ -923,6 +936,185 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  ImageProvider? profileHeaderImageProvider() {
+    if (headerImageFile != null) return FileImage(headerImageFile!);
+    final url = headerImageUrl?.trim();
+    if (url != null && url.isNotEmpty) return NetworkImage(url);
+    return null;
+  }
+
+  Widget buildProfileCreationHeader() {
+    final title = role == "employer"
+        ? (companyController.text.trim().isNotEmpty
+            ? companyController.text.trim()
+            : contactPersonController.text.trim().isNotEmpty
+                ? contactPersonController.text.trim()
+                : "Company profile")
+        : (nameController.text.trim().isNotEmpty
+            ? nameController.text.trim()
+            : "Worker profile");
+    final subtitle = role == "employer"
+        ? (contactPersonController.text.trim().isNotEmpty
+            ? contactPersonController.text.trim()
+            : "Company account")
+        : (tradeController.text.trim().isNotEmpty
+            ? tradeController.text.trim()
+            : "Worker account");
+    final headerImage = profileHeaderImageProvider();
+    final hasHeaderImage = headerImage != null;
+    final hasAvatar = photoUrl?.trim().isNotEmpty == true;
+
+    return AppCard(
+      margin: const EdgeInsets.fromLTRB(0, 0, 0, 16),
+      padding: EdgeInsets.zero,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: SizedBox(
+          height: 210,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              image: hasHeaderImage
+                  ? DecorationImage(
+                      image: headerImage,
+                      fit: BoxFit.cover,
+                    )
+                  : null,
+            ),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: hasHeaderImage ? 0.10 : 0),
+                    Colors.black.withValues(alpha: hasHeaderImage ? 0.20 : 0),
+                  ],
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: CustomPaint(
+                  painter: BlueprintDecorationPainter(
+                    fillColor: Colors.white.withValues(alpha: 0.82),
+                    lineColor: AppColors.blueprintLine.withValues(alpha: 0.55),
+                    gridColor: AppColors.blueprintLine.withValues(alpha: 0.20),
+                    radius: 12,
+                    subtle: true,
+                  ),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              GestureDetector(
+                                onTap: uploadingAvatar
+                                    ? null
+                                    : pickAndUploadAvatar,
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  alignment: Alignment.center,
+                                  children: [
+                                    StroykaAvatar(
+                                      imageUrl: photoUrl,
+                                      fallbackIcon: role == "employer"
+                                          ? Icons.business
+                                          : Icons.person,
+                                      size: 88,
+                                    ),
+                                    Positioned(
+                                      right: -8,
+                                      bottom: -8,
+                                      child: Material(
+                                        color: AppColors.navy
+                                            .withValues(alpha: 0.90),
+                                        shape: const CircleBorder(),
+                                        child: SizedBox(
+                                          width: 34,
+                                          height: 34,
+                                          child: uploadingAvatar
+                                              ? const Padding(
+                                                  padding: EdgeInsets.all(8),
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    color: Colors.white,
+                                                  ),
+                                                )
+                                              : const Icon(
+                                                  Icons.photo_camera_outlined,
+                                                  color: Colors.white,
+                                                  size: 18,
+                                                ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                title,
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.ink,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                subtitle,
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.muted,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: OutlinedButton.icon(
+                            onPressed: pickHeaderImage,
+                            icon: const Icon(Icons.image_outlined, size: 18),
+                            label: const Text("Choose background"),
+                          ),
+                        ),
+                        Positioned(
+                          left: 0,
+                          bottom: 0,
+                          child: OutlinedButton.icon(
+                            onPressed:
+                                uploadingAvatar ? null : pickAndUploadAvatar,
+                            icon: const Icon(Icons.person_outline, size: 18),
+                            label: Text(
+                              hasAvatar ? "Change avatar" : "Choose avatar",
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// PORTFOLIO
   Widget buildPortfolioPreview() {
     if (role != "worker") return const SizedBox();
@@ -1210,8 +1402,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        buildAvatar(),
-        buildHeaderBackgroundPicker(),
+        buildProfileCreationHeader(),
         buildVerificationPanel(),
         const SizedBox(height: 20),
 
@@ -1238,6 +1429,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (role == "worker") ...[
           TextField(
             controller: nameController,
+            onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(labelText: "Name"),
           ),
           const SizedBox(height: 12),
@@ -1260,8 +1452,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 12),
           TextField(
-              controller: tradeController,
-              decoration: const InputDecoration(labelText: "Trade")),
+            controller: tradeController,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(labelText: "Trade"),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -1438,6 +1632,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (role == "employer") ...[
           TextField(
             controller: companyController,
+            onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(labelText: "Company name"),
           ),
           const SizedBox(height: 12),
@@ -1479,6 +1674,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 12),
           TextField(
             controller: contactPersonController,
+            onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(labelText: "Contact person"),
           ),
           const SizedBox(height: 12),
