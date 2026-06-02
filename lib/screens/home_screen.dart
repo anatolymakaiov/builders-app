@@ -44,6 +44,9 @@ class _HomeScreenState extends State<HomeScreen> {
   String? userId;
   bool loading = true;
   bool legalPromptShown = false;
+  bool _showOnboardingTour = false;
+  bool _savingTourCompletion = false;
+  int _tourStepIndex = 0;
   int _lastNotificationCount = 0;
   int _lastChatCount = 0;
   int _lastApplicationCount = 0;
@@ -109,6 +112,9 @@ class _HomeScreenState extends State<HomeScreen> {
         final rawRole = data?["role"]?.toString();
         role =
             rawRole == "admin" || rawRole == "employer" ? rawRole! : "worker";
+        _showOnboardingTour = role != "admin" &&
+            data?["onboardingTourPending"] == true &&
+            data?["onboardingTourCompleted"] != true;
         final hasProfile = data?["profileComplete"] == true ||
             data?["onboardingComplete"] == true ||
             data?["profileCreated"] == true ||
@@ -133,6 +139,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     handleShellNavigationCommand();
+    if (_showOnboardingTour) {
+      final steps = _tourSteps();
+      final firstTourStep = steps.isEmpty ? null : steps.first;
+      if (firstTourStep != null &&
+          firstTourStep.tabIndex < getScreens().length) {
+        currentIndex = firstTourStep.tabIndex;
+      }
+    }
 
     setState(() {
       loading = false;
@@ -428,6 +442,236 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
   }
 
+  List<_GuidedTourStep> _tourSteps() {
+    if (role == "employer") {
+      return const [
+        _GuidedTourStep(
+          tabIndex: 0,
+          title: "Jobs",
+          description:
+              "Here you can manage your vacancies and view active vacancies published by other employers.",
+        ),
+        _GuidedTourStep(
+          tabIndex: 1,
+          title: "Map",
+          description: "Here you can view active vacancies on the UK map.",
+        ),
+        _GuidedTourStep(
+          tabIndex: 2,
+          title: "Applications",
+          description:
+              "Here you can view applications from workers and teams, communicate with applicants, and manage offers.",
+        ),
+        _GuidedTourStep(
+          tabIndex: 3,
+          title: "Alerts / Notifications",
+          description:
+              "Here you will see important updates from the app and from the admin team.",
+        ),
+        _GuidedTourStep(
+          tabIndex: 5,
+          title: "Profile / My Account",
+          description:
+              "Here you can manage your company profile, billing plan, support requests, admin inbox, and account settings.",
+        ),
+      ];
+    }
+
+    return const [
+      _GuidedTourStep(
+        tabIndex: 0,
+        title: "Jobs",
+        description:
+            "Here you can view active vacancies published by employers.",
+      ),
+      _GuidedTourStep(
+        tabIndex: 1,
+        title: "Map",
+        description: "Here you can view active vacancies on the UK map.",
+      ),
+      _GuidedTourStep(
+        tabIndex: 3,
+        title: "Applications",
+        description:
+            "Here you can track your applications, offers, and status changes.",
+      ),
+      _GuidedTourStep(
+        tabIndex: 4,
+        title: "Alerts / Notifications",
+        description:
+            "Here you will see important updates from employers, the app, and the admin team.",
+      ),
+      _GuidedTourStep(
+        tabIndex: 6,
+        title: "Profile / My Account",
+        description:
+            "Here you can manage your profile, teams, photos, support requests, admin inbox, and account settings.",
+      ),
+    ];
+  }
+
+  Future<void> _completeOnboardingTour() async {
+    final uid = userId;
+    if (uid == null || _savingTourCompletion) return;
+
+    setState(() => _savingTourCompletion = true);
+
+    try {
+      await FirebaseFirestore.instance.collection("users").doc(uid).set({
+        "onboardingTourCompleted": true,
+        "onboardingTourCompletedAt": FieldValue.serverTimestamp(),
+        "onboardingTourPending": false,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("ONBOARDING TOUR SAVE ERROR: $e");
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _savingTourCompletion = false;
+      _showOnboardingTour = false;
+    });
+  }
+
+  void _goToNextTourStep() {
+    final steps = _tourSteps();
+    if (_tourStepIndex >= steps.length - 1) {
+      unawaited(_completeOnboardingTour());
+      return;
+    }
+
+    final nextIndex = _tourStepIndex + 1;
+    setState(() {
+      _tourStepIndex = nextIndex;
+      currentIndex = steps[nextIndex].tabIndex;
+      if (role == "employer" && currentIndex == 5) {
+        employerProfileInitialTab = 0;
+      }
+    });
+  }
+
+  Widget _buildTourOverlay(int navItemCount) {
+    final steps = _tourSteps();
+    if (steps.isEmpty) return const SizedBox.shrink();
+
+    final step = steps[_tourStepIndex.clamp(0, steps.length - 1)];
+    final media = MediaQuery.of(context);
+    final width = media.size.width;
+    const navHorizontalPadding = 12.0;
+    const navHeight = 74.0;
+    final navBottom = media.padding.bottom + 6.0;
+    final itemWidth = (width - navHorizontalPadding * 2) / navItemCount;
+    final highlightLeft =
+        navHorizontalPadding + itemWidth * step.tabIndex + 6.0;
+    final isLast = _tourStepIndex >= steps.length - 1;
+
+    return Positioned.fill(
+      child: Material(
+        color: Colors.transparent,
+        child: Stack(
+          children: [
+            Container(color: Colors.black.withValues(alpha: 0.58)),
+            Positioned(
+              left: highlightLeft,
+              bottom: navBottom,
+              width: itemWidth - 12.0,
+              height: navHeight,
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.blueprintLine,
+                      width: 2,
+                    ),
+                    color: AppColors.blueprintLine.withValues(alpha: 0.10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.blueprintLine.withValues(alpha: 0.35),
+                        blurRadius: 18,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 18,
+              right: 18,
+              bottom: navBottom + navHeight + 18,
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: AppColors.surface.withValues(alpha: 0.98),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: AppColors.blueprintLine.withValues(alpha: 0.55),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.26),
+                      blurRadius: 22,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      step.title,
+                      style: const TextStyle(
+                        color: AppColors.deep,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      step.description,
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 15,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Text(
+                          "${_tourStepIndex + 1}/${steps.length}",
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: _savingTourCompletion
+                              ? null
+                              : () => unawaited(_completeOnboardingTour()),
+                          child: const Text("Skip"),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed:
+                              _savingTourCompletion ? null : _goToNextTourStep,
+                          child: Text(isLast ? "Finish" : "Next"),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 🔴 BADGE UI
   Widget buildBadgeIcon(IconData icon, int count) {
     return Stack(
@@ -591,63 +835,69 @@ class _HomeScreenState extends State<HomeScreen> {
                       currentIndex = 0;
                     }
 
-                    return Scaffold(
-                      body: StroykaBackground(
-                        asset: AppAssets.darkBackgrounds[
-                            currentIndex % AppAssets.darkBackgrounds.length],
-                        child: IndexedStack(
-                          index: currentIndex,
-                          children: screens,
-                        ),
-                      ),
-                      floatingActionButton:
-                          role == "employer" && currentIndex == 0
-                              ? FloatingActionButton(
-                                  onPressed: openPostJobOrBilling,
-                                  child: const Icon(Icons.add),
-                                )
-                              : null,
-                      bottomNavigationBar: SafeArea(
-                        top: false,
-                        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: AppColors.deep.withValues(alpha: 0.92),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: AppColors.blueprintLine
-                                  .withValues(alpha: 0.25),
+                    return Stack(
+                      children: [
+                        Scaffold(
+                          body: StroykaBackground(
+                            asset: AppAssets.darkBackgrounds[currentIndex %
+                                AppAssets.darkBackgrounds.length],
+                            child: IndexedStack(
+                              index: currentIndex,
+                              children: screens,
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.34),
-                                blurRadius: 24,
-                                offset: const Offset(0, 12),
-                              ),
-                            ],
                           ),
-                          child: BottomNavigationBar(
-                            currentIndex: currentIndex,
-                            items: items,
-                            type: BottomNavigationBarType.fixed,
-                            backgroundColor: Colors.transparent,
-                            selectedItemColor: AppColors.blueprintLine,
-                            unselectedItemColor:
-                                Colors.white.withValues(alpha: 0.82),
-                            showUnselectedLabels: true,
-                            onTap: (index) {
-                              setState(() {
-                                if (role == "employer" &&
-                                    index == 5 &&
-                                    currentIndex != 5) {
-                                  employerProfileInitialTab = 0;
-                                }
-                                currentIndex = index;
-                              });
-                            },
+                          floatingActionButton:
+                              role == "employer" && currentIndex == 0
+                                  ? FloatingActionButton(
+                                      onPressed: openPostJobOrBilling,
+                                      child: const Icon(Icons.add),
+                                    )
+                                  : null,
+                          bottomNavigationBar: SafeArea(
+                            top: false,
+                            minimum: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: AppColors.deep.withValues(alpha: 0.92),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: AppColors.blueprintLine
+                                      .withValues(alpha: 0.25),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.34),
+                                    blurRadius: 24,
+                                    offset: const Offset(0, 12),
+                                  ),
+                                ],
+                              ),
+                              child: BottomNavigationBar(
+                                currentIndex: currentIndex,
+                                items: items,
+                                type: BottomNavigationBarType.fixed,
+                                backgroundColor: Colors.transparent,
+                                selectedItemColor: AppColors.blueprintLine,
+                                unselectedItemColor:
+                                    Colors.white.withValues(alpha: 0.82),
+                                showUnselectedLabels: true,
+                                onTap: (index) {
+                                  setState(() {
+                                    if (role == "employer" &&
+                                        index == 5 &&
+                                        currentIndex != 5) {
+                                      employerProfileInitialTab = 0;
+                                    }
+                                    currentIndex = index;
+                                  });
+                                },
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        if (_showOnboardingTour)
+                          _buildTourOverlay(items.length),
+                      ],
                     );
                   },
                 );
@@ -658,4 +908,16 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
+}
+
+class _GuidedTourStep {
+  final int tabIndex;
+  final String title;
+  final String description;
+
+  const _GuidedTourStep({
+    required this.tabIndex,
+    required this.title,
+    required this.description,
+  });
 }

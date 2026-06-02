@@ -792,6 +792,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           "profileCreated": true,
           "profileComplete": true,
           "onboardingComplete": true,
+          "onboardingTourPending": true,
+          "onboardingTourCompleted": false,
           if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
             "legalAccepted": true,
           if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion)
