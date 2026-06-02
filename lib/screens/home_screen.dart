@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -578,11 +579,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final media = MediaQuery.of(context);
     final width = media.size.width;
     const navHorizontalPadding = 12.0;
-    const navHeight = 74.0;
+    const navHeight = 58.0;
     final navBottom = media.padding.bottom + 6.0;
     final itemWidth = (width - navHorizontalPadding * 2) / navItemCount;
-    final highlightLeft =
-        navHorizontalPadding + itemWidth * step.tabIndex + 6.0;
+    final highlightWidth = math.min(92.0, itemWidth - 4.0);
+    final highlightLeft = navHorizontalPadding +
+        itemWidth * step.tabIndex +
+        (itemWidth - highlightWidth) / 2;
     final isLast = _tourStepIndex >= steps.length - 1;
 
     return Positioned.fill(
@@ -593,8 +596,8 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(color: Colors.black.withValues(alpha: 0.58)),
             Positioned(
               left: highlightLeft,
-              bottom: navBottom,
-              width: itemWidth - 12.0,
+              bottom: navBottom + 9,
+              width: highlightWidth,
               height: navHeight,
               child: IgnorePointer(
                 child: Container(

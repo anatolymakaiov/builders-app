@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:async';
 import 'dart:io';
 
 import 'portfolio_screen.dart';
@@ -82,6 +84,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool firstProfileCreation = false;
   bool legalAcceptedForCurrentVersion = false;
   bool billingEmailVerified = false;
+  bool emailVerified = false;
+  bool phoneVerified = false;
   bool sendingEmailVerification = false;
   String loadedBillingEmail = "";
 
@@ -201,6 +205,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               "")
           .toString();
       billingEmailController.text = loadedBillingEmail;
+      emailVerified = data["emailVerified"] == true ||
+          FirebaseAuth.instance.currentUser?.emailVerified == true;
+      phoneVerified = data["phoneVerified"] == true;
       billingEmailVerified = data["billingEmailVerified"] == true ||
           billing["billingEmailVerified"] == true;
       invoiceLegalCompanyNameController.text =
@@ -499,10 +506,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           },
         }, SetOptions(merge: true));
         if (!mounted) return;
-        setState(() => billingEmailVerified = role == "employer"
-            ? refreshed.email?.toLowerCase() ==
-                billingEmailController.text.trim().toLowerCase()
-            : billingEmailVerified);
+        setState(() {
+          emailVerified = true;
+          billingEmailVerified = role == "employer"
+              ? refreshed.email?.toLowerCase() ==
+                  billingEmailController.text.trim().toLowerCase()
+              : billingEmailVerified;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Email verified")),
         );
@@ -568,11 +578,185 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (role == "employer" && billingMatches) {
         billingEmailVerified = verified;
       }
+      emailVerified = verified;
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
           content:
               Text(verified ? "Email verified" : "Email not verified yet")),
+    );
+  }
+
+  Widget buildInlineVerificationStatus({
+    required bool verified,
+    required String verifiedText,
+    required String unverifiedText,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          Icon(
+            verified ? Icons.verified : Icons.info_outline,
+            size: 18,
+            color: verified ? AppColors.success : AppColors.warning,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            verified ? verifiedText : unverifiedText,
+            style: TextStyle(
+              color: verified ? AppColors.success : AppColors.warning,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> verifyEmailFromDialog() async {
+    final email = (FirebaseAuth.instance.currentUser?.email ??
+            billingEmailController.text.trim())
+        .trim();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Verify email"),
+        content: Text("Send verification email to $email?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Send"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await sendEmailVerification();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Check your email"),
+        content: const Text(
+          "Open the verification link from Firebase, then return to the app and tap Refresh.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text("Close"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await refreshEmailVerification();
+            },
+            child: const Text("Refresh"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> verifyPhoneFromDialog() async {
+    final phone = phoneController.text.trim();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Verify phone"),
+        content: Text("Send SMS verification code to $phone?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Send SMS"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    const allowDevVerification = kDebugMode;
+    final verified = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("SMS verification"),
+        content: const Text(
+          allowDevVerification
+              ? "SMS verification backend is not configured yet. Development verification can mark this phone as verified for testing."
+              : "SMS verification backend is not configured yet. Phone cannot be marked as verified until SMS provider is connected.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          if (allowDevVerification)
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text("Use development verification"),
+            ),
+        ],
+      ),
+    );
+    if (verified != true) return;
+
+    await FirebaseFirestore.instance.collection("users").doc(userId).set({
+      "phoneVerified": true,
+      "phoneVerifiedAt": FieldValue.serverTimestamp(),
+      "updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    if (!mounted) return;
+    setState(() => phoneVerified = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Phone verified")),
+    );
+  }
+
+  Future<void> showVerificationRequiredDialog({
+    required bool requireEmail,
+    required bool requirePhone,
+  }) async {
+    final message = requireEmail && requirePhone
+        ? "Your email address and phone number are not verified. Please choose what you would like to verify."
+        : requireEmail
+            ? "Your email address is not verified. Please verify it before continuing."
+            : "Your phone number is not verified. Please verify it before continuing.";
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Verification required"),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text("Cancel"),
+          ),
+          if (requireEmail)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                unawaited(verifyEmailFromDialog());
+              },
+              child: const Text("Verify email"),
+            ),
+          if (requirePhone)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                unawaited(verifyPhoneFromDialog());
+              },
+              child: const Text("Verify phone"),
+            ),
+        ],
+      ),
     );
   }
 
@@ -702,6 +886,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
 
+    final authUser = FirebaseAuth.instance.currentUser;
+    final billingEmailMatchesAuth =
+        authUser?.email?.toLowerCase() == billingEmail.toLowerCase();
+    final emailIsVerified = role == "employer"
+        ? billingEmailVerified ||
+            (billingEmailMatchesAuth && authUser?.emailVerified == true)
+        : emailVerified || authUser?.emailVerified == true;
+    if (firstProfileCreation && (!emailIsVerified || !phoneVerified)) {
+      await showVerificationRequiredDialog(
+        requireEmail: !emailIsVerified,
+        requirePhone: !phoneVerified,
+      );
+      return;
+    }
+
     setState(() => loading = true);
 
     try {
@@ -750,7 +949,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       if (role == "employer") {
-        final authUser = FirebaseAuth.instance.currentUser;
         final verifiedByAuth =
             authUser?.email?.toLowerCase() == billingEmail.toLowerCase() &&
                 authUser?.emailVerified == true;
@@ -1396,11 +1594,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget buildForm() {
+    final accountEmail = (FirebaseAuth.instance.currentUser?.email ??
+            billingEmailController.text.trim())
+        .trim();
+    final inlineEmailVerified = emailVerified ||
+        FirebaseAuth.instance.currentUser?.emailVerified == true;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         buildProfileCreationHeader(),
-        buildVerificationPanel(),
         const SizedBox(height: 20),
 
         DropdownButtonFormField<String>(
@@ -1430,10 +1633,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: const InputDecoration(labelText: "Name"),
           ),
           const SizedBox(height: 12),
+          TextFormField(
+            initialValue: accountEmail,
+            readOnly: true,
+            decoration: const InputDecoration(labelText: "Email"),
+          ),
+          buildInlineVerificationStatus(
+            verified: inlineEmailVerified,
+            verifiedText: "Verified",
+            unverifiedText: "Not verified",
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: phoneController,
             keyboardType: TextInputType.phone,
             decoration: const InputDecoration(labelText: "Phone"),
+          ),
+          buildInlineVerificationStatus(
+            verified: phoneVerified,
+            verifiedText: "Verified",
+            unverifiedText: "Not verified",
           ),
           const SizedBox(height: 12),
         ],
@@ -1642,25 +1861,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               helperText: "Invoices and billing notices will use this email.",
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(
-                billingEmailVerified ? Icons.verified : Icons.info_outline,
-                color: billingEmailVerified
-                    ? AppColors.success
-                    : AppColors.warning,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  billingEmailVerified
-                      ? "Billing email verified"
-                      : "Billing email must match a verified Firebase account email or be verified later.",
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
+          buildInlineVerificationStatus(
+            verified: billingEmailVerified ||
+                (FirebaseAuth.instance.currentUser?.email?.toLowerCase() ==
+                        billingEmailController.text.trim().toLowerCase() &&
+                    FirebaseAuth.instance.currentUser?.emailVerified == true),
+            verifiedText: "Verified",
+            unverifiedText: "Not verified",
           ),
           buildInvoiceDetailsForm(),
           const SizedBox(height: 12),
@@ -1679,6 +1886,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             controller: phoneController,
             keyboardType: TextInputType.phone,
             decoration: const InputDecoration(labelText: "Main phone"),
+          ),
+          buildInlineVerificationStatus(
+            verified: phoneVerified,
+            verifiedText: "Verified",
+            unverifiedText: "Not verified",
           ),
           const SizedBox(height: 12),
           const Text("Additional phones"),
