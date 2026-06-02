@@ -660,17 +660,13 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
   }
 
   void returnToAuthenticationMethods() {
-    if (Navigator.canPop(context)) {
-      Navigator.pop(context);
-      return;
-    }
-    Navigator.pushReplacement(
-      context,
+    Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => LoginScreen(
           onSessionUnlocked: widget.onSessionUnlocked,
         ),
       ),
+      (route) => false,
     );
   }
 
