@@ -143,7 +143,8 @@ class _LoginScreenState extends State<LoginScreen> {
             email.isEmpty ||
             phone.isEmpty ||
             password.isEmpty) {
-          if (mounted) setState(() => loading = false);
+          if (!mounted) return;
+          setState(() => loading = false);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text("Enter name, email, phone and password"),
@@ -275,10 +276,11 @@ class _LoginScreenState extends State<LoginScreen> {
         child: OutlinedButton(
           onPressed: onPressed,
           style: OutlinedButton.styleFrom(
-            backgroundColor: AppColors.surface.withValues(alpha: 0.92),
-            foregroundColor: AppColors.ink,
+            backgroundColor: Colors.transparent,
+            foregroundColor: Colors.white,
             side: BorderSide(
-              color: AppColors.blueprintLine.withValues(alpha: 0.7),
+              color: AppColors.blueprintLine.withValues(alpha: 0.92),
+              width: 1.4,
             ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
@@ -287,6 +289,7 @@ class _LoginScreenState extends State<LoginScreen> {
               fontSize: 16,
               fontWeight: FontWeight.w900,
             ),
+            shadowColor: Colors.transparent,
           ),
           child: Text(label),
         ),
@@ -345,6 +348,134 @@ class _LoginScreenState extends State<LoginScreen> {
     final sessionSubtitle = widget.sessionMode == AuthPreferenceMethod.biometric
         ? "Use Face ID / Touch ID to enter your saved STROYKA session."
         : "Enter with your saved Firebase session. Password is required if the session is not valid.";
+    final isStartChoice = !showSessionGate && selectedAction == null;
+
+    Widget authContent() {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isStartChoice) ...[
+            buildStartChoices(),
+          ] else if (showSessionGate) ...[
+            Icon(
+              widget.sessionMode == AuthPreferenceMethod.biometric
+                  ? Icons.fingerprint
+                  : Icons.login,
+              size: 44,
+              color: AppColors.greenDark,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              sessionTitle,
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              sessionSubtitle,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.muted),
+            ),
+          ] else ...[
+            if (!isLogin) ...[
+              StroykaInputField(
+                controller: registrationNameController,
+                hintText: "First name / contact name",
+                prefixIcon: Icons.person_outline,
+              ),
+              const SizedBox(height: 12),
+            ],
+            StroykaInputField(
+              controller: emailController,
+              hintText: "Email",
+              prefixIcon: Icons.mail_outline,
+            ),
+            const SizedBox(height: 12),
+            StroykaInputField(
+              controller: passwordController,
+              hintText: "Password",
+              prefixIcon: Icons.lock_outline,
+              isPassword: true,
+            ),
+            if (!isLogin) ...[
+              const SizedBox(height: 12),
+              StroykaInputField(
+                controller: phoneController,
+                hintText: "Phone",
+                prefixIcon: Icons.phone_outlined,
+              ),
+              const SizedBox(height: 12),
+              StroykaDropdown(
+                value: role,
+                items: const ["worker", "employer"],
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => role = value);
+                },
+              ),
+            ],
+          ],
+          if (selectedAction != null || showSessionGate) ...[
+            const SizedBox(height: 22),
+            SizedBox(
+              width: double.infinity,
+              child: StroykaButton(
+                onPressed: loading
+                    ? null
+                    : showSessionGate
+                        ? (widget.sessionMode == AuthPreferenceMethod.biometric
+                            ? enterWithBiometric
+                            : enterWithSession)
+                        : submit,
+                width: double.infinity,
+                child: loading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : Text(showSessionGate
+                        ? (widget.sessionMode == AuthPreferenceMethod.biometric
+                            ? "Use Face ID / Touch ID"
+                            : "Enter")
+                        : isLogin
+                            ? "Sign in"
+                            : "Create account"),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (isLogin && !showSessionGate)
+              TextButton(
+                onPressed: openPasswordRecovery,
+                child: const Text("Forgot password?"),
+              ),
+            const SizedBox(height: 6),
+            if (showSessionGate)
+              TextButton(
+                onPressed: openPasswordLogin,
+                child: const Text("Use password instead"),
+              )
+            else
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    selectedAction = null;
+                    isLogin = true;
+                    usePasswordFallback = false;
+                  });
+                },
+                child: const Text("Back"),
+              ),
+          ],
+        ],
+      );
+    }
 
     return Scaffold(
       body: Stack(
@@ -370,146 +501,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           translation: const Offset(0, 0.08),
                           child: FractionallySizedBox(
                             widthFactor: 0.88,
-                            child: StroykaSurface(
-                              padding:
-                                  const EdgeInsets.fromLTRB(20, 24, 20, 20),
-                              texture:
-                                  "assets/branding/texture_light_cloud.jpg",
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (!showSessionGate &&
-                                      selectedAction == null) ...[
-                                    buildStartChoices(),
-                                  ] else if (showSessionGate) ...[
-                                    Icon(
-                                      widget.sessionMode ==
-                                              AuthPreferenceMethod.biometric
-                                          ? Icons.fingerprint
-                                          : Icons.login,
-                                      size: 44,
-                                      color: AppColors.greenDark,
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      sessionTitle,
-                                      style: const TextStyle(
-                                        color: AppColors.ink,
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      sessionSubtitle,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                          color: AppColors.muted),
-                                    ),
-                                  ] else ...[
-                                    if (!isLogin) ...[
-                                      StroykaInputField(
-                                        controller: registrationNameController,
-                                        hintText: "First name / contact name",
-                                        prefixIcon: Icons.person_outline,
-                                      ),
-                                      const SizedBox(height: 12),
-                                    ],
-                                    StroykaInputField(
-                                      controller: emailController,
-                                      hintText: "Email",
-                                      prefixIcon: Icons.mail_outline,
-                                    ),
-                                    const SizedBox(height: 12),
-                                    StroykaInputField(
-                                      controller: passwordController,
-                                      hintText: "Password",
-                                      prefixIcon: Icons.lock_outline,
-                                      isPassword: true,
-                                    ),
-                                    if (!isLogin) ...[
-                                      const SizedBox(height: 12),
-                                      StroykaInputField(
-                                        controller: phoneController,
-                                        hintText: "Phone",
-                                        prefixIcon: Icons.phone_outlined,
-                                      ),
-                                      const SizedBox(height: 12),
-                                      StroykaDropdown(
-                                        value: role,
-                                        items: const ["worker", "employer"],
-                                        onChanged: (value) {
-                                          if (value == null) return;
-                                          setState(() => role = value);
-                                        },
-                                      ),
-                                    ],
-                                  ],
-                                  if (selectedAction != null ||
-                                      showSessionGate) ...[
-                                    const SizedBox(height: 22),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: StroykaButton(
-                                        onPressed: loading
-                                            ? null
-                                            : showSessionGate
-                                                ? (widget.sessionMode ==
-                                                        AuthPreferenceMethod
-                                                            .biometric
-                                                    ? enterWithBiometric
-                                                    : enterWithSession)
-                                                : submit,
-                                        width: double.infinity,
-                                        child: loading
-                                            ? const SizedBox(
-                                                width: 20,
-                                                height: 20,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  color: Colors.white,
-                                                  strokeWidth: 2,
-                                                ),
-                                              )
-                                            : Text(showSessionGate
-                                                ? (widget.sessionMode ==
-                                                        AuthPreferenceMethod
-                                                            .biometric
-                                                    ? "Use Face ID / Touch ID"
-                                                    : "Enter")
-                                                : isLogin
-                                                    ? "Sign in"
-                                                    : "Create account"),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    if (isLogin && !showSessionGate)
-                                      TextButton(
-                                        onPressed: openPasswordRecovery,
-                                        child: const Text("Forgot password?"),
-                                      ),
-                                    const SizedBox(height: 6),
-                                    if (showSessionGate)
-                                      TextButton(
-                                        onPressed: openPasswordLogin,
-                                        child:
-                                            const Text("Use password instead"),
-                                      )
-                                    else
-                                      TextButton(
-                                        onPressed: () {
-                                          setState(() {
-                                            selectedAction = null;
-                                            isLogin = true;
-                                            usePasswordFallback = false;
-                                          });
-                                        },
-                                        child: const Text("Back"),
-                                      ),
-                                  ],
-                                ],
-                              ),
-                            ),
+                            child: isStartChoice
+                                ? authContent()
+                                : StroykaSurface(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        20, 24, 20, 20),
+                                    texture:
+                                        "assets/branding/texture_light_cloud.jpg",
+                                    child: authContent(),
+                                  ),
                           ),
                         ),
                       ],
@@ -580,7 +580,7 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e")),
+        const SnackBar(content: Text("Could not sign in. Please try again.")),
       );
     } finally {
       if (mounted) setState(() => loading = false);
@@ -597,53 +597,81 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Email & Password")),
-      body: StroykaScreenBody(
-        child: ListView(
-          padding: const EdgeInsets.all(18),
-          children: [
-            StroykaSurface(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-              texture: "assets/branding/texture_light_cloud.jpg",
-              child: Column(
-                children: [
-                  StroykaInputField(
-                    controller: emailController,
-                    hintText: "Email",
-                    prefixIcon: Icons.mail_outline,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            "assets/branding/login_background_stroyka.png",
+            fit: BoxFit.cover,
+          ),
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    24,
+                    24,
+                    24 + MediaQuery.viewInsetsOf(context).bottom,
                   ),
-                  const SizedBox(height: 12),
-                  StroykaInputField(
-                    controller: passwordController,
-                    hintText: "Password",
-                    prefixIcon: Icons.lock_outline,
-                    isPassword: true,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight - 48,
+                    ),
+                    child: Center(
+                      child: FractionallySizedBox(
+                        widthFactor: 0.88,
+                        child: StroykaSurface(
+                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                          texture: "assets/branding/texture_light_cloud.jpg",
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              StroykaInputField(
+                                controller: emailController,
+                                hintText: "Email",
+                                prefixIcon: Icons.mail_outline,
+                              ),
+                              const SizedBox(height: 12),
+                              StroykaInputField(
+                                controller: passwordController,
+                                hintText: "Password",
+                                prefixIcon: Icons.lock_outline,
+                                isPassword: true,
+                              ),
+                              const SizedBox(height: 20),
+                              StroykaButton(
+                                onPressed: loading ? null : signIn,
+                                width: double.infinity,
+                                child: loading
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Text("Sign In"),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: openPasswordRecovery,
+                                child: const Text("Forgot Password?"),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 20),
-                  StroykaButton(
-                    onPressed: loading ? null : signIn,
-                    width: double.infinity,
-                    child: loading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Text("Sign In"),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: openPasswordRecovery,
-                    child: const Text("Forgot Password?"),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

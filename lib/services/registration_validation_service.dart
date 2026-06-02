@@ -124,27 +124,34 @@ class RegistrationValidationService {
     required String email,
     required String phone,
   }) async {
-    final normalizedEmail = normalizeEmail(email);
-    final normalizedPhone = normalizePhone(phone);
-    final errors = <String>[];
+    try {
+      final normalizedEmail = normalizeEmail(email);
+      final normalizedPhone = normalizePhone(phone);
+      final errors = <String>[];
 
-    final emailExists = await _activeUserExists(
-      field: "email",
-      value: normalizedEmail,
-    );
-    if (emailExists) {
-      errors.add("An account with this email address already exists.");
+      final emailExists = await _activeUserExists(
+        field: "email",
+        value: normalizedEmail,
+      );
+      if (emailExists) {
+        errors.add("An account with this email address already exists.");
+      }
+
+      final phoneExists = await _phoneExists(
+        phone: phone.trim(),
+        normalizedPhone: normalizedPhone,
+      );
+      if (phoneExists) {
+        errors.add("An account with this phone number already exists.");
+      }
+
+      return RegistrationValidationResult(errors);
+    } on FirebaseException catch (error) {
+      if (error.code == "permission-denied" || error.code == "unavailable") {
+        return const RegistrationValidationResult([]);
+      }
+      rethrow;
     }
-
-    final phoneExists = await _phoneExists(
-      phone: phone.trim(),
-      normalizedPhone: normalizedPhone,
-    );
-    if (phoneExists) {
-      errors.add("An account with this phone number already exists.");
-    }
-
-    return RegistrationValidationResult(errors);
   }
 
   Future<bool> _phoneExists({

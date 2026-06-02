@@ -135,7 +135,12 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
         if (!snapshot.hasData) {
           sessionUnlocked = false;
-          return const LoginScreen();
+          return LoginScreen(
+            onSessionUnlocked: () {
+              if (!mounted) return;
+              setState(() => sessionUnlocked = true);
+            },
+          );
         }
 
         final user = snapshot.data!;
