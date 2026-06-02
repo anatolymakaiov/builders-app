@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_preferences_service.dart';
+import '../services/registration_validation_service.dart';
 import 'password_recovery_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -26,6 +27,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final registrationNameController = TextEditingController();
   final phoneController = TextEditingController();
   final authPreferences = AuthPreferencesService();
+  final registrationValidation = RegistrationValidationService();
 
   String role = "worker";
   String? selectedAction;
@@ -134,6 +136,8 @@ class _LoginScreenState extends State<LoginScreen> {
         final password = passwordController.text.trim();
         final registrationName = registrationNameController.text.trim();
         final phone = phoneController.text.trim();
+        final normalizedPhone =
+            RegistrationValidationService.normalizePhone(phone);
 
         if (registrationName.isEmpty ||
             email.isEmpty ||
@@ -148,11 +152,47 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        final result =
-            await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        final validation = await registrationValidation.validate(
           email: email,
-          password: password,
+          phone: phone,
         );
+        if (validation.hasErrors) {
+          if (!mounted) return;
+          setState(() => loading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(validation.message)),
+          );
+          return;
+        }
+
+        final pendingDetails = PendingRegistrationDetails(
+          email: email,
+          role: role,
+          registrationName: registrationName,
+          phone: phone,
+          normalizedPhone: normalizedPhone,
+        );
+        RegistrationValidationService.rememberPending(pendingDetails);
+
+        UserCredential result;
+        try {
+          result = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+            email: email,
+            password: password,
+          );
+        } on FirebaseAuthException catch (error) {
+          RegistrationValidationService.clearPending(email);
+          if (!mounted) return;
+          setState(() => loading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                RegistrationValidationService.firebaseAuthErrorMessage(error),
+              ),
+            ),
+          );
+          return;
+        }
         await result.user?.sendEmailVerification();
 
         await FirebaseFirestore.instance
@@ -163,6 +203,7 @@ class _LoginScreenState extends State<LoginScreen> {
           "email": email,
           "registrationName": registrationName,
           "phone": phone,
+          "normalizedPhone": normalizedPhone,
           "emailVerified": result.user?.emailVerified ?? false,
           "phoneVerified": false,
           "phoneVerificationRequired": false,
@@ -187,12 +228,16 @@ class _LoginScreenState extends State<LoginScreen> {
             "updatedAt": FieldValue.serverTimestamp(),
           },
           "createdAt": FieldValue.serverTimestamp(),
+          "updatedAt": FieldValue.serverTimestamp(),
         });
+        RegistrationValidationService.clearPending(email);
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e")),
+        const SnackBar(
+          content: Text("Could not create account. Please try again."),
+        ),
       );
     }
 

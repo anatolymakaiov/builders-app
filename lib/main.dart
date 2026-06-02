@@ -7,6 +7,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'services/app_navigation.dart';
 import 'services/auth_preferences_service.dart';
 import 'services/notification_service.dart';
+import 'services/registration_validation_service.dart';
 import 'screens/edit_profile_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -76,10 +77,39 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    await FirebaseFirestore.instance.collection("users").doc(user.uid).update({
-      "isOnline": isOnline,
-      "lastSeen": FieldValue.serverTimestamp(),
-    });
+    try {
+      await FirebaseFirestore.instance
+          .collection("users")
+          .doc(user.uid)
+          .update({
+        "isOnline": isOnline,
+        "lastSeen": FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // New registrations may not have a Firestore profile document yet.
+    }
+  }
+
+  Future<void> ensureRegistrationDocument(User user) async {
+    final userRef =
+        FirebaseFirestore.instance.collection("users").doc(user.uid);
+    final snapshot = await userRef.get();
+    if (snapshot.exists) return;
+
+    final pending = RegistrationValidationService.pendingForEmail(user.email);
+    final email =
+        RegistrationValidationService.normalizeEmail(user.email ?? "");
+    final fallback = PendingRegistrationDetails(
+      email: email,
+      role: "worker",
+      registrationName: user.displayName?.trim() ?? "",
+      phone: "",
+      normalizedPhone: "",
+    );
+    await userRef.set(
+      (pending ?? fallback).toUserDocument(),
+      SetOptions(merge: true),
+    );
   }
 
   /// 🔥 lifecycle
@@ -126,9 +156,16 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
             if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                FirebaseAuth.instance.signOut();
+                ensureRegistrationDocument(user).then((_) {
+                  RegistrationValidationService.clearPending(user.email ?? "");
+                  if (mounted) setState(() {});
+                }).catchError((_) {
+                  if (mounted) setState(() {});
+                });
               });
-              return const LoginScreen();
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
 
             final userData = userSnapshot.data!.data() as Map<String, dynamic>?;

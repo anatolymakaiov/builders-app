@@ -9,6 +9,7 @@ import 'dart:io';
 import 'portfolio_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../services/registration_validation_service.dart';
 import '../widgets/legal_documents.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -641,6 +642,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> saveProfile() async {
     final name = nameController.text.trim();
     final phone = phoneController.text.trim();
+    final normalizedPhone = RegistrationValidationService.normalizePhone(phone);
     final companyName = companyController.text.trim();
     final certificationsText = certificationsController.text.trim();
 
@@ -706,6 +708,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final profileData = <String, dynamic>{
         "role": role,
         "phone": phone,
+        "normalizedPhone": normalizedPhone,
         "bio": bioController.text.trim(),
         "location": locationController.text.trim(),
         "updatedAt": FieldValue.serverTimestamp(),
