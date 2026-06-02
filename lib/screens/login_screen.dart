@@ -659,6 +659,21 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
     );
   }
 
+  void returnToAuthenticationMethods() {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+      return;
+    }
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LoginScreen(
+          onSessionUnlocked: widget.onSessionUnlocked,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -674,12 +689,12 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
               alignment: Alignment.topLeft,
               child: Padding(
                 padding: const EdgeInsets.only(left: 8, top: 6),
-                child: TextButton.icon(
-                  onPressed: loading ? null : () => Navigator.pop(context),
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  label: const Text(
-                    "Back",
-                    style: TextStyle(color: Colors.white),
+                child: IconButton(
+                  onPressed: loading ? null : returnToAuthenticationMethods,
+                  tooltip: "Authentication methods",
+                  icon: const Icon(
+                    Icons.exit_to_app,
+                    color: Colors.white,
                   ),
                 ),
               ),
