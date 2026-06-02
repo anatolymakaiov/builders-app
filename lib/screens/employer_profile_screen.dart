@@ -553,6 +553,8 @@ class _BillingSection extends StatelessWidget {
         billing["billingPlanStatus"]?.toString() ?? status;
     final paymentStatus = billing["paymentStatus"]?.toString() ?? "Not set";
     final invoiceStatus = billing["invoiceStatus"]?.toString() ?? "Not set";
+    final subscriptionStatus =
+        billing["subscriptionStatus"]?.toString() ?? "not_started";
     final billingEmail = billing["billingEmail"]?.toString() ?? "Not set";
     final billingEmailVerified = billing["billingEmailVerified"] == true;
     final planRequestStatus =
@@ -562,6 +564,14 @@ class _BillingSection extends StatelessWidget {
         (trialActive ? "active" : "not_started");
     final availableJobPosts =
         BillingService.readInt(billing["availableJobPosts"]);
+    final totalSlots = BillingService.readInt(
+      billing["activeSlots"] ??
+          billing["includedJobSlots"] ??
+          billing["availableJobPosts"],
+    );
+    final pendingPlan = billing["pendingPlan"]?.toString() ?? "";
+    final pendingPaymentMethod =
+        billing["pendingPaymentMethod"]?.toString() ?? "";
     final activeUntil = BillingService.formatDate(billing["activeUntil"]);
     final trialDaysLeft = BillingService.daysRemaining(billing["activeUntil"]);
 
@@ -606,14 +616,28 @@ class _BillingSection extends StatelessWidget {
                 label: "Available job posts",
                 value: availableJobPosts.toString(),
               ),
+              _BillingRow(
+                label: "Total slots",
+                value: totalSlots.toString(),
+              ),
               StreamBuilder<int>(
                 stream: BillingService().publishedJobSlotsStream(employerId),
                 builder: (context, snapshot) {
                   final usedJobPosts = snapshot.data ??
                       BillingService.readInt(billing["usedJobPosts"]);
-                  return _BillingRow(
-                    label: "Used job posts",
-                    value: usedJobPosts.toString(),
+                  final calculatedAvailable =
+                      (totalSlots - usedJobPosts).clamp(0, 999999);
+                  return Column(
+                    children: [
+                      _BillingRow(
+                        label: "Used slots",
+                        value: usedJobPosts.toString(),
+                      ),
+                      _BillingRow(
+                        label: "Available slots",
+                        value: calculatedAvailable.toString(),
+                      ),
+                    ],
                   );
                 },
               ),
@@ -632,6 +656,10 @@ class _BillingSection extends StatelessWidget {
               _BillingRow(
                 label: "Plan status",
                 value: BillingService.formatLabel(billingPlanStatus),
+              ),
+              _BillingRow(
+                label: "Subscription status",
+                value: BillingService.formatLabel(subscriptionStatus),
               ),
               _BillingRow(
                 label: "Trial status",
@@ -653,10 +681,28 @@ class _BillingSection extends StatelessWidget {
                 label: "Plan request",
                 value: BillingService.formatLabel(planRequestStatus),
               ),
+              if (pendingPlan.isNotEmpty)
+                _BillingRow(label: "Pending plan", value: pendingPlan),
+              if (pendingPaymentMethod.isNotEmpty)
+                _BillingRow(
+                  label: "Pending payment method",
+                  value: BillingService.formatLabel(pendingPaymentMethod),
+                ),
               _BillingRow(
                 label: "Next billing date",
                 value: BillingService.formatDate(billing["nextBillingDate"]),
               ),
+              if (paymentMode == "direct_debit")
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    "Direct Debit integration will be activated once payment gateway implementation is completed.",
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               if ((billing["lastInvoicePdfUrl"]?.toString() ?? "").isNotEmpty)
                 const _BillingRow(
                   label: "Latest invoice",

@@ -95,6 +95,22 @@ class BillingService {
       "approvedAt",
       "approvedBy",
       "updatedAt",
+      "subscriptionStatus",
+      "trialStartDate",
+      "trialEndDate",
+      "currentPlan",
+      "pendingPlan",
+      "currentPaymentMethod",
+      "pendingPaymentMethod",
+      "billingReminder10Sent",
+      "billingReminder5Sent",
+      "billingReminder3Sent",
+      "billingReminder1Sent",
+      "lastPaymentDate",
+      "nextInvoiceDate",
+      "activeSlots",
+      "usedSlots",
+      "availableSlots",
     ];
 
     for (final field in fields) {
@@ -195,6 +211,104 @@ class BillingService {
             mandateStatus == "active" ||
             mandateStatus == "verified" ||
             mandateStatus == "set_up");
+  }
+
+  static bool hasConfiguredPaymentMethod(Map<String, dynamic> userData) {
+    final billing = billingFromUserData(userData);
+    final method =
+        (billing["currentPaymentMethod"] ?? billing["paymentMethod"] ?? "")
+            .toString()
+            .trim()
+            .toLowerCase();
+    if (method == "manual_invoice") {
+      return billingEmailFromUserData(userData).isNotEmpty;
+    }
+    if (method == "direct_debit") {
+      return hasDirectDebitMandate(userData);
+    }
+    if (method == "card") {
+      return (billing["cardPaymentMethodId"] ??
+              billing["paymentMethodId"] ??
+              billing["stripePaymentMethodId"] ??
+              "")
+          .toString()
+          .trim()
+          .isNotEmpty;
+    }
+    return false;
+  }
+
+  static String subscriptionStatusFor(
+    Map<String, dynamic> userData, {
+    DateTime? now,
+  }) {
+    final billing = billingFromUserData(userData);
+    final explicit = billing["subscriptionStatus"]?.toString();
+    final billingPlanStatus =
+        billing["billingPlanStatus"]?.toString().trim().toLowerCase() ?? "";
+    final trialEndValue = billing["trialEndDate"] ?? billing["trialEndsAt"];
+    DateTime? trialEndDate;
+    if (trialEndValue is Timestamp) {
+      trialEndDate = trialEndValue.toDate();
+    } else if (trialEndValue is DateTime) {
+      trialEndDate = trialEndValue;
+    }
+
+    final current = now ?? DateTime.now();
+    final trialActive = billing["trialActive"] == true ||
+        billing["trialStatus"]?.toString() == "active" ||
+        explicit == "trial";
+    if (trialActive && trialEndDate != null && trialEndDate.isAfter(current)) {
+      return "trial";
+    }
+
+    if (billingPlanStatus == "approved") {
+      return hasConfiguredPaymentMethod(userData)
+          ? "active"
+          : "payment_required";
+    }
+
+    return "billing_required";
+  }
+
+  static Map<String, dynamic> subscriptionSnapshot({
+    required Map<String, dynamic> userData,
+    required int usedJobPosts,
+  }) {
+    final billing = billingFromUserData(userData);
+    final totalSlots = readInt(
+      billing["includedJobSlots"] ??
+          billing["availableJobPosts"] ??
+          billing["activeSlots"],
+    );
+    final availableSlots = (totalSlots - usedJobPosts).clamp(0, 999999);
+    final paymentMethod =
+        (billing["currentPaymentMethod"] ?? billing["paymentMethod"] ?? "")
+            .toString();
+    final plan =
+        (billing["currentPlan"] ?? billing["activePlanId"] ?? billing["planId"])
+            ?.toString();
+
+    return {
+      "subscriptionStatus": subscriptionStatusFor(userData),
+      "trialStartDate": billing["trialStartDate"] ?? billing["trialStartedAt"],
+      "trialEndDate": billing["trialEndDate"] ?? billing["trialEndsAt"],
+      "currentPlan": plan ?? "",
+      "pendingPlan": billing["pendingPlan"] ?? "",
+      "currentPaymentMethod": paymentMethod,
+      "pendingPaymentMethod": billing["pendingPaymentMethod"] ?? "",
+      "nextBillingDate": billing["nextBillingDate"],
+      "billingReminder10Sent": billing["billingReminder10Sent"] == true,
+      "billingReminder5Sent": billing["billingReminder5Sent"] == true,
+      "billingReminder3Sent": billing["billingReminder3Sent"] == true,
+      "billingReminder1Sent": billing["billingReminder1Sent"] == true,
+      "invoiceStatus": billing["invoiceStatus"] ?? "pending",
+      "lastPaymentDate": billing["lastPaymentDate"] ?? "",
+      "nextInvoiceDate": billing["nextInvoiceDate"] ?? "",
+      "activeSlots": totalSlots,
+      "usedSlots": usedJobPosts,
+      "availableSlots": availableSlots,
+    };
   }
 
   Future<String> createManualInvoicePdf({
@@ -349,11 +463,70 @@ class BillingService {
         .collection("users")
         .doc(employerId)
         .get();
-    final userData = userSnap.data() ?? {};
+    var userData = userSnap.data() ?? {};
     final usedJobPosts = await countPublishedJobSlots(employerId);
+    userData = await refreshSubscriptionLifecycle(
+      employerId: employerId,
+      userData: _userDataWithUsedJobPosts(userData, usedJobPosts),
+      usedJobPosts: usedJobPosts,
+    );
     _assertEmployerCanPostFromData(
       _userDataWithUsedJobPosts(userData, usedJobPosts),
     );
+  }
+
+  Future<Map<String, dynamic>> refreshSubscriptionLifecycle({
+    required String employerId,
+    required Map<String, dynamic> userData,
+    required int usedJobPosts,
+  }) async {
+    final billing = billingFromUserData(userData);
+    final next = Map<String, dynamic>.from(userData);
+    final nextBilling = Map<String, dynamic>.from(billing);
+    nextBilling.addAll(subscriptionSnapshot(
+      userData: userData,
+      usedJobPosts: usedJobPosts,
+    ));
+
+    final trialEndValue = billing["trialEndDate"] ?? billing["trialEndsAt"];
+    DateTime? trialEndDate;
+    if (trialEndValue is Timestamp) {
+      trialEndDate = trialEndValue.toDate();
+    } else if (trialEndValue is DateTime) {
+      trialEndDate = trialEndValue;
+    }
+
+    final trialExpired =
+        trialEndDate != null && !trialEndDate.isAfter(DateTime.now());
+    final wasTrial = billing["subscriptionStatus"] == "trial" ||
+        billing["trialActive"] == true ||
+        billing["trialStatus"] == "active";
+
+    if (trialExpired && wasTrial) {
+      final status = subscriptionStatusFor(userData);
+      nextBilling["subscriptionStatus"] = status;
+      nextBilling["trialActive"] = false;
+      nextBilling["trialStatus"] = "expired";
+      if (status == "payment_required") {
+        nextBilling["paymentStatus"] = "payment_required";
+      }
+      if (status == "billing_required") {
+        nextBilling["billingPlanStatus"] = "billing_required";
+      }
+    }
+
+    next["billing"] = nextBilling;
+
+    await FirebaseFirestore.instance.collection("users").doc(employerId).set(
+      {
+        "billing": {
+          ...nextBilling,
+          "updatedAt": FieldValue.serverTimestamp(),
+        },
+      },
+      SetOptions(merge: true),
+    );
+    return next;
   }
 
   Future<void> createJobWithBillingLimit({
@@ -372,6 +545,14 @@ class BillingService {
       final role = userData["role"]?.toString() ?? "";
 
       if (role == "employer") {
+        final billing = billingFromUserData(userData);
+        userData["billing"] = {
+          ...billing,
+          ...subscriptionSnapshot(
+            userData: userData,
+            usedJobPosts: usedJobPosts,
+          ),
+        };
         _assertEmployerCanPostFromData(userData);
       }
 
@@ -407,6 +588,14 @@ class BillingService {
         final role = userData["role"]?.toString() ?? "";
 
         if (role == "employer") {
+          final billing = billingFromUserData(userData);
+          userData["billing"] = {
+            ...billing,
+            ...subscriptionSnapshot(
+              userData: userData,
+              usedJobPosts: usedJobPosts,
+            ),
+          };
           _assertEmployerCanPostFromData(userData);
           final nextUsedJobPosts =
               wasPublished ? usedJobPosts + 1 : usedJobPosts;
@@ -517,6 +706,29 @@ class BillingService {
     final invoiceDetails = currentBilling["invoiceDetails"] is Map
         ? Map<String, dynamic>.from(currentBilling["invoiceDetails"] as Map)
         : <String, dynamic>{};
+    final currentPlanId =
+        (currentBilling["activePlanId"] ?? currentBilling["planId"] ?? "")
+            .toString();
+    final currentPrice = readMoney(currentBilling["monthlyPrice"]);
+    final requestedPrice = readMoney(planData["price"]);
+    final changeDirection = currentPlanId.isEmpty
+        ? "initial"
+        : requestedPrice > currentPrice
+            ? "upgrade"
+            : requestedPrice < currentPrice
+                ? "downgrade"
+                : "same_price_change";
+    final nextBillingValue = currentBilling["nextBillingDate"];
+    final now = DateTime.now();
+    final nextBillingDate = nextBillingValue is Timestamp
+        ? nextBillingValue.toDate()
+        : addOneMonth(now);
+    final daysRemaining = nextBillingDate.isAfter(now)
+        ? nextBillingDate.difference(now).inDays
+        : 0;
+    final proratedDifference = changeDirection == "upgrade"
+        ? ((requestedPrice - currentPrice) * (daysRemaining.clamp(0, 30) / 30))
+        : 0.0;
 
     await firestore.runTransaction((transaction) async {
       final userRef = firestore.collection("users").doc(employerId);
@@ -527,6 +739,23 @@ class BillingService {
         "planId": plan.id,
         "planName": selectedPlanName,
         "paymentMode": paymentMode,
+        "requestType": currentPlanId.isEmpty ? "initial_plan" : "plan_change",
+        "currentPlan": currentPlanId,
+        "pendingPlan": plan.id,
+        "currentPaymentMethod": currentBilling["paymentMethod"] ??
+            currentBilling["currentPaymentMethod"] ??
+            "",
+        "pendingPaymentMethod": paymentMode,
+        "changeDirection": changeDirection,
+        "proratedDifference": proratedDifference,
+        "effectiveAt": changeDirection == "downgrade"
+            ? Timestamp.fromDate(nextBillingDate)
+            : FieldValue.serverTimestamp(),
+        "planChangeWarning": changeDirection == "upgrade"
+            ? "Additional charges will be applied proportionally for the remainder of the current billing period."
+            : changeDirection == "downgrade"
+                ? "Downgrade will take effect on your next billing date. Current billing charges are non-refundable."
+                : "",
         "billingEmail": billingEmailFromUserData(
           {"billing": currentBilling},
         ),
@@ -543,7 +772,9 @@ class BillingService {
           "billing": {
             "planId": plan.id,
             "planName": selectedPlanName,
+            "pendingPlan": plan.id,
             "paymentMode": paymentMode,
+            "pendingPaymentMethod": paymentMode,
             "directDebitEnabled": paymentMode == "direct_debit",
             "billingEmail": billingEmailFromUserData(
               {"billing": currentBilling},
@@ -599,8 +830,32 @@ class BillingService {
 
     final reminder10Days = nextBillingDate.subtract(const Duration(days: 10));
     final reminder5Days = nextBillingDate.subtract(const Duration(days: 5));
+    final reminder3Days = nextBillingDate.subtract(const Duration(days: 3));
+    final reminder1Day = nextBillingDate.subtract(const Duration(days: 1));
     final reminder2Days = nextBillingDate.subtract(const Duration(days: 2));
     final overdueCheck = nextBillingDate.add(const Duration(days: 1));
+
+    void writeTrialReminder(int days, DateTime scheduledAt) {
+      transaction.set(
+        firestore.collection("billing_schedules").doc(),
+        {
+          ...scheduleBase,
+          "type": "trial_expiry_reminder_${days}_days",
+          "scheduledAt": Timestamp.fromDate(scheduledAt),
+          "dueDate": Timestamp.fromDate(nextBillingDate),
+          "opens": "billing",
+          "pushRequired": true,
+          "alertRequired": true,
+          "message":
+              "Your trial period will end in $days days. Please ensure a billing plan and payment method are configured to avoid service interruption.",
+        },
+      );
+    }
+
+    writeTrialReminder(10, reminder10Days);
+    writeTrialReminder(5, reminder5Days);
+    writeTrialReminder(3, reminder3Days);
+    writeTrialReminder(1, reminder1Day);
 
     if (paymentMode == "manual_invoice") {
       transaction.set(
@@ -820,13 +1075,15 @@ class BillingService {
         planData["jobPosts"] ?? planData["availableJobPosts"],
       );
       final approvedAt = DateTime.now();
-      final trialEndsAt = addOneMonth(approvedAt);
+      final trialEndsAt = approvedAt.add(const Duration(days: 30));
       final nextBillingDate = Timestamp.fromDate(trialEndsAt);
       final trialStartedAt = Timestamp.fromDate(approvedAt);
       final amount = readMoney(planData["price"]);
       final currency = planData["currency"]?.toString() ?? "GBP";
       final activePlanName =
           requestData["planName"] ?? planData["name"] ?? planName;
+      final changeDirection =
+          requestData["changeDirection"]?.toString() ?? "initial";
       final billingEmailVerified =
           requestData["billingEmailVerified"] == true ||
               BillingService.billingFromUserData(
@@ -842,12 +1099,19 @@ class BillingService {
             "planName": activePlanName,
             "activePlanId": planId,
             "activePlanName": activePlanName,
+            "currentPlan": planId,
+            "pendingPlan": "",
             "paymentMode": paymentMode,
             "paymentMethod": paymentMode,
+            "currentPaymentMethod": paymentMode,
+            "pendingPaymentMethod": "",
             "directDebitEnabled": paymentMode == "direct_debit",
             "availableJobPosts": availableJobPosts,
             "includedJobSlots": availableJobPosts,
             "usedJobPosts": 0,
+            "activeSlots": availableJobPosts,
+            "usedSlots": 0,
+            "availableSlots": availableJobPosts,
             "monthlyPrice": amount,
             "currency": currency,
             "billingCycle": "monthly",
@@ -859,12 +1123,20 @@ class BillingService {
             "paymentStatus": "pending",
             if (paymentMode == "manual_invoice") "invoiceStatus": "scheduled",
             if (paymentMode == "direct_debit") "mandateStatus": "active",
+            if (paymentMode == "direct_debit")
+              "directDebitGatewayStatus": "gateway_pending",
+            "subscriptionStatus": "trial",
             "trialActive": true,
             "trialStatus": "active",
             "trialStartedAt": trialStartedAt,
             "trialEndsAt": nextBillingDate,
+            "trialStartDate": trialStartedAt,
+            "trialEndDate": nextBillingDate,
             "activeUntil": nextBillingDate,
             "planRequestStatus": "approved",
+            "planChangeDirection": changeDirection,
+            if (requestData["proratedDifference"] != null)
+              "proratedDifference": requestData["proratedDifference"],
             "approvedAt": FieldValue.serverTimestamp(),
             "approvedBy": FirebaseAuth.instance.currentUser?.uid,
             "updatedAt": FieldValue.serverTimestamp(),
@@ -878,20 +1150,28 @@ class BillingService {
         {
           "activePlanId": planId,
           "activePlanName": activePlanName,
+          "currentPlan": planId,
           "billingPlanStatus": "approved",
           "paymentMethod": paymentMode,
+          "currentPaymentMethod": paymentMode,
           "paymentStatus": "pending",
           if (paymentMode == "manual_invoice") "invoiceStatus": "scheduled",
           "includedJobSlots": availableJobPosts,
+          "activeSlots": availableJobPosts,
+          "usedSlots": 0,
+          "availableSlots": availableJobPosts,
           "monthlyPrice": amount,
           "currency": currency,
           "billingCycle": "monthly",
           "nextBillingDate": nextBillingDate,
           "billingEmail": billingEmail,
           "billingEmailVerified": billingEmailVerified,
+          "subscriptionStatus": "trial",
           "trialStatus": "active",
           "trialStartedAt": trialStartedAt,
           "trialEndsAt": nextBillingDate,
+          "trialStartDate": trialStartedAt,
+          "trialEndDate": nextBillingDate,
           "updatedAt": FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
@@ -936,6 +1216,8 @@ class BillingService {
     final status = billing["status"]?.toString() ?? "";
     final billingPlanStatus = billing["billingPlanStatus"]?.toString() ?? "";
     final planRequestStatus = billing["planRequestStatus"]?.toString() ?? "";
+    final subscriptionStatus =
+        billing["subscriptionStatus"]?.toString().trim().toLowerCase() ?? "";
     final availableJobPosts = readInt(billing["availableJobPosts"]);
     final usedJobPosts = readInt(billing["usedJobPosts"]);
 
@@ -943,6 +1225,15 @@ class BillingService {
         billingPlanStatus == "pending" ||
         planRequestStatus == "pending") {
       throw const BillingLimitException(pendingBillingMessage);
+    }
+
+    if (subscriptionStatus == "payment_required" ||
+        subscriptionStatus == "billing_required" ||
+        subscriptionStatus == "suspended" ||
+        subscriptionStatus == "cancelled") {
+      throw const BillingLimitException(
+        "Your trial period has ended. Please configure a payment method or billing plan to continue publishing vacancies.",
+      );
     }
 
     if (status != "active" && billingPlanStatus != "approved") {

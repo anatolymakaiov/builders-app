@@ -207,23 +207,23 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Future<void> openPasswordLogin() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PasswordLoginScreen(
+          initialEmail: emailController.text,
+          onSessionUnlocked: widget.onSessionUnlocked,
+        ),
+      ),
+    );
+  }
+
   Widget buildStartChoices() {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         StroykaButton(
-          onPressed: () {
-            setState(() {
-              selectedAction = "password";
-              isLogin = true;
-              usePasswordFallback = true;
-            });
-          },
-          width: double.infinity,
-          child: const Text("Sign in with email and password"),
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
           onPressed: hasValidSession
               ? () {
                   setState(() {
@@ -237,13 +237,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
-                        "Biometric login is available after signing in and enabling it in Settings.",
+                        "Biometric authentication is not available on this device.",
                       ),
                     ),
                   );
                 },
-          icon: const Icon(Icons.fingerprint),
-          label: const Text("Sign in with biometrics"),
+          width: double.infinity,
+          child: const Text("Sign In with Biometrics"),
+        ),
+        const SizedBox(height: 12),
+        StroykaButton(
+          onPressed: openPasswordLogin,
+          width: double.infinity,
+          child: const Text("Sign In with Email & Password"),
         ),
         const SizedBox(height: 12),
         TextButton(
@@ -414,12 +420,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     const SizedBox(height: 6),
                                     if (showSessionGate)
                                       TextButton(
-                                        onPressed: () {
-                                          setState(() {
-                                            selectedAction = "password";
-                                            usePasswordFallback = true;
-                                          });
-                                        },
+                                        onPressed: openPasswordLogin,
                                         child:
                                             const Text("Use password instead"),
                                       )
@@ -448,6 +449,130 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class PasswordLoginScreen extends StatefulWidget {
+  final String initialEmail;
+  final VoidCallback? onSessionUnlocked;
+
+  const PasswordLoginScreen({
+    super.key,
+    this.initialEmail = "",
+    this.onSessionUnlocked,
+  });
+
+  @override
+  State<PasswordLoginScreen> createState() => _PasswordLoginScreenState();
+}
+
+class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final authPreferences = AuthPreferencesService();
+  bool loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    emailController.text = widget.initialEmail;
+  }
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> signIn() async {
+    final email = authPreferences.normalizeEmail(emailController.text);
+    final password = passwordController.text.trim();
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter email and password")),
+      );
+      return;
+    }
+
+    setState(() => loading = true);
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      widget.onSessionUnlocked?.call();
+      if (!mounted) return;
+      if (Navigator.canPop(context)) Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> openPasswordRecovery() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PasswordRecoveryScreen()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Email & Password")),
+      body: StroykaScreenBody(
+        child: ListView(
+          padding: const EdgeInsets.all(18),
+          children: [
+            StroykaSurface(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+              texture: "assets/branding/texture_light_cloud.jpg",
+              child: Column(
+                children: [
+                  StroykaInputField(
+                    controller: emailController,
+                    hintText: "Email",
+                    prefixIcon: Icons.mail_outline,
+                  ),
+                  const SizedBox(height: 12),
+                  StroykaInputField(
+                    controller: passwordController,
+                    hintText: "Password",
+                    prefixIcon: Icons.lock_outline,
+                    isPassword: true,
+                  ),
+                  const SizedBox(height: 20),
+                  StroykaButton(
+                    onPressed: loading ? null : signIn,
+                    width: double.infinity,
+                    child: loading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text("Sign In"),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: openPasswordRecovery,
+                    child: const Text("Forgot Password?"),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
