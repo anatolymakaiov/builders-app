@@ -71,7 +71,15 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
     return StroykaBackground(
       asset: AppAssets.backgroundWorkersCity,
       child: Scaffold(
-        appBar: AppBar(title: const Text("Password recovery")),
+        appBar: AppBar(
+          leadingWidth: 96,
+          leading: TextButton.icon(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.arrow_back),
+            label: const Text("Back"),
+          ),
+          title: const Text("Password recovery"),
+        ),
         body: StroykaScreenBody(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),

@@ -37,6 +37,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool get hasValidSession => FirebaseAuth.instance.currentUser != null;
 
+  bool get hasRegistrationDraft =>
+      registrationNameController.text.trim().isNotEmpty ||
+      emailController.text.trim().isNotEmpty ||
+      passwordController.text.trim().isNotEmpty ||
+      phoneController.text.trim().isNotEmpty;
+
   bool get showSessionGate =>
       isLogin &&
       !usePasswordFallback &&
@@ -93,6 +99,37 @@ class _LoginScreenState extends State<LoginScreen> {
     widget.onSessionUnlocked?.call();
   }
 
+  Future<void> showBiometricFailureDialog() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text("Biometric authentication failed."),
+          content: const Text(
+            "Try again or use the standard login method.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                enterWithBiometric();
+              },
+              child: const Text("Try Again"),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                openPasswordLogin();
+              },
+              child: const Text("Use Login"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> enterWithBiometric() async {
     setState(() => loading = true);
     try {
@@ -101,24 +138,58 @@ class _LoginScreenState extends State<LoginScreen> {
       if (ok) {
         widget.onSessionUnlocked?.call();
       } else {
-        setState(() => usePasswordFallback = true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Biometric login unavailable. Use password instead."),
-          ),
-        );
+        setState(() {
+          selectedAction = null;
+          usePasswordFallback = false;
+        });
+        await showBiometricFailureDialog();
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() => usePasswordFallback = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Biometric login failed. Use password instead."),
-        ),
-      );
+      setState(() {
+        selectedAction = null;
+        usePasswordFallback = false;
+      });
+      await showBiometricFailureDialog();
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  Future<void> returnToAuthenticationMethods() async {
+    if (!isLogin && hasRegistrationDraft) {
+      final leave = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text("Leave registration?"),
+            content: const Text("Your entered information will not be saved."),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text("Stay"),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text("Leave"),
+              ),
+            ],
+          );
+        },
+      );
+      if (leave != true || !mounted) return;
+      registrationNameController.clear();
+      passwordController.clear();
+      phoneController.clear();
+    }
+
+    if (!mounted) return;
+    setState(() {
+      selectedAction = null;
+      isLogin = true;
+      usePasswordFallback = false;
+      loading = false;
+    });
   }
 
   Future<void> submit() async {
@@ -316,13 +387,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   enterWithBiometric();
                 }
               : () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        "Biometric authentication is not available on this device.",
-                      ),
-                    ),
-                  );
+                  showBiometricFailureDialog();
                 },
         ),
         const SizedBox(height: 12),
@@ -356,7 +421,18 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           if (isStartChoice) ...[
             buildStartChoices(),
-          ] else if (showSessionGate) ...[
+          ] else ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: loading ? null : returnToAuthenticationMethods,
+                icon: const Icon(Icons.arrow_back),
+                label: const Text("Back"),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (showSessionGate) ...[
             Icon(
               widget.sessionMode == AuthPreferenceMethod.biometric
                   ? Icons.fingerprint
@@ -379,7 +455,7 @@ class _LoginScreenState extends State<LoginScreen> {
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppColors.muted),
             ),
-          ] else ...[
+          ] else if (!isStartChoice) ...[
             if (!isLogin) ...[
               StroykaInputField(
                 controller: registrationNameController,
@@ -460,17 +536,6 @@ class _LoginScreenState extends State<LoginScreen> {
               TextButton(
                 onPressed: openPasswordLogin,
                 child: const Text("Use password instead"),
-              )
-            else
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    selectedAction = null;
-                    isLogin = true;
-                    usePasswordFallback = false;
-                  });
-                },
-                child: const Text("Back"),
               ),
           ],
         ],
@@ -484,6 +549,22 @@ class _LoginScreenState extends State<LoginScreen> {
           Image.asset(
             "assets/branding/login_background_stroyka.png",
             fit: BoxFit.cover,
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8, top: 6),
+                child: TextButton.icon(
+                  onPressed: loading ? null : () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  label: const Text(
+                    "Back",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
           ),
           SafeArea(
             child: LayoutBuilder(
