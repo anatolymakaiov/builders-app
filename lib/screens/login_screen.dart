@@ -660,7 +660,7 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
   }
 
   void returnToAuthenticationMethods() {
-    Navigator.of(context).pushAndRemoveUntil(
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => LoginScreen(
           onSessionUnlocked: widget.onSessionUnlocked,
@@ -679,22 +679,6 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
           Image.asset(
             "assets/branding/login_background_stroyka.png",
             fit: BoxFit.cover,
-          ),
-          SafeArea(
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 8, top: 6),
-                child: IconButton(
-                  onPressed: loading ? null : returnToAuthenticationMethods,
-                  tooltip: "Authentication methods",
-                  icon: const Icon(
-                    Icons.exit_to_app,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
           ),
           SafeArea(
             child: LayoutBuilder(
@@ -761,6 +745,22 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
                   ),
                 );
               },
+            ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8, top: 6),
+                child: IconButton(
+                  onPressed: loading ? null : returnToAuthenticationMethods,
+                  tooltip: "Authentication methods",
+                  icon: const Icon(
+                    Icons.exit_to_app,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
             ),
           ),
         ],
