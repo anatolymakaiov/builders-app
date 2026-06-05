@@ -977,12 +977,24 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       final profileData = <String, dynamic>{
         "role": role,
+        "email": authUser?.email ?? billingEmailController.text.trim(),
         "phone": phone,
         "normalizedPhone": normalizedPhone,
         "bio": bioController.text.trim(),
+        "description": bioController.text.trim(),
         "location": locationController.text.trim(),
+        "address": locationController.text.trim(),
         "updatedAt": FieldValue.serverTimestamp(),
       };
+
+      final savedPhotoUrl = photoUrl?.trim();
+      if (savedPhotoUrl != null && savedPhotoUrl.isNotEmpty) {
+        profileData["photo"] = savedPhotoUrl;
+        profileData["avatarUrl"] = savedPhotoUrl;
+        if (role == "employer") {
+          profileData["companyLogo"] = savedPhotoUrl;
+        }
+      }
 
       if (role == "worker") {
         profileData.addAll({
@@ -990,6 +1002,8 @@ class _ProfileScreenState extends State<ProfileScreen>
           "nickname": nicknameController.text.trim(),
           "username": nicknameController.text.trim(),
           "trade": tradeController.text.trim(),
+          "position": tradeController.text.trim(),
+          "registrationPosition": tradeController.text.trim(),
           "experience": experienceController.text.trim(),
           "experienceYears":
               int.tryParse(experienceYearsController.text.trim()),
@@ -1029,6 +1043,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         };
         profileData.addAll({
           "companyName": companyName,
+          "name": companyName,
           "email": billingEmail,
           "billingEmail": billingEmail,
           "billingEmailProvided": true,
@@ -1046,6 +1061,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           "invoiceDetails": invoiceDetails,
           "website": websiteController.text.trim(),
           "contactPerson": contactPersonController.text.trim(),
+          "contactName": contactPersonController.text.trim(),
           "phones": cleanedPhones,
           "companyGoals": companyGoalsController.text.trim(),
           "companyAdvantages": companyAdvantagesController.text.trim(),
@@ -1057,6 +1073,14 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       if (savedHeaderImageUrl != null && savedHeaderImageUrl.isNotEmpty) {
         profileData["profileHeaderImage"] = savedHeaderImageUrl;
+        profileData["headerImage"] = savedHeaderImageUrl;
+        profileData["headerImageUrl"] = savedHeaderImageUrl;
+      }
+      if (portfolio.isNotEmpty) {
+        profileData["portfolio"] = portfolio;
+      }
+      if (companyPhotos.isNotEmpty) {
+        profileData["companyPhotos"] = companyPhotos;
       }
 
       if (firstProfileCreation) {
