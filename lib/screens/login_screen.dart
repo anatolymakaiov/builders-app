@@ -277,6 +277,10 @@ class _LoginScreenState extends State<LoginScreen> {
               debugPrint(
                 "Could not check active Firestore profile for duplicate email: ${lookupError.code}",
               );
+              if (lookupError.code == "permission-denied") {
+                message =
+                    "This email is linked to an unfinished or deleted authentication record. Please contact support or run cleanup.";
+              }
             }
           }
           ScaffoldMessenger.of(context).showSnackBar(

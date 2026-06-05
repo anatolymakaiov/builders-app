@@ -5,12 +5,12 @@
  *
  * Dry-run by default:
  *   node scripts/cleanup_auth_orphan.js --email test@example.com
+ *   node scripts/cleanup_auth_orphan.js --email=test@example.com --dry-run
  *
  * Delete orphan Auth user and mark stale identity indexes inactive:
  *   node scripts/cleanup_auth_orphan.js --email test@example.com --commit
  *
- * This script deletes Auth only when no active Firestore user/profile exists
- * for the email. It does not remove active accounts.
+ * This script deletes Auth only when no active Firestore profile/index exists.
  */
 
 const path = require("path");
@@ -42,12 +42,25 @@ admin.initializeApp({
 const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const args = process.argv.slice(2);
-const commit = args.includes("--commit");
 
-function argValue(prefix) {
-  const arg = args.find((item) => item.startsWith(`${prefix}=`));
-  return arg ? arg.slice(prefix.length + 1) : null;
+function hasFlag(name) {
+  return args.includes(name);
 }
+
+function argValue(name) {
+  const equalArg = args.find((item) => item.startsWith(`${name}=`));
+  if (equalArg) return equalArg.slice(name.length + 1);
+
+  const index = args.indexOf(name);
+  if (index === -1) return null;
+
+  const value = args[index + 1];
+  if (!value || value.startsWith("--")) return null;
+  return value;
+}
+
+const commit = hasFlag("--commit");
+const dryRun = hasFlag("--dry-run") || !commit;
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -58,7 +71,9 @@ function normalizePhone(value) {
   if (digits.startsWith("00")) digits = `+${digits.slice(2)}`;
   if (digits.startsWith("+")) return digits;
   if (digits.startsWith("44")) return `+${digits}`;
-  if (digits.startsWith("0") && digits.length > 1) return `+44${digits.slice(1)}`;
+  if (digits.startsWith("0") && digits.length > 1) {
+    return `+44${digits.slice(1)}`;
+  }
   return digits;
 }
 
@@ -84,10 +99,71 @@ function logAction(message) {
   console.log(`${commit ? "WRITE" : "DRY-RUN"}: ${message}`);
 }
 
-async function queryUsers(field, value) {
+function printJson(label, value) {
+  console.log(`${label}:`);
+  console.log(JSON.stringify(value, null, 2));
+}
+
+async function queryCollection(collectionName, field, value) {
   if (!value) return [];
-  const snap = await db.collection("users").where(field, "==", value).get();
-  return snap.docs;
+  const snap = await db.collection(collectionName).where(field, "==", value).get();
+  return snap.docs.map((doc) => ({
+    path: `${collectionName}/${doc.id}`,
+    id: doc.id,
+    collectionName,
+    data: doc.data() || {},
+  }));
+}
+
+async function collectProfiles({ email, rawPhone, normalizedPhone }) {
+  const collections = ["users", "workers", "employers", "companies"];
+  const fields = [
+    ["email", email],
+    ["normalizedEmail", email],
+    ["billingEmail", email],
+    ["phone", rawPhone],
+    ["normalizedPhone", normalizedPhone],
+  ];
+  const results = [];
+
+  for (const collectionName of collections) {
+    for (const [field, value] of fields) {
+      const docs = await queryCollection(collectionName, field, value);
+      for (const doc of docs) {
+        results.push({ ...doc, matchedField: field });
+      }
+    }
+  }
+
+  return Array.from(new Map(results.map((item) => [item.path, item])).values());
+}
+
+async function inspectArchiveCollections({ email, rawPhone, normalizedPhone }) {
+  const collections = ["deletedUsers", "archivedUsers", "drafts"];
+  const fields = [
+    ["email", email],
+    ["normalizedEmail", email],
+    ["phone", rawPhone],
+    ["normalizedPhone", normalizedPhone],
+  ];
+  const results = [];
+
+  for (const collectionName of collections) {
+    for (const [field, value] of fields) {
+      try {
+        const docs = await queryCollection(collectionName, field, value);
+        for (const doc of docs) {
+          results.push({ ...doc, matchedField: field });
+        }
+      } catch (error) {
+        if (error.code !== 5 && error.code !== "not-found") {
+          console.log(`Skipped ${collectionName}.${field}: ${error.message}`);
+        }
+      }
+    }
+  }
+
+  return Array.from(new Map(results.map((item) => [item.path, item])).values());
 }
 
 async function markIndexInactive(collectionName, docId, reason, previousUserId) {
@@ -126,66 +202,119 @@ async function inspectIndexes(collections, identity) {
     const data = snap.data() || {};
     const uid = uidFromIndex(data);
     if (!isActiveAccount(data)) {
-      staleIndexes.push({ collectionName, id: identity, uid, reason: "inactive_index" });
+      staleIndexes.push({
+        collectionName,
+        id: identity,
+        uid,
+        reason: "inactive_index",
+        data,
+      });
       continue;
     }
     if (!uid) {
-      staleIndexes.push({ collectionName, id: identity, uid, reason: "missing_uid" });
+      staleIndexes.push({
+        collectionName,
+        id: identity,
+        uid,
+        reason: "missing_uid",
+        data,
+      });
       continue;
     }
 
     const userSnap = await db.collection("users").doc(uid).get();
     const userData = userSnap.data();
     if (!userSnap.exists || !userData) {
-      staleIndexes.push({ collectionName, id: identity, uid, reason: "missing_user" });
+      staleIndexes.push({
+        collectionName,
+        id: identity,
+        uid,
+        reason: "missing_user",
+        data,
+      });
       continue;
     }
     if (!isActiveAccount(userData)) {
-      staleIndexes.push({ collectionName, id: identity, uid, reason: "deleted_user" });
+      staleIndexes.push({
+        collectionName,
+        id: identity,
+        uid,
+        reason: "deleted_user",
+        data: userData,
+      });
       continue;
     }
 
-    activeIndexProfiles.push({ collectionName, id: identity, uid });
+    activeIndexProfiles.push({
+      collectionName,
+      id: identity,
+      uid,
+      active: userData.active,
+      deleted: userData.deleted,
+      accountDeleted: userData.accountDeleted,
+      status: userData.status || null,
+    });
   }
 
   return { activeIndexProfiles, staleIndexes };
 }
 
+async function getAuthUserByEmail(email) {
+  if (!email) return null;
+  try {
+    return await admin.auth().getUserByEmail(email);
+  } catch (error) {
+    if (error.code === "auth/user-not-found") return null;
+    throw error;
+  }
+}
+
+async function getAuthUserByPhone(phone) {
+  if (!phone) return null;
+  try {
+    return await admin.auth().getUserByPhoneNumber(phone);
+  } catch (error) {
+    if (error.code === "auth/user-not-found") return null;
+    throw error;
+  }
+}
+
 async function main() {
   const email = normalizeEmail(argValue("--email"));
-  const phone = argValue("--phone") || "";
-  const normalizedPhone = normalizePhone(phone);
+  const rawPhone = String(argValue("--phone") || "").trim();
+  const normalizedPhone = normalizePhone(rawPhone);
+
+  console.log("Parsed arguments:");
+  console.log(`email: ${email || "null"}`);
+  console.log(`phone: ${normalizedPhone || "null"}`);
+  console.log(`mode: ${commit ? "commit" : "dry-run"}`);
 
   if (!email && !normalizedPhone) {
     throw new Error("--email test@example.com or --phone '+447...' is required");
   }
 
-  console.log(`Checking identity orphan: ${email || normalizedPhone}`);
-
-  const userDocs = [
-    ...(await queryUsers("email", email)),
-    ...(await queryUsers("normalizedEmail", email)),
-    ...(await queryUsers("phone", phone)),
-    ...(await queryUsers("normalizedPhone", normalizedPhone)),
-  ];
-  const uniqueUserDocs = Array.from(
-    new Map(userDocs.map((doc) => [doc.id, doc])).values(),
-  );
-
+  const profiles = await collectProfiles({ email, rawPhone, normalizedPhone });
+  const archiveDocs = await inspectArchiveCollections({
+    email,
+    rawPhone,
+    normalizedPhone,
+  });
   const activeProfiles = [];
   const inactiveProfiles = [];
-  for (const doc of uniqueUserDocs) {
-    const data = doc.data();
+
+  for (const profile of profiles) {
     const item = {
-      id: doc.id,
-      role: data.role || null,
-      active: data.active,
-      deleted: data.deleted,
-      accountDeleted: data.accountDeleted,
-      anonymised: data.anonymised,
-      status: data.status || null,
+      path: profile.path,
+      matchedField: profile.matchedField,
+      role: profile.data.role || null,
+      uid: profile.data.uid || profile.data.userId || profile.id,
+      active: profile.data.active,
+      deleted: profile.data.deleted,
+      accountDeleted: profile.data.accountDeleted,
+      anonymised: profile.data.anonymised,
+      status: profile.data.status || null,
     };
-    if (isActiveAccount(data)) activeProfiles.push(item);
+    if (isActiveAccount(profile.data)) activeProfiles.push(item);
     else inactiveProfiles.push(item);
   }
 
@@ -198,59 +327,98 @@ async function main() {
     normalizedPhone,
   );
 
-  console.log(`Active Firestore profiles: ${activeProfiles.length}`);
-  if (activeProfiles.length > 0) {
-    console.log(JSON.stringify(activeProfiles, null, 2));
-  }
-  console.log(`Inactive/deleted Firestore profiles: ${inactiveProfiles.length}`);
-  if (inactiveProfiles.length > 0) {
-    console.log(JSON.stringify(inactiveProfiles, null, 2));
-  }
-  console.log(
-    `Active index profiles: ${
-      emailIndexState.activeIndexProfiles.length +
-      phoneIndexState.activeIndexProfiles.length
-    }`,
+  const activeIndexProfiles = [
+    ...emailIndexState.activeIndexProfiles,
+    ...phoneIndexState.activeIndexProfiles,
+  ];
+  const staleIndexes = [
+    ...emailIndexState.staleIndexes,
+    ...phoneIndexState.staleIndexes,
+  ];
+
+  const emailAuthUser = await getAuthUserByEmail(email);
+  const phoneAuthUser = await getAuthUserByPhone(normalizedPhone);
+  const authUsers = Array.from(
+    new Map(
+      [emailAuthUser, phoneAuthUser]
+        .filter(Boolean)
+        .map((user) => [user.uid, user]),
+    ).values(),
   );
 
-  if (
-    activeProfiles.length > 0 ||
-    emailIndexState.activeIndexProfiles.length > 0 ||
-    phoneIndexState.activeIndexProfiles.length > 0
-  ) {
-    console.log("Active account/index exists. No Auth cleanup will be performed.");
+  console.log(`Firebase Auth users found: ${authUsers.length}`);
+  for (const user of authUsers) {
+    console.log(
+      `Auth user: uid=${user.uid} email=${user.email || "null"} phone=${
+        user.phoneNumber || "null"
+      }`,
+    );
+  }
+
+  console.log(`Active Firestore profiles: ${activeProfiles.length}`);
+  if (activeProfiles.length > 0) printJson("Active profile details", activeProfiles);
+
+  console.log(`Inactive/deleted Firestore profiles: ${inactiveProfiles.length}`);
+  if (inactiveProfiles.length > 0) {
+    printJson("Inactive/deleted profile details", inactiveProfiles);
+  }
+
+  console.log(`Archive/deleted docs found: ${archiveDocs.length}`);
+  if (archiveDocs.length > 0) {
+    printJson(
+      "Archive/deleted docs",
+      archiveDocs.map((doc) => ({
+        path: doc.path,
+        matchedField: doc.matchedField,
+        active: doc.data.active,
+        deleted: doc.data.deleted,
+        status: doc.data.status || null,
+      })),
+    );
+  }
+
+  console.log(`Active index profiles: ${activeIndexProfiles.length}`);
+  if (activeIndexProfiles.length > 0) {
+    printJson("Active index details", activeIndexProfiles);
+  }
+
+  if (activeProfiles.length > 0 || activeIndexProfiles.length > 0) {
+    console.log("Decision: active account/index exists. No Auth cleanup performed.");
     return;
   }
 
-  for (const index of [...emailIndexState.staleIndexes, ...phoneIndexState.staleIndexes]) {
+  for (const index of staleIndexes) {
     await markIndexInactive(index.collectionName, index.id, index.reason, index.uid);
   }
 
-  let authUser = null;
-  if (email) {
-    try {
-      authUser = await admin.auth().getUserByEmail(email);
-      console.log(`Firebase Auth user exists: ${authUser.uid}`);
-    } catch (error) {
-      if (error.code === "auth/user-not-found") {
-        console.log("Firebase Auth user: not found");
-      } else {
-        throw error;
-      }
+  for (const identity of [email, normalizedPhone]) {
+    if (!identity) continue;
+    for (const collectionName of [
+      "emailIndex",
+      "registrationEmailIndex",
+      "phoneIndex",
+      "registrationPhoneIndex",
+    ]) {
+      await markIndexInactive(collectionName, identity, "stale_orphan_cleanup");
     }
   }
 
-  if (authUser) {
+  if (authUsers.length === 0) {
+    console.log("Decision: no active profile and no Auth user. Identity is reusable.");
+  } else {
     console.log(
-      "Firebase Auth orphan detected. No active Firestore profile/index references this email.",
+      "Decision: AUTH ORPHAN. No active Firestore profile/index references this identity.",
     );
-    logAction(`delete Firebase Auth user ${authUser.uid}`);
+  }
+
+  for (const user of authUsers) {
+    logAction(`delete Firebase Auth user ${user.uid}`);
     if (commit) {
-      await admin.auth().deleteUser(authUser.uid);
+      await admin.auth().deleteUser(user.uid);
     }
   }
 
-  if (!commit) {
+  if (dryRun) {
     console.log("Dry-run complete. Add --commit to apply cleanup.");
   }
 }
@@ -258,6 +426,19 @@ async function main() {
 main()
   .then(() => process.exit(0))
   .catch((error) => {
+    if (
+      String(error.message || "").includes("Could not load the default credentials")
+    ) {
+      console.error(
+        [
+          "Could not load Firebase Admin credentials.",
+          "Run this script with GOOGLE_APPLICATION_CREDENTIALS pointing to your service account JSON.",
+          "Example:",
+          "  GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json node scripts/cleanup_auth_orphan.js --email test@example.com --commit",
+        ].join("\n"),
+      );
+      process.exit(1);
+    }
     console.error(error);
     process.exit(1);
   });
