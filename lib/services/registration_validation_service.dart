@@ -134,7 +134,7 @@ class RegistrationValidationService {
         value: normalizedEmail,
       );
       if (emailExists) {
-        errors.add("An account with this email address already exists.");
+        errors.add("An active account with this email address already exists.");
       }
 
       final phoneExists = await _phoneExists(
@@ -142,7 +142,7 @@ class RegistrationValidationService {
         normalizedPhone: normalizedPhone,
       );
       if (phoneExists) {
-        errors.add("An account with this phone number already exists.");
+        errors.add("An active account with this phone number already exists.");
       }
 
       return RegistrationValidationResult(errors);
@@ -180,10 +180,7 @@ class RegistrationValidationService {
         .where(field, isEqualTo: value)
         .limit(5)
         .get();
-    return snapshot.docs.any((doc) {
-      final data = doc.data();
-      return data["accountDeleted"] != true && data["deleted"] != true;
-    });
+    return snapshot.docs.any((doc) => _isActiveAccount(doc.data()));
   }
 
   Future<bool> _activeArrayContains({
@@ -196,9 +193,15 @@ class RegistrationValidationService {
         .where(field, arrayContains: value)
         .limit(5)
         .get();
-    return snapshot.docs.any((doc) {
-      final data = doc.data();
-      return data["accountDeleted"] != true && data["deleted"] != true;
-    });
+    return snapshot.docs.any((doc) => _isActiveAccount(doc.data()));
+  }
+
+  bool _isActiveAccount(Map<String, dynamic> data) {
+    final status = data["status"]?.toString().toLowerCase();
+    return data["accountDeleted"] != true &&
+        data["deleted"] != true &&
+        data["anonymised"] != true &&
+        data["active"] != false &&
+        status != "deleted";
   }
 }

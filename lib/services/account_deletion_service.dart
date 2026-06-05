@@ -103,6 +103,7 @@ class AccountDeletionService {
     return userRef.set({
       "accountDeleted": true,
       "deleted": true,
+      "anonymised": true,
       "active": false,
       "profileHidden": true,
       "profileComplete": false,
