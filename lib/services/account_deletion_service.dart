@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import 'registration_validation_service.dart';
+
 class AccountDeletionRequiresRecentLogin implements Exception {}
 
 class AccountDeletionService {
@@ -29,6 +31,9 @@ class AccountDeletionService {
     final userData = snapshot.data() ?? <String, dynamic>{};
     final role = userData["role"]?.toString() ?? "worker";
 
+    await RegistrationIdentityService(
+      firestore: _firestore,
+    ).releaseIdentityForDeletedUser(uid);
     await _anonymiseUserDocument(userRef, role);
     if (runFullCleanup) {
       await _runBestEffortCleanup(uid: uid);

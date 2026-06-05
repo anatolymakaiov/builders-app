@@ -259,16 +259,19 @@ class _LoginScreenState extends State<LoginScreen> {
           var message =
               RegistrationValidationService.firebaseAuthErrorMessage(error);
           if (RegistrationValidationService.isEmailAlreadyInUse(error)) {
+            debugPrint(
+              "Firebase Auth returned email-already-in-use for: $email",
+            );
             try {
               final activeProfile =
                   await registrationValidation.hasActiveAccountForEmail(email);
               if (!mounted) return;
               if (!activeProfile) {
                 debugPrint(
-                  "Email exists in Firebase Auth but no active Firestore profile exists: $email",
+                  "Firebase Auth orphan detected for email: $email. No active Firestore profile found.",
                 );
                 message =
-                    "This email is still linked to an authentication record. Please contact support or use account recovery.";
+                    "This email is linked to an unfinished or deleted authentication record. Please contact support or run cleanup.";
               }
             } on FirebaseException catch (lookupError) {
               debugPrint(
