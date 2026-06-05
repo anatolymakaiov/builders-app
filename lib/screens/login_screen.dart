@@ -3,6 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_preferences_service.dart';
 import '../services/registration_validation_service.dart';
+import '../widgets/legal_documents.dart';
+import 'edit_profile_screen.dart';
+import 'home_screen.dart';
 import 'password_recovery_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -209,6 +212,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final phone = phoneController.text.trim();
         final normalizedPhone =
             RegistrationValidationService.normalizePhone(phone);
+        debugPrint("Registration submit started");
 
         if (registrationName.isEmpty ||
             email.isEmpty ||
@@ -252,6 +256,7 @@ class _LoginScreenState extends State<LoginScreen> {
             email: email,
             password: password,
           );
+          debugPrint("Firebase Auth user created: uid=${result.user?.uid}");
         } on FirebaseAuthException catch (error) {
           RegistrationValidationService.clearPending(email);
           if (!mounted) return;
@@ -273,8 +278,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 ...pendingDetails.toUserDocument(),
                 "uid": currentUser.uid,
               }, SetOptions(merge: true));
+              debugPrint("Initial user document created");
               RegistrationValidationService.clearPending(email);
-              widget.onSessionUnlocked?.call();
+              await continueRegistrationOnboarding(
+                uid: currentUser.uid,
+                role: role,
+              );
               return;
             }
             try {
@@ -348,9 +357,16 @@ class _LoginScreenState extends State<LoginScreen> {
           "createdAt": FieldValue.serverTimestamp(),
           "updatedAt": FieldValue.serverTimestamp(),
         });
+        debugPrint("Initial user document created");
         RegistrationValidationService.clearPending(email);
+        await continueRegistrationOnboarding(
+          uid: result.user!.uid,
+          role: role,
+        );
+        return;
       }
     } catch (e) {
+      debugPrint("Registration submit failed: $e");
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -361,6 +377,46 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
     setState(() => loading = false);
+  }
+
+  Future<void> continueRegistrationOnboarding({
+    required String uid,
+    required String role,
+  }) async {
+    if (!mounted) return;
+    debugPrint("Next onboarding route: legal_consent");
+    final navigator = Navigator.of(context);
+    setState(() {
+      selectedAction = null;
+      loading = false;
+    });
+    widget.onSessionUnlocked?.call();
+    await navigator.pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => LegalAcceptanceScreen(
+          role: role,
+          userId: uid,
+          onAccepted: (_) async {
+            debugPrint("Next onboarding route: profile_creation");
+            await navigator.pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => ProfileScreen(
+                  onProfileSaved: () {
+                    debugPrint("Next onboarding route: dashboard");
+                    navigator.pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const HomeScreen()),
+                      (route) => false,
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+      (route) => false,
+    );
+    debugPrint("Navigation completed");
   }
 
   Future<void> openPasswordRecovery() async {
