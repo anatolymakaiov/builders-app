@@ -71,7 +71,7 @@ class RegistrationValidationService {
   static final Map<String, PendingRegistrationDetails> _pendingByEmail = {};
 
   static void rememberPending(PendingRegistrationDetails details) {
-    _pendingByEmail[details.email] = details;
+    _pendingByEmail[normalizeEmail(details.email)] = details;
   }
 
   static PendingRegistrationDetails? pendingForEmail(String? email) {
