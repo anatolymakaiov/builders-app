@@ -26,7 +26,8 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen>
+    with WidgetsBindingObserver {
   final nameController = TextEditingController();
   final phoneController = TextEditingController();
   final nicknameController = TextEditingController();
@@ -87,6 +88,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool emailVerified = false;
   bool phoneVerified = false;
   bool sendingEmailVerification = false;
+  bool refreshingEmailVerification = false;
+  Timer? emailVerificationTimer;
   String loadedBillingEmail = "";
 
   String get userId => FirebaseAuth.instance.currentUser!.uid;
@@ -94,11 +97,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     loadProfile();
+    startEmailVerificationWatcher();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    emailVerificationTimer?.cancel();
     nameController.dispose();
     phoneController.dispose();
     nicknameController.dispose();
@@ -133,6 +140,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     companyWhoWeAreController.dispose();
     companyHistoryController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && firstProfileCreation) {
+      refreshEmailVerification(silent: true);
+    }
+  }
+
+  void startEmailVerificationWatcher() {
+    emailVerificationTimer?.cancel();
+    emailVerificationTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || !firstProfileCreation || refreshingEmailVerification) {
+        return;
+      }
+      final authUser = FirebaseAuth.instance.currentUser;
+      final billingMatches = authUser?.email?.toLowerCase() ==
+          billingEmailController.text.trim().toLowerCase();
+      final verifiedForCurrentRole = role == "employer"
+          ? billingEmailVerified || (billingMatches && emailVerified)
+          : emailVerified;
+      if (verifiedForCurrentRole) return;
+      refreshEmailVerification(silent: true);
+    });
   }
 
   /// LOAD PROFILE
@@ -257,6 +288,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       portfolio = portfolioUrls;
       companyPhotos = List<String>.from(data["companyPhotos"] ?? []);
     });
+    await refreshEmailVerification(silent: true);
   }
 
   Future<List<String>> loadPortfolioUrls(String userId) async {
@@ -545,46 +577,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> refreshEmailVerification() async {
+  Future<bool> refreshEmailVerification({bool silent = false}) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    await user.reload();
-    final refreshed = FirebaseAuth.instance.currentUser ?? user;
-    final verified = refreshed.emailVerified;
-    final billingMatches = refreshed.email?.toLowerCase() ==
-        billingEmailController.text.trim().toLowerCase();
+    if (user == null || refreshingEmailVerification) return false;
 
-    await FirebaseFirestore.instance.collection("users").doc(userId).set({
-      "emailVerified": verified,
-      if (verified) "emailVerifiedAt": FieldValue.serverTimestamp(),
-      "authPreferences": {
-        "email": refreshed.email,
-        "emailVerified": verified,
-        "updatedAt": FieldValue.serverTimestamp(),
-      },
-      if (role == "employer" && billingMatches) ...{
-        "billingEmailVerified": verified,
-        if (verified) "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
-        "billing": {
-          "billingEmailVerified": verified,
-          if (verified) "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
-          "updatedAt": FieldValue.serverTimestamp(),
-        },
-      },
-    }, SetOptions(merge: true));
+    refreshingEmailVerification = true;
+    try {
+      await user.reload();
+      final refreshed = FirebaseAuth.instance.currentUser ?? user;
+      final verified = refreshed.emailVerified;
+      final billingMatches = refreshed.email?.toLowerCase() ==
+          billingEmailController.text.trim().toLowerCase();
 
-    if (!mounted) return;
-    setState(() {
-      if (role == "employer" && billingMatches) {
-        billingEmailVerified = verified;
+      if (verified) {
+        await FirebaseFirestore.instance.collection("users").doc(userId).set({
+          "emailVerified": true,
+          "emailVerifiedAt": FieldValue.serverTimestamp(),
+          "authPreferences": {
+            "email": refreshed.email,
+            "emailVerified": true,
+            "updatedAt": FieldValue.serverTimestamp(),
+          },
+          if (role == "employer" && billingMatches) ...{
+            "billingEmailVerified": true,
+            "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
+            "billing": {
+              "billingEmailVerified": true,
+              "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
+              "updatedAt": FieldValue.serverTimestamp(),
+            },
+          },
+        }, SetOptions(merge: true));
       }
-      emailVerified = verified;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content:
-              Text(verified ? "Email verified" : "Email not verified yet")),
-    );
+
+      if (!mounted) return verified;
+      setState(() {
+        if (role == "employer" && billingMatches) {
+          billingEmailVerified = verified;
+        }
+        emailVerified = verified;
+      });
+      if (!silent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              verified
+                  ? "Email verified"
+                  : "Email verification is still pending.",
+            ),
+          ),
+        );
+      }
+      return verified;
+    } catch (e) {
+      debugPrint("Email verification refresh error: $e");
+      if (!silent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Email verification is still pending."),
+          ),
+        );
+      }
+      return false;
+    } finally {
+      refreshingEmailVerification = false;
+    }
   }
 
   Widget buildInlineVerificationStatus({
@@ -886,6 +943,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
 
+    await refreshEmailVerification(silent: true);
     final authUser = FirebaseAuth.instance.currentUser;
     final billingEmailMatchesAuth =
         authUser?.email?.toLowerCase() == billingEmail.toLowerCase();
@@ -1457,7 +1515,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget buildVerificationPanel() {
     final authUser = FirebaseAuth.instance.currentUser;
-    final emailVerified = authUser?.emailVerified == true;
+    final emailVerified = this.emailVerified || authUser?.emailVerified == true;
     return StroykaSurface(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
@@ -1483,11 +1541,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               TextButton(
-                onPressed: sendingEmailVerification
-                    ? null
-                    : (emailVerified
-                        ? refreshEmailVerification
-                        : sendEmailVerification),
+                onPressed:
+                    sendingEmailVerification || refreshingEmailVerification
+                        ? null
+                        : (emailVerified
+                            ? refreshEmailVerification
+                            : sendEmailVerification),
                 child: Text(emailVerified ? "Refresh" : "Send link"),
               ),
             ],
