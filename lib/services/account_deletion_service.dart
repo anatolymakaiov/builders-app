@@ -90,6 +90,10 @@ class AccountDeletionService {
     DocumentReference<Map<String, dynamic>> userRef,
   ) async {
     await userRef.delete();
+    final snapshot = await userRef.get();
+    if (snapshot.exists) {
+      await userRef.delete();
+    }
   }
 
   Future<void> _anonymiseUserDocument(
