@@ -108,7 +108,7 @@ class RegistrationValidationService {
   static String firebaseAuthErrorMessage(Object error) {
     if (error is FirebaseAuthException) {
       if (error.code == "email-already-in-use") {
-        return "An account with this email address already exists.";
+        return "An active account with this email address already exists.";
       }
       if (error.code == "invalid-email") {
         return "Enter a valid email address.";
@@ -118,6 +118,11 @@ class RegistrationValidationService {
       }
     }
     return "Could not create account. Please try again.";
+  }
+
+  static bool isEmailAlreadyInUse(Object error) {
+    return error is FirebaseAuthException &&
+        error.code == "email-already-in-use";
   }
 
   Future<RegistrationValidationResult> validate({
@@ -152,6 +157,22 @@ class RegistrationValidationService {
       }
       rethrow;
     }
+  }
+
+  Future<bool> hasActiveAccountForEmail(String email) async {
+    final normalizedEmail = normalizeEmail(email);
+    if (normalizedEmail.isEmpty) return false;
+
+    final emailMatch = await _activeUserExists(
+      field: "email",
+      value: normalizedEmail,
+    );
+    if (emailMatch) return true;
+
+    return _activeUserExists(
+      field: "normalizedEmail",
+      value: normalizedEmail,
+    );
   }
 
   Future<bool> _phoneExists({

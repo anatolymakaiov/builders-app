@@ -256,11 +256,23 @@ class _LoginScreenState extends State<LoginScreen> {
           RegistrationValidationService.clearPending(email);
           if (!mounted) return;
           setState(() => loading = false);
+          var message =
+              RegistrationValidationService.firebaseAuthErrorMessage(error);
+          if (RegistrationValidationService.isEmailAlreadyInUse(error)) {
+            final activeProfile =
+                await registrationValidation.hasActiveAccountForEmail(email);
+            if (!mounted) return;
+            if (!activeProfile) {
+              debugPrint(
+                "Email exists in Firebase Auth but no active Firestore profile exists: $email",
+              );
+              message =
+                  "This email is still linked to an authentication record. Please contact support or use account recovery.";
+            }
+          }
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                RegistrationValidationService.firebaseAuthErrorMessage(error),
-              ),
+              content: Text(message),
             ),
           );
           return;
