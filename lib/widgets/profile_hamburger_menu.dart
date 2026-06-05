@@ -71,10 +71,6 @@ class ProfileHamburgerMenu extends StatelessWidget {
 
     if (!rootContext.mounted) return;
 
-    final recentlyAuthenticated = await _reauthenticateForDeletion(rootContext);
-    if (!rootContext.mounted) return;
-    if (!recentlyAuthenticated) return;
-
     var loadingOpen = true;
     showDialog<void>(
       context: rootContext,
