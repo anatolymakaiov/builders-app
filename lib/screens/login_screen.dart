@@ -262,6 +262,21 @@ class _LoginScreenState extends State<LoginScreen> {
             debugPrint(
               "Firebase Auth returned email-already-in-use for: $email",
             );
+            final currentUser = FirebaseAuth.instance.currentUser;
+            if (currentUser != null &&
+                authPreferences.normalizeEmail(currentUser.email ?? "") ==
+                    email) {
+              await FirebaseFirestore.instance
+                  .collection("users")
+                  .doc(currentUser.uid)
+                  .set({
+                ...pendingDetails.toUserDocument(),
+                "uid": currentUser.uid,
+              }, SetOptions(merge: true));
+              RegistrationValidationService.clearPending(email);
+              widget.onSessionUnlocked?.call();
+              return;
+            }
             try {
               final activeProfile =
                   await registrationValidation.hasActiveAccountForEmail(email);
@@ -290,18 +305,19 @@ class _LoginScreenState extends State<LoginScreen> {
           );
           return;
         }
-        await result.user?.sendEmailVerification();
 
         await FirebaseFirestore.instance
             .collection("users")
             .doc(result.user!.uid)
             .set({
+          "uid": result.user!.uid,
           "role": role,
           "email": email,
+          "normalizedEmail": email,
           "registrationName": registrationName,
           "phone": phone,
           "normalizedPhone": normalizedPhone,
-          "emailVerified": result.user?.emailVerified ?? false,
+          "emailVerified": false,
           "phoneVerified": false,
           "phoneVerificationRequired": false,
           "phoneVerificationProviderConfigured": false,
@@ -309,6 +325,12 @@ class _LoginScreenState extends State<LoginScreen> {
           "onboardingLegalStepComplete": false,
           "profileComplete": false,
           "onboardingComplete": false,
+          "onboardingStatus": "registration_started",
+          "registrationStarted": true,
+          "active": true,
+          "deleted": false,
+          "accountDeleted": false,
+          "anonymised": false,
           "authMethod": AuthPreferenceMethod.password,
           "settings": {
             "authMethod": AuthPreferenceMethod.password,
@@ -320,8 +342,7 @@ class _LoginScreenState extends State<LoginScreen> {
             "passwordlessLoginEnabled": false,
             "biometricLoginEnabled": false,
             "email": email,
-            "emailVerified": result.user?.emailVerified ?? false,
-            "emailVerificationSentAt": FieldValue.serverTimestamp(),
+            "emailVerified": false,
             "updatedAt": FieldValue.serverTimestamp(),
           },
           "createdAt": FieldValue.serverTimestamp(),

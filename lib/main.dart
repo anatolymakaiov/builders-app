@@ -107,7 +107,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       normalizedPhone: "",
     );
     await userRef.set(
-      (pending ?? fallback).toUserDocument(),
+      {
+        ...(pending ?? fallback).toUserDocument(),
+        "uid": user.uid,
+      },
       SetOptions(merge: true),
     );
   }

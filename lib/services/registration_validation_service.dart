@@ -33,6 +33,11 @@ class PendingRegistrationDetails {
       "onboardingLegalStepComplete": false,
       "profileComplete": false,
       "onboardingComplete": false,
+      "onboardingStatus": "registration_started",
+      "active": true,
+      "deleted": false,
+      "accountDeleted": false,
+      "anonymised": false,
       "registrationStarted": true,
       "authMethod": "password",
       "settings": {
