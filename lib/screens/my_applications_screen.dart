@@ -21,6 +21,11 @@ class MyApplicationsScreen extends StatefulWidget {
 
 class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   String statusFilter = "all";
+  int refreshTick = 0;
+
+  Future<void> refreshApplications() async {
+    setState(() => refreshTick++);
+  }
 
   Color getStatusColor(String status) {
     switch (ApplicationStatusUtils.normalizeStatus(status)) {
@@ -300,6 +305,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
             /// 🔥 LIST
             Expanded(
               child: StreamBuilder<List<QueryDocumentSnapshot>>(
+                key: ValueKey("applications-$refreshTick"),
                 stream: getApplicationsStream(user.uid),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
@@ -327,74 +333,87 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                   });
 
                   if (apps.isEmpty) {
-                    return const Center(child: Text("No applications"));
+                    return RefreshIndicator(
+                      onRefresh: refreshApplications,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: const [
+                          SizedBox(height: 220),
+                          Center(child: Text("No applications")),
+                        ],
+                      ),
+                    );
                   }
 
-                  return ListView.builder(
-                    itemCount: apps.length,
-                    itemBuilder: (context, index) {
-                      final data = apps[index].data() as Map<String, dynamic>;
-                      final isUnread = ApplicationActivityService.isUnreadFor(
-                        data,
-                        user.uid,
-                      );
-
-                      final status = canonicalStatus(data["status"]);
-                      final jobDocId = data["jobId"]?.toString() ?? "";
-                      final fallbackJob = fallbackJobFromApplication(
-                        jobDocId.isEmpty ? apps[index].id : jobDocId,
-                        data,
-                      );
-
-                      if (jobDocId.isEmpty) {
-                        return buildCard(
-                          fallbackJob,
-                          status,
-                          apps[index].id,
-                          appliedAt: data["createdAt"],
-                          isUnread: isUnread,
-                          userId: user.uid,
+                  return RefreshIndicator(
+                    onRefresh: refreshApplications,
+                    child: ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      itemCount: apps.length,
+                      itemBuilder: (context, index) {
+                        final data = apps[index].data() as Map<String, dynamic>;
+                        final isUnread = ApplicationActivityService.isUnreadFor(
+                          data,
+                          user.uid,
                         );
-                      }
 
-                      return StreamBuilder<DocumentSnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection("jobs")
-                            .doc(jobDocId)
-                            .snapshots(),
-                        builder: (context, jobSnapshot) {
-                          if (!jobSnapshot.hasData ||
-                              jobSnapshot.hasError ||
-                              !jobSnapshot.data!.exists) {
-                            return buildCard(
-                              fallbackJob,
-                              status,
-                              apps[index].id,
-                              appliedAt: data["createdAt"],
-                              isUnread: isUnread,
-                              userId: user.uid,
-                            );
-                          }
+                        final status = canonicalStatus(data["status"]);
+                        final jobDocId = data["jobId"]?.toString() ?? "";
+                        final fallbackJob = fallbackJobFromApplication(
+                          jobDocId.isEmpty ? apps[index].id : jobDocId,
+                          data,
+                        );
 
-                          final jobData =
-                              jobSnapshot.data!.data() as Map<String, dynamic>;
-
-                          final job = Job.fromFirestore(
-                            jobSnapshot.data!.id,
-                            jobData,
-                          );
-
+                        if (jobDocId.isEmpty) {
                           return buildCard(
-                            job,
+                            fallbackJob,
                             status,
                             apps[index].id,
                             appliedAt: data["createdAt"],
                             isUnread: isUnread,
                             userId: user.uid,
                           );
-                        },
-                      );
-                    },
+                        }
+
+                        return StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection("jobs")
+                              .doc(jobDocId)
+                              .snapshots(),
+                          builder: (context, jobSnapshot) {
+                            if (!jobSnapshot.hasData ||
+                                jobSnapshot.hasError ||
+                                !jobSnapshot.data!.exists) {
+                              return buildCard(
+                                fallbackJob,
+                                status,
+                                apps[index].id,
+                                appliedAt: data["createdAt"],
+                                isUnread: isUnread,
+                                userId: user.uid,
+                              );
+                            }
+
+                            final jobData = jobSnapshot.data!.data()
+                                as Map<String, dynamic>;
+
+                            final job = Job.fromFirestore(
+                              jobSnapshot.data!.id,
+                              jobData,
+                            );
+
+                            return buildCard(
+                              job,
+                              status,
+                              apps[index].id,
+                              appliedAt: data["createdAt"],
+                              isUnread: isUnread,
+                              userId: user.uid,
+                            );
+                          },
+                        );
+                      },
+                    ),
                   );
                 },
               ),

@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'employer_applications_screen.dart';
 import 'post_job_screen.dart';
 import 'chat_screen.dart';
+import 'image_gallery_viewer_screen.dart';
 
 import '../models/job.dart';
 import '../services/application_activity_service.dart';
@@ -39,6 +40,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   bool isApplied = false;
   String? currentApplicationId;
   String role = "worker";
+  int companyProfileRefreshTick = 0;
   final List<StreamSubscription> applyStateSubscriptions = [];
 
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
@@ -2252,6 +2254,17 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         final photos = List<String>.from(data["companyPhotos"] ?? []);
         final canViewAllCompanyJobs = userId == ownerId || role == "admin";
 
+        Future<void> refreshCompanyProfile() async {
+          setState(() => companyProfileRefreshTick++);
+        }
+
+        Widget refreshable(Widget child) {
+          return RefreshIndicator(
+            onRefresh: refreshCompanyProfile,
+            child: child,
+          );
+        }
+
         return DefaultTabController(
           length: 4,
           child: Column(
@@ -2271,110 +2284,152 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               Expanded(
                 child: TabBarView(
                   children: [
-                    ListView(
-                      padding: EdgeInsets.zero,
-                      children: [
-                        CompanyInfoWidget(
-                          description: description.toString(),
-                          address: address.toString(),
-                          companyGoals: companyGoals,
-                          companyAdvantages: companyAdvantages,
-                          companyClients: companyClients,
-                          companyWhoWeAre: companyWhoWeAre,
-                          companyHistory: companyHistory,
-                        ),
-                      ],
+                    refreshable(
+                      ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        children: [
+                          CompanyInfoWidget(
+                            description: description.toString(),
+                            address: address.toString(),
+                            companyGoals: companyGoals,
+                            companyAdvantages: companyAdvantages,
+                            companyClients: companyClients,
+                            companyWhoWeAre: companyWhoWeAre,
+                            companyHistory: companyHistory,
+                          ),
+                        ],
+                      ),
                     ),
-                    ListView(
-                      padding: EdgeInsets.zero,
-                      children: [
-                        CompanyContactsWidget(
-                          phone: phone.toString(),
-                          contactPerson: contactPerson.toString(),
-                          extraPhones: extraPhones,
-                          email: email.toString(),
-                          website: website.toString(),
-                          contacts: contacts,
-                        ),
-                      ],
+                    refreshable(
+                      ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        children: [
+                          CompanyContactsWidget(
+                            phone: phone.toString(),
+                            contactPerson: contactPerson.toString(),
+                            extraPhones: extraPhones,
+                            email: email.toString(),
+                            website: website.toString(),
+                            contacts: contacts,
+                          ),
+                        ],
+                      ),
                     ),
-                    StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection("jobs")
-                          .where("ownerId", isEqualTo: ownerId)
-                          .orderBy("createdAt", descending: true)
-                          .snapshots(),
+                    FutureBuilder<List<Job>>(
+                      key: ValueKey("company-jobs-$companyProfileRefreshTick"),
+                      future: loadCompanyJobs(
+                        ownerId: ownerId,
+                        canViewAllCompanyJobs: canViewAllCompanyJobs,
+                      ),
                       builder: (context, jobsSnapshot) {
-                        if (!jobsSnapshot.hasData) {
+                        if (jobsSnapshot.connectionState ==
+                            ConnectionState.waiting) {
                           return const Center(
                             child: CircularProgressIndicator(),
                           );
                         }
 
-                        final jobs = jobsSnapshot.data!.docs
-                            .map((doc) => Job.fromFirestore(
-                                  doc.id,
-                                  doc.data() as Map<String, dynamic>,
-                                ))
-                            .where((job) {
-                          if (canViewAllCompanyJobs) return true;
-                          return _isWorkerVisibleCompanyJob(job);
-                        }).toList();
-
-                        if (jobs.isEmpty) {
-                          return const Center(child: Text("No jobs yet"));
+                        if (jobsSnapshot.hasError) {
+                          return refreshable(
+                            ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: EdgeInsets.zero,
+                              children: const [
+                                StroykaSurface(
+                                  padding: EdgeInsets.all(18),
+                                  child: Text("Could not load company jobs"),
+                                ),
+                              ],
+                            ),
+                          );
                         }
 
-                        return ListView.builder(
-                          padding: EdgeInsets.zero,
-                          itemCount: jobs.length,
-                          itemBuilder: (context, index) {
-                            final job = jobs[index];
-                            return JobCard(
-                              job: job,
-                              margin: const EdgeInsets.only(bottom: 10),
-                              statusText: canViewAllCompanyJobs
-                                  ? _companyJobStatusLabel(job)
-                                  : null,
-                              statusColor: canViewAllCompanyJobs
-                                  ? _companyJobStatusColor(job)
-                                  : null,
-                            );
-                          },
+                        final jobs = jobsSnapshot.data ?? const <Job>[];
+
+                        if (jobs.isEmpty) {
+                          return refreshable(
+                            ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: EdgeInsets.zero,
+                              children: const [
+                                StroykaSurface(
+                                  padding: EdgeInsets.all(18),
+                                  child: Text("No active company jobs"),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        return refreshable(
+                          ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: EdgeInsets.zero,
+                            itemCount: jobs.length,
+                            itemBuilder: (context, index) {
+                              final job = jobs[index];
+                              return JobCard(
+                                job: job,
+                                margin: const EdgeInsets.only(bottom: 10),
+                                statusText: canViewAllCompanyJobs
+                                    ? _companyJobStatusLabel(job)
+                                    : null,
+                                statusColor: canViewAllCompanyJobs
+                                    ? _companyJobStatusColor(job)
+                                    : null,
+                              );
+                            },
+                          ),
                         );
                       },
                     ),
-                    ListView(
-                      padding: EdgeInsets.zero,
-                      children: [
-                        if (photos.isEmpty)
-                          const StroykaSurface(
-                            padding: EdgeInsets.all(18),
-                            child: Text("No company photos yet"),
-                          )
-                        else
-                          StroykaSurface(
-                            padding: const EdgeInsets.all(18),
-                            child: GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: photos.length,
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                crossAxisSpacing: 10,
-                                mainAxisSpacing: 10,
-                              ),
-                              itemBuilder: (_, index) => ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: Image.network(
-                                  photos[index],
-                                  fit: BoxFit.cover,
+                    refreshable(
+                      ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        children: [
+                          if (photos.isEmpty)
+                            const StroykaSurface(
+                              padding: EdgeInsets.all(18),
+                              child: Text("No company photos yet"),
+                            )
+                          else
+                            StroykaSurface(
+                              padding: const EdgeInsets.all(18),
+                              child: GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: photos.length,
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  crossAxisSpacing: 10,
+                                  mainAxisSpacing: 10,
+                                ),
+                                itemBuilder: (_, index) => GestureDetector(
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ImageGalleryViewerScreen(
+                                        imageUrls: photos,
+                                        initialIndex: index,
+                                      ),
+                                    ),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.network(
+                                      photos[index],
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -2384,6 +2439,41 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         );
       },
     );
+  }
+
+  Future<List<Job>> loadCompanyJobs({
+    required String ownerId,
+    required bool canViewAllCompanyJobs,
+  }) async {
+    final jobsById = <String, Job>{};
+    final fields = ["ownerId", "employerId", "createdBy", "userId"];
+
+    for (final field in fields) {
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection("jobs")
+            .where(field, isEqualTo: ownerId)
+            .get();
+        for (final doc in snapshot.docs) {
+          jobsById[doc.id] = Job.fromFirestore(doc.id, doc.data());
+        }
+      } catch (error) {
+        debugPrint("Company jobs query failed for $field=$ownerId: $error");
+      }
+    }
+
+    final jobs = jobsById.values.where((job) {
+      if (canViewAllCompanyJobs) return true;
+      return _isWorkerVisibleCompanyJob(job);
+    }).toList();
+
+    jobs.sort((a, b) {
+      final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bDate.compareTo(aDate);
+    });
+
+    return jobs;
   }
 
   bool _isWorkerVisibleCompanyJob(Job job) {

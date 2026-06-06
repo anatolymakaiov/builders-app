@@ -48,6 +48,7 @@ class _MapScreenState extends State<MapScreen> {
   bool panelOpen = true;
   bool showSearchButton = false;
   bool showUserLocationMarker = false;
+  int refreshTick = 0;
 
   List<ConstructionRole> selectedRoles = [];
   String searchQuery = "";
@@ -108,6 +109,14 @@ class _MapScreenState extends State<MapScreen> {
     setState(() {
       savedJobIds = ids;
     });
+  }
+
+  Future<void> refreshMapData() async {
+    await loadRole();
+    await requestLocation();
+    await loadSavedJobs();
+    if (!mounted) return;
+    setState(() => refreshTick++);
   }
 
   Future<void> toggleSaveJob(String jobId) async {
@@ -418,21 +427,25 @@ class _MapScreenState extends State<MapScreen> {
                 },
               ),
               Expanded(
-                child: ListView.builder(
-                  controller: scrollController,
-                  itemCount: jobs.length,
-                  itemBuilder: (context, index) {
-                    final job = jobs[index];
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          selectedJobId = job.id;
-                        });
-                        mapController.move(LatLng(job.lat, job.lng), 16);
-                      },
-                      child: buildJobCard(job),
-                    );
-                  },
+                child: RefreshIndicator(
+                  onRefresh: refreshMapData,
+                  child: ListView.builder(
+                    controller: scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: jobs.length,
+                    itemBuilder: (context, index) {
+                      final job = jobs[index];
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            selectedJobId = job.id;
+                          });
+                          mapController.move(LatLng(job.lat, job.lng), 16);
+                        },
+                        child: buildJobCard(job),
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
@@ -607,6 +620,7 @@ class _MapScreenState extends State<MapScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text("Jobs Map")),
       body: StreamBuilder<List<Job>>(
+        key: ValueKey("map-public-$refreshTick"),
         stream: jobRepository.getJobs(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
@@ -620,6 +634,7 @@ class _MapScreenState extends State<MapScreen> {
           }
 
           return StreamBuilder<List<Job>>(
+            key: ValueKey("map-owner-$refreshTick"),
             stream: jobRepository.getJobsByOwner(employerId),
             builder: (context, ownerSnapshot) {
               if (ownerSnapshot.connectionState == ConnectionState.waiting &&

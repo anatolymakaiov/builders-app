@@ -32,6 +32,7 @@ class _EmployerApplicationsScreenState
   Set<String> sites = {"all"};
   String selectedTrade = "all";
   String selectedSite = "all";
+  int refreshTick = 0;
 
   @override
   void initState() {
@@ -39,6 +40,10 @@ class _EmployerApplicationsScreenState
     selectedStatus = widget.initialStatus == "all"
         ? "all"
         : ApplicationStatusUtils.filterForStatus(widget.initialStatus);
+  }
+
+  Future<void> refreshApplications() async {
+    setState(() => refreshTick++);
   }
 
   Color getStatusColor(String status) {
@@ -315,6 +320,7 @@ class _EmployerApplicationsScreenState
             ),
             Expanded(
               child: StreamBuilder<List<QueryDocumentSnapshot>>(
+                key: ValueKey("employer-applications-$refreshTick"),
                 stream: employerApplicationsStream(employerId),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
@@ -380,149 +386,163 @@ class _EmployerApplicationsScreenState
                   });
 
                   if (apps.isEmpty) {
-                    return const Center(child: Text("No applications yet"));
+                    return RefreshIndicator(
+                      onRefresh: refreshApplications,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: const [
+                          SizedBox(height: 220),
+                          Center(child: Text("No applications yet")),
+                        ],
+                      ),
+                    );
                   }
 
-                  return ListView.builder(
-                    itemCount: apps.length,
-                    itemBuilder: (context, index) {
-                      final doc = apps[index];
-                      final data = doc.data() as Map<String, dynamic>;
-                      final isUnread = ApplicationActivityService.isUnreadFor(
-                        data,
-                        employerId,
-                      );
+                  return RefreshIndicator(
+                    onRefresh: refreshApplications,
+                    child: ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      itemCount: apps.length,
+                      itemBuilder: (context, index) {
+                        final doc = apps[index];
+                        final data = doc.data() as Map<String, dynamic>;
+                        final isUnread = ApplicationActivityService.isUnreadFor(
+                          data,
+                          employerId,
+                        );
 
-                      final type = data["type"] ?? "single";
-                      final workerName = data["workerName"] ?? "Worker";
-                      final members = List<String>.from(data["members"] ?? []);
-                      final jobTitle = data["jobTitle"] ?? "Job";
-                      final status = canonicalStatus(data["status"]);
-                      final Timestamp? createdAt = data["createdAt"];
+                        final type = data["type"] ?? "single";
+                        final workerName = data["workerName"] ?? "Worker";
+                        final members =
+                            List<String>.from(data["members"] ?? []);
+                        final jobTitle = data["jobTitle"] ?? "Job";
+                        final status = canonicalStatus(data["status"]);
+                        final Timestamp? createdAt = data["createdAt"];
 
-                      final dateText = createdAt != null
-                          ? DateTime.fromMillisecondsSinceEpoch(
-                                  createdAt.millisecondsSinceEpoch)
-                              .toString()
-                              .substring(0, 16)
-                          : "";
+                        final dateText = createdAt != null
+                            ? DateTime.fromMillisecondsSinceEpoch(
+                                    createdAt.millisecondsSinceEpoch)
+                                .toString()
+                                .substring(0, 16)
+                            : "";
 
-                      return GestureDetector(
-                        onTap: () async {
-                          await ApplicationActivityService.markRead(
-                            doc.id,
-                            employerId,
-                          );
-                          if (data["viewedByEmployer"] != true) {
-                            await ApplicationActivityService
-                                .markViewedByEmployer(doc.id);
-                          }
-                          if (!context.mounted) return;
+                        return GestureDetector(
+                          onTap: () async {
+                            await ApplicationActivityService.markRead(
+                              doc.id,
+                              employerId,
+                            );
+                            if (data["viewedByEmployer"] != true) {
+                              await ApplicationActivityService
+                                  .markViewedByEmployer(doc.id);
+                            }
+                            if (!context.mounted) return;
 
-                          final workerId = data["workerId"]?.toString();
-                          final jobId = data["jobId"]?.toString();
-                          final applicationEmployerId =
-                              data["employerId"]?.toString();
+                            final workerId = data["workerId"]?.toString();
+                            final jobId = data["jobId"]?.toString();
+                            final applicationEmployerId =
+                                data["employerId"]?.toString();
 
-                          if (type != "team" &&
-                              workerId != null &&
-                              workerId.isNotEmpty) {
+                            if (type != "team" &&
+                                workerId != null &&
+                                workerId.isNotEmpty) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => WorkerProfileScreen(
+                                    userId: workerId,
+                                    jobId: jobId,
+                                    employerId: applicationEmployerId,
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => WorkerProfileScreen(
-                                  userId: workerId,
-                                  jobId: jobId,
-                                  employerId: applicationEmployerId,
+                                builder: (_) => ApplicationDetailsScreen(
+                                  applicationId: doc.id,
+                                  data: data,
                                 ),
                               ),
                             );
-                            return;
-                          }
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ApplicationDetailsScreen(
-                                applicationId: doc.id,
-                                data: data,
-                              ),
-                            ),
-                          );
-                        },
-                        child: AppCard(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 10),
-                          padding: const EdgeInsets.all(16),
-                          dimmed: isUnread,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  if (isUnread)
-                                    Container(
-                                      width: 10,
-                                      height: 10,
-                                      margin: const EdgeInsets.only(right: 8),
-                                      decoration: const BoxDecoration(
-                                        color: AppColors.green,
-                                        shape: BoxShape.circle,
+                          },
+                          child: AppCard(
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 10),
+                            padding: const EdgeInsets.all(16),
+                            dimmed: isUnread,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    if (isUnread)
+                                      Container(
+                                        width: 10,
+                                        height: 10,
+                                        margin: const EdgeInsets.only(right: 8),
+                                        decoration: const BoxDecoration(
+                                          color: AppColors.green,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    buildApplicantAvatar(data),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Align(
+                                            alignment: Alignment.centerLeft,
+                                            child: AppChip.status(
+                                              statusLabel(status),
+                                              color: getStatusColor(status),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 7),
+                                          Text(
+                                            type == "team"
+                                                ? "Team application"
+                                                : workerName,
+                                            style: TextStyle(
+                                              color: AppColors.ink,
+                                              fontWeight: isUnread
+                                                  ? FontWeight.w900
+                                                  : FontWeight.w800,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                          if (type == "team")
+                                            Text(
+                                              "${members.length} members",
+                                              style: const TextStyle(
+                                                  color: Colors.grey),
+                                            ),
+                                        ],
                                       ),
                                     ),
-                                  buildApplicantAvatar(data),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: AppChip.status(
-                                            statusLabel(status),
-                                            color: getStatusColor(status),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 7),
-                                        Text(
-                                          type == "team"
-                                              ? "Team application"
-                                              : workerName,
-                                          style: TextStyle(
-                                            color: AppColors.ink,
-                                            fontWeight: isUnread
-                                                ? FontWeight.w900
-                                                : FontWeight.w800,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        if (type == "team")
-                                          Text(
-                                            "${members.length} members",
-                                            style: const TextStyle(
-                                                color: Colors.grey),
-                                          ),
-                                      ],
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(jobTitle),
+                                if (dateText.isNotEmpty)
+                                  Text(
+                                    dateText,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey,
                                     ),
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(jobTitle),
-                              if (dateText.isNotEmpty)
-                                Text(
-                                  dateText,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   );
                 },
               ),

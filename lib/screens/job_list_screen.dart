@@ -46,6 +46,7 @@ class _JobListScreenState extends State<JobListScreen> {
   List<ConstructionRole> selectedRoles = [];
   JobSearchFilters searchFilters = const JobSearchFilters();
   int currentPage = 1;
+  int refreshTick = 0;
 
   @override
   void initState() {
@@ -163,6 +164,12 @@ class _JobListScreenState extends State<JobListScreen> {
     await jobRepository.toggleSaveJob(user.uid, job.id, isSaved);
   }
 
+  Future<void> refreshJobs() async {
+    await getUserLocation();
+    if (!mounted) return;
+    setState(() => refreshTick++);
+  }
+
   Widget buildJobCard(Job job, bool isSaved) {
     final distance = calculateDistance(job.lat, job.lng);
     return JobCard(
@@ -208,6 +215,7 @@ class _JobListScreenState extends State<JobListScreen> {
                   final savedJobIds = savedSnapshot.data ?? <String>{};
 
                   return StreamBuilder<List<Job>>(
+                    key: ValueKey("jobs-$refreshTick"),
                     stream: jobRepository.getJobs(),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) {
@@ -291,16 +299,20 @@ class _JobListScreenState extends State<JobListScreen> {
                         children: [
                           searchField,
                           Expanded(
-                            child: ListView.builder(
-                              itemCount: pageJobs.length,
-                              itemBuilder: (context, index) {
-                                final job = pageJobs[index];
+                            child: RefreshIndicator(
+                              onRefresh: refreshJobs,
+                              child: ListView.builder(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                itemCount: pageJobs.length,
+                                itemBuilder: (context, index) {
+                                  final job = pageJobs[index];
 
-                                return buildJobCard(
-                                  job,
-                                  savedJobIds.contains(job.id),
-                                );
-                              },
+                                  return buildJobCard(
+                                    job,
+                                    savedJobIds.contains(job.id),
+                                  );
+                                },
+                              ),
                             ),
                           ),
                           JobPagination(

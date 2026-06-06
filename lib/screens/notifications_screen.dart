@@ -42,8 +42,13 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final Set<String> expandedNotifications = {};
+  int refreshTick = 0;
 
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
+
+  Future<void> refreshNotifications() async {
+    setState(() => refreshTick++);
+  }
 
   String? cleanId(dynamic value) {
     final text = value?.toString().trim() ?? "";
@@ -837,6 +842,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
       body: StroykaScreenBody(
         child: StreamBuilder<QuerySnapshot>(
+          key: ValueKey("notifications-$refreshTick"),
           stream: FirebaseFirestore.instance
               .collection("users")
               .doc(userId!)
@@ -856,21 +862,34 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             }).toList();
 
             if (docs.isEmpty) {
-              return const Center(child: Text("No notifications"));
+              return RefreshIndicator(
+                onRefresh: refreshNotifications,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: const [
+                    SizedBox(height: 220),
+                    Center(child: Text("No notifications")),
+                  ],
+                ),
+              );
             }
 
-            return ListView.builder(
-              itemCount: docs.length,
-              itemBuilder: (context, index) {
-                final doc = docs[index];
-                final data = doc.data() as Map<String, dynamic>;
+            return RefreshIndicator(
+              onRefresh: refreshNotifications,
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: docs.length,
+                itemBuilder: (context, index) {
+                  final doc = docs[index];
+                  final data = doc.data() as Map<String, dynamic>;
 
-                return buildNotificationCard(
-                  context: context,
-                  doc: doc,
-                  data: data,
-                );
-              },
+                  return buildNotificationCard(
+                    context: context,
+                    doc: doc,
+                    data: data,
+                  );
+                },
+              ),
             );
           },
         ),
