@@ -3,6 +3,85 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class ChatService {
   static final _firestore = FirebaseFirestore.instance;
 
+  static String firstText(
+    Map<String, dynamic>? data,
+    List<String> keys, {
+    String fallback = "",
+  }) {
+    if (data == null) return fallback;
+    for (final key in keys) {
+      final value = data[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return fallback;
+  }
+
+  static String jobTitle(
+    Map<String, dynamic> chatData,
+    Map<String, dynamic>? jobData,
+  ) {
+    return firstText(
+      chatData,
+      ["jobTitle", "position", "canonicalRoleName"],
+      fallback: firstText(
+        jobData,
+        ["title", "jobTitle", "position", "canonicalRoleName", "trade"],
+        fallback: "Job",
+      ),
+    );
+  }
+
+  static String chatDisplayName({
+    required Map<String, dynamic> chatData,
+    required Map<String, dynamic>? participantData,
+    required Map<String, dynamic>? jobData,
+    required bool currentUserIsWorker,
+    required bool isInternalTeamChat,
+    required bool showTeamAvatar,
+  }) {
+    final title = jobTitle(chatData, jobData);
+
+    if (isInternalTeamChat) {
+      final teamName = firstText(
+        chatData,
+        ["teamName"],
+        fallback: firstText(participantData, ["name"], fallback: "Team"),
+      );
+      return "${teamName}_$title";
+    }
+
+    if (showTeamAvatar) {
+      final teamName = firstText(
+        participantData,
+        ["name", "teamName"],
+        fallback: firstText(chatData, ["teamName"], fallback: "Team"),
+      );
+      return "${teamName}_$title";
+    }
+
+    final participantName = currentUserIsWorker
+        ? firstText(
+            participantData,
+            ["companyName", "name", "displayName"],
+            fallback: firstText(
+              chatData,
+              ["companyName", "employerName"],
+              fallback: "Company",
+            ),
+          )
+        : firstText(
+            participantData,
+            ["name", "displayName", "workerName"],
+            fallback: firstText(
+              chatData,
+              ["workerName", "applicantName"],
+              fallback: "Worker",
+            ),
+          );
+
+    return "${participantName}_$title";
+  }
+
   static Future<String> getOrCreateChat({
     required String workerId,
     required String employerId,

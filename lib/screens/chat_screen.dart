@@ -12,6 +12,7 @@ import 'dart:async';
 import 'dart:io';
 import 'image_viewer_screen.dart';
 import '../services/report_service.dart';
+import '../services/chat_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -993,6 +994,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final otherUserId = isInternalTeamChat
             ? uid
             : (isWorker ? chatData["employerId"] : chatData["workerId"]);
+        final jobId = chatData["jobId"]?.toString();
 
         return StreamBuilder<DocumentSnapshot>(
           stream: FirebaseFirestore.instance
@@ -1002,9 +1004,6 @@ class _ChatScreenState extends State<ChatScreen> {
           builder: (context, userSnapshot) {
             final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
 
-            final name = isInternalTeamChat
-                ? (chatData["teamName"] ?? "Team chat")
-                : (userData?["name"] ?? "User");
             final isOnline = userData?["isOnline"] ?? false;
 
             final lastSeenRaw = userData?["lastSeen"];
@@ -1017,410 +1016,467 @@ class _ChatScreenState extends State<ChatScreen> {
                 (isWorker ? typingEmployer : typingWorker) &&
                 isOnline;
 
-            return StroykaBackground(
-              asset: AppAssets.backgroundWorkersCity,
-              child: Scaffold(
-                appBar: AppBar(
-                  title: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name),
-                      Text(
-                        isTyping
-                            ? "typing..."
-                            : isOnline
-                                ? "Online"
-                                : formatLastSeen(lastSeen),
-                        style: const TextStyle(fontSize: 12),
+            return StreamBuilder<DocumentSnapshot>(
+              stream: jobId == null || jobId.isEmpty
+                  ? null
+                  : FirebaseFirestore.instance
+                      .collection("jobs")
+                      .doc(jobId)
+                      .snapshots(),
+              builder: (context, jobSnapshot) {
+                final jobData =
+                    jobSnapshot.data?.data() as Map<String, dynamic>?;
+                final name = ChatService.chatDisplayName(
+                  chatData: chatData,
+                  participantData: userData,
+                  jobData: jobData,
+                  currentUserIsWorker: isWorker,
+                  isInternalTeamChat: isInternalTeamChat,
+                  showTeamAvatar: false,
+                );
+
+                return StroykaBackground(
+                  asset: AppAssets.backgroundWorkersCity,
+                  child: Scaffold(
+                    appBar: AppBar(
+                      title: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name),
+                          Text(
+                            isTyping
+                                ? "typing..."
+                                : isOnline
+                                    ? "Online"
+                                    : formatLastSeen(lastSeen),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  actions: [
-                    if (!isInternalTeamChat)
-                      IconButton(
-                        tooltip: "Call",
-                        icon: const Icon(Icons.call),
-                        onPressed: () => showCallOptions(context, userData),
-                      ),
-                    IconButton(
-                      tooltip: "Report chat",
-                      icon: const Icon(Icons.flag_outlined),
-                      onPressed: () => ReportService.showReportDialog(
-                        context,
-                        type: "chat",
-                        againstUserId:
-                            isInternalTeamChat ? null : otherUserId?.toString(),
-                        chatId: widget.chatId,
-                        jobId: chatData["jobId"]?.toString(),
-                      ),
+                      actions: [
+                        if (!isInternalTeamChat)
+                          IconButton(
+                            tooltip: "Call",
+                            icon: const Icon(Icons.call),
+                            onPressed: () => showCallOptions(context, userData),
+                          ),
+                        IconButton(
+                          tooltip: "Report chat",
+                          icon: const Icon(Icons.flag_outlined),
+                          onPressed: () => ReportService.showReportDialog(
+                            context,
+                            type: "chat",
+                            againstUserId: isInternalTeamChat
+                                ? null
+                                : otherUserId?.toString(),
+                            chatId: widget.chatId,
+                            jobId: chatData["jobId"]?.toString(),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                body: StroykaScreenBody(
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: StreamBuilder<QuerySnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection("chats")
-                              .doc(widget.chatId)
-                              .collection("messages")
-                              .orderBy("createdAt")
-                              .snapshots(),
-                          builder: (context, snapshot) {
-                            if (!snapshot.hasData) {
-                              return const Center(
-                                  child: CircularProgressIndicator());
-                            }
-
-                            final messages = snapshot.data!.docs.where((doc) {
-                              final data = doc.data() as Map<String, dynamic>;
-                              final hiddenFor =
-                                  List<String>.from(data["hiddenFor"] ?? []);
-                              return !hiddenFor.contains(uid);
-                            }).toList();
-                            preloadImages(messages);
-                            markUnreadMessagesRead(messages, uid);
-
-                            return ListView.builder(
-                              controller: scrollController,
-                              padding: const EdgeInsets.all(10),
-                              itemCount: messages.length,
-                              itemBuilder: (context, index) {
-                                final doc = messages[index];
-                                final data = doc.data() as Map<String, dynamic>;
-
-                                final isMe = data["senderId"] == uid;
-                                final type = data["type"] ?? "text";
-                                final deletedForEveryone =
-                                    data["deletedForEveryone"] == true;
-                                final editedAt = data["editedAt"];
-                                final isEdited =
-                                    type == "text" && editedAt != null;
-
-                                final ts = data["createdAt"] as Timestamp?;
-                                final date = ts?.toDate();
-                                final time = formatTime(ts);
-
-                                bool showDate = index == 0;
-
-                                if (!showDate && index > 0) {
-                                  final prev = messages[index - 1].data()
-                                      as Map<String, dynamic>;
-                                  final prevDate =
-                                      (prev["createdAt"] as Timestamp?)
-                                          ?.toDate();
-
-                                  if (date != null && prevDate != null) {
-                                    showDate = date.day != prevDate.day ||
-                                        date.month != prevDate.month ||
-                                        date.year != prevDate.year;
-                                  }
+                    body: StroykaScreenBody(
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: StreamBuilder<QuerySnapshot>(
+                              stream: FirebaseFirestore.instance
+                                  .collection("chats")
+                                  .doc(widget.chatId)
+                                  .collection("messages")
+                                  .orderBy("createdAt")
+                                  .snapshots(),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData) {
+                                  return const Center(
+                                      child: CircularProgressIndicator());
                                 }
 
-                                final readBy =
-                                    List<String>.from(data["readBy"] ?? []);
-                                final isRead = readBy.length > 1;
+                                final messages =
+                                    snapshot.data!.docs.where((doc) {
+                                  final data =
+                                      doc.data() as Map<String, dynamic>;
+                                  final hiddenFor = List<String>.from(
+                                      data["hiddenFor"] ?? []);
+                                  return !hiddenFor.contains(uid);
+                                }).toList();
+                                preloadImages(messages);
+                                markUnreadMessagesRead(messages, uid);
 
-                                return Column(
-                                  children: [
-                                    if (showDate && date != null)
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 10),
-                                        child: Text(formatDateLabel(date)),
-                                      ),
-                                    Align(
-                                      alignment: isMe
-                                          ? Alignment.centerRight
-                                          : Alignment.centerLeft,
-                                      child: GestureDetector(
-                                        onLongPress: () => showMessageActions(
-                                          message: doc,
-                                          data: data,
-                                          uid: uid,
-                                        ),
-                                        child: Container(
-                                          margin: const EdgeInsets.symmetric(
-                                              vertical: 4),
-                                          padding: const EdgeInsets.all(12),
-                                          constraints: const BoxConstraints(
-                                              maxWidth: 260),
-                                          decoration: BoxDecoration(
-                                            color: isMe
-                                                ? AppColors.surfaceAlt
-                                                : Colors.grey.shade200,
-                                            borderRadius:
-                                                BorderRadius.circular(8),
+                                return ListView.builder(
+                                  controller: scrollController,
+                                  padding: const EdgeInsets.all(10),
+                                  itemCount: messages.length,
+                                  itemBuilder: (context, index) {
+                                    final doc = messages[index];
+                                    final data =
+                                        doc.data() as Map<String, dynamic>;
+
+                                    final isMe = data["senderId"] == uid;
+                                    final type = data["type"] ?? "text";
+                                    final deletedForEveryone =
+                                        data["deletedForEveryone"] == true;
+                                    final editedAt = data["editedAt"];
+                                    final isEdited =
+                                        type == "text" && editedAt != null;
+
+                                    final ts = data["createdAt"] as Timestamp?;
+                                    final date = ts?.toDate();
+                                    final time = formatTime(ts);
+
+                                    bool showDate = index == 0;
+
+                                    if (!showDate && index > 0) {
+                                      final prev = messages[index - 1].data()
+                                          as Map<String, dynamic>;
+                                      final prevDate =
+                                          (prev["createdAt"] as Timestamp?)
+                                              ?.toDate();
+
+                                      if (date != null && prevDate != null) {
+                                        showDate = date.day != prevDate.day ||
+                                            date.month != prevDate.month ||
+                                            date.year != prevDate.year;
+                                      }
+                                    }
+
+                                    final readBy =
+                                        List<String>.from(data["readBy"] ?? []);
+                                    final isRead = readBy.length > 1;
+
+                                    return Column(
+                                      children: [
+                                        if (showDate && date != null)
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 10),
+                                            child: Text(formatDateLabel(date)),
                                           ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.end,
-                                            children: [
-                                              if (deletedForEveryone)
-                                                const Text(
-                                                  "Message deleted",
-                                                  style: TextStyle(
-                                                    fontStyle: FontStyle.italic,
-                                                    color: Colors.grey,
-                                                  ),
-                                                ),
-                                              if (!deletedForEveryone &&
-                                                  type == "text")
-                                                _TextMessageContent(
-                                                  text: data["text"] ?? "",
-                                                  normalizeUrl: normalizeUrl,
-                                                ),
-                                              if (!deletedForEveryone &&
-                                                  type == "image" &&
-                                                  (data["imageUrl"] != null ||
-                                                      data["mediaUrl"] != null))
-                                                GestureDetector(
-                                                  onTap: () {
-                                                    final imageUrl = (data[
-                                                                "imageUrl"] ??
-                                                            data["mediaUrl"])
-                                                        .toString();
-                                                    Navigator.push(
-                                                      context,
-                                                      MaterialPageRoute(
-                                                        builder: (_) =>
-                                                            ImageViewerScreen(
-                                                          imageUrl: imageUrl,
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
-                                                  child: ClipRRect(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            10),
-                                                    child: Image.network(
-                                                      (data["imageUrl"] ??
-                                                              data["mediaUrl"])
-                                                          .toString(),
-                                                      width: 200,
-                                                      height: 150,
-                                                      fit: BoxFit.cover,
-                                                      gaplessPlayback: true,
-                                                      loadingBuilder: (
-                                                        context,
-                                                        child,
-                                                        loadingProgress,
-                                                      ) {
-                                                        if (loadingProgress ==
-                                                            null) {
-                                                          return child;
-                                                        }
-                                                        return Container(
-                                                          width: 200,
-                                                          height: 150,
-                                                          alignment:
-                                                              Alignment.center,
-                                                          color: AppColors
-                                                              .surfaceAlt,
-                                                          child: const Icon(
-                                                            Icons
-                                                                .image_outlined,
-                                                            color:
-                                                                AppColors.muted,
-                                                          ),
-                                                        );
-                                                      },
-                                                      errorBuilder: (context,
-                                                              error,
-                                                              stackTrace) =>
-                                                          Container(
-                                                        width: 200,
-                                                        height: 150,
-                                                        alignment:
-                                                            Alignment.center,
-                                                        color: AppColors
-                                                            .surfaceAlt,
-                                                        child: const Icon(
-                                                          Icons.broken_image,
-                                                          color:
-                                                              AppColors.muted,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              if (!deletedForEveryone &&
-                                                  type == "video" &&
-                                                  (data["videoUrl"] != null ||
-                                                      data["mediaUrl"] != null))
-                                                VideoMessagePreview(
-                                                  url: data["videoUrl"] ??
-                                                      data["mediaUrl"],
-                                                ),
-                                              if (!deletedForEveryone &&
-                                                  type == "audio" &&
-                                                  (data["audioUrl"] != null ||
-                                                      data["mediaUrl"] != null))
-                                                AudioMessageBubble(
-                                                  url: data["audioUrl"] ??
-                                                      data["mediaUrl"],
-                                                ),
-                                              if (!deletedForEveryone &&
-                                                  type == "link" &&
-                                                  (data["url"] != null ||
-                                                      data["text"] != null))
-                                                InkWell(
-                                                  onTap: () async {
-                                                    final raw = data["url"] ??
-                                                        data["text"];
-                                                    final uri = normalizeUrl(
-                                                        raw.toString());
-                                                    if (uri == null) return;
-                                                    await launchUrl(
-                                                      uri,
-                                                      mode: LaunchMode
-                                                          .externalApplication,
-                                                    );
-                                                  },
-                                                  child: Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: [
-                                                      const Icon(Icons.link,
-                                                          size: 18),
-                                                      const SizedBox(width: 6),
-                                                      Flexible(
-                                                        child: Text(
-                                                          (data["url"] ??
-                                                                  data["text"])
-                                                              .toString(),
-                                                          style:
-                                                              const TextStyle(
-                                                            decoration:
-                                                                TextDecoration
-                                                                    .underline,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              const SizedBox(height: 4),
-                                              Row(
-                                                mainAxisSize: MainAxisSize.min,
+                                        Align(
+                                          alignment: isMe
+                                              ? Alignment.centerRight
+                                              : Alignment.centerLeft,
+                                          child: GestureDetector(
+                                            onLongPress: () =>
+                                                showMessageActions(
+                                              message: doc,
+                                              data: data,
+                                              uid: uid,
+                                            ),
+                                            child: Container(
+                                              margin:
+                                                  const EdgeInsets.symmetric(
+                                                      vertical: 4),
+                                              padding: const EdgeInsets.all(12),
+                                              constraints: const BoxConstraints(
+                                                  maxWidth: 260),
+                                              decoration: BoxDecoration(
+                                                color: isMe
+                                                    ? AppColors.surfaceAlt
+                                                    : Colors.grey.shade200,
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.end,
                                                 children: [
-                                                  if (isEdited) ...[
+                                                  if (deletedForEveryone)
                                                     const Text(
-                                                      "edited",
+                                                      "Message deleted",
                                                       style: TextStyle(
-                                                        fontSize: 10,
+                                                        fontStyle:
+                                                            FontStyle.italic,
                                                         color: Colors.grey,
                                                       ),
                                                     ),
-                                                    const SizedBox(width: 4),
-                                                  ],
-                                                  Text(time,
-                                                      style: const TextStyle(
-                                                          fontSize: 10)),
-                                                  const SizedBox(width: 4),
-                                                  if (isMe)
-                                                    Icon(Icons.done_all,
-                                                        size: 16,
-                                                        color: isRead
-                                                            ? AppColors
-                                                                .greenDark
-                                                            : Colors.grey),
+                                                  if (!deletedForEveryone &&
+                                                      type == "text")
+                                                    _TextMessageContent(
+                                                      text: data["text"] ?? "",
+                                                      normalizeUrl:
+                                                          normalizeUrl,
+                                                    ),
+                                                  if (!deletedForEveryone &&
+                                                      type == "image" &&
+                                                      (data["imageUrl"] !=
+                                                              null ||
+                                                          data["mediaUrl"] !=
+                                                              null))
+                                                    GestureDetector(
+                                                      onTap: () {
+                                                        final imageUrl = (data[
+                                                                    "imageUrl"] ??
+                                                                data[
+                                                                    "mediaUrl"])
+                                                            .toString();
+                                                        Navigator.push(
+                                                          context,
+                                                          MaterialPageRoute(
+                                                            builder: (_) =>
+                                                                ImageViewerScreen(
+                                                              imageUrl:
+                                                                  imageUrl,
+                                                            ),
+                                                          ),
+                                                        );
+                                                      },
+                                                      child: ClipRRect(
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(10),
+                                                        child: Image.network(
+                                                          (data["imageUrl"] ??
+                                                                  data[
+                                                                      "mediaUrl"])
+                                                              .toString(),
+                                                          width: 200,
+                                                          height: 150,
+                                                          fit: BoxFit.cover,
+                                                          gaplessPlayback: true,
+                                                          loadingBuilder: (
+                                                            context,
+                                                            child,
+                                                            loadingProgress,
+                                                          ) {
+                                                            if (loadingProgress ==
+                                                                null) {
+                                                              return child;
+                                                            }
+                                                            return Container(
+                                                              width: 200,
+                                                              height: 150,
+                                                              alignment:
+                                                                  Alignment
+                                                                      .center,
+                                                              color: AppColors
+                                                                  .surfaceAlt,
+                                                              child: const Icon(
+                                                                Icons
+                                                                    .image_outlined,
+                                                                color: AppColors
+                                                                    .muted,
+                                                              ),
+                                                            );
+                                                          },
+                                                          errorBuilder: (context,
+                                                                  error,
+                                                                  stackTrace) =>
+                                                              Container(
+                                                            width: 200,
+                                                            height: 150,
+                                                            alignment: Alignment
+                                                                .center,
+                                                            color: AppColors
+                                                                .surfaceAlt,
+                                                            child: const Icon(
+                                                              Icons
+                                                                  .broken_image,
+                                                              color: AppColors
+                                                                  .muted,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  if (!deletedForEveryone &&
+                                                      type == "video" &&
+                                                      (data["videoUrl"] !=
+                                                              null ||
+                                                          data["mediaUrl"] !=
+                                                              null))
+                                                    VideoMessagePreview(
+                                                      url: data["videoUrl"] ??
+                                                          data["mediaUrl"],
+                                                    ),
+                                                  if (!deletedForEveryone &&
+                                                      type == "audio" &&
+                                                      (data["audioUrl"] !=
+                                                              null ||
+                                                          data["mediaUrl"] !=
+                                                              null))
+                                                    AudioMessageBubble(
+                                                      url: data["audioUrl"] ??
+                                                          data["mediaUrl"],
+                                                    ),
+                                                  if (!deletedForEveryone &&
+                                                      type == "link" &&
+                                                      (data["url"] != null ||
+                                                          data["text"] != null))
+                                                    InkWell(
+                                                      onTap: () async {
+                                                        final raw =
+                                                            data["url"] ??
+                                                                data["text"];
+                                                        final uri =
+                                                            normalizeUrl(
+                                                                raw.toString());
+                                                        if (uri == null) return;
+                                                        await launchUrl(
+                                                          uri,
+                                                          mode: LaunchMode
+                                                              .externalApplication,
+                                                        );
+                                                      },
+                                                      child: Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          const Icon(Icons.link,
+                                                              size: 18),
+                                                          const SizedBox(
+                                                              width: 6),
+                                                          Flexible(
+                                                            child: Text(
+                                                              (data["url"] ??
+                                                                      data[
+                                                                          "text"])
+                                                                  .toString(),
+                                                              style:
+                                                                  const TextStyle(
+                                                                decoration:
+                                                                    TextDecoration
+                                                                        .underline,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      if (isEdited) ...[
+                                                        const Text(
+                                                          "edited",
+                                                          style: TextStyle(
+                                                            fontSize: 10,
+                                                            color: Colors.grey,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                            width: 4),
+                                                      ],
+                                                      Text(time,
+                                                          style:
+                                                              const TextStyle(
+                                                                  fontSize:
+                                                                      10)),
+                                                      const SizedBox(width: 4),
+                                                      if (isMe)
+                                                        Icon(Icons.done_all,
+                                                            size: 16,
+                                                            color: isRead
+                                                                ? AppColors
+                                                                    .greenDark
+                                                                : Colors.grey),
+                                                    ],
+                                                  ),
                                                 ],
                                               ),
-                                            ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                          if (isTyping)
+                            const Padding(
+                              padding: EdgeInsets.only(left: 12, bottom: 6),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text("typing..."),
+                              ),
+                            ),
+                          SafeArea(
+                            child: Container(
+                              color: AppColors.navy,
+                              padding:
+                                  const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (isUploadingMedia)
+                                    const Padding(
+                                      padding: EdgeInsets.only(bottom: 8),
+                                      child: LinearProgressIndicator(),
+                                    ),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      IconButton.filled(
+                                        style: IconButton.styleFrom(
+                                          backgroundColor: AppColors.green,
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        icon: const Icon(Icons.add),
+                                        onPressed: isUploadingMedia
+                                            ? null
+                                            : showAttachmentMenu,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: TextField(
+                                          controller: controller,
+                                          onChanged: handleTypingChanged,
+                                          keyboardType: TextInputType.multiline,
+                                          textInputAction:
+                                              TextInputAction.newline,
+                                          minLines: 1,
+                                          maxLines: 6,
+                                          decoration: const InputDecoration(
+                                            hintText: "Type a message",
+                                            filled: true,
+                                            fillColor: Colors.white,
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 12,
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                      if (isTyping)
-                        const Padding(
-                          padding: EdgeInsets.only(left: 12, bottom: 6),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text("typing..."),
-                          ),
-                        ),
-                      SafeArea(
-                        child: Container(
-                          color: AppColors.navy,
-                          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (isUploadingMedia)
-                                const Padding(
-                                  padding: EdgeInsets.only(bottom: 8),
-                                  child: LinearProgressIndicator(),
-                                ),
-                              Row(
-                                children: [
-                                  IconButton.filled(
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: AppColors.green,
-                                      foregroundColor: Colors.white,
-                                    ),
-                                    icon: const Icon(Icons.add),
-                                    onPressed: isUploadingMedia
-                                        ? null
-                                        : showAttachmentMenu,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: controller,
-                                      onChanged: handleTypingChanged,
-                                      decoration: const InputDecoration(
-                                        hintText: "Type a message",
-                                        filled: true,
-                                        fillColor: Colors.white,
-                                        contentPadding: EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 12,
+                                      IconButton(
+                                        icon: Icon(
+                                          isRecording
+                                              ? Icons.stop_circle
+                                              : Icons.mic,
+                                          color: isRecording
+                                              ? Colors.red
+                                              : Colors.white,
                                         ),
+                                        onPressed: isUploadingMedia
+                                            ? null
+                                            : toggleRecording,
                                       ),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: Icon(
-                                      isRecording
-                                          ? Icons.stop_circle
-                                          : Icons.mic,
-                                      color: isRecording
-                                          ? Colors.red
-                                          : Colors.white,
-                                    ),
-                                    onPressed: isUploadingMedia
-                                        ? null
-                                        : toggleRecording,
-                                  ),
-                                  IconButton.filled(
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: Colors.white70,
-                                      foregroundColor: AppColors.navy,
-                                    ),
-                                    icon: const Icon(Icons.send),
-                                    onPressed:
-                                        isUploadingMedia ? null : sendMessage,
+                                      IconButton.filled(
+                                        style: IconButton.styleFrom(
+                                          backgroundColor: Colors.white70,
+                                          foregroundColor: AppColors.navy,
+                                        ),
+                                        icon: const Icon(Icons.send),
+                                        onPressed: isUploadingMedia
+                                            ? null
+                                            : sendMessage,
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                            ],
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             );
           },
         );
