@@ -621,6 +621,7 @@ Future<void> _sendAdminInboxMessage({
   required String title,
   required String message,
   required String audience,
+  String? threadId,
   String? relatedTargetType,
   String? relatedTargetId,
   List<Map<String, dynamic>> attachments = const [],
@@ -637,6 +638,7 @@ Future<void> _sendAdminInboxMessage({
     receiverRole: audience,
     subject: title,
     message: message,
+    threadId: threadId,
     attachments: attachments,
     relatedTargetType: relatedTargetType,
     relatedTargetId: relatedTargetId,
@@ -705,6 +707,12 @@ Future<String> _createAdminMailMessage({
     "subject": subject.trim(),
     "message": message.trim(),
     "type": "admin_message",
+    if (relatedTargetType == "support" ||
+        relatedTargetType == "support_request")
+      "relatedSupportRequestId": relatedTargetId,
+    if (relatedTargetType == "payment_request" ||
+        relatedTargetType == "billing")
+      "relatedBillingRequestId": relatedTargetId,
     "readByAdmin": normalizedDirection == "outgoing",
     "readByReceiver": normalizedDirection == "incoming",
     "important": false,
@@ -3001,11 +3009,13 @@ class _AdminRequestDetailScreen extends StatelessWidget {
       return;
     }
 
+    final threadId = await existingRequestThreadId();
     await _sendAdminInboxMessage(
       userId: userId,
       title: "Admin response: $title",
       message: draft.message,
       audience: userRole.isEmpty ? "user" : userRole,
+      threadId: threadId,
       relatedTargetType: "support",
       relatedTargetId: ref.id,
       attachments: draft.attachments,
@@ -3038,11 +3048,13 @@ class _AdminRequestDetailScreen extends StatelessWidget {
         requiredMessage: true,
       );
       if (message == null) return;
+      final threadId = await existingRequestThreadId();
       await _sendAdminInboxMessage(
         userId: userId,
         title: "Admin update: $title",
         message: message,
         audience: userRole.isEmpty ? "user" : userRole,
+        threadId: threadId,
         relatedTargetType: requestType,
         relatedTargetId: ref.id,
       );
@@ -3060,6 +3072,28 @@ class _AdminRequestDetailScreen extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("Status changed to $nextStatus")),
     );
+  }
+
+  Future<String?> existingRequestThreadId() async {
+    final direct = await FirebaseFirestore.instance
+        .collection("admin_messages")
+        .where("relatedSupportRequestId", isEqualTo: ref.id)
+        .limit(1)
+        .get();
+    if (direct.docs.isNotEmpty) {
+      return direct.docs.first.data()["threadId"]?.toString();
+    }
+
+    final target = await FirebaseFirestore.instance
+        .collection("admin_messages")
+        .where("relatedTargetId", isEqualTo: ref.id)
+        .limit(1)
+        .get();
+    if (target.docs.isNotEmpty) {
+      return target.docs.first.data()["threadId"]?.toString();
+    }
+
+    return null;
   }
 
   Future<void> markUnread(BuildContext context) async {

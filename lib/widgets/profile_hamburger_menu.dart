@@ -974,11 +974,13 @@ class JobSubscribesScreen extends StatelessWidget {
 
   String subscriptionSubtitle(Map<String, dynamic> data) {
     final jobType = data["jobType"]?.toString().trim() ?? "All";
+    final postcode = data["postcode"]?.toString().trim() ?? "";
     final distance = data["distance"];
     final distanceText = distance is num
         ? "${distance.toStringAsFixed(distance % 1 == 0 ? 0 : 1)} mi"
         : "${distance?.toString() ?? "50"} mi";
     return [
+      if (postcode.isNotEmpty) "Postcode: $postcode",
       "Type: ${jobType.isEmpty ? "All" : BillingService.formatLabel(jobType)}",
       "Distance: $distanceText",
     ].join(" • ");

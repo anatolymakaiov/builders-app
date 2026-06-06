@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:test_app/services/job_alert_service.dart';
 import 'package:test_app/services/job_repository.dart';
 import '../models/job.dart';
+import '../services/geocoding_service.dart';
 import '../services/job_taxonomy_service.dart';
 import 'filter_sheet.dart';
 import '../theme/stroyka_background.dart';
@@ -30,6 +31,7 @@ class _JobListScreenState extends State<JobListScreen> {
 
   final jobRepository = JobRepository();
   final jobAlertService = JobAlertService();
+  final geocodingService = GeocodingService();
 
   double? userLat;
   double? userLng;
@@ -40,6 +42,7 @@ class _JobListScreenState extends State<JobListScreen> {
     trade: "All",
     jobType: "All",
     distance: 50,
+    postcode: "",
   );
 
   String searchQuery = "";
@@ -115,16 +118,22 @@ class _JobListScreenState extends State<JobListScreen> {
       return;
     }
 
-    if (userLat == null || userLng == null) {
-      await getUserLocation();
-    }
-
-    if (userLat == null || userLng == null) {
-      if (!mounted) return;
-
+    final postcode = alertFilters.postcode.trim();
+    if (postcode.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Turn on location to subscribe to nearby jobs"),
+          content: Text("Enter a postcode for this job subscription"),
+        ),
+      );
+      return;
+    }
+
+    final center = await geocodingService.lookupUKPostcode(postcode);
+    if (center == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Could not find that postcode"),
         ),
       );
       return;
@@ -135,8 +144,9 @@ class _JobListScreenState extends State<JobListScreen> {
       trade: alertFilters.trade,
       jobType: alertFilters.jobType,
       distance: alertFilters.distance,
-      lat: userLat!,
-      lng: userLng!,
+      postcode: center.postcode,
+      lat: center.lat,
+      lng: center.lng,
     );
 
     if (!mounted) return;

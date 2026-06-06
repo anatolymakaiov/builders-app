@@ -7,11 +7,13 @@ class FilterResult {
   final String trade;
   final String jobType;
   final double distance;
+  final String postcode;
 
   FilterResult({
     required this.trade,
     required this.jobType,
     required this.distance,
+    this.postcode = "",
   });
 }
 
@@ -37,6 +39,7 @@ class _FilterSheetState extends State<FilterSheet> {
   late String trade;
   late String jobType;
   late double distance;
+  late final TextEditingController postcodeController;
 
   final List<String> trades = [
     "All",
@@ -50,6 +53,13 @@ class _FilterSheetState extends State<FilterSheet> {
     trade = widget.current.trade;
     jobType = widget.current.jobType;
     distance = widget.current.distance;
+    postcodeController = TextEditingController(text: widget.current.postcode);
+  }
+
+  @override
+  void dispose() {
+    postcodeController.dispose();
+    super.dispose();
   }
 
   void resetFilters() {
@@ -57,6 +67,7 @@ class _FilterSheetState extends State<FilterSheet> {
       trade = "All";
       jobType = "All";
       distance = 50;
+      postcodeController.clear();
     });
   }
 
@@ -65,7 +76,7 @@ class _FilterSheetState extends State<FilterSheet> {
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.all(20),
-        height: widget.showDistance ? 520 : 390,
+        height: widget.showDistance ? 590 : 390,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -160,6 +171,25 @@ class _FilterSheetState extends State<FilterSheet> {
             const SizedBox(height: 16),
 
             if (widget.showDistance) ...[
+              const Text(
+                "Postcode",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: postcodeController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  border: StroykaInputBorder(),
+                  hintText: "SW1A 1AA",
+                  helperText: "Distance is calculated from this postcode.",
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
               /// DISTANCE
 
               const Text(
@@ -205,6 +235,7 @@ class _FilterSheetState extends State<FilterSheet> {
                       trade: trade,
                       jobType: jobType,
                       distance: distance,
+                      postcode: postcodeController.text.trim(),
                     ),
                   );
                 },

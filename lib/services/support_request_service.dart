@@ -174,6 +174,8 @@ class SupportRequestService {
         ...attachment,
         "threadId": threadRef.id,
         "messageId": messageRef.id,
+        "senderId": userId,
+        "senderRole": userRole,
         "createdAt": now,
       });
     }

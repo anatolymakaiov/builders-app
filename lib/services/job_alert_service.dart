@@ -9,6 +9,7 @@ class JobAlertService {
     required String trade,
     required String jobType,
     required double distance,
+    required String postcode,
     required double lat,
     required double lng,
   }) async {
@@ -21,6 +22,8 @@ class JobAlertService {
       "trade": trade,
       "jobType": jobType,
       "distance": distance,
+      "postcode": postcode,
+      "centerType": "postcode",
       "lat": lat,
       "lng": lng,
       "active": true,
