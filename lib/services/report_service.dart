@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -23,9 +25,27 @@ class ReportService {
     if (message == null || message.isEmpty) return;
 
     try {
+      final userSnap = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(user.uid)
+          .get();
+      final userData = userSnap.data() ?? <String, dynamic>{};
+      final senderName = (userData["companyName"] ??
+              userData["name"] ??
+              userData["displayName"] ??
+              user.displayName ??
+              "")
+          .toString()
+          .trim();
+
       final reportRef =
           await FirebaseFirestore.instance.collection("reports").add({
         "fromUserId": user.uid,
+        "userId": user.uid,
+        "senderId": user.uid,
+        "senderRole": userData["role"]?.toString() ?? "",
+        if (senderName.isNotEmpty) "senderName": senderName,
+        if ((user.email ?? "").trim().isNotEmpty) "senderEmail": user.email,
         if (againstUserId != null && againstUserId.isNotEmpty)
           "againstUserId": againstUserId,
         if (jobId != null && jobId.isNotEmpty) "jobId": jobId,
@@ -35,29 +55,23 @@ class ReportService {
         "type": type,
         "message": message,
         "status": "open",
+        "readByAdmin": false,
+        "viewedByAdmin": false,
+        "source": "chat",
         "createdAt": FieldValue.serverTimestamp(),
         "updatedAt": FieldValue.serverTimestamp(),
       });
 
-      if (againstUserId != null && againstUserId.isNotEmpty) {
-        final targetSnap = await FirebaseFirestore.instance
-            .collection("users")
-            .doc(againstUserId)
-            .get();
-        final targetRole = targetSnap.data()?["role"]?.toString() ?? "";
-        if (targetRole == "employer") {
-          await NotificationService().notifyEmployerReportSubmitted(
-            employerId: againstUserId,
-            reportId: reportRef.id,
-            reportType: type,
-          );
-        }
-      }
+      unawaited(_notifyReportedEmployerIfNeeded(
+        againstUserId: againstUserId,
+        reportId: reportRef.id,
+        reportType: type,
+      ));
 
       if (!context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Report submitted")),
+        const SnackBar(content: Text("Report submitted successfully")),
       );
     } catch (e) {
       debugPrint("REPORT SUBMIT ERROR: $e");
@@ -68,6 +82,31 @@ class ReportService {
           content: Text("Could not submit report. Please try again."),
         ),
       );
+    }
+  }
+
+  static Future<void> _notifyReportedEmployerIfNeeded({
+    required String? againstUserId,
+    required String reportId,
+    required String reportType,
+  }) async {
+    if (againstUserId == null || againstUserId.isEmpty) return;
+
+    try {
+      final targetSnap = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(againstUserId)
+          .get();
+      final targetRole = targetSnap.data()?["role"]?.toString() ?? "";
+      if (targetRole != "employer") return;
+
+      await NotificationService().notifyEmployerReportSubmitted(
+        employerId: againstUserId,
+        reportId: reportId,
+        reportType: reportType,
+      );
+    } catch (e) {
+      debugPrint("REPORT NOTIFICATION ERROR: $e");
     }
   }
 }
