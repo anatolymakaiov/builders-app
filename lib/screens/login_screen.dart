@@ -102,23 +102,71 @@ class _LoginScreenState extends State<LoginScreen> {
     widget.onSessionUnlocked?.call();
   }
 
-  Future<void> showBiometricFailureDialog() async {
+  Future<void> showBiometricUnavailableDialog() async {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text("Biometric authentication failed."),
+          title: const Text("Biometric login is not set up."),
           content: const Text(
-            "Try again or use the standard login method.",
+            "Biometric login is not set up for this account. Please sign in with Login first.",
           ),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.pop(dialogContext);
-                enterWithBiometric();
+                returnToAuthenticationMethods();
               },
-              child: const Text("Try Again"),
+              child: const Text("Back"),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                openPasswordLogin();
+              },
+              child: const Text("Use Login"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> showBiometricFailureDialog(
+    BiometricLoginResult result,
+  ) async {
+    if (!mounted) return;
+
+    if (result.cancelled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message)),
+      );
+      returnToAuthenticationMethods();
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text("Biometric authentication failed."),
+          content: Text(result.message),
+          actions: [
+            if (result.canRetry)
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  enterWithBiometric();
+                },
+                child: const Text("Try Again"),
+              ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                returnToAuthenticationMethods();
+              },
+              child: const Text("Back"),
             ),
             TextButton(
               onPressed: () {
@@ -134,18 +182,66 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> enterWithBiometric() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() {
+        selectedAction = null;
+        usePasswordFallback = false;
+      });
+      await showBiometricUnavailableDialog();
+      return;
+    }
+
     setState(() => loading = true);
     try {
-      final ok = await authPreferences.authenticateBiometricLogin();
+      final result = await authPreferences.authenticateBiometricLoginResult();
       if (!mounted) return;
-      if (ok) {
+
+      if (result.success) {
+        await user.reload();
+        final refreshedUser = FirebaseAuth.instance.currentUser;
+        if (refreshedUser == null) {
+          setState(() {
+            selectedAction = null;
+            usePasswordFallback = false;
+          });
+          await showBiometricUnavailableDialog();
+          return;
+        }
+
+        final userDoc = await FirebaseFirestore.instance
+            .collection("users")
+            .doc(refreshedUser.uid)
+            .get();
+        final userData = userDoc.data();
+        final staleDeletedSession = !userDoc.exists ||
+            userData?["deleted"] == true ||
+            userData?["accountDeleted"] == true ||
+            userData?["active"] == false;
+        if (staleDeletedSession) {
+          await FirebaseAuth.instance.signOut();
+          if (!mounted) return;
+          setState(() {
+            selectedAction = null;
+            usePasswordFallback = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Saved biometric session is no longer valid. Please sign in with Login.",
+              ),
+            ),
+          );
+          return;
+        }
+
         widget.onSessionUnlocked?.call();
       } else {
         setState(() {
           selectedAction = null;
           usePasswordFallback = false;
         });
-        await showBiometricFailureDialog();
+        await showBiometricFailureDialog(result);
       }
     } catch (_) {
       if (!mounted) return;
@@ -153,7 +249,13 @@ class _LoginScreenState extends State<LoginScreen> {
         selectedAction = null;
         usePasswordFallback = false;
       });
-      await showBiometricFailureDialog();
+      await showBiometricFailureDialog(
+        const BiometricLoginResult(
+          success: false,
+          message: "Biometric authentication failed.",
+          canRetry: true,
+        ),
+      );
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -479,18 +581,14 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 12),
         actionButton(
           label: "Biometric",
-          onPressed: hasValidSession
-              ? () {
-                  setState(() {
-                    selectedAction = "biometric";
-                    isLogin = true;
-                    usePasswordFallback = false;
-                  });
-                  enterWithBiometric();
-                }
-              : () {
-                  showBiometricFailureDialog();
-                },
+          onPressed: () {
+            setState(() {
+              selectedAction = "biometric";
+              isLogin = true;
+              usePasswordFallback = false;
+            });
+            enterWithBiometric();
+          },
         ),
         const SizedBox(height: 12),
         actionButton(

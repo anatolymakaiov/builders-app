@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
+import 'package:local_auth/error_codes.dart' as auth_error;
 import 'package:local_auth/local_auth.dart';
 
 class AuthPreferenceMethod {
@@ -32,6 +34,26 @@ class AuthPreferenceResult {
     required this.message,
     this.warning = false,
   });
+}
+
+class BiometricLoginResult {
+  final bool success;
+  final String message;
+  final bool canRetry;
+  final bool cancelled;
+
+  const BiometricLoginResult({
+    required this.success,
+    required this.message,
+    this.canRetry = false,
+    this.cancelled = false,
+  });
+
+  const BiometricLoginResult.success()
+      : success = true,
+        message = "Biometric authentication successful.",
+        canRetry = false,
+        cancelled = false;
 }
 
 class AuthPreferencesService {
@@ -98,12 +120,16 @@ class AuthPreferencesService {
   }
 
   Future<bool> biometricAvailable() async {
-    final supported = await _localAuth.isDeviceSupported();
-    final canCheck = await _localAuth.canCheckBiometrics;
-    if (!supported || !canCheck) return false;
+    try {
+      final supported = await _localAuth.isDeviceSupported();
+      final canCheck = await _localAuth.canCheckBiometrics;
+      if (!supported || !canCheck) return false;
 
-    final biometrics = await _localAuth.getAvailableBiometrics();
-    return biometrics.isNotEmpty;
+      final biometrics = await _localAuth.getAvailableBiometrics();
+      return biometrics.isNotEmpty;
+    } on PlatformException {
+      return false;
+    }
   }
 
   Future<AuthPreferenceResult> saveCurrentUserMethod(String method) async {
@@ -174,17 +200,73 @@ class AuthPreferencesService {
     );
   }
 
-  Future<bool> authenticateBiometricLogin() async {
+  Future<BiometricLoginResult> authenticateBiometricLoginResult() async {
     final available = await biometricAvailable();
-    if (!available) return false;
+    if (!available) {
+      return const BiometricLoginResult(
+        success: false,
+        message:
+            "Biometric authentication is not available or not enrolled on this device.",
+      );
+    }
 
-    return _localAuth.authenticate(
-      localizedReason: "Use Face ID / Touch ID to enter STROYKA",
-      options: const AuthenticationOptions(
-        biometricOnly: true,
-        stickyAuth: true,
-      ),
-    );
+    try {
+      final authenticated = await _localAuth.authenticate(
+        localizedReason: "Use Face ID / Touch ID to enter STROYKA",
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+          useErrorDialogs: false,
+        ),
+      );
+
+      if (authenticated) return const BiometricLoginResult.success();
+
+      return const BiometricLoginResult(
+        success: false,
+        message: "Biometric authentication was cancelled.",
+        cancelled: true,
+      );
+    } on PlatformException catch (e) {
+      switch (e.code) {
+        case auth_error.notAvailable:
+          return const BiometricLoginResult(
+            success: false,
+            message:
+                "Biometric authentication is not available on this device.",
+          );
+        case auth_error.notEnrolled:
+          return const BiometricLoginResult(
+            success: false,
+            message:
+                "No biometric login is enrolled on this device. Please set up Face ID, Touch ID or Android biometrics first.",
+          );
+        case auth_error.passcodeNotSet:
+          return const BiometricLoginResult(
+            success: false,
+            message:
+                "Device passcode is not set. Please set a device passcode before using biometric login.",
+          );
+        case auth_error.lockedOut:
+        case auth_error.permanentlyLockedOut:
+          return const BiometricLoginResult(
+            success: false,
+            message:
+                "Biometric authentication is temporarily locked. Please unlock your device and try again.",
+          );
+        default:
+          return const BiometricLoginResult(
+            success: false,
+            message: "Biometric authentication failed.",
+            canRetry: true,
+          );
+      }
+    }
+  }
+
+  Future<bool> authenticateBiometricLogin() async {
+    final result = await authenticateBiometricLoginResult();
+    return result.success;
   }
 
   Future<void> sendPasswordlessLink(String email) async {
