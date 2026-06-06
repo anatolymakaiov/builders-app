@@ -91,6 +91,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool refreshingEmailVerification = false;
   Timer? emailVerificationTimer;
   String loadedBillingEmail = "";
+  String loadedPhone = "";
 
   String get userId => FirebaseAuth.instance.currentUser!.uid;
 
@@ -193,7 +194,8 @@ class _ProfileScreenState extends State<ProfileScreen>
       nameController.text = data["name"]?.toString().trim().isNotEmpty == true
           ? data["name"].toString()
           : registrationName;
-      phoneController.text = data["phone"] ?? "";
+      loadedPhone = data["phone"]?.toString() ?? "";
+      phoneController.text = loadedPhone;
       nicknameController.text =
           data["nickname"] ?? data["username"] ?? data["nickName"] ?? "";
 
@@ -922,6 +924,12 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
 
     final billingEmail = billingEmailController.text.trim();
+    final wasFirstProfileCreation = firstProfileCreation;
+    final phoneChanged =
+        RegistrationValidationService.normalizePhone(loadedPhone) !=
+            normalizedPhone;
+    final billingEmailChanged = role == "employer" &&
+        billingEmail.toLowerCase() != loadedBillingEmail.toLowerCase();
     final validBillingEmail =
         RegExp(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").hasMatch(billingEmail);
     if (role == "employer" && !validBillingEmail) {
@@ -947,14 +955,17 @@ class _ProfileScreenState extends State<ProfileScreen>
     final authUser = FirebaseAuth.instance.currentUser;
     final billingEmailMatchesAuth =
         authUser?.email?.toLowerCase() == billingEmail.toLowerCase();
+    final effectiveBillingEmailVerified =
+        billingEmailChanged ? false : billingEmailVerified;
+    final effectivePhoneVerified = phoneChanged ? false : phoneVerified;
     final emailIsVerified = role == "employer"
-        ? billingEmailVerified ||
+        ? effectiveBillingEmailVerified ||
             (billingEmailMatchesAuth && authUser?.emailVerified == true)
         : emailVerified || authUser?.emailVerified == true;
-    if (firstProfileCreation && (!emailIsVerified || !phoneVerified)) {
+    if (firstProfileCreation && (!emailIsVerified || !effectivePhoneVerified)) {
       await showVerificationRequiredDialog(
         requireEmail: !emailIsVerified,
-        requirePhone: !phoneVerified,
+        requirePhone: !effectivePhoneVerified,
       );
       return;
     }
@@ -986,6 +997,10 @@ class _ProfileScreenState extends State<ProfileScreen>
         "address": locationController.text.trim(),
         "updatedAt": FieldValue.serverTimestamp(),
       };
+      if (phoneChanged) {
+        profileData["phoneVerified"] = false;
+        profileData["phoneVerifiedAt"] = FieldValue.delete();
+      }
 
       final savedPhotoUrl = photoUrl?.trim();
       if (savedPhotoUrl != null && savedPhotoUrl.isNotEmpty) {
@@ -995,6 +1010,8 @@ class _ProfileScreenState extends State<ProfileScreen>
           profileData["companyLogo"] = savedPhotoUrl;
         }
       }
+
+      var savedBillingEmailVerified = billingEmailVerified;
 
       if (role == "worker") {
         profileData.addAll({
@@ -1025,8 +1042,10 @@ class _ProfileScreenState extends State<ProfileScreen>
             authUser?.email?.toLowerCase() == billingEmail.toLowerCase() &&
                 authUser?.emailVerified == true;
         final nextBillingEmailVerified = verifiedByAuth ||
-            (billingEmailVerified &&
+            (!billingEmailChanged &&
+                billingEmailVerified &&
                 billingEmail.toLowerCase() == loadedBillingEmail.toLowerCase());
+        savedBillingEmailVerified = nextBillingEmailVerified;
         final invoiceDetails = {
           "legalCompanyName": invoiceLegalCompanyNameController.text.trim(),
           "tradingName": invoiceTradingNameController.text.trim(),
@@ -1048,13 +1067,15 @@ class _ProfileScreenState extends State<ProfileScreen>
           "billingEmail": billingEmail,
           "billingEmailProvided": true,
           "billingEmailVerified": nextBillingEmailVerified,
-          if (nextBillingEmailVerified)
-            "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
+          "billingEmailVerifiedAt": nextBillingEmailVerified
+              ? FieldValue.serverTimestamp()
+              : FieldValue.delete(),
           "billing": {
             "billingEmail": billingEmail,
             "billingEmailVerified": nextBillingEmailVerified,
-            if (nextBillingEmailVerified)
-              "billingEmailVerifiedAt": FieldValue.serverTimestamp(),
+            "billingEmailVerifiedAt": nextBillingEmailVerified
+                ? FieldValue.serverTimestamp()
+                : FieldValue.delete(),
             "invoiceDetails": invoiceDetails,
             "updatedAt": FieldValue.serverTimestamp(),
           },
@@ -1125,17 +1146,24 @@ class _ProfileScreenState extends State<ProfileScreen>
         headerImageFile = null;
         extraPhones = cleanedPhones;
         firstProfileCreation = false;
-        billingEmailVerified = (FirebaseAuth.instance.currentUser?.email
-                        ?.toLowerCase() ==
-                    billingEmail.toLowerCase() &&
-                FirebaseAuth.instance.currentUser?.emailVerified == true) ||
-            (billingEmailVerified &&
-                billingEmail.toLowerCase() == loadedBillingEmail.toLowerCase());
+        phoneVerified = phoneChanged ? false : phoneVerified;
+        billingEmailVerified = savedBillingEmailVerified;
         loadedBillingEmail = billingEmail;
+        loadedPhone = phone;
         if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion) {
           legalAcceptedForCurrentVersion = true;
         }
       });
+
+      if (!wasFirstProfileCreation && mounted) {
+        if (billingEmailChanged) {
+          await verifyEmailFromDialog();
+        }
+        if (phoneChanged && mounted) {
+          await verifyPhoneFromDialog();
+        }
+      }
+      if (!mounted) return;
 
       if (widget.onProfileSaved != null) {
         widget.onProfileSaved!.call();
@@ -1730,10 +1758,15 @@ class _ProfileScreenState extends State<ProfileScreen>
           TextField(
             controller: phoneController,
             keyboardType: TextInputType.phone,
+            onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(labelText: "Phone"),
           ),
           buildInlineVerificationStatus(
-            verified: phoneVerified,
+            verified: phoneVerified &&
+                RegistrationValidationService.normalizePhone(
+                      phoneController.text,
+                    ) ==
+                    RegistrationValidationService.normalizePhone(loadedPhone),
             verifiedText: "Verified",
             unverifiedText: "Not verified",
           ),
@@ -1939,13 +1972,16 @@ class _ProfileScreenState extends State<ProfileScreen>
             controller: billingEmailController,
             keyboardType: TextInputType.emailAddress,
             autofillHints: const [AutofillHints.email],
+            onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
               labelText: "Company billing email *",
               helperText: "Invoices and billing notices will use this email.",
             ),
           ),
           buildInlineVerificationStatus(
-            verified: billingEmailVerified ||
+            verified: (billingEmailVerified &&
+                    billingEmailController.text.trim().toLowerCase() ==
+                        loadedBillingEmail.toLowerCase()) ||
                 (FirebaseAuth.instance.currentUser?.email?.toLowerCase() ==
                         billingEmailController.text.trim().toLowerCase() &&
                     FirebaseAuth.instance.currentUser?.emailVerified == true),
@@ -1968,10 +2004,15 @@ class _ProfileScreenState extends State<ProfileScreen>
           TextField(
             controller: phoneController,
             keyboardType: TextInputType.phone,
+            onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(labelText: "Main phone"),
           ),
           buildInlineVerificationStatus(
-            verified: phoneVerified,
+            verified: phoneVerified &&
+                RegistrationValidationService.normalizePhone(
+                      phoneController.text,
+                    ) ==
+                    RegistrationValidationService.normalizePhone(loadedPhone),
             verifiedText: "Verified",
             unverifiedText: "Not verified",
           ),
@@ -2077,7 +2118,9 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   Widget build(BuildContext context) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: const Text("Profile"),
         actions: [
@@ -2089,23 +2132,29 @@ class _ProfileScreenState extends State<ProfileScreen>
       ),
       body: StroykaScreenBody(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 110),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.fromLTRB(12, 12, 12, 110 + keyboardInset),
           child: StroykaSurface(
             padding: const EdgeInsets.all(18),
             child: buildForm(),
           ),
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: SizedBox(
-            height: 55,
-            child: ElevatedButton(
-              onPressed: loading ? null : saveProfile,
-              child: loading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text("Save profile"),
+      bottomNavigationBar: AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(bottom: keyboardInset),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: SizedBox(
+              height: 55,
+              child: ElevatedButton(
+                onPressed: loading ? null : saveProfile,
+                child: loading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text("Save profile"),
+              ),
             ),
           ),
         ),
