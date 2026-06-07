@@ -51,6 +51,17 @@ service cloud.firestore {
         );
     }
 
+    function isOwnAdminThreadCreate(data) {
+      return signedIn()
+        && data.userId == uid()
+        && data.createdBy == uid()
+        && data.lastSenderId == uid()
+        && data.participants is list
+        && uid() in data.participants
+        && "admin" in data.participants
+        && data.threadType in ["support_request", "admin_request", "report"];
+    }
+
     function jobPath(jobId) {
       return /databases/$(database)/documents/jobs/$(jobId);
     }
@@ -260,6 +271,7 @@ service cloud.firestore {
       allow read: if isAdmin()
         || (signedIn() && uid() in resource.data.participants);
       allow create: if isAdmin()
+        || isOwnAdminThreadCreate(request.resource.data)
         || (
           signedIn()
           && request.resource.data.participants is list

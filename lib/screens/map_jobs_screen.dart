@@ -8,6 +8,7 @@ import '../services/job_repository.dart';
 import 'job_details_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/job_card.dart';
+import '../widgets/quiet_tile_provider.dart';
 
 class MapJobsScreen extends StatefulWidget {
   const MapJobsScreen({super.key});
@@ -19,8 +20,15 @@ class MapJobsScreen extends StatefulWidget {
 class _MapJobsScreenState extends State<MapJobsScreen> {
   final MapController mapController = MapController();
   final jobRepository = JobRepository();
+  final tileProvider = QuietTileProvider();
 
   LatLng center = const LatLng(53.4808, -2.2426);
+
+  @override
+  void dispose() {
+    tileProvider.dispose();
+    super.dispose();
+  }
 
   Widget buildJobCard(Job job) {
     return GestureDetector(
@@ -123,6 +131,7 @@ class _MapJobsScreenState extends State<MapJobsScreen> {
                       fallbackUrl:
                           "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
                       userAgentPackageName: "builder.jobs.app",
+                      tileProvider: tileProvider,
                     ),
                     MarkerClusterLayerWidget(
                       options: MarkerClusterLayerOptions(

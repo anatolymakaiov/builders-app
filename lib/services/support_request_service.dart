@@ -143,8 +143,7 @@ class SupportRequestService {
     final displayName = senderName?.isNotEmpty == true ? senderName! : "User";
     final subject = "Support: $typeLabel";
 
-    final batch = firestore.batch();
-    batch.set(messageRef, {
+    final messagePayload = {
       "threadId": threadRef.id,
       "direction": "incoming",
       "senderId": userId,
@@ -174,8 +173,8 @@ class SupportRequestService {
       "attachments": attachments,
       "hasAttachments": attachments.isNotEmpty,
       "createdAt": now,
-    });
-    batch.set(threadRef, {
+    };
+    final threadPayload = {
       "subject": subject,
       "participants": [userId, "admin"],
       "createdBy": userId,
@@ -188,9 +187,42 @@ class SupportRequestService {
       "unreadForAdmin": 1,
       "relatedSupportRequestId": supportRequestId,
       "updatedAt": now,
-    });
-    await batch.commit();
+    };
+
+    await _loggedPostSubmitSet(
+      ref: messageRef,
+      data: messagePayload,
+      uid: userId,
+      role: userRole,
+      purpose: "sent_message/admin_inbox",
+    );
+    await _loggedPostSubmitSet(
+      ref: threadRef,
+      data: threadPayload,
+      uid: userId,
+      role: userRole,
+      purpose: "admin_thread",
+    );
     return threadRef.id;
+  }
+
+  static Future<void> _loggedPostSubmitSet({
+    required DocumentReference<Map<String, dynamic>> ref,
+    required Map<String, dynamic> data,
+    required String uid,
+    required String role,
+    required String purpose,
+  }) async {
+    debugPrint(
+      "POST SUBMIT WRITE: path=${ref.path} uid=$uid role=$role purpose=$purpose",
+    );
+    try {
+      await ref.set(data);
+      debugPrint("POST SUBMIT WRITE SUCCESS: path=${ref.path}");
+    } catch (e) {
+      debugPrint("POST SUBMIT WRITE FAILED: path=${ref.path} error=$e");
+      rethrow;
+    }
   }
 }
 

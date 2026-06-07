@@ -11,6 +11,7 @@ import '../services/job_repository.dart';
 import '../services/job_taxonomy_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/job_card.dart';
+import '../widgets/quiet_tile_provider.dart';
 import '../widgets/smart_job_search.dart';
 
 class MapScreen extends StatefulWidget {
@@ -27,6 +28,7 @@ class _MapScreenState extends State<MapScreen> {
   final MapController mapController = MapController();
   final ScrollController listController = ScrollController();
   final jobRepository = JobRepository();
+  final tileProvider = QuietTileProvider();
   final DraggableScrollableController sheetController =
       DraggableScrollableController();
 
@@ -79,6 +81,14 @@ class _MapScreenState extends State<MapScreen> {
         selectedJobId = job.id;
       });
     });
+  }
+
+  @override
+  void dispose() {
+    listController.dispose();
+    sheetController.dispose();
+    tileProvider.dispose();
+    super.dispose();
   }
 
   bool get isEmployer => role == "employer";
@@ -347,6 +357,7 @@ class _MapScreenState extends State<MapScreen> {
           fallbackUrl:
               "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
           userAgentPackageName: "builder.jobs.app",
+          tileProvider: tileProvider,
         ),
         MarkerClusterLayerWidget(
           options: MarkerClusterLayerOptions(
