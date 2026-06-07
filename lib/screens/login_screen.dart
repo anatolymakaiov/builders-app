@@ -191,12 +191,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> enterWithBiometric() async {
-    void showStartBiometricFailure() {
+    void showStartBiometricFailure(String message) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Biometric login unsuccessful. Please sign in using Login.",
-          ),
+        SnackBar(
+          content: Text(message),
         ),
       );
     }
@@ -216,7 +214,11 @@ class _LoginScreenState extends State<LoginScreen> {
           selectedAction = null;
           usePasswordFallback = false;
         });
-        showStartBiometricFailure();
+        showStartBiometricFailure(
+          result.needsPasswordLogin
+              ? "Biometric login is not configured for this account. Please sign in using Login."
+              : "Biometric login unsuccessful. Please sign in using Login.",
+        );
       } finally {
         if (mounted) setState(() => loading = false);
       }
@@ -236,7 +238,9 @@ class _LoginScreenState extends State<LoginScreen> {
             selectedAction = null;
             usePasswordFallback = false;
           });
-          showStartBiometricFailure();
+          showStartBiometricFailure(
+            "Biometric login unsuccessful. Please sign in using Login.",
+          );
           return;
         }
 
@@ -272,7 +276,9 @@ class _LoginScreenState extends State<LoginScreen> {
           selectedAction = null;
           usePasswordFallback = false;
         });
-        showStartBiometricFailure();
+        showStartBiometricFailure(
+          "Biometric login unsuccessful. Please sign in using Login.",
+        );
       }
     } catch (_) {
       if (!mounted) return;
@@ -280,7 +286,9 @@ class _LoginScreenState extends State<LoginScreen> {
         selectedAction = null;
         usePasswordFallback = false;
       });
-      showStartBiometricFailure();
+      showStartBiometricFailure(
+        "Biometric login unsuccessful. Please sign in using Login.",
+      );
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -871,6 +879,7 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
         );
       }
       widget.onSessionUnlocked?.call();
+      await Future<void>.delayed(Duration.zero);
       if (!mounted) return;
       if (Navigator.canPop(context)) Navigator.pop(context);
     } catch (e) {
