@@ -44,17 +44,39 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
 
     return FirebaseFirestore.instance
         .collection("jobs")
-        .where("ownerId", isEqualTo: widget.userId)
-        .orderBy("createdAt", descending: true)
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
         .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        return Job.fromFirestore(doc.id, doc.data());
-      }).where((job) {
-        if (canViewAllJobs) return true;
-        return _isWorkerVisibleCompanyJob(job);
-      }).toList();
+      final jobs = snapshot.docs
+          .where((doc) => _jobDataBelongsToCompany(doc.data(), widget.userId))
+          .map((doc) => Job.fromFirestore(doc.id, doc.data()))
+          .where(
+            (job) => _isCompanyProfileVisibleJob(
+              job,
+              canViewAllJobs: canViewAllJobs,
+            ),
+          )
+          .toList();
+
+      jobs.sort((a, b) {
+        final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bDate.compareTo(aDate);
+      });
+
+      return jobs;
     });
+  }
+
+  bool _jobDataBelongsToCompany(Map<String, dynamic> data, String companyId) {
+    final normalizedCompanyId = companyId.trim();
+    if (normalizedCompanyId.isEmpty) return false;
+
+    for (final field in ["ownerId", "employerId", "createdBy", "userId"]) {
+      final value = data[field]?.toString().trim();
+      if (value == normalizedCompanyId) return true;
+    }
+
+    return false;
   }
 
   @override
@@ -79,14 +101,19 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
     });
   }
 
-  bool _isWorkerVisibleCompanyJob(Job job) {
+  bool _isCompanyProfileVisibleJob(
+    Job job, {
+    required bool canViewAllJobs,
+  }) {
     final status = job.status.trim().toLowerCase();
-    final isPublished = status.isEmpty ||
+    final activeStatus = status.isEmpty ||
         status == "active" ||
         status == "published" ||
         status == "open";
 
-    return job.moderationStatus == "approved" && isPublished;
+    if (!activeStatus || job.isClosed) return false;
+    if (canViewAllJobs) return true;
+    return job.isPubliclyVisible;
   }
 
   String _companyJobStatusLabel(Job job) {
@@ -310,14 +337,30 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                             final jobs = snapshot.data!;
 
                             if (jobs.isEmpty) {
-                              return const Center(child: Text("No jobs yet"));
+                              return const Center(
+                                child: Text("No active company jobs"),
+                              );
                             }
 
                             return ListView.builder(
                               padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
-                              itemCount: jobs.length,
+                              itemCount: jobs.length + 1,
                               itemBuilder: (context, index) {
-                                final job = jobs[index];
+                                if (index == 0) {
+                                  return StroykaSurface(
+                                    margin: const EdgeInsets.only(bottom: 10),
+                                    padding: const EdgeInsets.all(14),
+                                    child: Text(
+                                      "${jobs.length} active ${jobs.length == 1 ? "vacancy" : "vacancies"}",
+                                      style: const TextStyle(
+                                        color: AppColors.ink,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  );
+                                }
+
+                                final job = jobs[index - 1];
 
                                 return JobCard(
                                   job: job,

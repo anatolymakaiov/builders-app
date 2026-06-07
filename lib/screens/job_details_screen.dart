@@ -2367,9 +2367,23 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                           ListView.builder(
                             physics: const AlwaysScrollableScrollPhysics(),
                             padding: EdgeInsets.zero,
-                            itemCount: jobs.length,
+                            itemCount: jobs.length + 1,
                             itemBuilder: (context, index) {
-                              final job = jobs[index];
+                              if (index == 0) {
+                                return StroykaSurface(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  padding: const EdgeInsets.all(14),
+                                  child: Text(
+                                    "${jobs.length} active ${jobs.length == 1 ? "vacancy" : "vacancies"}",
+                                    style: const TextStyle(
+                                      color: AppColors.ink,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              final job = jobs[index - 1];
                               return JobCard(
                                 job: job,
                                 margin: const EdgeInsets.only(bottom: 10),
@@ -2462,10 +2476,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       }
     }
 
-    final jobs = jobsById.values.where((job) {
-      if (canViewAllCompanyJobs) return true;
-      return _isWorkerVisibleCompanyJob(job);
-    }).toList();
+    final jobs = jobsById.values
+        .where(
+          (job) => _isCompanyProfileVisibleJob(
+            job,
+            canViewAllCompanyJobs: canViewAllCompanyJobs,
+          ),
+        )
+        .toList();
 
     jobs.sort((a, b) {
       final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -2476,12 +2494,19 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return jobs;
   }
 
-  bool _isWorkerVisibleCompanyJob(Job job) {
+  bool _isCompanyProfileVisibleJob(
+    Job job, {
+    required bool canViewAllCompanyJobs,
+  }) {
     final status = job.status.trim().toLowerCase();
-    final isPublished =
-        status.isEmpty || status == "active" || status == "published";
+    final activeStatus = status.isEmpty ||
+        status == "active" ||
+        status == "published" ||
+        status == "open";
 
-    return job.moderationStatus == "approved" && isPublished;
+    if (!activeStatus || job.isClosed) return false;
+    if (canViewAllCompanyJobs) return true;
+    return job.isPubliclyVisible;
   }
 
   String _companyJobStatusLabel(Job job) {
