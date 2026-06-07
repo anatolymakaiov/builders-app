@@ -60,8 +60,9 @@ class SupportRequestService {
     try {
       final supportRef =
           FirebaseFirestore.instance.collection("support_requests").doc();
-      final threadId = await _createAdminInboxThreadForSupportRequest(
+      await _createAdminInboxThreadForSupportRequest(
         supportRequestId: supportRef.id,
+        supportRequestRef: supportRef,
         userId: user.uid,
         userRole: userRole,
         userData: userDoc.data() ?? {},
@@ -70,25 +71,6 @@ class SupportRequestService {
         message: result.message,
         attachments: result.attachments,
       );
-      await supportRef.set({
-        "userId": user.uid,
-        "userRole": userRole,
-        "role": userRole,
-        "type": result.type,
-        "requestType": result.type,
-        "typeLabel": requestTypes[result.type] ?? result.type,
-        "requestTypeLabel": requestTypes[result.type] ?? result.type,
-        "message": result.message,
-        "attachments": result.attachments,
-        "hasAttachments": result.attachments.isNotEmpty,
-        "status": "open",
-        "readByAdmin": false,
-        "viewedByAdmin": false,
-        "threadId": threadId,
-        "adminMessageThreadId": threadId,
-        "createdAt": FieldValue.serverTimestamp(),
-        "updatedAt": FieldValue.serverTimestamp(),
-      });
 
       if (!context.mounted) return;
 
@@ -108,6 +90,7 @@ class SupportRequestService {
 
   static Future<String> _createAdminInboxThreadForSupportRequest({
     required String supportRequestId,
+    required DocumentReference<Map<String, dynamic>> supportRequestRef,
     required String userId,
     required String userRole,
     required Map<String, dynamic> userData,
@@ -129,6 +112,25 @@ class SupportRequestService {
     final subject = "Support: $typeLabel";
 
     final batch = firestore.batch();
+    batch.set(supportRequestRef, {
+      "userId": userId,
+      "userRole": userRole,
+      "role": userRole,
+      "type": type,
+      "requestType": type,
+      "typeLabel": typeLabel,
+      "requestTypeLabel": typeLabel,
+      "message": message,
+      "attachments": attachments,
+      "hasAttachments": attachments.isNotEmpty,
+      "status": "open",
+      "readByAdmin": false,
+      "viewedByAdmin": false,
+      "threadId": threadRef.id,
+      "adminMessageThreadId": threadRef.id,
+      "createdAt": now,
+      "updatedAt": now,
+    });
     batch.set(messageRef, {
       "threadId": threadRef.id,
       "direction": "incoming",

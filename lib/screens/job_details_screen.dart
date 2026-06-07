@@ -2321,6 +2321,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                       key: ValueKey("company-jobs-$companyProfileRefreshTick"),
                       future: loadCompanyJobs(
                         ownerId: ownerId,
+                        companyName: name.toString(),
                         canViewAllCompanyJobs: canViewAllCompanyJobs,
                       ),
                       builder: (context, jobsSnapshot) {
@@ -2457,16 +2458,43 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
   Future<List<Job>> loadCompanyJobs({
     required String ownerId,
+    required String companyName,
     required bool canViewAllCompanyJobs,
   }) async {
     final jobsById = <String, Job>{};
+    final normalizedOwnerId = ownerId.trim();
+    final normalizedCompanyName = companyName.trim();
     final fields = ["ownerId", "employerId", "createdBy", "userId"];
 
-    for (final field in fields) {
+    if (!canViewAllCompanyJobs) {
       try {
         final snapshot = await FirebaseFirestore.instance
             .collection("jobs")
-            .where(field, isEqualTo: ownerId)
+            .where("moderationStatus", isEqualTo: "approved")
+            .where("status", whereIn: ["active", "published", "open"]).get();
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          if (_jobDataBelongsToCompany(
+            data,
+            ownerId: normalizedOwnerId,
+            companyName: normalizedCompanyName,
+          )) {
+            jobsById[doc.id] = Job.fromFirestore(doc.id, data);
+          }
+        }
+      } catch (error) {
+        debugPrint("Public company jobs query failed: $error");
+      }
+
+      return _sortCompanyJobs(jobsById.values);
+    }
+
+    for (final field in fields) {
+      if (normalizedOwnerId.isEmpty) continue;
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection("jobs")
+            .where(field, isEqualTo: normalizedOwnerId)
             .get();
         for (final doc in snapshot.docs) {
           jobsById[doc.id] = Job.fromFirestore(doc.id, doc.data());
@@ -2476,11 +2504,59 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       }
     }
 
-    final jobs = jobsById.values
+    if (normalizedCompanyName.isNotEmpty) {
+      for (final field in ["companyName", "company"]) {
+        try {
+          final snapshot = await FirebaseFirestore.instance
+              .collection("jobs")
+              .where(field, isEqualTo: normalizedCompanyName)
+              .get();
+          for (final doc in snapshot.docs) {
+            final data = doc.data();
+            if (_jobDataBelongsToCompany(
+              data,
+              ownerId: normalizedOwnerId,
+              companyName: normalizedCompanyName,
+            )) {
+              jobsById[doc.id] = Job.fromFirestore(doc.id, data);
+            }
+          }
+        } catch (error) {
+          debugPrint(
+            "Company jobs query failed for $field=$normalizedCompanyName: $error",
+          );
+        }
+      }
+    }
+
+    if (jobsById.isEmpty) {
+      try {
+        final snapshot =
+            await FirebaseFirestore.instance.collection("jobs").get();
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          if (_jobDataBelongsToCompany(
+            data,
+            ownerId: normalizedOwnerId,
+            companyName: normalizedCompanyName,
+          )) {
+            jobsById[doc.id] = Job.fromFirestore(doc.id, data);
+          }
+        }
+      } catch (error) {
+        debugPrint("Company jobs fallback scan failed: $error");
+      }
+    }
+
+    return _sortCompanyJobs(jobsById.values);
+  }
+
+  List<Job> _sortCompanyJobs(Iterable<Job> source) {
+    final jobs = source
         .where(
           (job) => _isCompanyProfileVisibleJob(
             job,
-            canViewAllCompanyJobs: canViewAllCompanyJobs,
+            canViewAllCompanyJobs: true,
           ),
         )
         .toList();
@@ -2492,6 +2568,29 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     });
 
     return jobs;
+  }
+
+  bool _jobDataBelongsToCompany(
+    Map<String, dynamic> data, {
+    required String ownerId,
+    required String companyName,
+  }) {
+    final normalizedOwnerId = ownerId.trim();
+    if (normalizedOwnerId.isNotEmpty) {
+      for (final field in ["ownerId", "employerId", "createdBy", "userId"]) {
+        final value = data[field]?.toString().trim();
+        if (value == normalizedOwnerId) return true;
+      }
+    }
+
+    final normalizedCompanyName = companyName.trim().toLowerCase();
+    if (normalizedCompanyName.isEmpty) return false;
+    for (final field in ["companyName", "company"]) {
+      final value = data[field]?.toString().trim().toLowerCase();
+      if (value == normalizedCompanyName) return true;
+    }
+
+    return false;
   }
 
   bool _isCompanyProfileVisibleJob(

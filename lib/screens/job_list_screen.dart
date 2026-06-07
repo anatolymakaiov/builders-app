@@ -184,9 +184,9 @@ class _JobListScreenState extends State<JobListScreen> {
     final distance = calculateDistance(job.lat, job.lng);
     return JobCard(
       job: job,
-      distanceText: distance == double.infinity
+      detailText: distance == double.infinity
           ? null
-          : "${distance.toStringAsFixed(1)} mi",
+          : "${distance.toStringAsFixed(1)} miles away",
       trailingAction: IconButton(
         tooltip: isSaved ? "Remove from saved" : "Save job",
         icon: Icon(
