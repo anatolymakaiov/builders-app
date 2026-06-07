@@ -50,8 +50,7 @@ class _LoginScreenState extends State<LoginScreen> {
       isLogin &&
       !usePasswordFallback &&
       hasValidSession &&
-      (widget.sessionMode == AuthPreferenceMethod.biometric ||
-          widget.sessionMode == AuthPreferenceMethod.simpleEnter);
+      widget.sessionMode == AuthPreferenceMethod.simpleEnter;
 
   @override
   void initState() {
@@ -192,6 +191,16 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> enterWithBiometric() async {
+    void showStartBiometricFailure() {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Biometric login unsuccessful. Please sign in using Login.",
+          ),
+        ),
+      );
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       setState(() => loading = true);
@@ -207,11 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
           selectedAction = null;
           usePasswordFallback = false;
         });
-        if (result.needsPasswordLogin) {
-          await showBiometricUnavailableDialog(message: result.message);
-        } else {
-          await showBiometricFailureDialog(result);
-        }
+        showStartBiometricFailure();
       } finally {
         if (mounted) setState(() => loading = false);
       }
@@ -231,7 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
             selectedAction = null;
             usePasswordFallback = false;
           });
-          await showBiometricUnavailableDialog();
+          showStartBiometricFailure();
           return;
         }
 
@@ -267,7 +272,7 @@ class _LoginScreenState extends State<LoginScreen> {
           selectedAction = null;
           usePasswordFallback = false;
         });
-        await showBiometricFailureDialog(result);
+        showStartBiometricFailure();
       }
     } catch (_) {
       if (!mounted) return;
@@ -275,13 +280,7 @@ class _LoginScreenState extends State<LoginScreen> {
         selectedAction = null;
         usePasswordFallback = false;
       });
-      await showBiometricFailureDialog(
-        const BiometricLoginResult(
-          success: false,
-          message: "Biometric authentication failed.",
-          canRetry: true,
-        ),
-      );
+      showStartBiometricFailure();
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -611,15 +610,8 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         const SizedBox(height: 12),
         actionButton(
-          label: "Biometric",
-          onPressed: () {
-            setState(() {
-              selectedAction = "biometric";
-              isLogin = true;
-              usePasswordFallback = false;
-            });
-            enterWithBiometric();
-          },
+          label: "Face ID",
+          onPressed: enterWithBiometric,
         ),
         const SizedBox(height: 12),
         actionButton(

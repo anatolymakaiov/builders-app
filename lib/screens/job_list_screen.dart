@@ -73,6 +73,7 @@ class _JobListScreenState extends State<JobListScreen> {
       desiredAccuracy: LocationAccuracy.high,
     );
 
+    if (!mounted) return;
     setState(() {
       userLat = position.latitude;
       userLng = position.longitude;
