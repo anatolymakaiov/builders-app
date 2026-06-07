@@ -48,7 +48,6 @@ class _MapScreenState extends State<MapScreen> {
   bool panelOpen = true;
   bool showSearchButton = false;
   bool showUserLocationMarker = false;
-  int refreshTick = 0;
 
   List<ConstructionRole> selectedRoles = [];
   String searchQuery = "";
@@ -106,6 +105,7 @@ class _MapScreenState extends State<MapScreen> {
 
     final ids = await jobRepository.getSavedJobs(userId);
 
+    if (!mounted) return;
     setState(() {
       savedJobIds = ids;
     });
@@ -115,8 +115,6 @@ class _MapScreenState extends State<MapScreen> {
     await loadRole();
     await requestLocation();
     await loadSavedJobs();
-    if (!mounted) return;
-    setState(() => refreshTick++);
   }
 
   Future<void> toggleSaveJob(String jobId) async {
@@ -163,6 +161,7 @@ class _MapScreenState extends State<MapScreen> {
 
     Position position = await Geolocator.getCurrentPosition();
 
+    if (!mounted) return;
     setState(() {
       userLat = position.latitude;
       userLng = position.longitude;
@@ -326,7 +325,7 @@ class _MapScreenState extends State<MapScreen> {
         initialZoom: 10,
         minZoom: 3,
         maxZoom: 18,
-        backgroundColor: Colors.transparent,
+        backgroundColor: const Color(0xFFE7EEF3),
         interactionOptions: const InteractionOptions(
           flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
         ),
@@ -577,14 +576,8 @@ class _MapScreenState extends State<MapScreen> {
         ? LatLng(userLat!, userLng!)
         : const LatLng(53.4808, -2.2426);
 
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        image: DecorationImage(
-          image: AssetImage(AppAssets.backgroundForkliftSite),
-          fit: BoxFit.cover,
-          alignment: Alignment.center,
-        ),
-      ),
+    return ColoredBox(
+      color: const Color(0xFFE7EEF3),
       child: Stack(
         children: [
           buildMap(center, jobMarkers, userMarker),
@@ -640,7 +633,6 @@ class _MapScreenState extends State<MapScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text("Jobs Map")),
       body: StreamBuilder<List<Job>>(
-        key: ValueKey("map-public-$refreshTick"),
         stream: jobRepository.getJobs(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
@@ -654,7 +646,6 @@ class _MapScreenState extends State<MapScreen> {
           }
 
           return StreamBuilder<List<Job>>(
-            key: ValueKey("map-owner-$refreshTick"),
             stream: jobRepository.getJobsByOwner(employerId),
             builder: (context, ownerSnapshot) {
               if (ownerSnapshot.connectionState == ConnectionState.waiting &&
