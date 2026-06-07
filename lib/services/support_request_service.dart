@@ -88,31 +88,27 @@ class SupportRequestService {
       });
       debugPrint("SUPPORT REQUEST WRITE SUCCESS: ${supportRef.path}");
 
-      try {
-        final threadId = await _createAdminInboxThreadForSupportRequest(
-          supportRequestId: supportRef.id,
-          threadRef: threadRef,
-          userId: user.uid,
-          userRole: userRole,
-          userData: userDoc.data() ?? {},
-          type: result.type,
-          typeLabel: typeLabel,
-          message: result.message,
-          attachments: result.attachments,
-        );
-        debugPrint(
-          "SUPPORT REQUEST THREAD SUCCESS: request=${supportRef.id} thread=$threadId",
-        );
-      } catch (threadError) {
-        debugPrint(
-          "SUPPORT REQUEST THREAD ERROR: request=${supportRef.id} error=$threadError",
-        );
-      }
+      final threadId = await _createAdminInboxThreadForSupportRequest(
+        supportRequestId: supportRef.id,
+        threadRef: threadRef,
+        userId: user.uid,
+        userRole: userRole,
+        userData: userDoc.data() ?? {},
+        type: result.type,
+        typeLabel: typeLabel,
+        message: result.message,
+        attachments: result.attachments,
+      );
+      debugPrint(
+        "SUPPORT REQUEST THREAD SUCCESS: request=${supportRef.id} thread=$threadId",
+      );
 
       if (!context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Support request submitted")),
+        const SnackBar(
+          content: Text("Your request has been sent successfully."),
+        ),
       );
     } catch (e) {
       debugPrint("SUPPORT REQUEST SUBMIT ERROR: $e");

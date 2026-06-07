@@ -63,7 +63,9 @@ class ReportService {
       if (!context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Report submitted successfully")),
+        const SnackBar(
+          content: Text("Your request has been sent successfully."),
+        ),
       );
     } catch (e) {
       debugPrint("REPORT SUBMIT ERROR: $e");
