@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/error_codes.dart' as auth_error;
 import 'package:local_auth/local_auth.dart';
 
@@ -41,19 +43,22 @@ class BiometricLoginResult {
   final String message;
   final bool canRetry;
   final bool cancelled;
+  final bool needsPasswordLogin;
 
   const BiometricLoginResult({
     required this.success,
     required this.message,
     this.canRetry = false,
     this.cancelled = false,
+    this.needsPasswordLogin = false,
   });
 
   const BiometricLoginResult.success()
       : success = true,
         message = "Biometric authentication successful.",
         canRetry = false,
-        cancelled = false;
+        cancelled = false,
+        needsPasswordLogin = false;
 }
 
 class AuthPreferencesService {
@@ -61,13 +66,24 @@ class AuthPreferencesService {
     FirebaseAuth? auth,
     FirebaseFirestore? firestore,
     LocalAuthentication? localAuth,
+    FlutterSecureStorage? secureStorage,
   })  : _auth = auth ?? FirebaseAuth.instance,
         _firestore = firestore ?? FirebaseFirestore.instance,
-        _localAuth = localAuth ?? LocalAuthentication();
+        _localAuth = localAuth ?? LocalAuthentication(),
+        _secureStorage = secureStorage ??
+            const FlutterSecureStorage(
+              aOptions: AndroidOptions(encryptedSharedPreferences: true),
+            );
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
   final LocalAuthentication _localAuth;
+  final FlutterSecureStorage _secureStorage;
+
+  static const _biometricUidKey = "stroyka.biometric.uid";
+  static const _biometricEmailKey = "stroyka.biometric.email";
+  static const _biometricPasswordKey = "stroyka.biometric.password";
+  static const _biometricEnabledKey = "stroyka.biometric.enabled";
 
   DocumentReference<Map<String, dynamic>> _userRef(String uid) {
     return _firestore.collection("users").doc(uid);
@@ -171,6 +187,11 @@ class AuthPreferencesService {
         );
       }
       biometricEnabled = true;
+      await _storeBiometricCredential(
+        uid: refreshedUser.uid,
+        email: email,
+        password: null,
+      );
     }
 
     final simpleEnterEnabled =
@@ -198,6 +219,136 @@ class AuthPreferencesService {
       message:
           "Authentication method saved: ${AuthPreferenceMethod.label(normalizedMethod)}.",
     );
+  }
+
+  Future<void> enrollBiometricLoginForPasswordSession({
+    required User user,
+    required String email,
+    required String password,
+  }) async {
+    final normalizedEmail = normalizeEmail(email);
+    if (normalizedEmail.isEmpty || password.isEmpty) return;
+
+    final available = await biometricAvailable();
+    if (!available) return;
+
+    await _storeBiometricCredential(
+      uid: user.uid,
+      email: normalizedEmail,
+      password: password,
+    );
+
+    try {
+      await _userRef(user.uid).set({
+        "authPreferences.biometricLoginEnabled": true,
+        "authPreferences.biometricCredentialStored": true,
+        "authPreferences.biometricCredentialUpdatedAt":
+            FieldValue.serverTimestamp(),
+        "authPreferences.email": normalizedEmail,
+        "settings.updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Could not persist biometric enrollment flag: $e");
+    }
+  }
+
+  Future<void> clearBiometricLoginCredential() async {
+    await Future.wait([
+      _secureStorage.delete(key: _biometricUidKey),
+      _secureStorage.delete(key: _biometricEmailKey),
+      _secureStorage.delete(key: _biometricPasswordKey),
+      _secureStorage.delete(key: _biometricEnabledKey),
+    ]);
+  }
+
+  Future<void> _storeBiometricCredential({
+    required String uid,
+    required String email,
+    required String? password,
+  }) async {
+    await Future.wait([
+      _secureStorage.write(key: _biometricUidKey, value: uid),
+      _secureStorage.write(
+          key: _biometricEmailKey, value: normalizeEmail(email)),
+      if (password != null)
+        _secureStorage.write(key: _biometricPasswordKey, value: password),
+      _secureStorage.write(key: _biometricEnabledKey, value: "true"),
+    ]);
+  }
+
+  Future<BiometricLoginResult> restoreBiometricSession() async {
+    final enabled = await _secureStorage.read(key: _biometricEnabledKey);
+    final uid = await _secureStorage.read(key: _biometricUidKey);
+    final email = await _secureStorage.read(key: _biometricEmailKey);
+    final password = await _secureStorage.read(key: _biometricPasswordKey);
+
+    if (enabled != "true" ||
+        uid == null ||
+        uid.isEmpty ||
+        email == null ||
+        email.isEmpty ||
+        password == null ||
+        password.isEmpty) {
+      return const BiometricLoginResult(
+        success: false,
+        message:
+            "Please sign in first. Biometric login is not configured for this profile.",
+        needsPasswordLogin: true,
+      );
+    }
+
+    final authResult = await authenticateBiometricLoginResult();
+    if (!authResult.success) return authResult;
+
+    UserCredential credential;
+    try {
+      credential = await _auth.signInWithEmailAndPassword(
+        email: normalizeEmail(email),
+        password: password,
+      );
+    } on FirebaseAuthException catch (e) {
+      if (e.code == "user-not-found" ||
+          e.code == "user-disabled" ||
+          e.code == "wrong-password" ||
+          e.code == "invalid-credential") {
+        await clearBiometricLoginCredential();
+      }
+      return const BiometricLoginResult(
+        success: false,
+        message:
+            "Biometric login could not restore this account. Please sign in with Login.",
+        needsPasswordLogin: true,
+      );
+    }
+
+    final restoredUser = credential.user;
+    if (restoredUser == null || restoredUser.uid != uid) {
+      await clearBiometricLoginCredential();
+      await _auth.signOut();
+      return const BiometricLoginResult(
+        success: false,
+        message: "This account is no longer available. Please sign in again.",
+        needsPasswordLogin: true,
+      );
+    }
+
+    final userDoc = await _userRef(restoredUser.uid).get();
+    final data = userDoc.data();
+    final unavailable = !userDoc.exists ||
+        data?["deleted"] == true ||
+        data?["accountDeleted"] == true ||
+        data?["active"] == false;
+    if (unavailable) {
+      await clearBiometricLoginCredential();
+      await _auth.signOut();
+      return const BiometricLoginResult(
+        success: false,
+        message: "This account is no longer available. Please sign in again.",
+        needsPasswordLogin: true,
+      );
+    }
+
+    return const BiometricLoginResult.success();
   }
 
   Future<BiometricLoginResult> authenticateBiometricLoginResult() async {

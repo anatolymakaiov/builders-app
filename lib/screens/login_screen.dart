@@ -87,10 +87,19 @@ class _LoginScreenState extends State<LoginScreen> {
       return null;
     }
 
-    return FirebaseAuth.instance.signInWithEmailAndPassword(
+    final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
       email: email,
       password: password,
     );
+    final user = credential.user;
+    if (user != null) {
+      await authPreferences.enrollBiometricLoginForPasswordSession(
+        user: user,
+        email: email,
+        password: password,
+      );
+    }
+    return credential;
   }
 
   Future<void> enterWithSession() async {
@@ -102,16 +111,17 @@ class _LoginScreenState extends State<LoginScreen> {
     widget.onSessionUnlocked?.call();
   }
 
-  Future<void> showBiometricUnavailableDialog() async {
+  Future<void> showBiometricUnavailableDialog({
+    String message =
+        "Biometric login is not set up for this account. Please sign in with Login first.",
+  }) async {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text("Biometric login is not set up."),
-          content: const Text(
-            "Biometric login is not set up for this account. Please sign in with Login first.",
-          ),
+          content: Text(message),
           actions: [
             TextButton(
               onPressed: () {
@@ -184,11 +194,27 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> enterWithBiometric() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      setState(() {
-        selectedAction = null;
-        usePasswordFallback = false;
-      });
-      await showBiometricUnavailableDialog();
+      setState(() => loading = true);
+      try {
+        final result = await authPreferences.restoreBiometricSession();
+        if (!mounted) return;
+        if (result.success) {
+          widget.onSessionUnlocked?.call();
+          return;
+        }
+
+        setState(() {
+          selectedAction = null;
+          usePasswordFallback = false;
+        });
+        if (result.needsPasswordLogin) {
+          await showBiometricUnavailableDialog(message: result.message);
+        } else {
+          await showBiometricFailureDialog(result);
+        }
+      } finally {
+        if (mounted) setState(() => loading = false);
+      }
       return;
     }
 
@@ -459,6 +485,11 @@ class _LoginScreenState extends State<LoginScreen> {
           "createdAt": FieldValue.serverTimestamp(),
           "updatedAt": FieldValue.serverTimestamp(),
         });
+        await authPreferences.enrollBiometricLoginForPasswordSession(
+          user: result.user!,
+          email: email,
+          password: password,
+        );
         debugPrint("Initial user document created");
         RegistrationValidationService.clearPending(email);
         await continueRegistrationOnboarding(
@@ -835,10 +866,18 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
 
     setState(() => loading = true);
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
+      final user = credential.user;
+      if (user != null) {
+        await authPreferences.enrollBiometricLoginForPasswordSession(
+          user: user,
+          email: email,
+          password: password,
+        );
+      }
       widget.onSessionUnlocked?.call();
       if (!mounted) return;
       if (Navigator.canPop(context)) Navigator.pop(context);

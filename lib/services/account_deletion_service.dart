@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import 'registration_validation_service.dart';
+import 'auth_preferences_service.dart';
 
 class AccountDeletionRequiresRecentLogin implements Exception {}
 
@@ -40,6 +41,10 @@ class AccountDeletionService {
     }
 
     await _deleteUserDocument(userRef);
+    await AuthPreferencesService(
+      auth: _auth,
+      firestore: _firestore,
+    ).clearBiometricLoginCredential();
 
     try {
       await user.delete();
