@@ -200,14 +200,6 @@ class ReportService {
       "relatedReportId": reportId,
       "updatedAt": now,
     });
-    batch.set(
-      firestore.collection("unread_counters").doc("admin"),
-      {
-        "unreadInbox": FieldValue.increment(1),
-        "updatedAt": now,
-      },
-      SetOptions(merge: true),
-    );
     await batch.commit();
     return threadRef.id;
   }

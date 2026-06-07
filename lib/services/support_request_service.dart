@@ -58,19 +58,56 @@ class SupportRequestService {
     if (result == null || result.message.isEmpty) return;
 
     try {
-      final supportRef =
-          FirebaseFirestore.instance.collection("support_requests").doc();
-      await _createAdminInboxThreadForSupportRequest(
-        supportRequestId: supportRef.id,
-        supportRequestRef: supportRef,
-        userId: user.uid,
-        userRole: userRole,
-        userData: userDoc.data() ?? {},
-        type: result.type,
-        typeLabel: requestTypes[result.type] ?? result.type,
-        message: result.message,
-        attachments: result.attachments,
+      final firestore = FirebaseFirestore.instance;
+      final supportRef = firestore.collection("support_requests").doc();
+      final threadRef = firestore.collection("message_threads").doc();
+      final typeLabel = requestTypes[result.type] ?? result.type;
+      debugPrint(
+        "SUPPORT REQUEST SUBMIT: path=${supportRef.path} uid=${user.uid} role=$userRole",
       );
+      await supportRef.set({
+        "userId": user.uid,
+        "userRole": userRole,
+        "role": userRole,
+        "type": result.type,
+        "requestType": result.type,
+        "typeLabel": typeLabel,
+        "requestTypeLabel": typeLabel,
+        "subject": typeLabel,
+        "message": result.message,
+        "attachments": result.attachments,
+        "hasAttachments": result.attachments.isNotEmpty,
+        "status": "open",
+        "adminVisible": true,
+        "readByAdmin": false,
+        "viewedByAdmin": false,
+        "threadId": threadRef.id,
+        "adminMessageThreadId": threadRef.id,
+        "createdAt": FieldValue.serverTimestamp(),
+        "updatedAt": FieldValue.serverTimestamp(),
+      });
+      debugPrint("SUPPORT REQUEST WRITE SUCCESS: ${supportRef.path}");
+
+      try {
+        final threadId = await _createAdminInboxThreadForSupportRequest(
+          supportRequestId: supportRef.id,
+          threadRef: threadRef,
+          userId: user.uid,
+          userRole: userRole,
+          userData: userDoc.data() ?? {},
+          type: result.type,
+          typeLabel: typeLabel,
+          message: result.message,
+          attachments: result.attachments,
+        );
+        debugPrint(
+          "SUPPORT REQUEST THREAD SUCCESS: request=${supportRef.id} thread=$threadId",
+        );
+      } catch (threadError) {
+        debugPrint(
+          "SUPPORT REQUEST THREAD ERROR: request=${supportRef.id} error=$threadError",
+        );
+      }
 
       if (!context.mounted) return;
 
@@ -90,7 +127,7 @@ class SupportRequestService {
 
   static Future<String> _createAdminInboxThreadForSupportRequest({
     required String supportRequestId,
-    required DocumentReference<Map<String, dynamic>> supportRequestRef,
+    required DocumentReference<Map<String, dynamic>> threadRef,
     required String userId,
     required String userRole,
     required Map<String, dynamic> userData,
@@ -100,7 +137,6 @@ class SupportRequestService {
     required List<Map<String, dynamic>> attachments,
   }) async {
     final firestore = FirebaseFirestore.instance;
-    final threadRef = firestore.collection("message_threads").doc();
     final messageRef = firestore.collection("admin_messages").doc();
     final now = FieldValue.serverTimestamp();
     final senderName = (userRole == "employer"
@@ -112,25 +148,6 @@ class SupportRequestService {
     final subject = "Support: $typeLabel";
 
     final batch = firestore.batch();
-    batch.set(supportRequestRef, {
-      "userId": userId,
-      "userRole": userRole,
-      "role": userRole,
-      "type": type,
-      "requestType": type,
-      "typeLabel": typeLabel,
-      "requestTypeLabel": typeLabel,
-      "message": message,
-      "attachments": attachments,
-      "hasAttachments": attachments.isNotEmpty,
-      "status": "open",
-      "readByAdmin": false,
-      "viewedByAdmin": false,
-      "threadId": threadRef.id,
-      "adminMessageThreadId": threadRef.id,
-      "createdAt": now,
-      "updatedAt": now,
-    });
     batch.set(messageRef, {
       "threadId": threadRef.id,
       "direction": "incoming",
@@ -176,24 +193,6 @@ class SupportRequestService {
       "relatedSupportRequestId": supportRequestId,
       "updatedAt": now,
     });
-    for (final attachment in attachments) {
-      batch.set(firestore.collection("message_attachments").doc(), {
-        ...attachment,
-        "threadId": threadRef.id,
-        "messageId": messageRef.id,
-        "senderId": userId,
-        "senderRole": userRole,
-        "createdAt": now,
-      });
-    }
-    batch.set(
-      firestore.collection("unread_counters").doc("admin"),
-      {
-        "unreadInbox": FieldValue.increment(1),
-        "updatedAt": now,
-      },
-      SetOptions(merge: true),
-    );
     await batch.commit();
     return threadRef.id;
   }

@@ -196,6 +196,17 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void scrollToJob(int index) {
+    if (!mounted) return;
+    if (index < 0 || index >= currentVisibleJobs.length) return;
+    if (!listController.hasClients) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (!listController.hasClients) return;
+        scrollToJob(index);
+      });
+      return;
+    }
+
     listController.animateTo(
       index * 170,
       duration: const Duration(milliseconds: 400),
@@ -542,6 +553,7 @@ class _MapScreenState extends State<MapScreen> {
               );
 
               Future.delayed(const Duration(milliseconds: 50), () {
+                if (!mounted) return;
                 if (sheetController.isAttached) {
                   sheetController.animateTo(
                     0.5,
