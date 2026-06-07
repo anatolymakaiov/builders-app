@@ -1142,52 +1142,102 @@ class _AdminInboxScreenState extends State<AdminInboxScreen>
   }
 
   Widget buildMailbox(String mailbox) {
+    Widget buildThreadList(
+      BuildContext context,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    ) {
+      final threads = _UserAdminMailThread.group(
+        docs,
+        mailbox: mailbox,
+        userId: widget.userId,
+      );
+      if (threads.isEmpty) {
+        return Center(
+          child: Text(
+            mailbox == "incoming"
+                ? "No incoming admin mail yet"
+                : mailbox == "sent"
+                    ? "No sent admin mail yet"
+                    : "No deleted admin mail",
+          ),
+        );
+      }
+
+      return ListView.separated(
+        itemCount: threads.length,
+        separatorBuilder: (_, __) => Divider(
+          height: 1,
+          color: AppColors.muted.withValues(alpha: 0.18),
+        ),
+        itemBuilder: (context, index) {
+          return _UserAdminMailRow(
+            thread: threads[index],
+            userId: widget.userId,
+            role: widget.role,
+          );
+        },
+      );
+    }
+
     return StroykaSurface(
       margin: const EdgeInsets.all(12),
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: streamFor(mailbox),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const Center(child: Text("Could not load inbox messages"));
-          }
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final threads = _UserAdminMailThread.group(
-            snapshot.data!.docs,
-            mailbox: mailbox,
-            userId: widget.userId,
-          );
-          if (threads.isEmpty) {
-            return Center(
-              child: Text(
-                mailbox == "incoming"
-                    ? "No incoming admin mail yet"
-                    : mailbox == "sent"
-                        ? "No sent admin mail yet"
-                        : "No deleted admin mail",
-              ),
-            );
-          }
-
-          return ListView.separated(
-            itemCount: threads.length,
-            separatorBuilder: (_, __) => Divider(
-              height: 1,
-              color: AppColors.muted.withValues(alpha: 0.18),
+      child: mailbox == "deleted"
+          ? StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection("admin_messages")
+                  .where("receiverId", isEqualTo: widget.userId)
+                  .snapshots(),
+              builder: (context, receivedSnapshot) {
+                if (receivedSnapshot.hasError) {
+                  return const Center(
+                    child: Text("Could not load inbox messages"),
+                  );
+                }
+                if (!receivedSnapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection("admin_messages")
+                      .where("senderId", isEqualTo: widget.userId)
+                      .snapshots(),
+                  builder: (context, sentSnapshot) {
+                    if (sentSnapshot.hasError) {
+                      return const Center(
+                        child: Text("Could not load inbox messages"),
+                      );
+                    }
+                    if (!sentSnapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final byId =
+                        <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+                    for (final doc in receivedSnapshot.data!.docs) {
+                      byId[doc.id] = doc;
+                    }
+                    for (final doc in sentSnapshot.data!.docs) {
+                      byId[doc.id] = doc;
+                    }
+                    return buildThreadList(context, byId.values.toList());
+                  },
+                );
+              },
+            )
+          : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: streamFor(mailbox),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return const Center(
+                    child: Text("Could not load inbox messages"),
+                  );
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return buildThreadList(context, snapshot.data!.docs);
+              },
             ),
-            itemBuilder: (context, index) {
-              return _UserAdminMailRow(
-                thread: threads[index],
-                userId: widget.userId,
-                role: widget.role,
-              );
-            },
-          );
-        },
-      ),
     );
   }
 

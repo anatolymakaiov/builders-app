@@ -39,42 +39,20 @@ class ReportService {
           .trim();
 
       final reportRef = FirebaseFirestore.instance.collection("reports").doc();
-      final threadId = await _createAdminInboxThreadForReport(
+      await _createAdminInboxThreadForReport(
         reportId: reportRef.id,
+        reportRef: reportRef,
         reportType: type,
         reporterId: user.uid,
         reporterData: userData,
         reporterName: senderName.isNotEmpty ? senderName : "User",
+        reporterEmail: user.email,
         message: message,
         againstUserId: againstUserId,
         jobId: jobId,
         applicationId: applicationId,
         chatId: chatId,
       );
-      await reportRef.set({
-        "fromUserId": user.uid,
-        "userId": user.uid,
-        "senderId": user.uid,
-        "senderRole": userData["role"]?.toString() ?? "",
-        if (senderName.isNotEmpty) "senderName": senderName,
-        if ((user.email ?? "").trim().isNotEmpty) "senderEmail": user.email,
-        if (againstUserId != null && againstUserId.isNotEmpty)
-          "againstUserId": againstUserId,
-        if (jobId != null && jobId.isNotEmpty) "jobId": jobId,
-        if (applicationId != null && applicationId.isNotEmpty)
-          "applicationId": applicationId,
-        if (chatId != null && chatId.isNotEmpty) "chatId": chatId,
-        "type": type,
-        "message": message,
-        "status": "open",
-        "readByAdmin": false,
-        "viewedByAdmin": false,
-        "source": "chat",
-        "threadId": threadId,
-        "adminMessageThreadId": threadId,
-        "createdAt": FieldValue.serverTimestamp(),
-        "updatedAt": FieldValue.serverTimestamp(),
-      });
 
       unawaited(_notifyReportedEmployerIfNeeded(
         againstUserId: againstUserId,
@@ -126,10 +104,12 @@ class ReportService {
 
   static Future<String> _createAdminInboxThreadForReport({
     required String reportId,
+    required DocumentReference<Map<String, dynamic>> reportRef,
     required String reportType,
     required String reporterId,
     required Map<String, dynamic> reporterData,
     required String reporterName,
+    String? reporterEmail,
     required String message,
     String? againstUserId,
     String? jobId,
@@ -144,6 +124,31 @@ class ReportService {
     final subject = "Report: ${_reportTypeLabel(reportType)}";
 
     final batch = firestore.batch();
+    batch.set(reportRef, {
+      "fromUserId": reporterId,
+      "userId": reporterId,
+      "senderId": reporterId,
+      "senderRole": reporterRole,
+      if (reporterName.trim().isNotEmpty) "senderName": reporterName.trim(),
+      if ((reporterEmail ?? "").trim().isNotEmpty)
+        "senderEmail": reporterEmail!.trim(),
+      if (againstUserId != null && againstUserId.isNotEmpty)
+        "againstUserId": againstUserId,
+      if (jobId != null && jobId.isNotEmpty) "jobId": jobId,
+      if (applicationId != null && applicationId.isNotEmpty)
+        "applicationId": applicationId,
+      if (chatId != null && chatId.isNotEmpty) "chatId": chatId,
+      "type": reportType,
+      "message": message,
+      "status": "open",
+      "readByAdmin": false,
+      "viewedByAdmin": false,
+      "source": "chat",
+      "threadId": threadRef.id,
+      "adminMessageThreadId": threadRef.id,
+      "createdAt": now,
+      "updatedAt": now,
+    });
     batch.set(messageRef, {
       "threadId": threadRef.id,
       "direction": "incoming",
