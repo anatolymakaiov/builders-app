@@ -38,8 +38,20 @@ class ReportService {
           .toString()
           .trim();
 
-      final reportRef =
-          await FirebaseFirestore.instance.collection("reports").add({
+      final reportRef = FirebaseFirestore.instance.collection("reports").doc();
+      final threadId = await _createAdminInboxThreadForReport(
+        reportId: reportRef.id,
+        reportType: type,
+        reporterId: user.uid,
+        reporterData: userData,
+        reporterName: senderName.isNotEmpty ? senderName : "User",
+        message: message,
+        againstUserId: againstUserId,
+        jobId: jobId,
+        applicationId: applicationId,
+        chatId: chatId,
+      );
+      await reportRef.set({
         "fromUserId": user.uid,
         "userId": user.uid,
         "senderId": user.uid,
@@ -58,6 +70,8 @@ class ReportService {
         "readByAdmin": false,
         "viewedByAdmin": false,
         "source": "chat",
+        "threadId": threadId,
+        "adminMessageThreadId": threadId,
         "createdAt": FieldValue.serverTimestamp(),
         "updatedAt": FieldValue.serverTimestamp(),
       });
@@ -108,6 +122,98 @@ class ReportService {
     } catch (e) {
       debugPrint("REPORT NOTIFICATION ERROR: $e");
     }
+  }
+
+  static Future<String> _createAdminInboxThreadForReport({
+    required String reportId,
+    required String reportType,
+    required String reporterId,
+    required Map<String, dynamic> reporterData,
+    required String reporterName,
+    required String message,
+    String? againstUserId,
+    String? jobId,
+    String? applicationId,
+    String? chatId,
+  }) async {
+    final firestore = FirebaseFirestore.instance;
+    final threadRef = firestore.collection("message_threads").doc();
+    final messageRef = firestore.collection("admin_messages").doc();
+    final now = FieldValue.serverTimestamp();
+    final reporterRole = reporterData["role"]?.toString() ?? "";
+    final subject = "Report: ${_reportTypeLabel(reportType)}";
+
+    final batch = firestore.batch();
+    batch.set(messageRef, {
+      "threadId": threadRef.id,
+      "direction": "incoming",
+      "senderId": reporterId,
+      "senderName": reporterName.trim().isNotEmpty ? reporterName : "User",
+      "senderRole": reporterRole,
+      "receiverId": "admin",
+      "receiverName": "Admin",
+      "receiverRole": "admin",
+      "recipientId": "admin",
+      "recipientRole": "admin",
+      "threadParticipants": [reporterId, "admin"],
+      "audienceType": "specific_admin",
+      "canReply": true,
+      "subject": subject,
+      "message": message,
+      "type": "report",
+      "reportType": reportType,
+      "relatedReportId": reportId,
+      "relatedTargetType": "report",
+      "relatedTargetId": reportId,
+      if (againstUserId != null && againstUserId.isNotEmpty)
+        "againstUserId": againstUserId,
+      if (jobId != null && jobId.isNotEmpty) "jobId": jobId,
+      if (applicationId != null && applicationId.isNotEmpty)
+        "applicationId": applicationId,
+      if (chatId != null && chatId.isNotEmpty) "chatId": chatId,
+      "readByAdmin": false,
+      "readByReceiver": true,
+      "important": false,
+      "deletedByAdmin": false,
+      "deletedByReceiver": false,
+      "deletedBySender": false,
+      "attachments": const <Map<String, dynamic>>[],
+      "hasAttachments": false,
+      "createdAt": now,
+    });
+    batch.set(threadRef, {
+      "subject": subject,
+      "participants": [reporterId, "admin"],
+      "createdBy": reporterId,
+      "userId": reporterId,
+      "userRole": reporterRole,
+      "threadType": "report",
+      "lastMessage": message,
+      "lastMessageAt": now,
+      "lastSenderId": reporterId,
+      "unreadForAdmin": 1,
+      "relatedReportId": reportId,
+      "updatedAt": now,
+    });
+    batch.set(
+      firestore.collection("unread_counters").doc("admin"),
+      {
+        "unreadInbox": FieldValue.increment(1),
+        "updatedAt": now,
+      },
+      SetOptions(merge: true),
+    );
+    await batch.commit();
+    return threadRef.id;
+  }
+
+  static String _reportTypeLabel(String type) {
+    return type
+        .replaceAll("_", " ")
+        .split(" ")
+        .where((word) => word.trim().isNotEmpty)
+        .map((word) => "${word[0].toUpperCase()}${word.substring(1)}")
+        .join(" ");
   }
 }
 

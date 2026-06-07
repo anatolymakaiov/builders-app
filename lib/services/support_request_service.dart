@@ -5,14 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 class SupportRequestService {
-  static const _billingRequestTypes = {
-    "billing",
-    "payment",
-    "tariff_plan",
-    "direct_debit",
-    "invoice",
-  };
-
   static const workerRequestTypes = {
     "technical_issue": "Technical issue",
     "employer_complaint": "Complaint about employer/company",
@@ -65,28 +57,10 @@ class SupportRequestService {
 
     if (result == null || result.message.isEmpty) return;
 
-    final supportRef =
-        FirebaseFirestore.instance.collection("support_requests").doc();
-    await supportRef.set({
-      "userId": user.uid,
-      "userRole": userRole,
-      "role": userRole,
-      "type": result.type,
-      "requestType": result.type,
-      "typeLabel": requestTypes[result.type] ?? result.type,
-      "requestTypeLabel": requestTypes[result.type] ?? result.type,
-      "message": result.message,
-      "attachments": result.attachments,
-      "hasAttachments": result.attachments.isNotEmpty,
-      "status": "open",
-      "readByAdmin": false,
-      "viewedByAdmin": false,
-      "createdAt": FieldValue.serverTimestamp(),
-      "updatedAt": FieldValue.serverTimestamp(),
-    });
-
-    if (!_billingRequestTypes.contains(result.type)) {
-      await _createAdminInboxThreadForSupportRequest(
+    try {
+      final supportRef =
+          FirebaseFirestore.instance.collection("support_requests").doc();
+      final threadId = await _createAdminInboxThreadForSupportRequest(
         supportRequestId: supportRef.id,
         userId: user.uid,
         userRole: userRole,
@@ -96,16 +70,43 @@ class SupportRequestService {
         message: result.message,
         attachments: result.attachments,
       );
+      await supportRef.set({
+        "userId": user.uid,
+        "userRole": userRole,
+        "role": userRole,
+        "type": result.type,
+        "requestType": result.type,
+        "typeLabel": requestTypes[result.type] ?? result.type,
+        "requestTypeLabel": requestTypes[result.type] ?? result.type,
+        "message": result.message,
+        "attachments": result.attachments,
+        "hasAttachments": result.attachments.isNotEmpty,
+        "status": "open",
+        "readByAdmin": false,
+        "viewedByAdmin": false,
+        "threadId": threadId,
+        "adminMessageThreadId": threadId,
+        "createdAt": FieldValue.serverTimestamp(),
+        "updatedAt": FieldValue.serverTimestamp(),
+      });
+
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Support request submitted")),
+      );
+    } catch (e) {
+      debugPrint("SUPPORT REQUEST SUBMIT ERROR: $e");
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Could not submit support request. Please try again."),
+        ),
+      );
     }
-
-    if (!context.mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Support request submitted")),
-    );
   }
 
-  static Future<void> _createAdminInboxThreadForSupportRequest({
+  static Future<String> _createAdminInboxThreadForSupportRequest({
     required String supportRequestId,
     required String userId,
     required String userRole,
@@ -162,6 +163,10 @@ class SupportRequestService {
     batch.set(threadRef, {
       "subject": subject,
       "participants": [userId, "admin"],
+      "createdBy": userId,
+      "userId": userId,
+      "userRole": userRole,
+      "threadType": "support_request",
       "lastMessage": message,
       "lastMessageAt": now,
       "lastSenderId": userId,
@@ -188,6 +193,7 @@ class SupportRequestService {
       SetOptions(merge: true),
     );
     await batch.commit();
+    return threadRef.id;
   }
 }
 
