@@ -183,10 +183,16 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   String rateText(Job job) {
-    if (job.jobType == "negotiable") return "PRICE";
-    if (job.jobType == "price") return "£${job.rate.toInt()}";
+    final jobType = job.jobType.trim().toLowerCase();
 
-    return "£${job.rate.toInt()}/h";
+    if (jobType == "negotiable") return "Negotiable";
+    if (jobType == "price") {
+      return job.rate > 0 ? "£${job.rate.toInt()}" : job.workFormatText;
+    }
+    if (job.rate > 0) return "£${job.rate.toInt()}/h";
+
+    final fallback = job.workFormatText.trim();
+    return fallback.isNotEmpty ? fallback : "Rate TBC";
   }
 
   void scrollToJob(int index) {
@@ -286,6 +292,8 @@ class _MapScreenState extends State<MapScreen> {
       ),
       child: Text(
         rateText(job),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontWeight: FontWeight.bold,
           fontSize: selected ? 13 : 12,
@@ -518,7 +526,7 @@ class _MapScreenState extends State<MapScreen> {
 
       jobMarkers.add(
         Marker(
-          width: 80,
+          width: 104,
           height: 40,
           point: LatLng(job.lat, job.lng),
           child: GestureDetector(
