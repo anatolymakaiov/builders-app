@@ -31,6 +31,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen>
     with WidgetsBindingObserver {
   final nameController = TextEditingController();
+  final emailController = TextEditingController();
   final phoneController = TextEditingController();
   final nicknameController = TextEditingController();
 
@@ -93,6 +94,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool sendingEmailVerification = false;
   bool refreshingEmailVerification = false;
   Timer? emailVerificationTimer;
+  String loadedEmail = "";
   String loadedBillingEmail = "";
   String loadedPhone = "";
   String verifiedEmail = "";
@@ -110,7 +112,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   String currentProfileEmail() {
     if (role == "employer") return billingEmailController.text.trim();
-    return (FirebaseAuth.instance.currentUser?.email ?? "").trim();
+    return emailController.text.trim();
   }
 
   Map<String, TextEditingController> referenceControllerSet(
@@ -258,6 +260,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     WidgetsBinding.instance.removeObserver(this);
     emailVerificationTimer?.cancel();
     nameController.dispose();
+    emailController.dispose();
     phoneController.dispose();
     nicknameController.dispose();
     tradeController.dispose();
@@ -397,6 +400,10 @@ class _ProfileScreenState extends State<ProfileScreen>
               FirebaseAuth.instance.currentUser?.email ??
               "")
           .toString();
+      loadedEmail =
+          (data["email"] ?? FirebaseAuth.instance.currentUser?.email ?? "")
+              .toString();
+      emailController.text = loadedEmail;
       billingEmailController.text = loadedBillingEmail;
       emailVerified = data["emailVerified"] == true ||
           FirebaseAuth.instance.currentUser?.emailVerified == true;
@@ -708,6 +715,50 @@ class _ProfileScreenState extends State<ProfileScreen>
     try {
       await user.reload();
       final refreshed = FirebaseAuth.instance.currentUser ?? user;
+      final desiredEmail = currentProfileEmail();
+      final authEmail = refreshed.email?.trim() ?? "";
+      if (desiredEmail.isNotEmpty &&
+          normalizeEmailValue(desiredEmail) != normalizeEmailValue(authEmail)) {
+        await refreshed.verifyBeforeUpdateEmail(desiredEmail);
+        await setRegistrationState({
+          "email": desiredEmail,
+          "normalizedEmail": normalizeEmailValue(desiredEmail),
+          "emailVerified": false,
+          "emailVerifiedAt": FieldValue.delete(),
+          "verifiedEmail": FieldValue.delete(),
+          "verifiedNormalizedEmail": FieldValue.delete(),
+          "emailVerificationSentAt": FieldValue.serverTimestamp(),
+          if (role == "employer") ...{
+            "billingEmail": desiredEmail,
+            "billingEmailVerified": false,
+            "billingEmailVerifiedAt": FieldValue.delete(),
+            "billing": {
+              "billingEmail": desiredEmail,
+              "billingEmailVerified": false,
+              "billingEmailVerifiedAt": FieldValue.delete(),
+              "updatedAt": FieldValue.serverTimestamp(),
+            },
+          },
+          "authPreferences": {
+            "email": desiredEmail,
+            "emailVerified": false,
+            "emailVerificationSentAt": FieldValue.serverTimestamp(),
+            "updatedAt": FieldValue.serverTimestamp(),
+          },
+          "updatedAt": FieldValue.serverTimestamp(),
+        });
+        if (!mounted) return;
+        setState(() {
+          emailVerified = false;
+          if (role == "employer") billingEmailVerified = false;
+          verifiedEmail = "";
+          verifiedNormalizedEmail = "";
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Verification email sent to $desiredEmail")),
+        );
+        return;
+      }
       if (refreshed.emailVerified) {
         debugPrint("EMAIL VERIFIED: uid=$userId");
         final refreshedEmail = refreshed.email?.trim() ?? "";
@@ -875,9 +926,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> verifyEmailFromDialog() async {
-    final email = (FirebaseAuth.instance.currentUser?.email ??
-            billingEmailController.text.trim())
-        .trim();
+    final email = currentProfileEmail();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1149,18 +1198,21 @@ class _ProfileScreenState extends State<ProfileScreen>
       return;
     }
 
+    final profileEmail = currentProfileEmail();
     final billingEmail = billingEmailController.text.trim();
     final wasFirstProfileCreation = firstProfileCreation;
     final phoneChanged =
         RegistrationValidationService.normalizePhone(loadedPhone) !=
             normalizedPhone;
-    final billingEmailChanged = role == "employer" &&
-        billingEmail.toLowerCase() != loadedBillingEmail.toLowerCase();
-    final validBillingEmail =
-        RegExp(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").hasMatch(billingEmail);
-    if (role == "employer" && !validBillingEmail) {
+    final loadedProfileEmail =
+        role == "employer" ? loadedBillingEmail : loadedEmail;
+    final emailChanged = normalizeEmailValue(profileEmail) !=
+        normalizeEmailValue(loadedProfileEmail);
+    final validProfileEmail =
+        RegExp(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").hasMatch(profileEmail);
+    if (!validProfileEmail) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Enter a valid billing email")),
+        const SnackBar(content: Text("Enter a valid email")),
       );
       return;
     }
@@ -1181,6 +1233,25 @@ class _ProfileScreenState extends State<ProfileScreen>
     final authUser = FirebaseAuth.instance.currentUser;
     final emailIsVerified = isCurrentEmailVerified();
     final phoneIsVerified = isCurrentPhoneVerified();
+
+    if (emailChanged) {
+      final emailAvailability =
+          await RegistrationValidationService().checkEmailAvailability(
+        profileEmail,
+      );
+      if (!emailAvailability.available) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              emailAvailability.blockingMessage ??
+                  "An active account with this email address already exists.",
+            ),
+          ),
+        );
+        return;
+      }
+    }
 
     if (phoneChanged || firstProfileCreation) {
       final phoneAvailability =
@@ -1207,12 +1278,10 @@ class _ProfileScreenState extends State<ProfileScreen>
       return;
     }
 
-    if (!firstProfileCreation &&
-        ((billingEmailChanged && !emailIsVerified) ||
-            (phoneChanged && !phoneIsVerified))) {
+    if (!firstProfileCreation && phoneChanged && !phoneIsVerified) {
       await showVerificationRequiredDialog(
-        requireEmail: billingEmailChanged && !emailIsVerified,
-        requirePhone: phoneChanged && !phoneIsVerified,
+        requireEmail: false,
+        requirePhone: true,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1228,6 +1297,12 @@ class _ProfileScreenState extends State<ProfileScreen>
     setState(() => loading = true);
 
     try {
+      var emailChangeVerificationSent = false;
+      if (emailChanged && authUser != null) {
+        await authUser.verifyBeforeUpdateEmail(profileEmail);
+        emailChangeVerificationSent = true;
+      }
+
       var savedHeaderImageUrl = headerImageUrl;
       if (headerImageFile != null) {
         final ref =
@@ -1243,7 +1318,8 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       final profileData = <String, dynamic>{
         "role": role,
-        "email": authUser?.email ?? billingEmailController.text.trim(),
+        "email": profileEmail,
+        "normalizedEmail": normalizeEmailValue(profileEmail),
         "phone": phone,
         "normalizedPhone": normalizedPhone,
         "bio": bioController.text.trim(),
@@ -1252,12 +1328,17 @@ class _ProfileScreenState extends State<ProfileScreen>
         "address": locationController.text.trim(),
         "updatedAt": FieldValue.serverTimestamp(),
       };
-      if (emailIsVerified) {
+      if (!emailChanged && emailIsVerified) {
         final currentEmail = currentProfileEmail();
         profileData["emailVerified"] = true;
         profileData["verifiedEmail"] = currentEmail;
         profileData["verifiedNormalizedEmail"] =
             normalizeEmailValue(currentEmail);
+      } else {
+        profileData["emailVerified"] = false;
+        profileData["emailVerifiedAt"] = FieldValue.delete();
+        profileData["verifiedEmail"] = FieldValue.delete();
+        profileData["verifiedNormalizedEmail"] = FieldValue.delete();
       }
       if (!phoneIsVerified) {
         profileData["phoneVerified"] = false;
@@ -1306,11 +1387,12 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
 
       if (role == "employer") {
-        final verifiedByAuth =
+        final verifiedByAuth = !emailChanged &&
             authUser?.email?.toLowerCase() == billingEmail.toLowerCase() &&
-                authUser?.emailVerified == true;
+            authUser?.emailVerified == true;
         final nextBillingEmailVerified = verifiedByAuth ||
-            (billingEmailVerified &&
+            (!emailChanged &&
+                billingEmailVerified &&
                 normalizeEmailValue(billingEmail) ==
                     normalizeEmailValue(verifiedNormalizedEmail.isNotEmpty
                         ? verifiedNormalizedEmail
@@ -1428,6 +1510,11 @@ class _ProfileScreenState extends State<ProfileScreen>
         phone: phone,
         previousPhone: loadedPhone,
       );
+      await RegistrationValidationService().updateEmailIndexesForUser(
+        uid: userId,
+        email: profileEmail,
+        previousEmail: loadedProfileEmail,
+      );
       if (wasFirstProfileCreation) {
         await finalizePendingRegistration();
       }
@@ -1442,16 +1529,21 @@ class _ProfileScreenState extends State<ProfileScreen>
         extraPhones = cleanedPhones;
         firstProfileCreation = false;
         phoneVerified = phoneIsVerified;
-        billingEmailVerified = savedBillingEmailVerified;
+        emailVerified = !emailChanged && emailIsVerified;
+        billingEmailVerified = emailChanged ? false : savedBillingEmailVerified;
+        loadedEmail = profileEmail;
         loadedBillingEmail = billingEmail;
         loadedPhone = phone;
         if (phoneIsVerified) {
           verifiedPhone = phone;
           verifiedNormalizedPhone = normalizedPhone;
         }
-        if (emailIsVerified) {
+        if (!emailChanged && emailIsVerified) {
           verifiedEmail = currentProfileEmail();
           verifiedNormalizedEmail = normalizeEmailValue(currentProfileEmail());
+        } else if (emailChanged) {
+          verifiedEmail = "";
+          verifiedNormalizedEmail = "";
         }
         if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion) {
           legalAcceptedForCurrentVersion = true;
@@ -1459,8 +1551,12 @@ class _ProfileScreenState extends State<ProfileScreen>
       });
 
       if (!wasFirstProfileCreation && mounted) {
-        if (billingEmailChanged) {
-          await verifyEmailFromDialog();
+        if (emailChanged && emailChangeVerificationSent) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Verification email sent to $profileEmail"),
+            ),
+          );
         }
         if (phoneChanged && mounted) {
           await verifyPhoneFromDialog();
@@ -2015,9 +2111,6 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Widget buildForm() {
     ensureReferenceControllerCount();
-    final accountEmail = (FirebaseAuth.instance.currentUser?.email ??
-            billingEmailController.text.trim())
-        .trim();
     final inlineEmailVerified = isCurrentEmailVerified();
     final inlinePhoneVerified = isCurrentPhoneVerified();
 
@@ -2054,9 +2147,11 @@ class _ProfileScreenState extends State<ProfileScreen>
             decoration: const InputDecoration(labelText: "Name"),
           ),
           const SizedBox(height: 12),
-          TextFormField(
-            initialValue: accountEmail,
-            readOnly: true,
+          TextField(
+            controller: emailController,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(labelText: "Email"),
           ),
           buildInlineVerificationStatus(

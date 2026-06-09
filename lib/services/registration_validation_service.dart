@@ -375,6 +375,43 @@ class RegistrationIdentityService {
     }
   }
 
+  Future<void> updateEmailIndexesForUser({
+    required String uid,
+    required String email,
+    String? previousEmail,
+  }) async {
+    final normalizedEmail = normalizeEmail(email);
+    final normalizedPrevious = normalizeEmail(previousEmail ?? "");
+
+    if (normalizedPrevious.isNotEmpty &&
+        normalizedPrevious != normalizedEmail) {
+      for (final collection in ["emailIndex", "registrationEmailIndex"]) {
+        await _markIndexInactive(
+          collectionName: collection,
+          documentId: normalizedPrevious,
+          reason: "email_changed",
+          previousUserId: uid,
+        );
+      }
+    }
+
+    if (normalizedEmail.isEmpty) return;
+
+    for (final collection in ["emailIndex", "registrationEmailIndex"]) {
+      await firestore.collection(collection).doc(normalizedEmail).set({
+        "uid": uid,
+        "userId": uid,
+        "normalizedEmail": normalizedEmail,
+        "active": true,
+        "deleted": false,
+        "stale": false,
+        "kind": "email",
+        "updatedAt": FieldValue.serverTimestamp(),
+        "createdAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+  }
+
   Future<bool> hasActiveAccountForEmail(String email) async {
     final availability = await checkEmailAvailability(email);
     return !availability.available && availability.blockedByActiveAccount;
