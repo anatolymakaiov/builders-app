@@ -7,6 +7,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'services/app_navigation.dart';
 import 'services/auth_preferences_service.dart';
 import 'services/notification_service.dart';
+import 'services/post_registration_refresh_service.dart';
 import 'services/registration_validation_service.dart';
 import 'screens/edit_profile_screen.dart';
 import 'screens/home_screen.dart';
@@ -59,6 +60,7 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   bool sessionUnlocked = false;
+  final postRegistrationRefresh = PostRegistrationRefreshService();
 
   @override
   void initState() {
@@ -223,7 +225,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
                   }
 
                   return ProfileScreen(
-                    onProfileSaved: () {
+                    onProfileSaved: () async {
+                      await postRegistrationRefresh.refreshAfterRegistration(
+                        user.uid,
+                      );
                       if (!mounted) return;
                       setState(() {});
                     },
@@ -283,7 +288,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
             if (role != "admin" && !hasCompletedProfile) {
               return ProfileScreen(
-                onProfileSaved: () {
+                onProfileSaved: () async {
+                  await postRegistrationRefresh.refreshAfterRegistration(
+                    user.uid,
+                  );
                   if (!mounted) return;
                   setState(() {});
                 },

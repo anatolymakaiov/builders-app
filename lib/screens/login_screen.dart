@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_preferences_service.dart';
+import '../services/post_registration_refresh_service.dart';
 import '../services/registration_validation_service.dart';
 import '../widgets/legal_documents.dart';
 import 'edit_profile_screen.dart';
@@ -31,6 +32,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final phoneController = TextEditingController();
   final authPreferences = AuthPreferencesService();
   final registrationValidation = RegistrationValidationService();
+  final postRegistrationRefresh = PostRegistrationRefreshService();
 
   String role = "worker";
   String? selectedAction;
@@ -589,8 +591,9 @@ class _LoginScreenState extends State<LoginScreen> {
             await navigator.pushReplacement(
               MaterialPageRoute(
                 builder: (_) => ProfileScreen(
-                  onProfileSaved: () {
+                  onProfileSaved: () async {
                     debugPrint("Next onboarding route: dashboard");
+                    await postRegistrationRefresh.refreshAfterRegistration(uid);
                     navigator.pushAndRemoveUntil(
                       MaterialPageRoute(builder: (_) => const HomeScreen()),
                       (route) => false,

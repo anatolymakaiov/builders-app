@@ -17,7 +17,7 @@ import '../services/registration_validation_service.dart';
 import '../widgets/legal_documents.dart';
 
 class ProfileScreen extends StatefulWidget {
-  final VoidCallback? onProfileSaved;
+  final FutureOr<void> Function()? onProfileSaved;
 
   const ProfileScreen({
     super.key,
@@ -1565,7 +1565,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       if (!mounted) return;
 
       if (widget.onProfileSaved != null) {
-        widget.onProfileSaved!.call();
+        await widget.onProfileSaved!.call();
       } else {
         Navigator.pop(context, true);
       }
