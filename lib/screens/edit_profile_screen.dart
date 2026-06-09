@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'portfolio_screen.dart';
 import '../theme/app_theme.dart';
@@ -67,6 +69,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   final companyHistoryController = TextEditingController();
   List<String> extraPhones = [];
   List<Map<String, String>> references = [];
+  final List<Map<String, TextEditingController>> referenceControllers = [];
   final picker = ImagePicker();
 
   String role = "worker";
@@ -108,6 +111,73 @@ class _ProfileScreenState extends State<ProfileScreen>
   String currentProfileEmail() {
     if (role == "employer") return billingEmailController.text.trim();
     return (FirebaseAuth.instance.currentUser?.email ?? "").trim();
+  }
+
+  Map<String, TextEditingController> referenceControllerSet(
+    Map<String, String> reference,
+  ) {
+    return {
+      "name": TextEditingController(text: reference["name"] ?? ""),
+      "company": TextEditingController(text: reference["company"] ?? ""),
+      "phone": TextEditingController(text: reference["phone"] ?? ""),
+      "email": TextEditingController(text: reference["email"] ?? ""),
+    };
+  }
+
+  void disposeReferenceControllerSet(
+    Map<String, TextEditingController> controllers,
+  ) {
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
+  }
+
+  void replaceReferences(List<Map<String, String>> nextReferences) {
+    for (final controllers in referenceControllers) {
+      disposeReferenceControllerSet(controllers);
+    }
+    referenceControllers
+      ..clear()
+      ..addAll(nextReferences.map(referenceControllerSet));
+    references = nextReferences;
+  }
+
+  void ensureReferenceControllerCount() {
+    while (referenceControllers.length < references.length) {
+      referenceControllers.add(
+        referenceControllerSet(references[referenceControllers.length]),
+      );
+    }
+    while (referenceControllers.length > references.length) {
+      final controllers = referenceControllers.removeLast();
+      disposeReferenceControllerSet(controllers);
+    }
+  }
+
+  void addReference() {
+    final reference = {
+      "name": "",
+      "company": "",
+      "phone": "",
+      "email": "",
+    };
+    setState(() {
+      references.add(reference);
+      referenceControllers.add(referenceControllerSet(reference));
+    });
+  }
+
+  void removeReferenceAt(int index) {
+    setState(() {
+      references.removeAt(index);
+      final controllers = referenceControllers.removeAt(index);
+      disposeReferenceControllerSet(controllers);
+    });
+  }
+
+  void updateReferenceValue(int index, String key, String value) {
+    if (index < 0 || index >= references.length) return;
+    references[index][key] = value;
   }
 
   bool isCurrentEmailVerified() {
@@ -220,6 +290,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     companyClientsController.dispose();
     companyWhoWeAreController.dispose();
     companyHistoryController.dispose();
+    for (final controllers in referenceControllers) {
+      disposeReferenceControllerSet(controllers);
+    }
+    referenceControllers.clear();
     super.dispose();
   }
 
@@ -380,7 +454,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       companyWhoWeAreController.text = data["companyWhoWeAre"] ?? "";
       companyHistoryController.text = data["companyHistory"] ?? "";
       extraPhones = List<String>.from(data["phones"] ?? []);
-      references = parseReferences(data["references"]);
+      replaceReferences(parseReferences(data["references"]));
       rating = (data["rating"] ?? 0).toDouble();
       reviewsCount = data["reviewsCount"] ?? 0;
 
@@ -529,12 +603,15 @@ class _ProfileScreenState extends State<ProfileScreen>
       final picked = await picker.pickImage(source: ImageSource.gallery);
       if (picked == null) return;
 
+      final cropped = await showAvatarCropDialog(File(picked.path));
+      if (cropped == null) return;
+
       setState(() => uploadingAvatar = true);
 
       final url = await uploadProfileImage(
-        picked,
+        XFile(cropped.path, name: cropped.uri.pathSegments.last),
         folder: "profile_photos",
-        fileName: "$userId.jpg",
+        fileName: "$userId.png",
       );
 
       await setRegistrationState({
@@ -554,6 +631,14 @@ class _ProfileScreenState extends State<ProfileScreen>
     } finally {
       if (mounted) setState(() => uploadingAvatar = false);
     }
+  }
+
+  Future<File?> showAvatarCropDialog(File imageFile) {
+    return showDialog<File>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _AvatarCropDialog(imageFile: imageFile),
+    );
   }
 
   Future<String> uploadProfileImage(
@@ -1929,6 +2014,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget buildForm() {
+    ensureReferenceControllerCount();
     final accountEmail = (FirebaseAuth.instance.currentUser?.email ??
             billingEmailController.text.trim())
         .trim();
@@ -2095,7 +2181,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           const SizedBox(height: 8),
           ...references.asMap().entries.map((entry) {
             final index = entry.key;
-            final reference = entry.value;
+            final controllers = referenceControllers[index];
 
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -2107,57 +2193,53 @@ class _ProfileScreenState extends State<ProfileScreen>
               child: Column(
                 children: [
                   TextField(
-                    controller:
-                        TextEditingController(text: reference["name"] ?? ""),
+                    controller: controllers["name"],
                     decoration: const InputDecoration(
                       labelText: "Referee name",
                       hintText: "Name",
                     ),
-                    onChanged: (value) => references[index]["name"] = value,
+                    onChanged: (value) =>
+                        updateReferenceValue(index, "name", value),
                   ),
                   const SizedBox(height: 8),
                   TextField(
-                    controller:
-                        TextEditingController(text: reference["company"] ?? ""),
+                    controller: controllers["company"],
                     decoration: const InputDecoration(
                       labelText: "Company / role",
                       hintText: "Company, site manager, supervisor",
                     ),
-                    onChanged: (value) => references[index]["company"] = value,
+                    onChanged: (value) =>
+                        updateReferenceValue(index, "company", value),
                   ),
                   const SizedBox(height: 8),
                   TextField(
-                    controller:
-                        TextEditingController(text: reference["phone"] ?? ""),
+                    controller: controllers["phone"],
                     keyboardType: TextInputType.phone,
                     decoration: const InputDecoration(
                       labelText: "Phone",
                       hintText: "Contact phone",
                     ),
-                    onChanged: (value) => references[index]["phone"] = value,
+                    onChanged: (value) =>
+                        updateReferenceValue(index, "phone", value),
                   ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
                         child: TextField(
-                          controller: TextEditingController(
-                              text: reference["email"] ?? ""),
+                          controller: controllers["email"],
                           keyboardType: TextInputType.emailAddress,
                           decoration: const InputDecoration(
                             labelText: "Email",
                             hintText: "Contact email",
                           ),
                           onChanged: (value) =>
-                              references[index]["email"] = value,
+                              updateReferenceValue(index, "email", value),
                         ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.delete),
-                        onPressed: () {
-                          references.removeAt(index);
-                          setState(() {});
-                        },
+                        onPressed: () => removeReferenceAt(index),
                       ),
                     ],
                   ),
@@ -2166,15 +2248,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             );
           }),
           OutlinedButton.icon(
-            onPressed: () {
-              references.add({
-                "name": "",
-                "company": "",
-                "phone": "",
-                "email": "",
-              });
-              setState(() {});
-            },
+            onPressed: addReference,
             icon: const Icon(Icons.add),
             label: const Text("Add reference"),
           ),
@@ -2372,4 +2446,203 @@ class _ProfileScreenState extends State<ProfileScreen>
       ),
     );
   }
+}
+
+class _AvatarCropDialog extends StatefulWidget {
+  final File imageFile;
+
+  const _AvatarCropDialog({
+    required this.imageFile,
+  });
+
+  @override
+  State<_AvatarCropDialog> createState() => _AvatarCropDialogState();
+}
+
+class _AvatarCropDialogState extends State<_AvatarCropDialog> {
+  final TransformationController controller = TransformationController();
+  bool processing = false;
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> confirmCrop(double cropSize) async {
+    if (processing) return;
+    setState(() => processing = true);
+    try {
+      final cropped = await cropAvatarFile(
+        imageFile: widget.imageFile,
+        matrix: controller.value,
+        cropSize: cropSize,
+      );
+      if (!mounted) return;
+      Navigator.pop(context, cropped);
+    } catch (error) {
+      debugPrint("Avatar crop error: $error");
+      if (!mounted) return;
+      setState(() => processing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not crop avatar image")),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final cropSize = math.min(screenWidth - 80, 300).toDouble();
+
+    return AlertDialog(
+      title: const Text("Position avatar"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: cropSize,
+            height: cropSize,
+            child: Stack(
+              children: [
+                ClipOval(
+                  child: SizedBox(
+                    width: cropSize,
+                    height: cropSize,
+                    child: InteractiveViewer(
+                      transformationController: controller,
+                      minScale: 1,
+                      maxScale: 4,
+                      boundaryMargin: EdgeInsets.zero,
+                      clipBehavior: Clip.none,
+                      child: SizedBox(
+                        width: cropSize,
+                        height: cropSize,
+                        child: Image.file(
+                          widget.imageFile,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppColors.blueprintLine,
+                        width: 3,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            "Drag to position. Pinch to zoom.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.muted,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: processing ? null : () => Navigator.pop(context),
+          child: const Text("Cancel"),
+        ),
+        ElevatedButton(
+          onPressed: processing ? null : () => confirmCrop(cropSize),
+          child: processing
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text("Use avatar"),
+        ),
+      ],
+    );
+  }
+}
+
+Future<File> cropAvatarFile({
+  required File imageFile,
+  required Matrix4 matrix,
+  required double cropSize,
+}) async {
+  final bytes = await imageFile.readAsBytes();
+  final sourceImage = await decodeUiImage(bytes);
+  final inverse = Matrix4.inverted(matrix);
+  final topLeft = MatrixUtils.transformPoint(inverse, Offset.zero);
+  final bottomRight = MatrixUtils.transformPoint(
+    inverse,
+    Offset(cropSize, cropSize),
+  );
+
+  final imageWidth = sourceImage.width.toDouble();
+  final imageHeight = sourceImage.height.toDouble();
+  final baseScale = math.max(cropSize / imageWidth, cropSize / imageHeight);
+  final fittedWidth = imageWidth * baseScale;
+  final fittedHeight = imageHeight * baseScale;
+  final fittedLeft = (cropSize - fittedWidth) / 2;
+  final fittedTop = (cropSize - fittedHeight) / 2;
+
+  double sourceLeft = (topLeft.dx - fittedLeft) / baseScale;
+  double sourceTop = (topLeft.dy - fittedTop) / baseScale;
+  double sourceRight = (bottomRight.dx - fittedLeft) / baseScale;
+  double sourceBottom = (bottomRight.dy - fittedTop) / baseScale;
+
+  sourceLeft = sourceLeft.clamp(0, imageWidth - 1);
+  sourceTop = sourceTop.clamp(0, imageHeight - 1);
+  sourceRight = sourceRight.clamp(sourceLeft + 1, imageWidth);
+  sourceBottom = sourceBottom.clamp(sourceTop + 1, imageHeight);
+
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  const outputSize = 512.0;
+  const outputRect = Rect.fromLTWH(0, 0, outputSize, outputSize);
+  final sourceRect = Rect.fromLTRB(
+    sourceLeft,
+    sourceTop,
+    sourceRight,
+    sourceBottom,
+  );
+  canvas.drawImageRect(
+    sourceImage,
+    sourceRect,
+    outputRect,
+    Paint()..filterQuality = FilterQuality.high,
+  );
+
+  final picture = recorder.endRecording();
+  final croppedImage = await picture.toImage(
+    outputSize.toInt(),
+    outputSize.toInt(),
+  );
+  final pngBytes =
+      await croppedImage.toByteData(format: ui.ImageByteFormat.png);
+  if (pngBytes == null) {
+    throw StateError("Could not encode cropped avatar");
+  }
+
+  final outputFile = File(
+    "${Directory.systemTemp.path}/stroyka_avatar_${DateTime.now().millisecondsSinceEpoch}.png",
+  );
+  await outputFile.writeAsBytes(pngBytes.buffer.asUint8List());
+  return outputFile;
+}
+
+Future<ui.Image> decodeUiImage(Uint8List bytes) async {
+  final codec = await ui.instantiateImageCodec(bytes);
+  final frame = await codec.getNextFrame();
+  return frame.image;
 }
