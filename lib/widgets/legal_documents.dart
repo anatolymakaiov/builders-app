@@ -232,7 +232,12 @@ class LegalDocuments {
     String language = defaultLanguage,
   }) async {
     final docs = requiredForRole(role);
-    final userRef = FirebaseFirestore.instance.collection("users").doc(userId);
+    final firestore = FirebaseFirestore.instance;
+    final activeUserRef = firestore.collection("users").doc(userId);
+    final activeUserSnapshot = await activeUserRef.get();
+    final userRef = activeUserSnapshot.exists
+        ? activeUserRef
+        : firestore.collection("pending_registrations").doc(userId);
     final batch = FirebaseFirestore.instance.batch();
 
     for (final doc in docs) {

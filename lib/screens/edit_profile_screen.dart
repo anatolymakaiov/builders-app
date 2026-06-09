@@ -140,6 +140,41 @@ class _ProfileScreenState extends State<ProfileScreen>
     return phoneVerified && verifiedPhoneValue == currentPhone;
   }
 
+  Future<DocumentReference<Map<String, dynamic>>> registrationStateRef() async {
+    final firestore = FirebaseFirestore.instance;
+    final userRef = firestore.collection("users").doc(userId);
+    final snapshot = await userRef.get();
+    if (snapshot.exists) return userRef;
+    return firestore.collection("pending_registrations").doc(userId);
+  }
+
+  Future<void> setRegistrationState(Map<String, dynamic> data) async {
+    final ref = await registrationStateRef();
+    await ref.set(data, SetOptions(merge: true));
+  }
+
+  Future<void> finalizePendingRegistration() async {
+    final firestore = FirebaseFirestore.instance;
+    final pendingRef =
+        firestore.collection("pending_registrations").doc(userId);
+    final pendingSnapshot = await pendingRef.get();
+    if (!pendingSnapshot.exists) return;
+
+    final legalDocs = await pendingRef.collection("legalAcceptances").get();
+    final batch = firestore.batch();
+    final userRef = firestore.collection("users").doc(userId);
+    for (final doc in legalDocs.docs) {
+      batch.set(
+        userRef.collection("legalAcceptances").doc(doc.id),
+        doc.data(),
+        SetOptions(merge: true),
+      );
+      batch.delete(doc.reference);
+    }
+    batch.delete(pendingRef);
+    await batch.commit();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -214,8 +249,14 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   /// LOAD PROFILE
   Future<void> loadProfile() async {
-    final userDoc =
+    var userDoc =
         await FirebaseFirestore.instance.collection("users").doc(userId).get();
+    if (!userDoc.exists) {
+      userDoc = await FirebaseFirestore.instance
+          .collection("pending_registrations")
+          .doc(userId)
+          .get();
+    }
 
     if (!userDoc.exists) return;
 
@@ -496,11 +537,11 @@ class _ProfileScreenState extends State<ProfileScreen>
         fileName: "$userId.jpg",
       );
 
-      await FirebaseFirestore.instance.collection("users").doc(userId).set({
+      await setRegistrationState({
         "photo": url,
         "avatarUrl": url,
         "updatedAt": FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      });
 
       if (!mounted) return;
       setState(() => photoUrl = url);
@@ -583,9 +624,10 @@ class _ProfileScreenState extends State<ProfileScreen>
       await user.reload();
       final refreshed = FirebaseAuth.instance.currentUser ?? user;
       if (refreshed.emailVerified) {
+        debugPrint("EMAIL VERIFIED: uid=$userId");
         final refreshedEmail = refreshed.email?.trim() ?? "";
         final normalizedEmail = normalizeEmailValue(refreshedEmail);
-        await FirebaseFirestore.instance.collection("users").doc(userId).set({
+        await setRegistrationState({
           "emailVerified": true,
           "emailVerifiedAt": FieldValue.serverTimestamp(),
           "verifiedEmail": refreshedEmail,
@@ -601,7 +643,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               "updatedAt": FieldValue.serverTimestamp(),
             },
           },
-        }, SetOptions(merge: true));
+        });
         if (!mounted) return;
         setState(() {
           emailVerified = true;
@@ -619,7 +661,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
 
       await refreshed.sendEmailVerification();
-      await FirebaseFirestore.instance.collection("users").doc(userId).set({
+      await setRegistrationState({
         "emailVerificationSentAt": FieldValue.serverTimestamp(),
         "authPreferences": {
           "email": refreshed.email,
@@ -627,7 +669,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           "emailVerificationSentAt": FieldValue.serverTimestamp(),
           "updatedAt": FieldValue.serverTimestamp(),
         },
-      }, SetOptions(merge: true));
+      });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Verification email sent")),
@@ -659,7 +701,8 @@ class _ProfileScreenState extends State<ProfileScreen>
           billingEmailController.text.trim().toLowerCase();
 
       if (verified) {
-        await FirebaseFirestore.instance.collection("users").doc(userId).set({
+        debugPrint("EMAIL VERIFIED: uid=$userId");
+        await setRegistrationState({
           "emailVerified": true,
           "emailVerifiedAt": FieldValue.serverTimestamp(),
           "verifiedEmail": refreshedEmail,
@@ -678,7 +721,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               "updatedAt": FieldValue.serverTimestamp(),
             },
           },
-        }, SetOptions(merge: true));
+        });
       }
 
       if (!mounted) return verified;
@@ -855,16 +898,17 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
     if (verified != true) return;
 
+    debugPrint("PHONE VERIFIED: uid=$userId");
     final verifiedPhoneValue = phoneController.text.trim();
     final verifiedNormalizedPhoneValue =
         normalizePhoneValue(verifiedPhoneValue);
-    await FirebaseFirestore.instance.collection("users").doc(userId).set({
+    await setRegistrationState({
       "phoneVerified": true,
       "phoneVerifiedAt": FieldValue.serverTimestamp(),
       "verifiedPhone": verifiedPhoneValue,
       "verifiedNormalizedPhone": verifiedNormalizedPhoneValue,
       "updatedAt": FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    });
     if (!mounted) return;
     setState(() {
       phoneVerified = true;
@@ -945,10 +989,10 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       if (uploadedUrls.isEmpty) return;
 
-      await FirebaseFirestore.instance.collection("users").doc(userId).set({
+      await setRegistrationState({
         "companyPhotos": FieldValue.arrayUnion(uploadedUrls),
         "updatedAt": FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      });
 
       if (!mounted) return;
       setState(() {
@@ -973,10 +1017,10 @@ class _ProfileScreenState extends State<ProfileScreen>
         companyPhotos.remove(photo);
       });
 
-      await FirebaseFirestore.instance.collection("users").doc(userId).set({
+      await setRegistrationState({
         "companyPhotos": FieldValue.arrayRemove([photo]),
         "updatedAt": FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      });
     } catch (e) {
       debugPrint("Company gallery remove error: $e");
       if (!mounted) return;
@@ -1053,7 +1097,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     final emailIsVerified = isCurrentEmailVerified();
     final phoneIsVerified = isCurrentPhoneVerified();
 
-    if (phoneChanged) {
+    if (phoneChanged || firstProfileCreation) {
       final phoneAvailability =
           await RegistrationValidationService().checkPhoneAvailability(phone);
       if (!phoneAvailability.available) {
@@ -1251,7 +1295,16 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
 
       if (firstProfileCreation) {
+        debugPrint("REGISTRATION FINALIZATION START: uid=$userId");
         profileData.addAll({
+          "uid": userId,
+          "active": true,
+          "deleted": false,
+          "accountDeleted": false,
+          "anonymised": false,
+          "draft": false,
+          "pendingRegistration": false,
+          "registrationFinalizedAt": FieldValue.serverTimestamp(),
           "profileCreated": true,
           "profileComplete": true,
           "onboardingComplete": true,
@@ -1279,6 +1332,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         });
       }
 
+      debugPrint("PROFILE CREATION START: uid=$userId");
       await FirebaseFirestore.instance
           .collection('users')
           .doc(userId)
@@ -1289,6 +1343,10 @@ class _ProfileScreenState extends State<ProfileScreen>
         phone: phone,
         previousPhone: loadedPhone,
       );
+      if (wasFirstProfileCreation) {
+        await finalizePendingRegistration();
+      }
+      debugPrint("PROFILE CREATION SUCCESS: uid=$userId");
 
       if (!mounted) return;
 

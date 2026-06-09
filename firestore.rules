@@ -164,6 +164,14 @@ service cloud.firestore {
       }
     }
 
+    match /pending_registrations/{userId} {
+      allow create, read, update, delete: if isAdmin() || isSelf(userId);
+
+      match /legalAcceptances/{documentId} {
+        allow create, read, update, delete: if isAdmin() || isSelf(userId);
+      }
+    }
+
     match /saved_jobs/{userId}/jobs/{jobId} {
       allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }

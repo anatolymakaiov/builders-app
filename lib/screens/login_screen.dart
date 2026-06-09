@@ -330,6 +330,56 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
+  Future<void> createPendingRegistration({
+    required User user,
+    required PendingRegistrationDetails details,
+  }) async {
+    debugPrint(
+        "REGISTRATION STAGE START: pending_registration uid=${user.uid}");
+    await FirebaseFirestore.instance
+        .collection("pending_registrations")
+        .doc(user.uid)
+        .set({
+      ...details.toUserDocument(),
+      "uid": user.uid,
+      "active": false,
+      "draft": true,
+      "pendingRegistration": true,
+      "deleted": false,
+      "accountDeleted": false,
+      "anonymised": false,
+      "updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    debugPrint("Initial pending registration document created");
+  }
+
+  Future<void> rollbackCreatedRegistration({
+    required User? user,
+    required String email,
+    required String reason,
+  }) async {
+    debugPrint("ROLLBACK START: uid=${user?.uid ?? "none"} reason=$reason");
+    RegistrationValidationService.clearPending(email);
+    if (user != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection("pending_registrations")
+            .doc(user.uid)
+            .delete();
+      } catch (error) {
+        debugPrint(
+            "Could not remove pending registration during rollback: $error");
+      }
+      try {
+        await user.delete();
+      } catch (error) {
+        debugPrint("Could not delete auth user during rollback: $error");
+        await FirebaseAuth.instance.signOut();
+      }
+    }
+    debugPrint("ROLLBACK SUCCESS: uid=${user?.uid ?? "none"}");
+  }
+
   Future<void> submit() async {
     setState(() => loading = true);
 
@@ -422,18 +472,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
                 return;
               }
-              await FirebaseFirestore.instance
-                  .collection("users")
-                  .doc(currentUser.uid)
-                  .set({
-                ...pendingDetails.toUserDocument(),
-                "uid": currentUser.uid,
-              }, SetOptions(merge: true));
-              await registrationValidation.updatePhoneIndexesForUser(
-                uid: currentUser.uid,
-                phone: phone,
+              await createPendingRegistration(
+                user: currentUser,
+                details: pendingDetails,
               );
-              debugPrint("Initial user document created");
               RegistrationValidationService.clearPending(email);
               await continueRegistrationOnboarding(
                 uid: currentUser.uid,
@@ -473,15 +515,11 @@ class _LoginScreenState extends State<LoginScreen> {
         final postAuthPhoneAvailability =
             await registrationValidation.checkPhoneAvailability(phone);
         if (!postAuthPhoneAvailability.available) {
-          RegistrationValidationService.clearPending(email);
-          try {
-            await result.user?.delete();
-          } catch (deleteError) {
-            debugPrint(
-              "Could not rollback auth user after duplicate phone: $deleteError",
-            );
-            await FirebaseAuth.instance.signOut();
-          }
+          await rollbackCreatedRegistration(
+            user: result.user,
+            email: email,
+            reason: "duplicate_phone_after_auth",
+          );
           if (!mounted) return;
           setState(() => loading = false);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -495,58 +533,19 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        await FirebaseFirestore.instance
-            .collection("users")
-            .doc(result.user!.uid)
-            .set({
-          "uid": result.user!.uid,
-          "role": role,
-          "email": email,
-          "normalizedEmail": email,
-          "registrationName": registrationName,
-          "phone": phone,
-          "normalizedPhone": normalizedPhone,
-          "emailVerified": false,
-          "phoneVerified": false,
-          "phoneVerificationRequired": false,
-          "phoneVerificationProviderConfigured": false,
-          "legalAccepted": false,
-          "onboardingLegalStepComplete": false,
-          "profileComplete": false,
-          "onboardingComplete": false,
-          "onboardingStatus": "registration_started",
-          "registrationStarted": true,
-          "active": true,
-          "deleted": false,
-          "accountDeleted": false,
-          "anonymised": false,
-          "authMethod": AuthPreferenceMethod.password,
-          "settings": {
-            "authMethod": AuthPreferenceMethod.password,
-            "updatedAt": FieldValue.serverTimestamp(),
-          },
-          "authPreferences": {
-            "activeMethod": AuthPreferenceMethod.password,
-            "passwordLoginEnabled": true,
-            "passwordlessLoginEnabled": false,
-            "biometricLoginEnabled": false,
-            "email": email,
-            "emailVerified": false,
-            "updatedAt": FieldValue.serverTimestamp(),
-          },
-          "createdAt": FieldValue.serverTimestamp(),
-          "updatedAt": FieldValue.serverTimestamp(),
-        });
-        await registrationValidation.updatePhoneIndexesForUser(
-          uid: result.user!.uid,
-          phone: phone,
-        );
-        await authPreferences.enrollBiometricLoginForPasswordSession(
-          user: result.user!,
-          email: email,
-          password: password,
-        );
-        debugPrint("Initial user document created");
+        try {
+          await createPendingRegistration(
+            user: result.user!,
+            details: pendingDetails,
+          );
+        } catch (error) {
+          await rollbackCreatedRegistration(
+            user: result.user,
+            email: email,
+            reason: "pending_registration_write_failed",
+          );
+          rethrow;
+        }
         RegistrationValidationService.clearPending(email);
         await continueRegistrationOnboarding(
           uid: result.user!.uid,

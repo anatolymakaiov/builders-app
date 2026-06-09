@@ -96,6 +96,12 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     final snapshot = await userRef.get();
     if (snapshot.exists) return;
 
+    final draftRef = FirebaseFirestore.instance
+        .collection("pending_registrations")
+        .doc(user.uid);
+    final draftSnapshot = await draftRef.get();
+    if (draftSnapshot.exists) return;
+
     final pending = RegistrationValidationService.pendingForEmail(user.email);
     final email =
         RegistrationValidationService.normalizeEmail(user.email ?? "");
@@ -106,10 +112,15 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       phone: "",
       normalizedPhone: "",
     );
-    await userRef.set(
+    debugPrint(
+        "REGISTRATION STAGE START: pending_registration uid=${user.uid}");
+    await draftRef.set(
       {
         ...(pending ?? fallback).toUserDocument(),
         "uid": user.uid,
+        "active": false,
+        "draft": true,
+        "pendingRegistration": true,
       },
       SetOptions(merge: true),
     );
@@ -163,16 +174,61 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
             }
 
             if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                ensureRegistrationDocument(user).then((_) {
-                  RegistrationValidationService.clearPending(user.email ?? "");
-                  if (mounted) setState(() {});
-                }).catchError((_) {
-                  if (mounted) setState(() {});
-                });
-              });
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
+              return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                future: FirebaseFirestore.instance
+                    .collection("pending_registrations")
+                    .doc(user.uid)
+                    .get(),
+                builder: (context, draftSnapshot) {
+                  if (draftSnapshot.connectionState ==
+                      ConnectionState.waiting) {
+                    return const Scaffold(
+                      body: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+
+                  if (!draftSnapshot.hasData || !draftSnapshot.data!.exists) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      ensureRegistrationDocument(user).then((_) {
+                        RegistrationValidationService.clearPending(
+                          user.email ?? "",
+                        );
+                        if (mounted) setState(() {});
+                      }).catchError((_) {
+                        if (mounted) setState(() {});
+                      });
+                    });
+                    return const Scaffold(
+                      body: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+
+                  final draftData = draftSnapshot.data!.data();
+                  final role = draftData?["role"]?.toString() == "employer"
+                      ? "employer"
+                      : "worker";
+                  if (!LegalDocuments.hasAcceptedCurrentVersion(
+                    draftData,
+                    role,
+                  )) {
+                    return LegalAcceptanceScreen(
+                      role: role,
+                      userId: user.uid,
+                      onAccepted: (_) async {
+                        debugPrint("LEGALS ACCEPTED: uid=${user.uid}");
+                        if (!mounted) return;
+                        setState(() {});
+                      },
+                    );
+                  }
+
+                  return ProfileScreen(
+                    onProfileSaved: () {
+                      if (!mounted) return;
+                      setState(() {});
+                    },
+                  );
+                },
               );
             }
 
