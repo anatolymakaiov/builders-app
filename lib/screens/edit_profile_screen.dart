@@ -92,8 +92,53 @@ class _ProfileScreenState extends State<ProfileScreen>
   Timer? emailVerificationTimer;
   String loadedBillingEmail = "";
   String loadedPhone = "";
+  String verifiedEmail = "";
+  String verifiedNormalizedEmail = "";
+  String verifiedPhone = "";
+  String verifiedNormalizedPhone = "";
 
   String get userId => FirebaseAuth.instance.currentUser!.uid;
+
+  String normalizeEmailValue(String value) =>
+      RegistrationValidationService.normalizeEmail(value);
+
+  String normalizePhoneValue(String value) =>
+      RegistrationValidationService.normalizePhone(value);
+
+  String currentProfileEmail() {
+    if (role == "employer") return billingEmailController.text.trim();
+    return (FirebaseAuth.instance.currentUser?.email ?? "").trim();
+  }
+
+  bool isCurrentEmailVerified() {
+    final currentEmail = normalizeEmailValue(currentProfileEmail());
+    if (currentEmail.isEmpty) return false;
+    final verifiedEmailValue = normalizeEmailValue(
+        verifiedNormalizedEmail.isNotEmpty
+            ? verifiedNormalizedEmail
+            : verifiedEmail);
+    final firebaseEmail =
+        normalizeEmailValue(FirebaseAuth.instance.currentUser?.email ?? "");
+    final firebaseVerifiedForCurrent =
+        FirebaseAuth.instance.currentUser?.emailVerified == true &&
+            firebaseEmail == currentEmail;
+    return (emailVerified && verifiedEmailValue == currentEmail) ||
+        (role == "employer" &&
+            billingEmailVerified &&
+            verifiedEmailValue == currentEmail) ||
+        firebaseVerifiedForCurrent;
+  }
+
+  bool isCurrentPhoneVerified() {
+    final currentPhone = normalizePhoneValue(phoneController.text);
+    if (currentPhone.isEmpty) return false;
+    final verifiedPhoneValue = normalizePhoneValue(
+      verifiedNormalizedPhone.isNotEmpty
+          ? verifiedNormalizedPhone
+          : verifiedPhone,
+    );
+    return phoneVerified && verifiedPhoneValue == currentPhone;
+  }
 
   @override
   void initState() {
@@ -243,6 +288,20 @@ class _ProfileScreenState extends State<ProfileScreen>
       phoneVerified = data["phoneVerified"] == true;
       billingEmailVerified = data["billingEmailVerified"] == true ||
           billing["billingEmailVerified"] == true;
+      verifiedEmail = (data["verifiedEmail"] ??
+              data["verifiedNormalizedEmail"] ??
+              (emailVerified || billingEmailVerified ? loadedBillingEmail : ""))
+          .toString();
+      verifiedNormalizedEmail = normalizeEmailValue(
+        (data["verifiedNormalizedEmail"] ?? verifiedEmail).toString(),
+      );
+      verifiedPhone = (data["verifiedPhone"] ??
+              data["verifiedNormalizedPhone"] ??
+              (phoneVerified ? loadedPhone : ""))
+          .toString();
+      verifiedNormalizedPhone = normalizePhoneValue(
+        (data["verifiedNormalizedPhone"] ?? verifiedPhone).toString(),
+      );
       invoiceLegalCompanyNameController.text =
           invoiceDetails["legalCompanyName"]?.toString() ??
               data["companyName"]?.toString() ??
@@ -524,9 +583,13 @@ class _ProfileScreenState extends State<ProfileScreen>
       await user.reload();
       final refreshed = FirebaseAuth.instance.currentUser ?? user;
       if (refreshed.emailVerified) {
+        final refreshedEmail = refreshed.email?.trim() ?? "";
+        final normalizedEmail = normalizeEmailValue(refreshedEmail);
         await FirebaseFirestore.instance.collection("users").doc(userId).set({
           "emailVerified": true,
           "emailVerifiedAt": FieldValue.serverTimestamp(),
+          "verifiedEmail": refreshedEmail,
+          "verifiedNormalizedEmail": normalizedEmail,
           if (role == "employer" &&
               refreshed.email?.toLowerCase() ==
                   billingEmailController.text.trim().toLowerCase()) ...{
@@ -542,6 +605,8 @@ class _ProfileScreenState extends State<ProfileScreen>
         if (!mounted) return;
         setState(() {
           emailVerified = true;
+          verifiedEmail = refreshedEmail;
+          verifiedNormalizedEmail = normalizedEmail;
           billingEmailVerified = role == "employer"
               ? refreshed.email?.toLowerCase() ==
                   billingEmailController.text.trim().toLowerCase()
@@ -588,6 +653,8 @@ class _ProfileScreenState extends State<ProfileScreen>
       await user.reload();
       final refreshed = FirebaseAuth.instance.currentUser ?? user;
       final verified = refreshed.emailVerified;
+      final refreshedEmail = refreshed.email?.trim() ?? "";
+      final normalizedEmail = normalizeEmailValue(refreshedEmail);
       final billingMatches = refreshed.email?.toLowerCase() ==
           billingEmailController.text.trim().toLowerCase();
 
@@ -595,6 +662,8 @@ class _ProfileScreenState extends State<ProfileScreen>
         await FirebaseFirestore.instance.collection("users").doc(userId).set({
           "emailVerified": true,
           "emailVerifiedAt": FieldValue.serverTimestamp(),
+          "verifiedEmail": refreshedEmail,
+          "verifiedNormalizedEmail": normalizedEmail,
           "authPreferences": {
             "email": refreshed.email,
             "emailVerified": true,
@@ -618,6 +687,10 @@ class _ProfileScreenState extends State<ProfileScreen>
           billingEmailVerified = verified;
         }
         emailVerified = verified;
+        if (verified) {
+          verifiedEmail = refreshedEmail;
+          verifiedNormalizedEmail = normalizedEmail;
+        }
       });
       if (!silent) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -723,6 +796,21 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Future<void> verifyPhoneFromDialog() async {
     final phone = phoneController.text.trim();
+    final availability =
+        await RegistrationValidationService().checkPhoneAvailability(phone);
+    if (!availability.available) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            availability.blockingMessage ??
+                "An active account with this phone number already exists.",
+          ),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -767,13 +855,22 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
     if (verified != true) return;
 
+    final verifiedPhoneValue = phoneController.text.trim();
+    final verifiedNormalizedPhoneValue =
+        normalizePhoneValue(verifiedPhoneValue);
     await FirebaseFirestore.instance.collection("users").doc(userId).set({
       "phoneVerified": true,
       "phoneVerifiedAt": FieldValue.serverTimestamp(),
+      "verifiedPhone": verifiedPhoneValue,
+      "verifiedNormalizedPhone": verifiedNormalizedPhoneValue,
       "updatedAt": FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
     if (!mounted) return;
-    setState(() => phoneVerified = true);
+    setState(() {
+      phoneVerified = true;
+      verifiedPhone = verifiedPhoneValue;
+      verifiedNormalizedPhone = verifiedNormalizedPhoneValue;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Phone verified")),
     );
@@ -953,19 +1050,48 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     await refreshEmailVerification(silent: true);
     final authUser = FirebaseAuth.instance.currentUser;
-    final billingEmailMatchesAuth =
-        authUser?.email?.toLowerCase() == billingEmail.toLowerCase();
-    final effectiveBillingEmailVerified =
-        billingEmailChanged ? false : billingEmailVerified;
-    final effectivePhoneVerified = phoneChanged ? false : phoneVerified;
-    final emailIsVerified = role == "employer"
-        ? effectiveBillingEmailVerified ||
-            (billingEmailMatchesAuth && authUser?.emailVerified == true)
-        : emailVerified || authUser?.emailVerified == true;
-    if (firstProfileCreation && (!emailIsVerified || !effectivePhoneVerified)) {
+    final emailIsVerified = isCurrentEmailVerified();
+    final phoneIsVerified = isCurrentPhoneVerified();
+
+    if (phoneChanged) {
+      final phoneAvailability =
+          await RegistrationValidationService().checkPhoneAvailability(phone);
+      if (!phoneAvailability.available) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              phoneAvailability.blockingMessage ??
+                  "An active account with this phone number already exists.",
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    if (firstProfileCreation && (!emailIsVerified || !phoneIsVerified)) {
       await showVerificationRequiredDialog(
         requireEmail: !emailIsVerified,
-        requirePhone: !effectivePhoneVerified,
+        requirePhone: !phoneIsVerified,
+      );
+      return;
+    }
+
+    if (!firstProfileCreation &&
+        ((billingEmailChanged && !emailIsVerified) ||
+            (phoneChanged && !phoneIsVerified))) {
+      await showVerificationRequiredDialog(
+        requireEmail: billingEmailChanged && !emailIsVerified,
+        requirePhone: phoneChanged && !phoneIsVerified,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Please verify your updated email address and phone number before continuing.",
+          ),
+        ),
       );
       return;
     }
@@ -997,9 +1123,22 @@ class _ProfileScreenState extends State<ProfileScreen>
         "address": locationController.text.trim(),
         "updatedAt": FieldValue.serverTimestamp(),
       };
-      if (phoneChanged) {
+      if (emailIsVerified) {
+        final currentEmail = currentProfileEmail();
+        profileData["emailVerified"] = true;
+        profileData["verifiedEmail"] = currentEmail;
+        profileData["verifiedNormalizedEmail"] =
+            normalizeEmailValue(currentEmail);
+      }
+      if (!phoneIsVerified) {
         profileData["phoneVerified"] = false;
         profileData["phoneVerifiedAt"] = FieldValue.delete();
+        profileData["verifiedPhone"] = FieldValue.delete();
+        profileData["verifiedNormalizedPhone"] = FieldValue.delete();
+      } else {
+        profileData["phoneVerified"] = true;
+        profileData["verifiedPhone"] = phone;
+        profileData["verifiedNormalizedPhone"] = normalizedPhone;
       }
 
       final savedPhotoUrl = photoUrl?.trim();
@@ -1042,9 +1181,11 @@ class _ProfileScreenState extends State<ProfileScreen>
             authUser?.email?.toLowerCase() == billingEmail.toLowerCase() &&
                 authUser?.emailVerified == true;
         final nextBillingEmailVerified = verifiedByAuth ||
-            (!billingEmailChanged &&
-                billingEmailVerified &&
-                billingEmail.toLowerCase() == loadedBillingEmail.toLowerCase());
+            (billingEmailVerified &&
+                normalizeEmailValue(billingEmail) ==
+                    normalizeEmailValue(verifiedNormalizedEmail.isNotEmpty
+                        ? verifiedNormalizedEmail
+                        : verifiedEmail));
         savedBillingEmailVerified = nextBillingEmailVerified;
         final invoiceDetails = {
           "legalCompanyName": invoiceLegalCompanyNameController.text.trim(),
@@ -1070,6 +1211,11 @@ class _ProfileScreenState extends State<ProfileScreen>
           "billingEmailVerifiedAt": nextBillingEmailVerified
               ? FieldValue.serverTimestamp()
               : FieldValue.delete(),
+          "verifiedEmail":
+              nextBillingEmailVerified ? billingEmail : verifiedEmail,
+          "verifiedNormalizedEmail": nextBillingEmailVerified
+              ? normalizeEmailValue(billingEmail)
+              : verifiedNormalizedEmail,
           "billing": {
             "billingEmail": billingEmail,
             "billingEmailVerified": nextBillingEmailVerified,
@@ -1138,6 +1284,12 @@ class _ProfileScreenState extends State<ProfileScreen>
           .doc(userId)
           .set(profileData, SetOptions(merge: true));
 
+      await RegistrationValidationService().updatePhoneIndexesForUser(
+        uid: userId,
+        phone: phone,
+        previousPhone: loadedPhone,
+      );
+
       if (!mounted) return;
 
       setState(() {
@@ -1146,10 +1298,18 @@ class _ProfileScreenState extends State<ProfileScreen>
         headerImageFile = null;
         extraPhones = cleanedPhones;
         firstProfileCreation = false;
-        phoneVerified = phoneChanged ? false : phoneVerified;
+        phoneVerified = phoneIsVerified;
         billingEmailVerified = savedBillingEmailVerified;
         loadedBillingEmail = billingEmail;
         loadedPhone = phone;
+        if (phoneIsVerified) {
+          verifiedPhone = phone;
+          verifiedNormalizedPhone = normalizedPhone;
+        }
+        if (emailIsVerified) {
+          verifiedEmail = currentProfileEmail();
+          verifiedNormalizedEmail = normalizeEmailValue(currentProfileEmail());
+        }
         if (shouldRequestLegalAcceptance || legalAcceptedForCurrentVersion) {
           legalAcceptedForCurrentVersion = true;
         }
@@ -1566,8 +1726,8 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget buildVerificationPanel() {
-    final authUser = FirebaseAuth.instance.currentUser;
-    final emailVerified = this.emailVerified || authUser?.emailVerified == true;
+    final emailVerified = isCurrentEmailVerified();
+    final phoneVerified = isCurrentPhoneVerified();
     return StroykaSurface(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
@@ -1604,18 +1764,24 @@ class _ProfileScreenState extends State<ProfileScreen>
             ],
           ),
           const SizedBox(height: 8),
-          const Row(
+          Row(
             children: [
               Icon(
-                Icons.sms_failed_outlined,
-                color: AppColors.warning,
+                phoneVerified ? Icons.verified : Icons.sms_failed_outlined,
+                color: phoneVerified ? AppColors.success : AppColors.warning,
               ),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  "Phone verification prepared. SMS provider is not configured yet.",
-                  style: TextStyle(fontWeight: FontWeight.w800),
+                  phoneVerified
+                      ? "Phone verified"
+                      : "Phone verification prepared. SMS provider is not configured yet.",
+                  style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
+              ),
+              TextButton(
+                onPressed: verifyPhoneFromDialog,
+                child: Text(phoneVerified ? "Refresh" : "Verify"),
               ),
             ],
           ),
@@ -1708,8 +1874,8 @@ class _ProfileScreenState extends State<ProfileScreen>
     final accountEmail = (FirebaseAuth.instance.currentUser?.email ??
             billingEmailController.text.trim())
         .trim();
-    final inlineEmailVerified = emailVerified ||
-        FirebaseAuth.instance.currentUser?.emailVerified == true;
+    final inlineEmailVerified = isCurrentEmailVerified();
+    final inlinePhoneVerified = isCurrentPhoneVerified();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1762,11 +1928,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             decoration: const InputDecoration(labelText: "Phone"),
           ),
           buildInlineVerificationStatus(
-            verified: phoneVerified &&
-                RegistrationValidationService.normalizePhone(
-                      phoneController.text,
-                    ) ==
-                    RegistrationValidationService.normalizePhone(loadedPhone),
+            verified: inlinePhoneVerified,
             verifiedText: "Verified",
             unverifiedText: "Not verified",
           ),
@@ -1979,12 +2141,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
           ),
           buildInlineVerificationStatus(
-            verified: (billingEmailVerified &&
-                    billingEmailController.text.trim().toLowerCase() ==
-                        loadedBillingEmail.toLowerCase()) ||
-                (FirebaseAuth.instance.currentUser?.email?.toLowerCase() ==
-                        billingEmailController.text.trim().toLowerCase() &&
-                    FirebaseAuth.instance.currentUser?.emailVerified == true),
+            verified: isCurrentEmailVerified(),
             verifiedText: "Verified",
             unverifiedText: "Not verified",
           ),
@@ -2008,11 +2165,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             decoration: const InputDecoration(labelText: "Main phone"),
           ),
           buildInlineVerificationStatus(
-            verified: phoneVerified &&
-                RegistrationValidationService.normalizePhone(
-                      phoneController.text,
-                    ) ==
-                    RegistrationValidationService.normalizePhone(loadedPhone),
+            verified: inlinePhoneVerified,
             verifiedText: "Verified",
             unverifiedText: "Not verified",
           ),
