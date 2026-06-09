@@ -21,6 +21,7 @@ class MyApplicationsScreen extends StatefulWidget {
 
 class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   String statusFilter = "all";
+  String applicationSection = "single";
   int refreshTick = 0;
 
   Future<void> refreshApplications() async {
@@ -68,6 +69,46 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     final minute = date.minute.toString().padLeft(2, "0");
 
     return "Applied $day/$month/$year $hour:$minute";
+  }
+
+  String latestActivityText(Map<String, dynamic> data) {
+    final date = ApplicationStatusUtils.getStatusSortTimestamp(data);
+    if (date.millisecondsSinceEpoch == 0) return "";
+    final day = date.day.toString().padLeft(2, "0");
+    final month = date.month.toString().padLeft(2, "0");
+    final year = date.year.toString();
+    final hour = date.hour.toString().padLeft(2, "0");
+    final minute = date.minute.toString().padLeft(2, "0");
+    return "Latest update $day/$month/$year $hour:$minute";
+  }
+
+  bool isTeamApplication(Map<String, dynamic> data) {
+    final type = (data["applicationType"] ?? data["type"])
+        ?.toString()
+        .toLowerCase()
+        .trim();
+    final teamId = data["teamId"]?.toString().trim() ?? "";
+    return type == "team" || teamId.isNotEmpty;
+  }
+
+  bool isSingleApplication(Map<String, dynamic> data) {
+    final type = (data["applicationType"] ?? data["type"])
+        ?.toString()
+        .toLowerCase()
+        .trim();
+    if (type == "single") return true;
+    return !isTeamApplication(data);
+  }
+
+  String teamNameFromApplication(Map<String, dynamic> data) {
+    final name = (data["teamName"] ??
+            data["team"] ??
+            data["teamTitle"] ??
+            data["applicantName"] ??
+            "")
+        .toString()
+        .trim();
+    return name.isEmpty ? "Team application" : name;
   }
 
   bool jobUnavailableForWorker(Job job) {
@@ -296,7 +337,16 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text("My Applications")),
+      appBar: AppBar(
+        title: const Text("Applications"),
+        actions: [
+          SizedBox(
+            width: 230,
+            child: buildApplicationSectionToggle(),
+          ),
+          const SizedBox(width: 12),
+        ],
+      ),
       body: StroykaScreenBody(
         child: Column(
           children: [
@@ -316,105 +366,135 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                     return const Center(child: Text("Error loading"));
                   }
 
-                  final apps = snapshot.data!.where((doc) {
+                  final filteredApps = snapshot.data!.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final status = canonicalStatus(data["status"]);
 
                     return matchesStatusFilter(status);
                   }).toList();
 
-                  apps.sort((a, b) {
-                    final aData = a.data() as Map<String, dynamic>;
-                    final bData = b.data() as Map<String, dynamic>;
-                    return ApplicationStatusUtils.compareNewestFirst(
-                      aData,
-                      bData,
-                    );
-                  });
+                  final singleApps = filteredApps.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return isSingleApplication(data);
+                  }).toList();
 
-                  if (apps.isEmpty) {
-                    return RefreshIndicator(
-                      onRefresh: refreshApplications,
-                      child: ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: const [
-                          SizedBox(height: 220),
-                          Center(child: Text("No applications")),
-                        ],
-                      ),
-                    );
+                  final teamApps = filteredApps.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return isTeamApplication(data);
+                  }).toList();
+
+                  void sortApplications(List<QueryDocumentSnapshot> apps) {
+                    apps.sort((a, b) {
+                      final aData = a.data() as Map<String, dynamic>;
+                      final bData = b.data() as Map<String, dynamic>;
+                      return ApplicationStatusUtils.compareNewestFirst(
+                        aData,
+                        bData,
+                      );
+                    });
                   }
 
-                  return RefreshIndicator(
-                    onRefresh: refreshApplications,
-                    child: ListView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      itemCount: apps.length,
-                      itemBuilder: (context, index) {
-                        final data = apps[index].data() as Map<String, dynamic>;
-                        final isUnread = ApplicationActivityService.isUnreadFor(
-                          data,
-                          user.uid,
-                        );
+                  sortApplications(singleApps);
+                  sortApplications(teamApps);
 
-                        final status = canonicalStatus(data["status"]);
-                        final jobDocId = data["jobId"]?.toString() ?? "";
-                        final fallbackJob = fallbackJobFromApplication(
-                          jobDocId.isEmpty ? apps[index].id : jobDocId,
-                          data,
-                        );
+                  final apps =
+                      applicationSection == "team" ? teamApps : singleApps;
+                  final emptyText = applicationSection == "team"
+                      ? "You have no team applications yet."
+                      : "You have no single applications yet.";
 
-                        if (jobDocId.isEmpty) {
-                          return buildCard(
-                            fallbackJob,
-                            status,
-                            apps[index].id,
-                            appliedAt: data["createdAt"],
-                            isUnread: isUnread,
-                            userId: user.uid,
-                          );
-                        }
-
-                        return StreamBuilder<DocumentSnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection("jobs")
-                              .doc(jobDocId)
-                              .snapshots(),
-                          builder: (context, jobSnapshot) {
-                            if (!jobSnapshot.hasData ||
-                                jobSnapshot.hasError ||
-                                !jobSnapshot.data!.exists) {
-                              return buildCard(
-                                fallbackJob,
-                                status,
-                                apps[index].id,
-                                appliedAt: data["createdAt"],
-                                isUnread: isUnread,
-                                userId: user.uid,
+                  final content = apps.isEmpty
+                      ? RefreshIndicator(
+                          onRefresh: refreshApplications,
+                          child: ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              const SizedBox(height: 220),
+                              Center(child: Text(emptyText)),
+                            ],
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: refreshApplications,
+                          child: ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            itemCount: apps.length,
+                            itemBuilder: (context, index) {
+                              final data =
+                                  apps[index].data() as Map<String, dynamic>;
+                              final isUnread =
+                                  ApplicationActivityService.isUnreadFor(
+                                data,
+                                user.uid,
                               );
-                            }
 
-                            final jobData = jobSnapshot.data!.data()
-                                as Map<String, dynamic>;
+                              final status = canonicalStatus(data["status"]);
+                              final jobDocId = data["jobId"]?.toString() ?? "";
+                              final fallbackJob = fallbackJobFromApplication(
+                                jobDocId.isEmpty ? apps[index].id : jobDocId,
+                                data,
+                              );
+                              final isTeam = isTeamApplication(data);
 
-                            final job = Job.fromFirestore(
-                              jobSnapshot.data!.id,
-                              jobData,
-                            );
+                              if (jobDocId.isEmpty) {
+                                return buildCard(
+                                  fallbackJob,
+                                  status,
+                                  apps[index].id,
+                                  appliedAt: data["createdAt"],
+                                  isUnread: isUnread,
+                                  userId: user.uid,
+                                  applicationData: data,
+                                  isTeamApplication: isTeam,
+                                );
+                              }
 
-                            return buildCard(
-                              job,
-                              status,
-                              apps[index].id,
-                              appliedAt: data["createdAt"],
-                              isUnread: isUnread,
-                              userId: user.uid,
-                            );
-                          },
+                              return StreamBuilder<DocumentSnapshot>(
+                                stream: FirebaseFirestore.instance
+                                    .collection("jobs")
+                                    .doc(jobDocId)
+                                    .snapshots(),
+                                builder: (context, jobSnapshot) {
+                                  if (!jobSnapshot.hasData ||
+                                      jobSnapshot.hasError ||
+                                      !jobSnapshot.data!.exists) {
+                                    return buildCard(
+                                      fallbackJob,
+                                      status,
+                                      apps[index].id,
+                                      appliedAt: data["createdAt"],
+                                      isUnread: isUnread,
+                                      userId: user.uid,
+                                      applicationData: data,
+                                      isTeamApplication: isTeam,
+                                    );
+                                  }
+
+                                  final jobData = jobSnapshot.data!.data()
+                                      as Map<String, dynamic>;
+
+                                  final job = Job.fromFirestore(
+                                    jobSnapshot.data!.id,
+                                    jobData,
+                                  );
+
+                                  return buildCard(
+                                    job,
+                                    status,
+                                    apps[index].id,
+                                    appliedAt: data["createdAt"],
+                                    isUnread: isUnread,
+                                    userId: user.uid,
+                                    applicationData: data,
+                                    isTeamApplication: isTeam,
+                                  );
+                                },
+                              );
+                            },
+                          ),
                         );
-                      },
-                    ),
-                  );
+
+                  return content;
                 },
               ),
             ),
@@ -424,7 +504,136 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     );
   }
 
+  Widget buildApplicationSectionToggle() {
+    Widget tab({
+      required String value,
+      required String label,
+    }) {
+      final selected = applicationSection == value;
+      return Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => setState(() => applicationSection = value),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: selected ? AppColors.blueprintLine : Colors.transparent,
+                width: 1.4,
+              ),
+            ),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        tab(value: "single", label: "Single Application"),
+        const SizedBox(width: 14),
+        tab(value: "team", label: "Team Application"),
+      ],
+    );
+  }
+
   /// 🔥 reusable card
+  Widget teamApplicationInfo(Map<String, dynamic> data) {
+    final teamName = teamNameFromApplication(data);
+    final latest = latestActivityText(data);
+    final offerStatus = statusLabel(canonicalStatus(data["status"]));
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppColors.blueprintLine.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Team: $teamName",
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.ink,
+              fontWeight: FontWeight.w900,
+              fontSize: 13,
+            ),
+          ),
+          if (latest.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Text(
+              latest,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ],
+          const SizedBox(height: 3),
+          Text(
+            "Offer status: $offerStatus",
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget? cardBottomAction({
+    required bool unavailable,
+    required String unavailableMessage,
+    required bool isTeamApplication,
+    required Map<String, dynamic>? applicationData,
+  }) {
+    final children = <Widget>[];
+    if (isTeamApplication && applicationData != null) {
+      children.add(teamApplicationInfo(applicationData));
+    }
+    if (unavailable) {
+      children.add(unavailableJobNotice(unavailableMessage));
+    }
+    if (children.isEmpty) return null;
+    if (children.length == 1) return children.first;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var index = 0; index < children.length; index++) ...[
+          if (index > 0) const SizedBox(height: 8),
+          children[index],
+        ],
+      ],
+    );
+  }
+
   List<Widget> buildOfferDetails(Map<String, dynamic> offer) {
     final rows = <Widget>[];
 
@@ -480,6 +689,8 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     dynamic appliedAt,
     required bool isUnread,
     required String userId,
+    Map<String, dynamic>? applicationData,
+    bool isTeamApplication = false,
   }) {
     final unavailable = jobUnavailableForWorker(job);
     final unavailableMessage = unavailableJobMessage(job);
@@ -489,9 +700,15 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       unread: isUnread,
       statusText: statusLabel(status),
       statusColor: getStatusColor(status),
-      detailText: applicationDateText(appliedAt),
-      bottomAction:
-          unavailable ? unavailableJobNotice(unavailableMessage) : null,
+      detailText: isTeamApplication && applicationData != null
+          ? latestActivityText(applicationData)
+          : applicationDateText(appliedAt),
+      bottomAction: cardBottomAction(
+        unavailable: unavailable,
+        unavailableMessage: unavailableMessage,
+        isTeamApplication: isTeamApplication,
+        applicationData: applicationData,
+      ),
       onTap: () async {
         await ApplicationActivityService.markRead(applicationId, userId);
         if (!mounted) return;
