@@ -155,31 +155,44 @@ class RegistrationIdentityService {
     required String email,
     required String phone,
   }) async {
-    try {
-      final errors = <String>[];
+    final errors = <String>[];
 
+    try {
       final emailAvailability = await checkEmailAvailability(email);
       if (!emailAvailability.available &&
           emailAvailability.blockingMessage != null) {
         errors.add(emailAvailability.blockingMessage!);
       }
+    } on FirebaseException catch (error) {
+      if (error.code == "permission-denied" || error.code == "unavailable") {
+        debugPrint(
+          "EMAIL DUPLICATE VALIDATION SKIPPED: ${error.code}. Registration will rely on Firebase Auth.",
+        );
+      } else {
+        rethrow;
+      }
+    }
 
+    try {
       final phoneAvailability = await checkPhoneAvailability(phone);
       if (!phoneAvailability.available &&
           phoneAvailability.blockingMessage != null) {
         errors.add(phoneAvailability.blockingMessage!);
       }
-
-      return RegistrationValidationResult(errors);
     } on FirebaseException catch (error) {
       if (error.code == "permission-denied" || error.code == "unavailable") {
         debugPrint(
-          "DUPLICATE VALIDATION SKIPPED: ${error.code}. Registration will rely on Firebase Auth.",
+          "PHONE DUPLICATE VALIDATION FAILED: ${error.code}. Registration blocked until phone can be checked.",
         );
-        return const RegistrationValidationResult([]);
+        errors.add(
+          "Could not verify this phone number. Please try again.",
+        );
+      } else {
+        rethrow;
       }
-      rethrow;
     }
+
+    return RegistrationValidationResult(errors);
   }
 
   Future<IdentityAvailabilityResult> checkEmailAvailability(
@@ -243,9 +256,23 @@ class RegistrationIdentityService {
       identity: normalizedPhone,
     );
     if (blockedByIndex) {
+      _logPhoneDuplicateCheck(
+        normalizedPhone: normalizedPhone,
+        source: "phoneIndex",
+        activeDuplicate: true,
+      );
       return const IdentityAvailabilityResult.blocked(
         "An active account with this phone number already exists.",
       );
+    }
+
+    if (FirebaseAuth.instance.currentUser == null) {
+      _logPhoneDuplicateCheck(
+        normalizedPhone: normalizedPhone,
+        source: "phoneIndex_pre_auth",
+        activeDuplicate: false,
+      );
+      return const IdentityAvailabilityResult.available();
     }
 
     if (normalizedPhone.isNotEmpty) {
@@ -256,6 +283,11 @@ class RegistrationIdentityService {
         value: normalizedPhone,
       );
       if (blockedByNormalizedPhone) {
+        _logPhoneDuplicateCheck(
+          normalizedPhone: normalizedPhone,
+          source: "users.normalizedPhone",
+          activeDuplicate: true,
+        );
         return const IdentityAvailabilityResult.blocked(
           "An active account with this phone number already exists.",
         );
@@ -270,6 +302,11 @@ class RegistrationIdentityService {
         value: rawPhone,
       );
       if (blockedByRawPhone) {
+        _logPhoneDuplicateCheck(
+          normalizedPhone: normalizedPhone,
+          source: "users.phone",
+          activeDuplicate: true,
+        );
         return const IdentityAvailabilityResult.blocked(
           "An active account with this phone number already exists.",
         );
@@ -282,13 +319,60 @@ class RegistrationIdentityService {
         value: rawPhone,
       );
       if (blockedByPhonesArray) {
+        _logPhoneDuplicateCheck(
+          normalizedPhone: normalizedPhone,
+          source: "users.phones",
+          activeDuplicate: true,
+        );
         return const IdentityAvailabilityResult.blocked(
           "An active account with this phone number already exists.",
         );
       }
     }
 
+    _logPhoneDuplicateCheck(
+      normalizedPhone: normalizedPhone,
+      source: "users",
+      activeDuplicate: false,
+    );
     return const IdentityAvailabilityResult.available();
+  }
+
+  Future<void> updatePhoneIndexesForUser({
+    required String uid,
+    required String phone,
+    String? previousPhone,
+  }) async {
+    final normalizedPhone = normalizePhone(phone);
+    final normalizedPrevious = normalizePhone(previousPhone ?? "");
+
+    if (normalizedPrevious.isNotEmpty &&
+        normalizedPrevious != normalizedPhone) {
+      for (final collection in ["phoneIndex", "registrationPhoneIndex"]) {
+        await _markIndexInactive(
+          collectionName: collection,
+          documentId: normalizedPrevious,
+          reason: "phone_changed",
+          previousUserId: uid,
+        );
+      }
+    }
+
+    if (normalizedPhone.isEmpty) return;
+
+    for (final collection in ["phoneIndex", "registrationPhoneIndex"]) {
+      await firestore.collection(collection).doc(normalizedPhone).set({
+        "uid": uid,
+        "userId": uid,
+        "normalizedPhone": normalizedPhone,
+        "active": true,
+        "deleted": false,
+        "stale": false,
+        "kind": "phone",
+        "updatedAt": FieldValue.serverTimestamp(),
+        "createdAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
   }
 
   Future<bool> hasActiveAccountForEmail(String email) async {
@@ -419,6 +503,32 @@ class RegistrationIdentityService {
     }
 
     final uid = _uidFromIndex(data);
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid != null && uid == currentUid) {
+      _logDuplicateDiagnostic(
+        title: "DUPLICATE ${kind.toUpperCase()} CHECK CURRENT USER IGNORED",
+        source: collectionName,
+        document: "$collectionName/$documentId",
+        field: kind,
+        data: data,
+        uid: uid,
+      );
+      return false;
+    }
+
+    if (FirebaseAuth.instance.currentUser == null) {
+      _logDuplicateDiagnostic(
+        title: "DUPLICATE ${kind.toUpperCase()} CHECK BLOCKED BY",
+        source: collectionName,
+        document: "$collectionName/$documentId",
+        field: kind,
+        data: data,
+        uid: uid,
+        extra: "active lookup index matched before auth",
+      );
+      return true;
+    }
+
     if (uid == null || uid.isEmpty) {
       _logDuplicateDiagnostic(
         title: "DUPLICATE ${kind.toUpperCase()} CHECK STALE INDEX FOUND",
@@ -506,6 +616,18 @@ class RegistrationIdentityService {
     var hasActive = false;
     for (final doc in snapshot.docs) {
       final data = doc.data();
+      if (doc.id == FirebaseAuth.instance.currentUser?.uid) {
+        _logDuplicateDiagnostic(
+          title:
+              "DUPLICATE ${identityKind.toUpperCase()} CHECK CURRENT USER IGNORED",
+          source: source,
+          document: "$source/${doc.id}",
+          field: field,
+          data: data,
+          uid: doc.id,
+        );
+        continue;
+      }
       if (_isActiveAccount(data)) {
         hasActive = true;
         _logDuplicateDiagnostic(
@@ -547,6 +669,18 @@ class RegistrationIdentityService {
     var hasActive = false;
     for (final doc in snapshot.docs) {
       final data = doc.data();
+      if (doc.id == FirebaseAuth.instance.currentUser?.uid) {
+        _logDuplicateDiagnostic(
+          title:
+              "DUPLICATE ${identityKind.toUpperCase()} CHECK CURRENT USER IGNORED",
+          source: source,
+          document: "$source/${doc.id}",
+          field: field,
+          data: data,
+          uid: doc.id,
+        );
+        continue;
+      }
       if (_isActiveAccount(data)) {
         hasActive = true;
         _logDuplicateDiagnostic(
@@ -678,6 +812,16 @@ class RegistrationIdentityService {
         if (status != null) "status: $status",
         if (extra != null) extra,
       ].join("\n"),
+    );
+  }
+
+  void _logPhoneDuplicateCheck({
+    required String normalizedPhone,
+    required String source,
+    required bool activeDuplicate,
+  }) {
+    debugPrint(
+      "PHONE DUPLICATE CHECK: normalizedPhone=$normalizedPhone source=$source activeDuplicate=$activeDuplicate",
     );
   }
 }

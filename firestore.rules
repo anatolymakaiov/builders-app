@@ -243,6 +243,32 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /phoneIndex/{phoneId} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if signedIn()
+        && (
+          isAdmin()
+          || request.resource.data.uid == uid()
+          || request.resource.data.userId == uid()
+          || request.resource.data.previousUserId == uid()
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /registrationPhoneIndex/{phoneId} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if signedIn()
+        && (
+          isAdmin()
+          || request.resource.data.uid == uid()
+          || request.resource.data.userId == uid()
+          || request.resource.data.previousUserId == uid()
+        );
+      allow delete: if isAdmin();
+    }
+
     match /support_requests/{requestId} {
       allow create: if signedIn()
         && request.resource.data.userId == uid()

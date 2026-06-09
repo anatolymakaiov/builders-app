@@ -406,6 +406,22 @@ class _LoginScreenState extends State<LoginScreen> {
             if (currentUser != null &&
                 authPreferences.normalizeEmail(currentUser.email ?? "") ==
                     email) {
+              final currentPhoneAvailability =
+                  await registrationValidation.checkPhoneAvailability(phone);
+              if (!currentPhoneAvailability.available) {
+                RegistrationValidationService.clearPending(email);
+                if (!mounted) return;
+                setState(() => loading = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      currentPhoneAvailability.blockingMessage ??
+                          "An active account with this phone number already exists.",
+                    ),
+                  ),
+                );
+                return;
+              }
               await FirebaseFirestore.instance
                   .collection("users")
                   .doc(currentUser.uid)
@@ -413,6 +429,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 ...pendingDetails.toUserDocument(),
                 "uid": currentUser.uid,
               }, SetOptions(merge: true));
+              await registrationValidation.updatePhoneIndexesForUser(
+                uid: currentUser.uid,
+                phone: phone,
+              );
               debugPrint("Initial user document created");
               RegistrationValidationService.clearPending(email);
               await continueRegistrationOnboarding(
@@ -445,6 +465,31 @@ class _LoginScreenState extends State<LoginScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(message),
+            ),
+          );
+          return;
+        }
+
+        final postAuthPhoneAvailability =
+            await registrationValidation.checkPhoneAvailability(phone);
+        if (!postAuthPhoneAvailability.available) {
+          RegistrationValidationService.clearPending(email);
+          try {
+            await result.user?.delete();
+          } catch (deleteError) {
+            debugPrint(
+              "Could not rollback auth user after duplicate phone: $deleteError",
+            );
+            await FirebaseAuth.instance.signOut();
+          }
+          if (!mounted) return;
+          setState(() => loading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                postAuthPhoneAvailability.blockingMessage ??
+                    "An active account with this phone number already exists.",
+              ),
             ),
           );
           return;
@@ -492,6 +537,10 @@ class _LoginScreenState extends State<LoginScreen> {
           "createdAt": FieldValue.serverTimestamp(),
           "updatedAt": FieldValue.serverTimestamp(),
         });
+        await registrationValidation.updatePhoneIndexesForUser(
+          uid: result.user!.uid,
+          phone: phone,
+        );
         await authPreferences.enrollBiometricLoginForPasswordSession(
           user: result.user!,
           email: email,
