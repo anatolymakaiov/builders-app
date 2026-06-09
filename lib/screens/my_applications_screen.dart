@@ -341,7 +341,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         title: const Text("Applications"),
         actions: [
           SizedBox(
-            width: 230,
+            width: 150,
             child: buildApplicationSectionToggle(),
           ),
           const SizedBox(width: 12),
@@ -543,9 +543,9 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
 
     return Row(
       children: [
-        tab(value: "single", label: "Single Application"),
+        tab(value: "single", label: "Single"),
         const SizedBox(width: 14),
-        tab(value: "team", label: "Team Application"),
+        tab(value: "team", label: "Team"),
       ],
     );
   }
@@ -553,8 +553,6 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   /// 🔥 reusable card
   Widget teamApplicationInfo(Map<String, dynamic> data) {
     final teamName = teamNameFromApplication(data);
-    final latest = latestActivityText(data);
-    final offerStatus = statusLabel(canonicalStatus(data["status"]));
 
     return Container(
       width: double.infinity,
@@ -577,30 +575,6 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
               color: AppColors.ink,
               fontWeight: FontWeight.w900,
               fontSize: 13,
-            ),
-          ),
-          if (latest.isNotEmpty) ...[
-            const SizedBox(height: 3),
-            Text(
-              latest,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.muted,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
-            ),
-          ],
-          const SizedBox(height: 3),
-          Text(
-            "Offer status: $offerStatus",
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.muted,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
             ),
           ),
         ],
@@ -700,9 +674,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       unread: isUnread,
       statusText: statusLabel(status),
       statusColor: getStatusColor(status),
-      detailText: isTeamApplication && applicationData != null
-          ? latestActivityText(applicationData)
-          : applicationDateText(appliedAt),
+      detailText: applicationDateText(appliedAt),
       bottomAction: cardBottomAction(
         unavailable: unavailable,
         unavailableMessage: unavailableMessage,
