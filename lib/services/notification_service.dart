@@ -909,7 +909,10 @@ class NotificationService {
     required Map<String, dynamic> applicationData,
     required Map<String, dynamic> offer,
   }) async {
-    final recipients = applicationRecipients(applicationData);
+    final selectedWorkerIds = offer["selectedWorkerIds"];
+    final recipients = selectedWorkerIds is List && selectedWorkerIds.isNotEmpty
+        ? selectedWorkerIds.map((id) => id.toString()).toSet().toList()
+        : applicationRecipients(applicationData);
     if (recipients.isEmpty) return;
 
     final jobId = applicationData["jobId"]?.toString();

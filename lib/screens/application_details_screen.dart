@@ -15,7 +15,7 @@ import '../widgets/phone_link.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
-class ApplicationDetailsScreen extends StatelessWidget {
+class ApplicationDetailsScreen extends StatefulWidget {
   final String applicationId;
   final Map<String, dynamic> data;
 
@@ -24,6 +24,17 @@ class ApplicationDetailsScreen extends StatelessWidget {
     required this.applicationId,
     required this.data,
   });
+
+  @override
+  State<ApplicationDetailsScreen> createState() =>
+      _ApplicationDetailsScreenState();
+}
+
+class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
+  final Set<String> selectedMembers = <String>{};
+
+  String get applicationId => widget.applicationId;
+  Map<String, dynamic> get data => widget.data;
 
   Future<void> updateStatus(
     BuildContext context,
@@ -389,8 +400,10 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
   Future<void> openOfferDialog(
     BuildContext context,
-    Map<String, dynamic> source,
-  ) async {
+    Map<String, dynamic> source, {
+    List<String> selectedWorkerIds = const [],
+    List<String> selectedWorkerNames = const [],
+  }) async {
     final physicalAddressFields = await loadOfferPhysicalAddressFields(source);
     if (!context.mounted) return;
 
@@ -430,6 +443,15 @@ class ApplicationDetailsScreen extends StatelessWidget {
         // Backward-compatible fields used by the worker screens.
         "startDate": result["startDateTime"],
         "message": result["description"],
+        if (selectedWorkerIds.isNotEmpty) ...{
+          "applicationId": applicationId,
+          "jobId": source["jobId"],
+          "employerId": source["employerId"],
+          "teamId": source["teamId"],
+          "selectedWorkerIds": selectedWorkerIds,
+          "selectedWorkerNames": selectedWorkerNames,
+          "selectedWorkersCount": selectedWorkerIds.length,
+        },
         "createdAt": FieldValue.serverTimestamp(),
       };
       final notificationOffer = Map<String, dynamic>.from(offer)
@@ -439,8 +461,16 @@ class ApplicationDetailsScreen extends StatelessWidget {
       await ApplicationActivityService.updateStatus(
         applicationId: applicationId,
         status: "offer_sent",
-        unreadFor: ApplicationActivityService.workerRecipients(source),
-        extra: {"offer": offer},
+        unreadFor: selectedWorkerIds.isNotEmpty
+            ? selectedWorkerIds
+            : ApplicationActivityService.workerRecipients(source),
+        extra: {
+          "offer": offer,
+          if (selectedWorkerIds.isNotEmpty) ...{
+            "selectedWorkerIds": selectedWorkerIds,
+            "selectedWorkerNames": selectedWorkerNames,
+          },
+        },
       );
 
       try {
@@ -464,6 +494,94 @@ class ApplicationDetailsScreen extends StatelessWidget {
         const SnackBar(content: Text("Could not send offer")),
       );
     }
+  }
+
+  bool isTeamApplication(Map<String, dynamic> source) {
+    final type = (source["applicationType"] ?? source["type"])
+        ?.toString()
+        .toLowerCase()
+        .trim();
+    final teamId = source["teamId"]?.toString().trim() ?? "";
+    return type == "team" || teamId.isNotEmpty;
+  }
+
+  Future<List<String>?> selectedWorkerNamesFor(
+    BuildContext context,
+    List<String> ids,
+  ) async {
+    final names = <String>[];
+    for (final id in ids) {
+      final doc =
+          await FirebaseFirestore.instance.collection("users").doc(id).get();
+      final data = doc.data();
+      final isInactive = !doc.exists ||
+          data?["deleted"] == true ||
+          data?["accountDeleted"] == true ||
+          data?["active"] == false ||
+          data?["status"]?.toString() == "deleted";
+      if (isInactive) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Some selected workers are no longer active."),
+            ),
+          );
+        }
+        return null;
+      }
+      final name =
+          (data?["name"] ?? data?["fullName"] ?? data?["displayName"] ?? "")
+              .toString()
+              .trim();
+      names.add(name.isEmpty ? "Worker" : name);
+    }
+    return names;
+  }
+
+  Future<void> makeOfferForApplication(
+    BuildContext context,
+    Map<String, dynamic> source,
+  ) async {
+    if (!isTeamApplication(source)) {
+      await openOfferDialog(context, source);
+      return;
+    }
+
+    final selectedIds = selectedMembers.toList();
+    if (selectedIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select workers first.")),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Make offer to selected workers?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Yes"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final names = await selectedWorkerNamesFor(context, selectedIds);
+    if (names == null) return;
+    if (!context.mounted) return;
+    await openOfferDialog(
+      context,
+      source,
+      selectedWorkerIds: selectedIds,
+      selectedWorkerNames: names,
+    );
   }
 
   String _jobTypeLabel(String jobType) {
@@ -807,6 +925,8 @@ class ApplicationDetailsScreen extends StatelessWidget {
         final description =
             team?["description"] ?? team?["bio"] ?? source["teamDescription"];
         final avatar = team?["avatarUrl"] ?? team?["photo"] ?? team?["logo"];
+        final allSelected =
+            memberIds.isNotEmpty && memberIds.every(selectedMembers.contains);
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -855,12 +975,34 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.90),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Text(
-                "Team members",
-                style: TextStyle(
-                  color: AppColors.ink,
-                  fontWeight: FontWeight.w900,
-                ),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      "Team members",
+                      style: TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: memberIds.isEmpty
+                        ? null
+                        : () {
+                            setState(() {
+                              if (allSelected) {
+                                selectedMembers.clear();
+                              } else {
+                                selectedMembers
+                                  ..clear()
+                                  ..addAll(memberIds);
+                              }
+                            });
+                          },
+                    child: Text(allSelected ? "Deselect All" : "Select All"),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 10),
@@ -877,50 +1019,46 @@ class ApplicationDetailsScreen extends StatelessWidget {
 
                   final user = snap.data!.data() as Map<String, dynamic>;
                   final photo = user["photo"] ?? user["avatarUrl"];
-                  return StatefulBuilder(
-                    builder: (context, setLocalState) {
-                      final isSelected = selectedMembers.contains(memberId);
+                  final isSelected = selectedMembers.contains(memberId);
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundImage: photo == null
-                                ? null
-                                : NetworkImage(photo.toString()),
-                            child:
-                                photo == null ? const Icon(Icons.person) : null,
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundImage: photo == null
+                            ? null
+                            : NetworkImage(photo.toString()),
+                        child: photo == null ? const Icon(Icons.person) : null,
+                      ),
+                      title: Text(user["name"] ?? "Worker"),
+                      subtitle: Text(user["trade"] ?? ""),
+                      trailing: Checkbox(
+                        value: isSelected,
+                        onChanged: (value) {
+                          setState(() {
+                            if (value == true) {
+                              selectedMembers.add(memberId);
+                            } else {
+                              selectedMembers.remove(memberId);
+                            }
+                          });
+                        },
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => WorkerProfileScreen(
+                              userId: memberId,
+                            ),
                           ),
-                          title: Text(user["name"] ?? "Worker"),
-                          subtitle: Text(user["trade"] ?? ""),
-                          trailing: Checkbox(
-                            value: isSelected,
-                            onChanged: (value) {
-                              setLocalState(() {
-                                if (value == true) {
-                                  selectedMembers.add(memberId);
-                                } else {
-                                  selectedMembers.remove(memberId);
-                                }
-                              });
-                            },
-                          ),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    WorkerProfileScreen(userId: memberId),
-                              ),
-                            );
-                          },
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   );
                 },
               );
@@ -1048,7 +1186,6 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 });
               }
               final status = canonicalStatus(liveData["status"]);
-              final selectedMembers = <String>{};
 
               Widget statusBadge({required bool forEmployer}) {
                 Color color;
@@ -1163,7 +1300,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                       danger: false,
                       icon: Icons.local_offer_outlined,
                       label: "Make Offer",
-                      run: () => openOfferDialog(context, liveData),
+                      run: () => makeOfferForApplication(context, liveData),
                     ),
                     (
                       danger: true,
@@ -1186,7 +1323,7 @@ class ApplicationDetailsScreen extends StatelessWidget {
                       danger: false,
                       icon: Icons.local_offer_outlined,
                       label: "Make Offer",
-                      run: () => openOfferDialog(context, liveData),
+                      run: () => makeOfferForApplication(context, liveData),
                     ),
                     (
                       danger: true,
@@ -1241,6 +1378,21 @@ class ApplicationDetailsScreen extends StatelessWidget {
                     String label,
                     Future<void> Function() run
                   })> workerMenuActions() {
+                bool canCurrentWorkerActOnOffer() {
+                  final offerRaw = liveData["offer"];
+                  final offer = offerRaw is Map
+                      ? Map<String, dynamic>.from(offerRaw)
+                      : <String, dynamic>{};
+                  final selectedWorkerIds = offer["selectedWorkerIds"];
+                  if (selectedWorkerIds is! List || selectedWorkerIds.isEmpty) {
+                    return true;
+                  }
+                  if (currentUserId == null) return false;
+                  return selectedWorkerIds
+                      .map((id) => id.toString())
+                      .contains(currentUserId);
+                }
+
                 if (status == "pending") {
                   return [
                     (
@@ -1264,6 +1416,17 @@ class ApplicationDetailsScreen extends StatelessWidget {
                 }
 
                 if (status == "offer_sent") {
+                  if (!canCurrentWorkerActOnOffer()) {
+                    return [
+                      (
+                        danger: false,
+                        icon: Icons.chat_bubble_outline,
+                        label: "Message",
+                        run: () => openChat(context, liveData),
+                      ),
+                    ];
+                  }
+
                   return [
                     (
                       danger: false,

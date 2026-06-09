@@ -7,6 +7,15 @@ class OfferAcceptanceService {
   const OfferAcceptanceService._();
 
   static int applicationSlotCount(Map<String, dynamic> data) {
+    final offerRaw = data["offer"];
+    final offer = offerRaw is Map
+        ? Map<String, dynamic>.from(offerRaw)
+        : <String, dynamic>{};
+    final selectedWorkerIds = offer["selectedWorkerIds"];
+    if (selectedWorkerIds is List && selectedWorkerIds.isNotEmpty) {
+      return selectedWorkerIds.map((id) => id.toString()).toSet().length;
+    }
+
     final workersCount = data["workersCount"];
     if (workersCount is num && workersCount > 0) return workersCount.toInt();
 
@@ -41,6 +50,19 @@ class OfferAcceptanceService {
       final currentStatus = appData["status"]?.toString() ?? "";
       if (currentStatus == "accepted" || currentStatus == "offer_accepted") {
         return;
+      }
+
+      final offerRaw = appData["offer"];
+      final offer = offerRaw is Map
+          ? Map<String, dynamic>.from(offerRaw)
+          : <String, dynamic>{};
+      final selectedWorkerIds = offer["selectedWorkerIds"];
+      if (selectedWorkerIds is List && selectedWorkerIds.isNotEmpty) {
+        final currentId =
+            currentUserId ?? FirebaseAuth.instance.currentUser?.uid;
+        final allowed =
+            selectedWorkerIds.map((id) => id.toString()).contains(currentId);
+        if (!allowed) throw Exception("worker_not_selected_for_offer");
       }
 
       final jobId = appData["jobId"]?.toString() ?? "";
