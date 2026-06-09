@@ -338,14 +338,9 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Applications"),
-        actions: [
-          SizedBox(
-            width: 150,
-            child: buildApplicationSectionToggle(),
-          ),
-          const SizedBox(width: 12),
-        ],
+        titleSpacing: 0,
+        centerTitle: true,
+        title: buildApplicationSectionToggle(context),
       ),
       body: StroykaScreenBody(
         child: Column(
@@ -504,7 +499,10 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     );
   }
 
-  Widget buildApplicationSectionToggle() {
+  Widget buildApplicationSectionToggle(BuildContext context) {
+    final titleStyle = Theme.of(context).appBarTheme.titleTextStyle ??
+        Theme.of(context).textTheme.titleLarge;
+
     Widget tab({
       required String value,
       required String label,
@@ -530,23 +528,22 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 11,
-              ),
+              style: titleStyle,
             ),
           ),
         ),
       );
     }
 
-    return Row(
-      children: [
-        tab(value: "single", label: "Single"),
-        const SizedBox(width: 14),
-        tab(value: "team", label: "Team"),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 34),
+      child: Row(
+        children: [
+          tab(value: "single", label: "Single"),
+          const SizedBox(width: 48),
+          tab(value: "team", label: "Team"),
+        ],
+      ),
     );
   }
 
