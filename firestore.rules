@@ -112,6 +112,13 @@ service cloud.firestore {
         );
     }
 
+    function isChatActive(chatId) {
+      return exists(/databases/$(database)/documents/chats/$(chatId))
+        && get(/databases/$(database)/documents/chats/$(chatId)).data.canSendMessages != false
+        && get(/databases/$(database)/documents/chats/$(chatId)).data.chatStatus != "inactive"
+        && get(/databases/$(database)/documents/chats/$(chatId)).data.active != false;
+    }
+
     match /users/{userId} {
       allow create: if signedIn() && (isSelf(userId) || isAdmin());
       allow read: if signedIn();
@@ -186,7 +193,15 @@ service cloud.firestore {
           || isPublicJob(resource.data)
         );
       allow update, delete: if isAdmin()
-        || (isEmployer() && resource.data.ownerId == uid());
+        || (
+          isEmployer()
+          && (
+            resource.data.ownerId == uid()
+            || resource.data.employerId == uid()
+            || resource.data.createdBy == uid()
+            || resource.data.userId == uid()
+          )
+        );
     }
 
     match /applications/{applicationId} {
@@ -237,7 +252,9 @@ service cloud.firestore {
       allow delete: if isAdmin();
 
       match /messages/{messageId} {
-        allow create, read: if isAdmin() || isChatParticipant(chatId);
+        allow create: if isAdmin()
+          || (isChatParticipant(chatId) && isChatActive(chatId));
+        allow read: if isAdmin() || isChatParticipant(chatId);
         allow update: if isAdmin() || isChatParticipant(chatId);
         allow delete: if isAdmin();
       }
@@ -248,7 +265,13 @@ service cloud.firestore {
         && request.resource.data.fromUserId == uid()
         && request.resource.data.status == "open";
       allow read: if isAdmin() || resource.data.fromUserId == uid();
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && resource.data.fromUserId == uid()
+          && request.resource.data.fromUserId == uid()
+        );
+      allow delete: if isAdmin();
     }
 
     match /phoneIndex/{phoneId} {
@@ -308,7 +331,13 @@ service cloud.firestore {
         && request.resource.data.userId == uid()
         && request.resource.data.status == "open";
       allow read: if isAdmin() || resource.data.userId == uid();
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && resource.data.userId == uid()
+          && request.resource.data.userId == uid()
+        );
+      allow delete: if isAdmin();
     }
 
     match /admin_inbox_messages/{messageId} {

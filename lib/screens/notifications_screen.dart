@@ -116,6 +116,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
 
     final job = Job.fromFirestore(jobDoc.id, jobDoc.data()!);
+    if (job.isClosed || jobDoc.data()?["deleted"] == true) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("This item is no longer available.")),
+      );
+      return;
+    }
 
     if (!context.mounted) return;
 

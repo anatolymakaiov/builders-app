@@ -129,6 +129,20 @@ class _ChatScreenState extends State<ChatScreen> {
     return chatMembers.where((id) => id != senderId).toList();
   }
 
+  bool isChatInactive(Map<String, dynamic> data) {
+    return data["active"] == false ||
+        data["canSendMessages"] == false ||
+        data["chatStatus"]?.toString() == "inactive";
+  }
+
+  String inactiveChatMessage(Map<String, dynamic> data) {
+    final role = data["participantDeletedRole"]?.toString();
+    if (role == "employer") {
+      return "Conversation inactive. This employer has deleted their profile.";
+    }
+    return "Conversation inactive. This user has deleted their profile.";
+  }
+
   void preloadImages(List<QueryDocumentSnapshot> messages) {
     if (_preloaded) return;
 
@@ -414,6 +428,22 @@ class _ChatScreenState extends State<ChatScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     if (!await ensureChatDataLoaded()) return;
+
+    final chatDoc = await FirebaseFirestore.instance
+        .collection("chats")
+        .doc(widget.chatId)
+        .get();
+    final chatData = chatDoc.data();
+    if (chatData == null || isChatInactive(chatData)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              "Message cannot be sent. This user has deleted their profile."),
+        ),
+      );
+      return;
+    }
 
     final text = controller.text.trim();
     if (text.isEmpty) return;
@@ -988,6 +1018,8 @@ class _ChatScreenState extends State<ChatScreen> {
         }
 
         final chatData = chatSnapshot.data!.data() as Map<String, dynamic>;
+        final inactive = isChatInactive(chatData);
+        final inactiveMessage = inactiveChatMessage(chatData);
 
         final isInternalTeamChat = chatData["type"] == "internal_team";
         final isWorker = uid == chatData["workerId"];
@@ -1394,6 +1426,31 @@ class _ChatScreenState extends State<ChatScreen> {
                                 child: Text("typing..."),
                               ),
                             ),
+                          if (inactive)
+                            Container(
+                              width: double.infinity,
+                              margin: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    AppColors.warning.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color:
+                                      AppColors.warning.withValues(alpha: 0.4),
+                                ),
+                              ),
+                              child: Text(
+                                inactiveMessage,
+                                style: const TextStyle(
+                                  color: AppColors.ink,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
                           SafeArea(
                             child: Container(
                               color: AppColors.navy,
@@ -1416,7 +1473,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                           foregroundColor: Colors.white,
                                         ),
                                         icon: const Icon(Icons.add),
-                                        onPressed: isUploadingMedia
+                                        onPressed: isUploadingMedia || inactive
                                             ? null
                                             : showAttachmentMenu,
                                       ),
@@ -1451,7 +1508,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                               ? Colors.red
                                               : Colors.white,
                                         ),
-                                        onPressed: isUploadingMedia
+                                        onPressed: isUploadingMedia || inactive
                                             ? null
                                             : toggleRecording,
                                       ),
@@ -1461,7 +1518,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                           foregroundColor: AppColors.navy,
                                         ),
                                         icon: const Icon(Icons.send),
-                                        onPressed: isUploadingMedia
+                                        onPressed: isUploadingMedia || inactive
                                             ? null
                                             : sendMessage,
                                       ),

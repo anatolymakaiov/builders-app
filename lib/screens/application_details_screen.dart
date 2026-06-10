@@ -32,6 +32,7 @@ class ApplicationDetailsScreen extends StatefulWidget {
 
 class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
   final Set<String> selectedMembers = <String>{};
+  bool _inactiveApplicationSnackShown = false;
 
   String get applicationId => widget.applicationId;
   Map<String, dynamic> get data => widget.data;
@@ -1186,6 +1187,23 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                 });
               }
               final status = canonicalStatus(liveData["status"]);
+              final inactive = liveData["active"] == false ||
+                  status == "inactive" ||
+                  liveData["inactiveReason"] != null;
+              final inactiveReason = liveData["inactiveReason"]?.toString();
+              final inactiveMessage = inactiveReason == "worker_deleted_profile"
+                  ? "This applicant has deleted their profile."
+                  : "This vacancy is no longer active. The employer has deleted their profile.";
+
+              if (inactive && !_inactiveApplicationSnackShown) {
+                _inactiveApplicationSnackShown = true;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(inactiveMessage)),
+                  );
+                });
+              }
 
               Widget statusBadge({required bool forEmployer}) {
                 Color color;
@@ -1267,6 +1285,8 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                     String label,
                     Future<void> Function() run
                   })> employerMenuActions() {
+                if (inactive) return [];
+
                 final canRestartNegotiation = status == "pending" ||
                     status == "offer_withdrawn" ||
                     status == "offer_rejected";
@@ -1378,6 +1398,8 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                     String label,
                     Future<void> Function() run
                   })> workerMenuActions() {
+                if (inactive) return [];
+
                 bool canCurrentWorkerActOnOffer() {
                   final offerRaw = liveData["offer"];
                   final offer = offerRaw is Map
@@ -1544,6 +1566,28 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (inactive) ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color:
+                                    AppColors.warning.withValues(alpha: 0.42),
+                              ),
+                            ),
+                            child: Text(
+                              inactiveMessage,
+                              style: const TextStyle(
+                                color: AppColors.ink,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                        ],
                         if (!isTeam) ...[
                           applicationHeaderCard(
                             headerControls:

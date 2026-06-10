@@ -111,9 +111,7 @@ class ProfileHamburgerMenu extends StatelessWidget {
         builder: (_) => const Center(child: CircularProgressIndicator()),
       );
       try {
-        await AccountDeletionService().deleteCurrentAccount(
-          runFullCleanup: false,
-        );
+        await AccountDeletionService().deleteCurrentAccount();
         _closeRootDialogIfOpen(retryLoadingOpen);
         retryLoadingOpen = false;
         _resetToLoginWithMessage("Your account has been deleted.");
