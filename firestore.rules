@@ -190,6 +190,9 @@ service cloud.firestore {
         && (
           isAdmin()
           || resource.data.ownerId == uid()
+          || resource.data.employerId == uid()
+          || resource.data.createdBy == uid()
+          || resource.data.userId == uid()
           || isPublicJob(resource.data)
         );
       allow update, delete: if isAdmin()

@@ -665,6 +665,9 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                 final pageStart = (safePage - 1) * _jobsPerPage;
                 final pageJobs =
                     filteredJobs.skip(pageStart).take(_jobsPerPage).toList();
+                final emptyMessage = showOnlyMyJobs
+                    ? "You have not created any vacancies yet."
+                    : "No active vacancies available.";
 
                 return StreamBuilder<DocumentSnapshot>(
                   stream: FirebaseFirestore.instance
@@ -698,19 +701,33 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                           },
                         ),
                         Expanded(
-                          child: ListView.builder(
-                            itemCount: pageJobs.length,
-                            itemBuilder: (context, index) {
-                              return buildJobCard(
-                                context,
-                                pageJobs[index],
-                                pageJobs[index].ownerId == ownerId
-                                    ? employerData
-                                    : null,
-                                ownerId,
-                              );
-                            },
-                          ),
+                          child: pageJobs.isEmpty
+                              ? Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Text(
+                                      emptyMessage,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: AppColors.ink,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  itemCount: pageJobs.length,
+                                  itemBuilder: (context, index) {
+                                    return buildJobCard(
+                                      context,
+                                      pageJobs[index],
+                                      pageJobs[index].ownerId == ownerId
+                                          ? employerData
+                                          : null,
+                                      ownerId,
+                                    );
+                                  },
+                                ),
                         ),
                         JobPagination(
                           currentPage: safePage,

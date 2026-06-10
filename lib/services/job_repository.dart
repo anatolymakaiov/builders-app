@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:async';
 import '../models/job.dart';
 import 'application_activity_service.dart';
 import 'notification_service.dart';
@@ -13,6 +15,101 @@ class JobRepository {
   final _db = FirebaseFirestore.instance;
   final notificationService = NotificationService();
 
+  bool _isDeletedOrInactiveJobData(
+    Map<String, dynamic> data, {
+    bool excludeNonPublicStatuses = false,
+  }) {
+    final status = data["status"]?.toString().trim().toLowerCase() ?? "";
+    return data["deleted"] == true ||
+        data["isDeleted"] == true ||
+        data["active"] == false ||
+        data["isActive"] == false ||
+        data["employerDeleted"] == true ||
+        data["companyDeleted"] == true ||
+        data["deletionReason"] != null ||
+        status == "deleted" ||
+        status == "inactive" ||
+        status == "hidden" ||
+        status == "archived" ||
+        status == "suspended" ||
+        status == "expired" ||
+        (excludeNonPublicStatuses &&
+            (status == "rejected" ||
+                status == "on_hold" ||
+                status == "pending_review" ||
+                status == "moderation_required"));
+  }
+
+  Future<bool> _isOwnerActive(String ownerId) async {
+    if (ownerId.trim().isEmpty || ownerId == "unknown") return false;
+
+    final ownerDoc = await _db.collection("users").doc(ownerId).get();
+    if (!ownerDoc.exists) return false;
+
+    final data = ownerDoc.data() ?? <String, dynamic>{};
+    final status = data["status"]?.toString().trim().toLowerCase() ?? "";
+    return data["deleted"] != true &&
+        data["accountDeleted"] != true &&
+        data["anonymised"] != true &&
+        data["active"] != false &&
+        status != "deleted";
+  }
+
+  Future<List<Job>> _filterJobsWithActiveOwners(
+    Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs, {
+    required bool requirePublicVisibility,
+  }) async {
+    final activeOwnerCache = <String, bool>{};
+    var filteredDeletedJobsCount = 0;
+    final jobs = <Job>[];
+
+    for (final doc in docs) {
+      final data = doc.data();
+      if (_isDeletedOrInactiveJobData(
+        data,
+        excludeNonPublicStatuses: requirePublicVisibility,
+      )) {
+        filteredDeletedJobsCount += 1;
+        continue;
+      }
+
+      final ownerId = (data["ownerId"] ??
+              data["employerId"] ??
+              data["createdBy"] ??
+              data["userId"] ??
+              "")
+          .toString();
+
+      var active = activeOwnerCache[ownerId];
+      if (active == null) {
+        active = await _isOwnerActive(ownerId);
+        activeOwnerCache[ownerId] = active;
+      }
+      if (!active) {
+        filteredDeletedJobsCount += 1;
+        continue;
+      }
+
+      final job = Job.fromFirestore(doc.id, data);
+      if (requirePublicVisibility && !job.isPubliclyVisible) {
+        filteredDeletedJobsCount += 1;
+        continue;
+      }
+      jobs.add(job);
+    }
+
+    debugPrint(
+      "visibleJobsCount=${jobs.length} filteredDeletedJobsCount=$filteredDeletedJobsCount",
+    );
+
+    jobs.sort((a, b) {
+      final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bDate.compareTo(aDate);
+    });
+    return jobs;
+  }
+
   /// 🔹 ВСЕ JOBS
   Stream<List<Job>> getJobs() {
     return _db
@@ -20,45 +117,44 @@ class JobRepository {
         .where('moderationStatus', isEqualTo: 'approved')
         .where('status', whereIn: ['active', 'published', 'open'])
         .snapshots(includeMetadataChanges: true)
-        .map((snapshot) {
-          return snapshot.docs
-              .map((doc) {
-                final data = doc.data();
-                final ownerId = data["ownerId"] ??
-                    data["employerId"] ??
-                    data["createdBy"] ??
-                    data["userId"];
-
-                if (ownerId == null || ownerId.toString().trim().isEmpty) {
-                  return null;
-                }
-
-                return Job.fromFirestore(doc.id, data);
-              })
-              .whereType<Job>()
-              .where((job) => job.isPubliclyVisible)
-              .toList()
-            ..sort((a, b) {
-              final aDate =
-                  a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-              final bDate =
-                  b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-              return bDate.compareTo(aDate);
-            });
-        });
+        .asyncMap(
+          (snapshot) => _filterJobsWithActiveOwners(
+            snapshot.docs,
+            requirePublicVisibility: true,
+          ),
+        );
   }
 
   /// 🔥 JOBS ПО РАБОТОДАТЕЛЮ (НОВОЕ)
   Stream<List<Job>> getJobsByOwner(String ownerId) {
-    return _db
-        .collection('jobs')
-        .where('ownerId', isEqualTo: ownerId)
-        .snapshots(includeMetadataChanges: true)
-        .map((snapshot) {
-      final jobs = snapshot.docs.map((doc) {
+    final controller = StreamController<List<Job>>();
+    final latestByField =
+        <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+    final subscriptions =
+        <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
+
+    void emitJobs() {
+      final docsById = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+      for (final docs in latestByField.values) {
+        for (final doc in docs) {
+          docsById[doc.id] = doc;
+        }
+      }
+
+      final jobs = docsById.values.where((doc) {
+        final data = doc.data();
+        return !_isDeletedOrInactiveJobData(data);
+      }).map((doc) {
         final data = doc.data();
         return Job.fromFirestore(doc.id, data);
       }).toList();
+
+      debugPrint(
+        "MY JOBS LOAD START employerId=$ownerId companyId=$ownerId jobsCount=${jobs.length}",
+      );
+      if (jobs.isEmpty) {
+        debugPrint("MY JOBS EMPTY STATE");
+      }
 
       jobs.sort((a, b) {
         final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -66,8 +162,40 @@ class JobRepository {
         return bDate.compareTo(aDate);
       });
 
-      return jobs;
-    });
+      if (!controller.isClosed) {
+        controller.add(jobs);
+      }
+    }
+
+    controller.onListen = () {
+      for (final field in const [
+        "ownerId",
+        "employerId",
+        "createdBy",
+        "userId"
+      ]) {
+        final subscription = _db
+            .collection('jobs')
+            .where(field, isEqualTo: ownerId)
+            .snapshots(includeMetadataChanges: true)
+            .listen(
+          (snapshot) {
+            latestByField[field] = snapshot.docs;
+            emitJobs();
+          },
+          onError: controller.addError,
+        );
+        subscriptions.add(subscription);
+      }
+    };
+
+    controller.onCancel = () async {
+      for (final subscription in subscriptions) {
+        await subscription.cancel();
+      }
+    };
+
+    return controller.stream;
   }
 
   /// 🔥 ПРОВЕРКА: УЖЕ ОТКЛИКНУЛСЯ?

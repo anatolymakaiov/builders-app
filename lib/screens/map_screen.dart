@@ -328,6 +328,7 @@ class _MapScreenState extends State<MapScreen> {
     List<Marker> jobMarkers,
     Marker? userMarker,
   ) {
+    debugPrint("mapTileReady=true");
     return FlutterMap(
       mapController: mapController,
       options: MapOptions(
@@ -458,23 +459,43 @@ class _MapScreenState extends State<MapScreen> {
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: refreshMapData,
-                  child: ListView.builder(
-                    controller: scrollController,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: jobs.length,
-                    itemBuilder: (context, index) {
-                      final job = jobs[index];
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            selectedJobId = job.id;
-                          });
-                          mapController.move(LatLng(job.lat, job.lng), 16);
-                        },
-                        child: buildJobCard(job),
-                      );
-                    },
-                  ),
+                  child: jobs.isEmpty
+                      ? ListView(
+                          controller: scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: const [
+                            SizedBox(height: 48),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 24),
+                              child: Text(
+                                "No active vacancies available.",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : ListView.builder(
+                          controller: scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          itemCount: jobs.length,
+                          itemBuilder: (context, index) {
+                            final job = jobs[index];
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  selectedJobId = job.id;
+                                });
+                                mapController.move(
+                                    LatLng(job.lat, job.lng), 16);
+                              },
+                              child: buildJobCard(job),
+                            );
+                          },
+                        ),
                 ),
               ),
             ],
@@ -529,6 +550,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Widget buildMapContent(List<Job> jobs) {
+    debugPrint("EMPLOYER MAP LOAD START");
     allJobs = jobs;
 
     List<Job> visibleJobs = getVisibleJobs();
@@ -539,6 +561,8 @@ class _MapScreenState extends State<MapScreen> {
 
     visibleJobs = applyFilters(visibleJobs);
     currentVisibleJobs = visibleJobs;
+    debugPrint(
+        "EMPLOYER MAP LOAD SUCCESS visibleJobsCount=${visibleJobs.length}");
 
     final jobMarkers = <Marker>[];
 
@@ -647,7 +671,7 @@ class _MapScreenState extends State<MapScreen> {
         stream: jobRepository.getJobs(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return buildMapContent(const <Job>[]);
           }
 
           final publicJobs = snapshot.data!;
@@ -661,7 +685,7 @@ class _MapScreenState extends State<MapScreen> {
             builder: (context, ownerSnapshot) {
               if (ownerSnapshot.connectionState == ConnectionState.waiting &&
                   !ownerSnapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
+                return buildMapContent(publicJobs);
               }
 
               return buildMapContent(
