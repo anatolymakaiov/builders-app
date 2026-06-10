@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
@@ -10,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'image_viewer_screen.dart';
 import '../services/report_service.dart';
 import '../services/chat_service.dart';
@@ -40,6 +42,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _chatLoaded = false;
   bool isRecording = false;
   bool isUploadingMedia = false;
+  final List<_PendingChatAttachment> pendingAttachments = [];
   final Set<String> _markedRead = {};
 
   @override
@@ -56,6 +59,17 @@ class _ChatScreenState extends State<ChatScreen> {
     controller.dispose();
     scrollController.dispose();
     super.dispose();
+  }
+
+  String chatAttachmentPreview(List<Map<String, dynamic>> attachments) {
+    if (attachments.isEmpty) return "";
+    if (attachments.length == 1) {
+      final type = attachments.first["type"]?.toString();
+      if (type == "image") return "Photo";
+      if (type == "video") return "Video";
+      return "File";
+    }
+    return "${attachments.length} attachments";
   }
 
   Future<void> initChat() async {
@@ -126,7 +140,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   List<String> unreadRecipients(String senderId) {
-    return chatMembers.where((id) => id != senderId).toList();
+    final recipients = chatMembers
+        .where((id) => id.isNotEmpty && id != senderId)
+        .toSet()
+        .toList();
+    return recipients;
   }
 
   bool isChatInactive(Map<String, dynamic> data) {
@@ -198,6 +216,13 @@ class _ChatScreenState extends State<ChatScreen> {
   String messagePreview(Map<String, dynamic> data) {
     if (data["deletedForEveryone"] == true) return "Message deleted";
 
+    final attachments = attachmentsFromMessage(data);
+    if (attachments.isNotEmpty) {
+      final text = data["text"]?.toString().trim() ?? "";
+      if (text.isNotEmpty) return text;
+      return chatAttachmentPreview(attachments);
+    }
+
     final type = data["type"]?.toString() ?? "text";
     switch (type) {
       case "image":
@@ -209,6 +234,43 @@ class _ChatScreenState extends State<ChatScreen> {
       default:
         return data["text"]?.toString() ?? "";
     }
+  }
+
+  List<Map<String, dynamic>> attachmentsFromMessage(Map<String, dynamic> data) {
+    final rawAttachments = data["attachments"];
+    if (rawAttachments is List) {
+      return rawAttachments
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .where((item) => (item["url"]?.toString().isNotEmpty ?? false))
+          .toList();
+    }
+
+    final type = data["type"]?.toString();
+    final url = (data["mediaUrl"] ?? data["imageUrl"] ?? data["videoUrl"])
+        ?.toString()
+        .trim();
+    if (url == null || url.isEmpty) return [];
+
+    if (type == "image" || data["imageUrl"] != null) {
+      return [
+        {
+          "type": "image",
+          "url": url,
+          "fileName": data["fileName"]?.toString() ?? "Photo",
+        }
+      ];
+    }
+    if (type == "video" || data["videoUrl"] != null) {
+      return [
+        {
+          "type": "video",
+          "url": url,
+          "fileName": data["fileName"]?.toString() ?? "Video",
+        }
+      ];
+    }
+    return [];
   }
 
   Future<void> refreshChatLastMessage() async {
@@ -446,43 +508,85 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final text = controller.text.trim();
-    if (text.isEmpty) return;
-
-    controller.clear();
-    typingTimer?.cancel();
-    _isTyping = false;
+    if (text.isEmpty && pendingAttachments.isEmpty) return;
+    if (isUploadingMedia) return;
 
     final isWorker = user.uid == workerId;
-
-    await FirebaseFirestore.instance
+    final messageRef = FirebaseFirestore.instance
         .collection("chats")
         .doc(widget.chatId)
         .collection("messages")
-        .add({
-      "type": "text",
-      "text": text,
-      "senderId": user.uid,
-      "createdAt": FieldValue.serverTimestamp(),
-      "readBy": [user.uid],
-    });
+        .doc();
 
-    await FirebaseFirestore.instance
-        .collection("chats")
-        .doc(widget.chatId)
-        .update({
-      "lastMessage": text,
-      "lastMessageType": "text",
-      "updatedAt": FieldValue.serverTimestamp(),
-      "unreadFor": FieldValue.arrayUnion(unreadRecipients(user.uid)),
-      if (isWorker)
-        "unreadCount_employer": FieldValue.increment(1)
-      else
-        "unreadCount_worker": FieldValue.increment(1),
-      "typing_worker": false,
-      "typing_employer": false,
-    });
+    try {
+      if (mounted) setState(() => isUploadingMedia = true);
 
-    scrollToBottom();
+      final attachments = await uploadPendingAttachments(
+        messageId: messageRef.id,
+        senderId: user.uid,
+      );
+      final firstAttachment =
+          attachments.isNotEmpty ? attachments.first : <String, dynamic>{};
+      final attachmentType = firstAttachment["type"]?.toString();
+      final messageType = attachments.isEmpty
+          ? "text"
+          : attachments.length == 1 && attachmentType != "file"
+              ? attachmentType
+              : "attachments";
+      final preview = text.isNotEmpty
+          ? text
+          : attachments.isNotEmpty
+              ? "Sent an attachment"
+              : "";
+
+      await messageRef.set({
+        "messageId": messageRef.id,
+        "chatId": widget.chatId,
+        "type": messageType,
+        "text": text,
+        "attachments": attachments,
+        if (attachments.isNotEmpty) "mediaUrl": firstAttachment["url"],
+        if (attachmentType == "image") "imageUrl": firstAttachment["url"],
+        if (attachmentType == "video") "videoUrl": firstAttachment["url"],
+        if (firstAttachment["fileName"] != null)
+          "fileName": firstAttachment["fileName"],
+        "senderId": user.uid,
+        "senderRole": isWorker ? "worker" : "employer",
+        "createdAt": FieldValue.serverTimestamp(),
+        "readBy": [user.uid],
+      });
+
+      await FirebaseFirestore.instance
+          .collection("chats")
+          .doc(widget.chatId)
+          .update({
+        "lastMessage": preview,
+        "lastMessageType": messageType,
+        "updatedAt": FieldValue.serverTimestamp(),
+        "unreadFor": FieldValue.arrayUnion(unreadRecipients(user.uid)),
+        if (isWorker)
+          "unreadCount_employer": FieldValue.increment(1)
+        else
+          "unreadCount_worker": FieldValue.increment(1),
+        "typing_worker": false,
+        "typing_employer": false,
+      });
+
+      controller.clear();
+      typingTimer?.cancel();
+      _isTyping = false;
+      if (mounted) pendingAttachments.clear();
+      scrollToBottom();
+    } catch (e) {
+      debugPrint("SEND MESSAGE ERROR: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not send message")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isUploadingMedia = false);
+    }
   }
 
   Uri? normalizeUrl(String text) {
@@ -530,6 +634,73 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     return "application/octet-stream";
+  }
+
+  String sanitizeStorageName(String value) {
+    final name = value.trim().isEmpty ? "attachment" : value.trim();
+    return name.replaceAll(RegExp(r"[^A-Za-z0-9._-]+"), "_");
+  }
+
+  String fileContentType(String extension) {
+    final ext = extension.toLowerCase();
+    const types = {
+      "pdf": "application/pdf",
+      "doc": "application/msword",
+      "docx":
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "xls": "application/vnd.ms-excel",
+      "xlsx":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "ppt": "application/vnd.ms-powerpoint",
+      "pptx":
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "txt": "text/plain",
+      "csv": "text/csv",
+      "zip": "application/zip",
+    };
+    return types[ext] ?? "application/octet-stream";
+  }
+
+  Future<List<Map<String, dynamic>>> uploadPendingAttachments({
+    required String messageId,
+    required String senderId,
+  }) async {
+    final uploaded = <Map<String, dynamic>>[];
+
+    for (final attachment in pendingAttachments) {
+      final extension = attachment.extension;
+      final fileName = sanitizeStorageName(attachment.fileName);
+      final storagePath =
+          "chat_attachments/${widget.chatId}/$messageId/$senderId/${DateTime.now().microsecondsSinceEpoch}_$fileName";
+      final ref = FirebaseStorage.instance.ref().child(storagePath);
+      final contentType = attachment.mimeType ??
+          (attachment.type == "file"
+              ? fileContentType(extension)
+              : mediaContentType(attachment.type, extension));
+      final metadata = SettableMetadata(contentType: contentType);
+
+      if (attachment.path != null) {
+        await ref.putFile(File(attachment.path!), metadata);
+      } else if (attachment.bytes != null) {
+        await ref.putData(attachment.bytes!, metadata);
+      } else {
+        throw StateError("Selected attachment has no readable file data");
+      }
+
+      final url = await ref.getDownloadURL();
+      uploaded.add({
+        "type": attachment.type,
+        "url": url,
+        "storagePath": storagePath,
+        "fileName": attachment.fileName,
+        "mimeType": contentType,
+        if (attachment.size != null) "size": attachment.size,
+        "uploadedAt": DateTime.now().toIso8601String(),
+        "uploadedBy": senderId,
+      });
+    }
+
+    return uploaded;
   }
 
   Future<void> updateChatAfterMedia({
@@ -640,10 +811,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> sendImage() async {
-    XFile? picked;
+    List<XFile> picked = [];
     try {
-      picked = await picker.pickImage(source: ImageSource.gallery);
-      if (picked == null) return;
+      picked = await picker.pickMultiImage();
+      if (picked.isEmpty) return;
     } catch (e) {
       debugPrint("PICK IMAGE ERROR: $e");
       if (!mounted) return;
@@ -653,13 +824,31 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    await sendPickedMedia(picked: picked, type: "image");
+    setState(() {
+      pendingAttachments.addAll(
+        picked.map(
+          (item) => _PendingChatAttachment(
+            type: "image",
+            fileName: item.name,
+            path: item.path,
+            mimeType: mediaContentType(
+              "image",
+              extensionForPickedFile(item, "jpg"),
+            ),
+          ),
+        ),
+      );
+    });
   }
 
   Future<void> sendVideo() async {
-    XFile? picked;
+    FilePickerResult? picked;
     try {
-      picked = await picker.pickVideo(source: ImageSource.gallery);
+      picked = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.video,
+        withData: false,
+      );
       if (picked == null) return;
     } catch (e) {
       debugPrint("PICK VIDEO ERROR: $e");
@@ -670,7 +859,63 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    await sendPickedMedia(picked: picked, type: "video");
+    setState(() {
+      pendingAttachments.addAll(
+        picked!.files
+            .where((item) => item.path != null || item.bytes != null)
+            .map(
+              (item) => _PendingChatAttachment(
+                type: "video",
+                fileName: item.name,
+                path: item.path,
+                bytes: item.bytes,
+                size: item.size,
+                mimeType: mediaContentType(
+                  "video",
+                  item.extension ?? "mp4",
+                ),
+              ),
+            ),
+      );
+    });
+  }
+
+  Future<void> sendFiles() async {
+    FilePickerResult? picked;
+    try {
+      picked = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.any,
+        withData: false,
+      );
+      if (picked == null) return;
+    } catch (e) {
+      debugPrint("PICK FILE ERROR: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not select file")),
+      );
+      return;
+    }
+
+    setState(() {
+      pendingAttachments.addAll(
+        picked!.files
+            .where((item) => item.path != null || item.bytes != null)
+            .map(
+              (item) => _PendingChatAttachment(
+                type: "file",
+                fileName: item.name,
+                path: item.path,
+                bytes: item.bytes,
+                size: item.size,
+                mimeType: item.extension == null
+                    ? null
+                    : fileContentType(item.extension!),
+              ),
+            ),
+      );
+    });
   }
 
   Future<void> toggleRecording() async {
@@ -807,8 +1052,8 @@ class _ChatScreenState extends State<ChatScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.photo),
-                title: const Text("Photo"),
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text("Photos"),
                 onTap: () {
                   Navigator.pop(context);
                   sendImage();
@@ -816,10 +1061,18 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.videocam),
-                title: const Text("Video"),
+                title: const Text("Videos"),
                 onTap: () {
                   Navigator.pop(context);
                   sendVideo();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.attach_file),
+                title: const Text("Files"),
+                onTap: () {
+                  Navigator.pop(context);
+                  sendFiles();
                 },
               ),
             ],
@@ -888,6 +1141,159 @@ class _ChatScreenState extends State<ChatScreen> {
     if (ts == null) return "";
     final dt = ts.toDate();
     return "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+  }
+
+  String formatAttachmentSize(dynamic value) {
+    final bytes = value is int ? value : int.tryParse(value?.toString() ?? "");
+    if (bytes == null || bytes <= 0) return "";
+    if (bytes < 1024) return "$bytes B";
+    if (bytes < 1024 * 1024) return "${(bytes / 1024).toStringAsFixed(1)} KB";
+    return "${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB";
+  }
+
+  Widget buildAttachmentPreview(Map<String, dynamic> attachment) {
+    final type = attachment["type"]?.toString() ?? "file";
+    final url = attachment["url"]?.toString() ?? "";
+    final fileName = attachment["fileName"]?.toString() ?? "Attachment";
+
+    if (type == "image") {
+      return GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ImageViewerScreen(imageUrl: url),
+            ),
+          );
+        },
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.network(
+            url,
+            width: 200,
+            height: 150,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Container(
+                width: 200,
+                height: 150,
+                alignment: Alignment.center,
+                color: AppColors.surfaceAlt,
+                child: const Icon(Icons.image_outlined, color: AppColors.muted),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) => Container(
+              width: 200,
+              height: 150,
+              alignment: Alignment.center,
+              color: AppColors.surfaceAlt,
+              child: const Icon(Icons.broken_image, color: AppColors.muted),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (type == "video") {
+      return VideoMessagePreview(url: url);
+    }
+
+    final sizeLabel = formatAttachmentSize(attachment["size"]);
+    return InkWell(
+      onTap: () async {
+        final uri = Uri.tryParse(url);
+        if (uri == null) return;
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      },
+      child: Container(
+        width: 220,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.blueprintLine),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.insert_drive_file_outlined, size: 26),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    fileName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  if (sizeLabel.isNotEmpty)
+                    Text(
+                      sizeLabel,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildMessageAttachments(List<Map<String, dynamic>> attachments) {
+    if (attachments.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < attachments.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          buildAttachmentPreview(attachments[i]),
+        ],
+      ],
+    );
+  }
+
+  Widget buildPendingAttachments() {
+    if (pendingAttachments.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (var i = 0; i < pendingAttachments.length; i++)
+            InputChip(
+              avatar: Icon(
+                pendingAttachments[i].icon,
+                size: 18,
+                color: AppColors.navy,
+              ),
+              label: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: Text(
+                  pendingAttachments[i].fileName,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              onDeleted: isUploadingMedia
+                  ? null
+                  : () {
+                      setState(() => pendingAttachments.removeAt(i));
+                    },
+            ),
+        ],
+      ),
+    );
   }
 
   String formatDateLabel(DateTime date) {
@@ -1148,6 +1554,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                     final type = data["type"] ?? "text";
                                     final deletedForEveryone =
                                         data["deletedForEveryone"] == true;
+                                    final attachments =
+                                        attachmentsFromMessage(data);
+                                    final text = data["text"]?.toString() ?? "";
                                     final editedAt = data["editedAt"];
                                     final isEdited =
                                         type == "text" && editedAt != null;
@@ -1223,103 +1632,26 @@ class _ChatScreenState extends State<ChatScreen> {
                                                       ),
                                                     ),
                                                   if (!deletedForEveryone &&
-                                                      type == "text")
+                                                      text.trim().isNotEmpty &&
+                                                      type != "audio")
                                                     _TextMessageContent(
-                                                      text: data["text"] ?? "",
+                                                      text: text,
                                                       normalizeUrl:
                                                           normalizeUrl,
                                                     ),
                                                   if (!deletedForEveryone &&
-                                                      type == "image" &&
-                                                      (data["imageUrl"] !=
-                                                              null ||
-                                                          data["mediaUrl"] !=
-                                                              null))
-                                                    GestureDetector(
-                                                      onTap: () {
-                                                        final imageUrl = (data[
-                                                                    "imageUrl"] ??
-                                                                data[
-                                                                    "mediaUrl"])
-                                                            .toString();
-                                                        Navigator.push(
-                                                          context,
-                                                          MaterialPageRoute(
-                                                            builder: (_) =>
-                                                                ImageViewerScreen(
-                                                              imageUrl:
-                                                                  imageUrl,
-                                                            ),
-                                                          ),
-                                                        );
-                                                      },
-                                                      child: ClipRRect(
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(10),
-                                                        child: Image.network(
-                                                          (data["imageUrl"] ??
-                                                                  data[
-                                                                      "mediaUrl"])
-                                                              .toString(),
-                                                          width: 200,
-                                                          height: 150,
-                                                          fit: BoxFit.cover,
-                                                          gaplessPlayback: true,
-                                                          loadingBuilder: (
-                                                            context,
-                                                            child,
-                                                            loadingProgress,
-                                                          ) {
-                                                            if (loadingProgress ==
-                                                                null) {
-                                                              return child;
-                                                            }
-                                                            return Container(
-                                                              width: 200,
-                                                              height: 150,
-                                                              alignment:
-                                                                  Alignment
-                                                                      .center,
-                                                              color: AppColors
-                                                                  .surfaceAlt,
-                                                              child: const Icon(
-                                                                Icons
-                                                                    .image_outlined,
-                                                                color: AppColors
-                                                                    .muted,
-                                                              ),
-                                                            );
-                                                          },
-                                                          errorBuilder: (context,
-                                                                  error,
-                                                                  stackTrace) =>
-                                                              Container(
-                                                            width: 200,
-                                                            height: 150,
-                                                            alignment: Alignment
-                                                                .center,
-                                                            color: AppColors
-                                                                .surfaceAlt,
-                                                            child: const Icon(
-                                                              Icons
-                                                                  .broken_image,
-                                                              color: AppColors
-                                                                  .muted,
-                                                            ),
-                                                          ),
-                                                        ),
+                                                      attachments.isNotEmpty)
+                                                    Padding(
+                                                      padding: EdgeInsets.only(
+                                                        top: text
+                                                                .trim()
+                                                                .isNotEmpty
+                                                            ? 8
+                                                            : 0,
                                                       ),
-                                                    ),
-                                                  if (!deletedForEveryone &&
-                                                      type == "video" &&
-                                                      (data["videoUrl"] !=
-                                                              null ||
-                                                          data["mediaUrl"] !=
-                                                              null))
-                                                    VideoMessagePreview(
-                                                      url: data["videoUrl"] ??
-                                                          data["mediaUrl"],
+                                                      child:
+                                                          buildMessageAttachments(
+                                                              attachments),
                                                     ),
                                                   if (!deletedForEveryone &&
                                                       type == "audio" &&
@@ -1464,6 +1796,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       padding: EdgeInsets.only(bottom: 8),
                                       child: LinearProgressIndicator(),
                                     ),
+                                  buildPendingAttachments(),
                                   Row(
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
@@ -1539,6 +1872,40 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       },
     );
+  }
+}
+
+class _PendingChatAttachment {
+  final String type;
+  final String fileName;
+  final String? path;
+  final Uint8List? bytes;
+  final int? size;
+  final String? mimeType;
+
+  const _PendingChatAttachment({
+    required this.type,
+    required this.fileName,
+    this.path,
+    this.bytes,
+    this.size,
+    this.mimeType,
+  });
+
+  String get extension {
+    final parts = fileName.split(".");
+    if (parts.length > 1 && parts.last.trim().isNotEmpty) {
+      return parts.last.toLowerCase();
+    }
+    if (type == "image") return "jpg";
+    if (type == "video") return "mp4";
+    return "bin";
+  }
+
+  IconData get icon {
+    if (type == "image") return Icons.image_outlined;
+    if (type == "video") return Icons.videocam_outlined;
+    return Icons.insert_drive_file_outlined;
   }
 }
 

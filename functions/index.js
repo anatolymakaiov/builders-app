@@ -234,48 +234,68 @@ exports.sendChatNotification = onDocumentCreated(
     if (!chatDoc.exists) return;
 
     const chat = chatDoc.data();
-    const senderId = message.senderId;
-    const receiverId = senderId === chat.workerId ? chat.employerId : chat.workerId;
-    if (!receiverId) return;
+    const senderId = String(message.senderId || "");
+    if (!senderId) return;
 
-    const notificationRef = admin
-      .firestore()
-      .collection("users")
-      .doc(receiverId)
-      .collection("notifications")
-      .doc();
+    const recipients = new Set();
+    for (const id of Array.isArray(chat.members) ? chat.members : []) {
+      if (id) recipients.add(String(id));
+    }
+    for (const id of Array.isArray(chat.participants) ? chat.participants : []) {
+      if (id) recipients.add(String(id));
+    }
+    if (chat.workerId) recipients.add(String(chat.workerId));
+    if (chat.employerId) recipients.add(String(chat.employerId));
+    recipients.delete(senderId);
+    if (recipients.size === 0) return;
 
-    await notificationRef.set({
-      notificationId: notificationRef.id,
-      userId: receiverId,
-      type: "message",
-      category: "chat",
-      title: "New message",
-      message: message.text || "New chat message",
-      body: message.text || "New chat message",
-      targetType: "chat",
-      targetId: chatId,
-      chatId,
-      read: false,
-      badgeEligible: true,
-      pushEligible: true,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      push: {
-        title: "New message",
-        body: message.text || "New chat message",
+    const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+    const body = String(message.text || "").trim() ||
+      (attachments.length > 0 ? "Sent an attachment" : "New chat message");
+
+    const writes = [];
+    for (const receiverId of recipients) {
+      const notificationRef = admin
+        .firestore()
+        .collection("users")
+        .doc(receiverId)
+        .collection("notifications")
+        .doc();
+
+      writes.push(notificationRef.set({
+        notificationId: notificationRef.id,
+        userId: receiverId,
+        type: "message",
         category: "chat",
-        sound: true,
-        badge: true,
-        data: {
-          notificationId: notificationRef.id,
-          userId: receiverId,
-          type: "message",
+        title: "New message",
+        message: body,
+        body,
+        targetType: "chat",
+        targetId: chatId,
+        chatId,
+        read: false,
+        badgeEligible: true,
+        pushEligible: true,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        push: {
+          title: "New message",
+          body,
           category: "chat",
-          targetType: "chat",
-          targetId: chatId,
-          chatId,
+          sound: true,
+          badge: true,
+          data: {
+            notificationId: notificationRef.id,
+            userId: receiverId,
+            type: "message",
+            category: "chat",
+            targetType: "chat",
+            targetId: chatId,
+            chatId,
+          },
         },
-      },
-    });
+      }));
+    }
+
+    await Promise.all(writes);
   },
 );
