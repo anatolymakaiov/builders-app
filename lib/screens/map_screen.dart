@@ -29,8 +29,6 @@ class _MapScreenState extends State<MapScreen> {
   final ScrollController listController = ScrollController();
   final jobRepository = JobRepository();
   final tileProvider = QuietTileProvider();
-  final DraggableScrollableController sheetController =
-      DraggableScrollableController();
 
   Set<String> savedJobIds = {};
 
@@ -86,7 +84,6 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void dispose() {
     listController.dispose();
-    sheetController.dispose();
     tileProvider.dispose();
     super.dispose();
   }
@@ -398,7 +395,6 @@ class _MapScreenState extends State<MapScreen> {
 
   Widget buildBottomSheet(List<Job> jobs) {
     return DraggableScrollableSheet(
-      controller: sheetController,
       initialChildSize: 0.2,
       minChildSize: 0.18,
       maxChildSize: 0.9,
@@ -585,17 +581,6 @@ class _MapScreenState extends State<MapScreen> {
                 LatLng(job.lat, job.lng),
                 16,
               );
-
-              Future.delayed(const Duration(milliseconds: 50), () {
-                if (!mounted) return;
-                if (sheetController.isAttached) {
-                  sheetController.animateTo(
-                    0.5,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                  );
-                }
-              });
 
               scrollToJob(i);
             },
