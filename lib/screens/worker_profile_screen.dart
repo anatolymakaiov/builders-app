@@ -878,6 +878,13 @@ class WorkerProfileScreen extends StatelessWidget {
 
         final docs = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
+          final status = data["status"]?.toString().trim().toLowerCase() ?? "";
+          if (data["deleted"] == true ||
+              data["active"] == false ||
+              status == "deleted" ||
+              status == "inactive") {
+            return false;
+          }
           return teamMemberIds(data["members"]).contains(userId) ||
               data["ownerId"] == userId;
         }).toList();

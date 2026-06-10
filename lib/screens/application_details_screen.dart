@@ -1019,6 +1019,14 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                   }
 
                   final user = snap.data!.data() as Map<String, dynamic>;
+                  final userStatus =
+                      user["status"]?.toString().trim().toLowerCase() ?? "";
+                  if (user["deleted"] == true ||
+                      user["accountDeleted"] == true ||
+                      user["active"] == false ||
+                      userStatus == "deleted") {
+                    return const SizedBox.shrink();
+                  }
                   final photo = user["photo"] ?? user["avatarUrl"];
                   final isSelected = selectedMembers.contains(memberId);
 

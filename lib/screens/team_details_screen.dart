@@ -519,10 +519,18 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
         }
 
         final user = snapshot.data!.data() as Map<String, dynamic>?;
-        final userName = user?["name"] ?? "User";
-        final trade = user?["trade"] ?? "";
-        final photo = user?["photo"];
-        final phone = user?["phone"]?.toString();
+        final status = user?["status"]?.toString().trim().toLowerCase() ?? "";
+        if (user == null ||
+            user["deleted"] == true ||
+            user["accountDeleted"] == true ||
+            user["active"] == false ||
+            status == "deleted") {
+          return const SizedBox.shrink();
+        }
+        final userName = user["name"] ?? "User";
+        final trade = user["trade"] ?? "";
+        final photo = user["photo"];
+        final phone = user["phone"]?.toString();
 
         return Container(
           decoration: BoxDecoration(

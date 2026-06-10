@@ -93,7 +93,10 @@ class AccountDeletionService {
         run: () => _deleteUserSubcollection(uid, "deviceTokens"),
       ),
       (label: "archive_owned_jobs", run: () => _archiveOwnedJobs(uid)),
-      (label: "anonymise_owned_teams", run: () => _anonymiseOwnedTeams(uid)),
+      (
+        label: "remove_deleted_worker_from_teams",
+        run: () => _removeDeletedWorkerFromTeams(uid),
+      ),
       (
         label: "inactivate_worker_applications",
         run: () => _inactivateWorkerApplications(uid),
@@ -247,44 +250,104 @@ class AccountDeletionService {
     debugPrint("DEACTIVATE JOBS COUNT uid=$uid count=${docs.length}");
   }
 
-  Future<void> _anonymiseOwnedTeams(String uid) async {
-    final owned = await _firestore
+  List<String> _memberIdsFrom(dynamic value) {
+    if (value is! List) return <String>[];
+    return value
+        .map((item) {
+          if (item is String) return item;
+          if (item is Map) return item["userId"]?.toString();
+          return null;
+        })
+        .whereType<String>()
+        .where((id) => id.trim().isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  Future<List<String>> _activeMemberIds(List<String> members) async {
+    final active = <String>[];
+    for (final memberId in members) {
+      final snapshot = await _firestore.collection("users").doc(memberId).get();
+      final data = snapshot.data();
+      final status = data?["status"]?.toString().trim().toLowerCase() ?? "";
+      if (snapshot.exists &&
+          data?["deleted"] != true &&
+          data?["accountDeleted"] != true &&
+          data?["active"] != false &&
+          status != "deleted") {
+        active.add(memberId);
+      }
+    }
+    return active;
+  }
+
+  Future<void> _removeDeletedWorkerFromTeams(String uid) async {
+    final byOwner = await _firestore
         .collection("teams")
         .where("ownerId", isEqualTo: uid)
         .get();
-    await _commitInChunks(owned.docs, (batch, doc) {
-      batch.set(
-        doc.reference,
-        {
-          "deleted": true,
-          "active": false,
-          "visibility": "private",
-          "name": "Deleted team",
-          "photo": FieldValue.delete(),
-          "avatarUrl": FieldValue.delete(),
-          "photos": <String>[],
-          "deletedAt": FieldValue.serverTimestamp(),
-          "updatedAt": FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-    });
-
-    final memberships = await _firestore
+    final byCreatedBy = await _firestore
+        .collection("teams")
+        .where("createdBy", isEqualTo: uid)
+        .get();
+    final byMember = await _firestore
         .collection("teams")
         .where("members", arrayContains: uid)
         .get();
-    await _commitInChunks(memberships.docs, (batch, doc) {
-      batch.set(
-        doc.reference,
+
+    final docs = {
+      for (final doc in [
+        ...byOwner.docs,
+        ...byCreatedBy.docs,
+        ...byMember.docs
+      ])
+        doc.id: doc,
+    }.values.toList();
+
+    for (final doc in docs) {
+      final data = doc.data();
+      final members = _memberIdsFrom(data["members"]);
+      final remaining = members.where((memberId) => memberId != uid).toList();
+      final activeRemaining = await _activeMemberIds(remaining);
+      final deletedWasLeader =
+          data["ownerId"] == uid || data["createdBy"] == uid;
+
+      if (activeRemaining.isEmpty) {
+        await doc.reference.set(
+          {
+            "members": <String>[],
+            "memberCount": 0,
+            "memberStatuses.$uid": FieldValue.delete(),
+            "active": false,
+            "status": "inactive",
+            "visibility": "private",
+            "inactiveReason": "last_member_deleted",
+            "inactiveAt": FieldValue.serverTimestamp(),
+            "updatedAt": FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+        continue;
+      }
+
+      final nextLeaderId = deletedWasLeader ? activeRemaining.first : null;
+      await doc.reference.set(
         {
-          "members": FieldValue.arrayRemove([uid]),
-          "memberStatuses.$uid": "deleted",
+          "members": activeRemaining,
+          "memberCount": activeRemaining.length,
+          "memberKey": activeRemaining.first,
+          "memberStatuses.$uid": FieldValue.delete(),
+          if (nextLeaderId != null) ...{
+            "ownerId": nextLeaderId,
+            "createdBy": nextLeaderId,
+          },
           "updatedAt": FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );
-    });
+    }
+
+    debugPrint("TEAM MEMBER REMOVAL COUNT uid=$uid count=${docs.length}");
   }
 
   Future<void> _inactivateWorkerApplications(String uid) async {
@@ -300,9 +363,96 @@ class AccountDeletionService {
       for (final doc in [...byWorker.docs, ...byMember.docs]) doc.id: doc,
     }.values.toList();
 
-    await _commitInChunks(docs, (batch, doc) {
-      batch.set(
-        doc.reference,
+    for (final doc in docs) {
+      final data = doc.data();
+      final members = _memberIdsFrom(data["members"]);
+      final remaining = members.where((memberId) => memberId != uid).toList();
+      final isTeamApplication = data["type"] == "team" ||
+          data["teamId"] != null ||
+          members.length > 1;
+      final activeRemaining =
+          isTeamApplication ? await _activeMemberIds(remaining) : <String>[];
+
+      if (isTeamApplication && activeRemaining.isNotEmpty) {
+        final update = <String, dynamic>{
+          "members": activeRemaining,
+          "workersCount": activeRemaining.length,
+          "membersStatus.$uid": FieldValue.delete(),
+          "memberStatuses.$uid": FieldValue.delete(),
+          "unreadFor": FieldValue.arrayRemove([uid]),
+          "updatedAt": FieldValue.serverTimestamp(),
+        };
+
+        if (data["workerId"] == uid || data["applicantId"] == uid) {
+          update["workerId"] = activeRemaining.first;
+          update["applicantId"] = activeRemaining.first;
+        }
+
+        final selectedWorkerIds = _memberIdsFrom(data["selectedWorkerIds"]);
+        if (selectedWorkerIds.isNotEmpty) {
+          final selectedNames = data["selectedWorkerNames"];
+          final filteredIds = <String>[];
+          final filteredNames = <String>[];
+          for (var i = 0; i < selectedWorkerIds.length; i += 1) {
+            final selectedId = selectedWorkerIds[i];
+            if (selectedId == uid || !activeRemaining.contains(selectedId)) {
+              continue;
+            }
+            filteredIds.add(selectedId);
+            if (selectedNames is List && i < selectedNames.length) {
+              filteredNames.add(selectedNames[i].toString());
+            }
+          }
+          update["selectedWorkerIds"] = filteredIds;
+          update["selectedWorkersCount"] = filteredIds.length;
+          if (selectedNames is List) {
+            update["selectedWorkerNames"] = filteredNames;
+          }
+          if (filteredIds.isEmpty && data["status"] == "offer_sent") {
+            update["status"] = "offer_withdrawn";
+            update["offerWithdrawnReason"] = "selected_worker_deleted";
+            update["lastStatusChangedAt"] = FieldValue.serverTimestamp();
+          }
+        }
+
+        final offerRaw = data["offer"];
+        if (offerRaw is Map) {
+          final offer = Map<String, dynamic>.from(offerRaw);
+          final offerSelectedIds = _memberIdsFrom(offer["selectedWorkerIds"]);
+          if (offerSelectedIds.isNotEmpty) {
+            final offerNames = offer["selectedWorkerNames"];
+            final filteredIds = <String>[];
+            final filteredNames = <String>[];
+            for (var i = 0; i < offerSelectedIds.length; i += 1) {
+              final selectedId = offerSelectedIds[i];
+              if (selectedId == uid || !activeRemaining.contains(selectedId)) {
+                continue;
+              }
+              filteredIds.add(selectedId);
+              if (offerNames is List && i < offerNames.length) {
+                filteredNames.add(offerNames[i].toString());
+              }
+            }
+            offer["selectedWorkerIds"] = filteredIds;
+            offer["selectedWorkersCount"] = filteredIds.length;
+            if (offerNames is List) {
+              offer["selectedWorkerNames"] = filteredNames;
+            }
+            if (filteredIds.isEmpty && data["status"] == "offer_sent") {
+              offer["status"] = "offer_withdrawn";
+              update["status"] = "offer_withdrawn";
+              update["offerWithdrawnReason"] = "selected_worker_deleted";
+              update["lastStatusChangedAt"] = FieldValue.serverTimestamp();
+            }
+            update["offer"] = offer;
+          }
+        }
+
+        await doc.reference.set(update, SetOptions(merge: true));
+        continue;
+      }
+
+      await doc.reference.set(
         {
           "active": false,
           "status": "inactive",
@@ -317,7 +467,7 @@ class AccountDeletionService {
         },
         SetOptions(merge: true),
       );
-    });
+    }
     debugPrint(
         "INACTIVATE APPLICATIONS COUNT worker=$uid count=${docs.length}");
   }
