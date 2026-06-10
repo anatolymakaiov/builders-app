@@ -69,6 +69,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   final companyWhoWeAreController = TextEditingController();
   final companyHistoryController = TextEditingController();
   List<String> extraPhones = [];
+  final List<TextEditingController> extraPhoneControllers = [];
   List<Map<String, String>> references = [];
   final List<Map<String, TextEditingController>> referenceControllers = [];
   final picker = ImagePicker();
@@ -142,6 +143,37 @@ class _ProfileScreenState extends State<ProfileScreen>
       ..clear()
       ..addAll(nextReferences.map(referenceControllerSet));
     references = nextReferences;
+  }
+
+  void replaceExtraPhones(List<String> phones) {
+    for (final controller in extraPhoneControllers) {
+      controller.dispose();
+    }
+    extraPhoneControllers
+      ..clear()
+      ..addAll(phones.map((phone) => TextEditingController(text: phone)));
+    extraPhones = List<String>.from(phones);
+  }
+
+  void addExtraPhone() {
+    setState(() {
+      extraPhones.add("");
+      extraPhoneControllers.add(TextEditingController());
+    });
+  }
+
+  void removeExtraPhoneAt(int index) {
+    if (index < 0 || index >= extraPhones.length) return;
+    setState(() {
+      extraPhones.removeAt(index);
+      final controller = extraPhoneControllers.removeAt(index);
+      controller.dispose();
+    });
+  }
+
+  void updateExtraPhone(int index, String value) {
+    if (index < 0 || index >= extraPhones.length) return;
+    extraPhones[index] = value;
   }
 
   void ensureReferenceControllerCount() {
@@ -293,6 +325,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     companyClientsController.dispose();
     companyWhoWeAreController.dispose();
     companyHistoryController.dispose();
+    for (final controller in extraPhoneControllers) {
+      controller.dispose();
+    }
+    extraPhoneControllers.clear();
     for (final controllers in referenceControllers) {
       disposeReferenceControllerSet(controllers);
     }
@@ -460,7 +496,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       companyClientsController.text = data["companyClients"] ?? "";
       companyWhoWeAreController.text = data["companyWhoWeAre"] ?? "";
       companyHistoryController.text = data["companyHistory"] ?? "";
-      extraPhones = List<String>.from(data["phones"] ?? []);
+      replaceExtraPhones(List<String>.from(data["phones"] ?? []));
       replaceReferences(parseReferences(data["references"]));
       rating = (data["rating"] ?? 0).toDouble();
       reviewsCount = data["reviewsCount"] ?? 0;
@@ -1526,7 +1562,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         loading = false;
         headerImageUrl = savedHeaderImageUrl;
         headerImageFile = null;
-        extraPhones = cleanedPhones;
+        replaceExtraPhones(cleanedPhones);
         firstProfileCreation = false;
         phoneVerified = phoneIsVerified;
         emailVerified = !emailChanged && emailIsVerified;
@@ -2399,33 +2435,30 @@ class _ProfileScreenState extends State<ProfileScreen>
           const SizedBox(height: 12),
           const Text("Additional phones"),
           const SizedBox(height: 8),
-          ...extraPhones.asMap().entries.map((entry) {
+          ...extraPhoneControllers.asMap().entries.map((entry) {
             final index = entry.key;
+            final controller = entry.value;
 
             return Row(
+              key: ValueKey(controller),
               children: [
                 Expanded(
                   child: TextField(
+                    controller: controller,
                     decoration: const InputDecoration(labelText: "Phone"),
-                    onChanged: (value) => extraPhones[index] = value,
-                    controller: TextEditingController(text: extraPhones[index]),
+                    keyboardType: TextInputType.phone,
+                    onChanged: (value) => updateExtraPhone(index, value),
                   ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete),
-                  onPressed: () {
-                    extraPhones.removeAt(index);
-                    setState(() {});
-                  },
+                  onPressed: () => removeExtraPhoneAt(index),
                 )
               ],
             );
           }),
           TextButton(
-            onPressed: () {
-              extraPhones.add("");
-              setState(() {});
-            },
+            onPressed: addExtraPhone,
             child: const Text("Add phone"),
           ),
           const SizedBox(height: 12),
