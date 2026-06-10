@@ -14,6 +14,7 @@ import '../services/report_service.dart';
 import '../services/support_request_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/company_profile_sections.dart';
 import '../widgets/profile_hamburger_menu.dart';
 
@@ -410,24 +411,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                             else
                               StroykaSurface(
                                 padding: const EdgeInsets.all(18),
-                                child: GridView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: photos.length,
-                                  gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 2,
-                                    crossAxisSpacing: 10,
-                                    mainAxisSpacing: 10,
-                                  ),
-                                  itemBuilder: (_, i) => ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Image.network(
-                                      photos[i],
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
+                                child: AppPhotoGridGallery(imageUrls: photos),
                               ),
                           ],
                         ),

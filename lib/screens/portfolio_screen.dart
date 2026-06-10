@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 
 import '../theme/stroyka_background.dart';
+import '../widgets/app_photo_grid_gallery.dart';
 
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
@@ -128,30 +129,11 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                   );
                 }
 
-                return GridView.builder(
+                return AppPhotoGridGallery(
                   padding: const EdgeInsets.all(10),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                  ),
-                  itemCount: photos.length,
-                  itemBuilder: (context, index) {
-                    final url = photos[index];
-
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.network(
-                        url,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: Colors.grey.shade200,
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.broken_image_outlined),
-                        ),
-                      ),
-                    );
-                  },
+                  imageUrls: photos,
+                  shrinkWrap: false,
+                  physics: const AlwaysScrollableScrollPhysics(),
                 );
               },
             ),

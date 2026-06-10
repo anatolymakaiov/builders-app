@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/chat_service.dart';
+import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/phone_link.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -462,41 +463,12 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
             else if (photos.isEmpty)
               const Text("No team portfolio yet")
             else
-              SizedBox(
-                height: 110,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: photos.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 10),
-                  itemBuilder: (context, index) {
-                    final data = photos[index].data() as Map<String, dynamic>;
-                    final image = data["imageUrl"] ?? data["image"];
-                    if (image == null) return const SizedBox();
-
-                    return GestureDetector(
-                      onTap: () {
-                        showDialog(
-                          context: context,
-                          builder: (_) => Dialog(
-                            child: Image.network(
-                              image.toString(),
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                        );
-                      },
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.network(
-                          image.toString(),
-                          width: 110,
-                          height: 110,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    );
-                  },
-                ),
+              AppPhotoGridGallery(
+                imageUrls: photos
+                    .map((doc) => doc.data() as Map<String, dynamic>)
+                    .map((data) =>
+                        (data["imageUrl"] ?? data["image"])?.toString() ?? "")
+                    .toList(),
               ),
           ],
         );

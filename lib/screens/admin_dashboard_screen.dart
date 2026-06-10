@@ -10,6 +10,7 @@ import '../models/job.dart';
 import '../services/billing_service.dart';
 import '../services/job_alert_service.dart';
 import '../services/notification_service.dart';
+import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/job_card.dart';
 import 'employer_profile_screen.dart';
 import '../theme/app_theme.dart';
@@ -5353,26 +5354,7 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: job.photos.length,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
-                      ),
-                      itemBuilder: (context, index) {
-                        return ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.network(
-                            job.photos[index],
-                            fit: BoxFit.cover,
-                          ),
-                        );
-                      },
-                    ),
+                    AppPhotoGridGallery(imageUrls: job.photos),
                   ],
                 ),
               ),

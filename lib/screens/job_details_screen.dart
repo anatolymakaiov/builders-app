@@ -7,7 +7,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'employer_applications_screen.dart';
 import 'post_job_screen.dart';
 import 'chat_screen.dart';
-import 'image_gallery_viewer_screen.dart';
 
 import '../models/job.dart';
 import '../services/application_activity_service.dart';
@@ -18,6 +17,7 @@ import '../services/offer_acceptance_service.dart';
 import '../services/report_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/company_profile_sections.dart';
 import '../widgets/job_card.dart';
 
@@ -1140,38 +1140,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 180,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: widget.job.photos.length,
-            itemBuilder: (context, index) {
-              final photo = widget.job.photos[index];
-
-              return GestureDetector(
-                onTap: () {
-                  showDialog(
-                    context: context,
-                    builder: (_) => Dialog(
-                      child: Image.network(photo),
-                    ),
-                  );
-                },
-                child: Container(
-                  margin: const EdgeInsets.only(right: 10),
-                  width: 240,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    image: DecorationImage(
-                      image: NetworkImage(photo),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
+        AppPhotoGridGallery(imageUrls: widget.job.photos),
         const SizedBox(height: 24),
       ],
     );
@@ -2169,32 +2138,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       return const Center(child: Text("No photos yet"));
     }
 
-    return GridView.builder(
+    return AppPhotoGridGallery(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-      ),
-      itemCount: widget.job.photos.length,
-      itemBuilder: (context, index) {
-        final photo = widget.job.photos[index];
-
-        return GestureDetector(
-          onTap: () {
-            showDialog(
-              context: context,
-              builder: (_) => Dialog(
-                child: Image.network(photo),
-              ),
-            );
-          },
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.network(photo, fit: BoxFit.cover),
-          ),
-        );
-      },
+      imageUrls: widget.job.photos,
+      shrinkWrap: false,
+      physics: const AlwaysScrollableScrollPhysics(),
     );
   }
 
@@ -2413,35 +2361,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                           else
                             StroykaSurface(
                               padding: const EdgeInsets.all(18),
-                              child: GridView.builder(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: photos.length,
-                                gridDelegate:
-                                    const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  crossAxisSpacing: 10,
-                                  mainAxisSpacing: 10,
-                                ),
-                                itemBuilder: (_, index) => GestureDetector(
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => ImageGalleryViewerScreen(
-                                        imageUrls: photos,
-                                        initialIndex: index,
-                                      ),
-                                    ),
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Image.network(
-                                      photos[index],
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                              child: AppPhotoGridGallery(imageUrls: photos),
                             ),
                         ],
                       ),

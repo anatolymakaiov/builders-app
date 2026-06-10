@@ -14,6 +14,7 @@ import 'portfolio_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../services/registration_validation_service.dart';
+import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/legal_documents.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -1894,25 +1895,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             final photos = snapshot.data!;
             if (photos.isEmpty) return const Text("No work photos yet");
 
-            return SizedBox(
-              height: 90,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: photos.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 10),
-                itemBuilder: (_, index) {
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Image.network(
-                      photos[index],
-                      width: 90,
-                      height: 90,
-                      fit: BoxFit.cover,
-                    ),
-                  );
-                },
-              ),
-            );
+            return AppPhotoGridGallery(imageUrls: photos);
           },
         ),
       ],
@@ -1950,48 +1933,22 @@ class _ProfileScreenState extends State<ProfileScreen>
         if (companyPhotos.isEmpty)
           const Text("No company photos yet")
         else
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: companyPhotos.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
-            itemBuilder: (context, index) {
-              final photo = companyPhotos[index];
-
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.network(
-                      photo,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: Colors.grey.shade200,
-                        alignment: Alignment.center,
-                        child: const Icon(Icons.broken_image_outlined),
-                      ),
-                    ),
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: Material(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        shape: const CircleBorder(),
-                        child: IconButton(
-                          tooltip: "Remove photo",
-                          icon: const Icon(Icons.close, color: Colors.white),
-                          onPressed: uploadingCompanyPhotos
-                              ? null
-                              : () => removeCompanyPhoto(photo),
-                        ),
-                      ),
-                    ),
-                  ],
+          AppPhotoGridGallery(
+            imageUrls: companyPhotos,
+            overlayBuilder: (context, index, photo) {
+              return Positioned(
+                top: 6,
+                right: 6,
+                child: Material(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    tooltip: "Remove photo",
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: uploadingCompanyPhotos
+                        ? null
+                        : () => removeCompanyPhoto(photo),
+                  ),
                 ),
               );
             },
