@@ -13,6 +13,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'image_viewer_screen.dart';
+import '../services/chat_profile_navigation_service.dart';
 import '../services/report_service.dart';
 import '../services/chat_service.dart';
 import '../theme/app_theme.dart';
@@ -1428,21 +1429,28 @@ class _ChatScreenState extends State<ChatScreen> {
         final inactiveMessage = inactiveChatMessage(chatData);
 
         final isInternalTeamChat = chatData["type"] == "internal_team";
+        final isTeamChat =
+            chatData["type"] == "team" || chatData["teamId"] != null;
         final isWorker = uid == chatData["workerId"];
-        final otherUserId = isInternalTeamChat
-            ? uid
+        final showTeamHeader = isInternalTeamChat ||
+            (isTeamChat && uid == chatData["employerId"]?.toString());
+        final otherUserId = showTeamHeader
+            ? chatData["teamId"]
             : (isWorker ? chatData["employerId"] : chatData["workerId"]);
+        final otherProfileId = otherUserId?.toString() ?? "__missing_profile__";
+        final profileCollection = showTeamHeader ? "teams" : "users";
         final jobId = chatData["jobId"]?.toString();
 
         return StreamBuilder<DocumentSnapshot>(
           stream: FirebaseFirestore.instance
-              .collection("users")
-              .doc(otherUserId)
+              .collection(profileCollection)
+              .doc(otherProfileId)
               .snapshots(),
           builder: (context, userSnapshot) {
             final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
 
-            final isOnline = userData?["isOnline"] ?? false;
+            final isOnline =
+                showTeamHeader ? false : userData?["isOnline"] ?? false;
 
             final lastSeenRaw = userData?["lastSeen"];
             final Timestamp? lastSeen =
@@ -1470,26 +1478,34 @@ class _ChatScreenState extends State<ChatScreen> {
                   jobData: jobData,
                   currentUserIsWorker: isWorker,
                   isInternalTeamChat: isInternalTeamChat,
-                  showTeamAvatar: false,
+                  showTeamAvatar: showTeamHeader,
                 );
 
                 return StroykaBackground(
                   asset: AppAssets.backgroundWorkersCity,
                   child: Scaffold(
                     appBar: AppBar(
-                      title: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(name),
-                          Text(
-                            isTyping
-                                ? "typing..."
-                                : isOnline
-                                    ? "Online"
-                                    : formatLastSeen(lastSeen),
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ],
+                      title: InkWell(
+                        onTap: () => ChatProfileNavigationService.openFromChat(
+                          context,
+                          chatData: chatData,
+                          currentUserId: uid,
+                          preferTeamTarget: showTeamHeader,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(name),
+                            Text(
+                              isTyping
+                                  ? "typing..."
+                                  : isOnline
+                                      ? "Online"
+                                      : formatLastSeen(lastSeen),
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
                       ),
                       actions: [
                         if (!isInternalTeamChat)
