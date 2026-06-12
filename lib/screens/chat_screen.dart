@@ -140,6 +140,26 @@ class _ChatScreenState extends State<ChatScreen> {
     return ids.where((id) => id.isNotEmpty).toList();
   }
 
+  String? otherParticipantId(Map<String, dynamic> data, String uid) {
+    final targetProfileId = data["targetProfileId"]?.toString();
+    if (targetProfileId != null &&
+        targetProfileId.isNotEmpty &&
+        targetProfileId != uid) {
+      return targetProfileId;
+    }
+
+    for (final key in const ["participantIds", "participants", "members"]) {
+      final value = data[key];
+      if (value is! List) continue;
+      for (final item in value) {
+        final id = item.toString();
+        if (id.isNotEmpty && id != uid) return id;
+      }
+    }
+
+    return null;
+  }
+
   List<String> unreadRecipients(String senderId) {
     final recipients = chatMembers
         .where((id) => id.isNotEmpty && id != senderId)
@@ -1436,7 +1456,9 @@ class _ChatScreenState extends State<ChatScreen> {
             (isTeamChat && uid == chatData["employerId"]?.toString());
         final otherUserId = showTeamHeader
             ? chatData["teamId"]
-            : (isWorker ? chatData["employerId"] : chatData["workerId"]);
+            : (isWorker
+                ? chatData["employerId"]
+                : chatData["workerId"] ?? otherParticipantId(chatData, uid));
         final otherProfileId = otherUserId?.toString() ?? "__missing_profile__";
         final profileCollection = showTeamHeader ? "teams" : "users";
         final jobId = chatData["jobId"]?.toString();
@@ -1472,14 +1494,23 @@ class _ChatScreenState extends State<ChatScreen> {
               builder: (context, jobSnapshot) {
                 final jobData =
                     jobSnapshot.data?.data() as Map<String, dynamic>?;
-                final name = ChatService.chatDisplayName(
-                  chatData: chatData,
-                  participantData: userData,
-                  jobData: jobData,
-                  currentUserIsWorker: isWorker,
-                  isInternalTeamChat: isInternalTeamChat,
-                  showTeamAvatar: showTeamHeader,
-                );
+                final isGenericDirectChat = !isTeamChat &&
+                    chatData["workerId"] == null &&
+                    chatData["employerId"] == null;
+                final name = isGenericDirectChat
+                    ? "${ChatService.firstText(
+                        userData,
+                        ["companyName", "name", "displayName"],
+                        fallback: "User",
+                      )}_${ChatService.jobTitle(chatData, jobData)}"
+                    : ChatService.chatDisplayName(
+                        chatData: chatData,
+                        participantData: userData,
+                        jobData: jobData,
+                        currentUserIsWorker: isWorker,
+                        isInternalTeamChat: isInternalTeamChat,
+                        showTeamAvatar: showTeamHeader,
+                      );
 
                 return StroykaBackground(
                   asset: AppAssets.backgroundWorkersCity,

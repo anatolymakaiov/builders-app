@@ -46,6 +46,8 @@ class StroykaProfileHeader extends StatelessWidget {
   final String? headerImageUrl;
   final IconData fallbackIcon;
   final Widget? headerControls;
+  final Widget? leftBottomAction;
+  final Widget? rightBottomAction;
   final EdgeInsetsGeometry margin;
   final double avatarSize;
 
@@ -57,6 +59,8 @@ class StroykaProfileHeader extends StatelessWidget {
     this.headerImageUrl,
     required this.fallbackIcon,
     this.headerControls,
+    this.leftBottomAction,
+    this.rightBottomAction,
     this.margin = const EdgeInsets.fromLTRB(12, 12, 12, 10),
     this.avatarSize = 88,
   });
@@ -159,6 +163,18 @@ class StroykaProfileHeader extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (leftBottomAction != null)
+                        Positioned(
+                          left: 0,
+                          bottom: 0,
+                          child: leftBottomAction!,
+                        ),
+                      if (rightBottomAction != null)
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: rightBottomAction!,
+                        ),
                     ],
                   ),
                 ),

@@ -83,6 +83,23 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
         containsId(data["members"]);
   }
 
+  String? otherParticipantId(Map<String, dynamic> data, String uid) {
+    final targetProfileId = data["targetProfileId"]?.toString();
+    if (targetProfileId != null &&
+        targetProfileId.isNotEmpty &&
+        targetProfileId != uid) {
+      return targetProfileId;
+    }
+
+    for (final key in const ["participantIds", "participants", "members"]) {
+      for (final id in idsFrom(data[key])) {
+        if (id != uid) return id;
+      }
+    }
+
+    return null;
+  }
+
   Widget chatAvatar({
     required String? avatarUrl,
     required bool isOnline,
@@ -719,7 +736,9 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
 
                         final otherUserId = isTeamChat
                             ? employerId
-                            : (isWorker ? employerId : workerId);
+                            : (isWorker
+                                ? employerId
+                                : workerId ?? otherParticipantId(data, uid));
                         final displayCollection =
                             showTeamAvatar ? "teams" : "users";
                         final displayId =
@@ -767,14 +786,23 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                               builder: (context, jobSnap) {
                                 final jobData = jobSnap.data?.data()
                                     as Map<String, dynamic>?;
-                                final chatName = ChatService.chatDisplayName(
-                                  chatData: data,
-                                  participantData: displayData,
-                                  jobData: jobData,
-                                  currentUserIsWorker: isWorker,
-                                  isInternalTeamChat: isInternalTeamChat,
-                                  showTeamAvatar: showTeamAvatar,
-                                );
+                                final isGenericDirectChat = !isTeamChat &&
+                                    data["workerId"] == null &&
+                                    data["employerId"] == null;
+                                final chatName = isGenericDirectChat
+                                    ? "${ChatService.firstText(
+                                        displayData,
+                                        ["companyName", "name", "displayName"],
+                                        fallback: "User",
+                                      )}_${ChatService.jobTitle(data, jobData)}"
+                                    : ChatService.chatDisplayName(
+                                        chatData: data,
+                                        participantData: displayData,
+                                        jobData: jobData,
+                                        currentUserIsWorker: isWorker,
+                                        isInternalTeamChat: isInternalTeamChat,
+                                        showTeamAvatar: showTeamAvatar,
+                                      );
 
                                 return Dismissible(
                                   key: ValueKey("chat-${chat.id}"),

@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'edit_profile_screen.dart';
 import '../widgets/job_card.dart';
 import '../services/billing_service.dart';
+import '../services/profile_communication_service.dart';
 import '../services/report_service.dart';
 import '../services/support_request_service.dart';
 import '../theme/app_theme.dart';
@@ -288,6 +289,18 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                     avatarUrl: logo is String ? logo : null,
                     headerImageUrl: headerImage,
                     fallbackIcon: Icons.business,
+                    rightBottomAction: !isMyCompany
+                        ? ProfileCommunicationService.circleAction(
+                            icon: Icons.chat_bubble_outline,
+                            tooltip: "Message company",
+                            onPressed: () => ProfileCommunicationService
+                                .openDirectProfileChat(
+                              context: context,
+                              targetUserId: widget.userId,
+                              targetRole: "employer",
+                            ),
+                          )
+                        : null,
                   ),
                   StroykaTabBar(
                     labels: [

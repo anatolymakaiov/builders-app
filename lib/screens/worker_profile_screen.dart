@@ -11,6 +11,7 @@ import '../services/application_activity_service.dart';
 import '../services/calendar_service.dart';
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
+import '../services/profile_communication_service.dart';
 import '../services/report_service.dart';
 import '../services/support_request_service.dart';
 import 'chat_screen.dart';
@@ -1550,7 +1551,7 @@ class WorkerProfileScreen extends StatelessWidget {
                 .collection("users")
                 .doc(currentUser.uid)
                 .get();
-            currentRole = currentSnap.data()?["role"]?.toString();
+            currentRole = currentSnap.data()?["role"]?.toString().toLowerCase();
           }
 
           return {
@@ -1600,6 +1601,30 @@ class WorkerProfileScreen extends StatelessWidget {
                     avatarUrl: photo is String ? photo : null,
                     headerImageUrl: headerImage,
                     fallbackIcon: Icons.person,
+                    leftBottomAction: !isMyProfile && currentRole == "employer"
+                        ? ProfileCommunicationService.circleAction(
+                            icon: Icons.phone,
+                            tooltip: "Call worker",
+                            onPressed: () =>
+                                ProfileCommunicationService.callPhone(
+                              context,
+                              profileData: data,
+                              phone: phone?.toString(),
+                            ),
+                          )
+                        : null,
+                    rightBottomAction: !isMyProfile && currentUser != null
+                        ? ProfileCommunicationService.circleAction(
+                            icon: Icons.chat_bubble_outline,
+                            tooltip: "Message worker",
+                            onPressed: () => ProfileCommunicationService
+                                .openDirectProfileChat(
+                              context: context,
+                              targetUserId: userId,
+                              targetRole: "worker",
+                            ),
+                          )
+                        : null,
                     headerControls: canShowActions
                         ? buildLiveApplicationHeaderControls(
                             context: context,

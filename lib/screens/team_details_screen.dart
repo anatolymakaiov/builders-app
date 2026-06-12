@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/chat_service.dart';
+import '../services/profile_communication_service.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/phone_link.dart';
 import '../theme/app_theme.dart';
@@ -36,8 +37,27 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
   bool addingMember = false;
   bool deletingTeam = false;
   bool teamDeletedLocally = false;
+  String viewerRole = "worker";
 
   String? get currentUserId => FirebaseAuth.instance.currentUser?.uid;
+
+  @override
+  void initState() {
+    super.initState();
+    loadViewerRole();
+  }
+
+  Future<void> loadViewerRole() async {
+    final uid = currentUserId;
+    if (uid == null || uid.isEmpty) return;
+
+    final snap =
+        await FirebaseFirestore.instance.collection("users").doc(uid).get();
+    if (!mounted) return;
+    setState(() {
+      viewerRole = snap.data()?["role"]?.toString().toLowerCase() ?? "worker";
+    });
+  }
 
   List<String> memberIdsFrom(dynamic value) {
     if (value is! List) return [];
@@ -619,6 +639,37 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                       avatarUrl: avatar?.toString(),
                       fallbackIcon: Icons.groups,
                       margin: EdgeInsets.zero,
+                      leftBottomAction: viewerRole == "employer"
+                          ? ProfileCommunicationService.circleAction(
+                              icon: Icons.phone,
+                              tooltip: "Call team",
+                              onPressed: () async {
+                                final phone =
+                                    await ProfileCommunicationService.teamPhone(
+                                  team,
+                                );
+                                if (!context.mounted) return;
+                                await ProfileCommunicationService.callPhone(
+                                  context,
+                                  profileData: team,
+                                  phone: phone,
+                                );
+                              },
+                            )
+                          : null,
+                      rightBottomAction: currentUserId != null
+                          ? ProfileCommunicationService.circleAction(
+                              icon: Icons.chat_bubble_outline,
+                              tooltip: "Message team",
+                              onPressed: () => ProfileCommunicationService
+                                  .openTeamProfileChat(
+                                context: context,
+                                teamId: widget.teamId,
+                                teamName: name,
+                                memberIds: members,
+                              ),
+                            )
+                          : null,
                     ),
                   ),
                   const SizedBox(height: 18),
