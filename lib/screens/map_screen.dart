@@ -596,55 +596,70 @@ class _MapScreenState extends State<MapScreen> {
         ? LatLng(userLat!, userLng!)
         : const LatLng(53.4808, -2.2426);
 
-    return ColoredBox(
-      color: const Color(0xFFE7EEF3),
-      child: Stack(
-        children: [
-          buildMap(center, jobMarkers, userMarker),
-          if (showSearchButton)
-            Positioned(
-              top: 10,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      searchBounds = mapBounds;
-                      showSearchButton = false;
-                    });
-                  },
-                  child: const Text("Search this area"),
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        debugPrint(
+          "EMPLOYER MAP BUILD mapWidgetBuilt=true "
+          "mapContainerSize=${constraints.maxWidth.toStringAsFixed(1)}x"
+          "${constraints.maxHeight.toStringAsFixed(1)} "
+          "bottomSheetVisible=true greyPlaceholderVisible=false "
+          "flutterMapLayerIndex=0 overlayLayerCount=${showSearchButton ? 2 : 1}",
+        );
+
+        return ColoredBox(
+          color: const Color(0xFFE7EEF3),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(
+                child: buildMap(center, jobMarkers, userMarker),
               ),
-            ),
-          buildBottomSheet(visibleJobs),
-          if (!isEmployer)
-            Positioned(
-              top: 10,
-              right: 0,
-              child: Row(
-                children: [
-                  FloatingActionButton(
-                    heroTag: "location",
-                    mini: true,
-                    onPressed: () {
-                      if (userLat == null || userLng == null) return;
-                      setState(() {
-                        showUserLocationMarker = true;
-                      });
-                      mapController.move(
-                        LatLng(userLat!, userLng!),
-                        15,
-                      );
-                    },
-                    child: const Icon(Icons.my_location),
+              if (showSearchButton)
+                Positioned(
+                  top: 10,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          searchBounds = mapBounds;
+                          showSearchButton = false;
+                        });
+                      },
+                      child: const Text("Search this area"),
+                    ),
                   ),
-                ],
-              ),
-            ),
-        ],
-      ),
+                ),
+              buildBottomSheet(visibleJobs),
+              if (!isEmployer)
+                Positioned(
+                  top: 10,
+                  right: 0,
+                  child: Row(
+                    children: [
+                      FloatingActionButton(
+                        heroTag: "location",
+                        mini: true,
+                        onPressed: () {
+                          if (userLat == null || userLng == null) return;
+                          setState(() {
+                            showUserLocationMarker = true;
+                          });
+                          mapController.move(
+                            LatLng(userLat!, userLng!),
+                            15,
+                          );
+                        },
+                        child: const Icon(Icons.my_location),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 
