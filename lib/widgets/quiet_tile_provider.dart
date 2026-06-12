@@ -29,76 +29,6 @@ class QuietTileProvider extends TileProvider {
 }
 
 class _QuietTileImageProvider extends ImageProvider<_QuietTileImageProvider> {
-  static final Uint8List _transparentPng = Uint8List.fromList(const [
-    0x89,
-    0x50,
-    0x4E,
-    0x47,
-    0x0D,
-    0x0A,
-    0x1A,
-    0x0A,
-    0x00,
-    0x00,
-    0x00,
-    0x0D,
-    0x49,
-    0x48,
-    0x44,
-    0x52,
-    0x00,
-    0x00,
-    0x00,
-    0x01,
-    0x00,
-    0x00,
-    0x00,
-    0x01,
-    0x08,
-    0x06,
-    0x00,
-    0x00,
-    0x00,
-    0x1F,
-    0x15,
-    0xC4,
-    0x89,
-    0x00,
-    0x00,
-    0x00,
-    0x0A,
-    0x49,
-    0x44,
-    0x41,
-    0x54,
-    0x78,
-    0x9C,
-    0x63,
-    0x00,
-    0x01,
-    0x00,
-    0x00,
-    0x05,
-    0x00,
-    0x01,
-    0x0D,
-    0x0A,
-    0x2D,
-    0xB4,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x49,
-    0x45,
-    0x4E,
-    0x44,
-    0xAE,
-    0x42,
-    0x60,
-    0x82,
-  ]);
-
   final String url;
   final String? fallbackUrl;
   final Map<String, String> headers;
@@ -132,6 +62,7 @@ class _QuietTileImageProvider extends ImageProvider<_QuietTileImageProvider> {
     _QuietTileImageProvider key,
     ImageDecoderCallback decode,
   ) async {
+    Object? lastError;
     final urls = [
       key.url,
       if (key.fallbackUrl != null && key.fallbackUrl!.isNotEmpty)
@@ -146,16 +77,18 @@ class _QuietTileImageProvider extends ImageProvider<_QuietTileImageProvider> {
             headers: key.headers,
           );
           return decode(await ImmutableBuffer.fromUint8List(bytes));
-        } catch (_) {
+        } catch (error) {
+          lastError = error;
           // Initial tile requests may be cancelled while the map settles.
-          // Retry before falling back so the first viewport is not cached blank.
+          // Retry before failing so the first viewport is not cached blank.
+          debugPrint("MAP TILE LOAD FAILED url=$url error=$error");
         }
       }
 
       await Future<void>.delayed(Duration(milliseconds: 180 * (attempt + 1)));
     }
 
-    return decode(await ImmutableBuffer.fromUint8List(_transparentPng));
+    throw StateError("Could not load map tile ${key.url}: $lastError");
   }
 
   @override

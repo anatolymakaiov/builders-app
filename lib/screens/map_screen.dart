@@ -326,6 +326,16 @@ class _MapScreenState extends State<MapScreen> {
     Marker? userMarker,
   ) {
     debugPrint("mapTileReady=true");
+    debugPrint(
+      "EMPLOYER TILE LAYER BUILT "
+      "tileUrlTemplate=https://tile.openstreetmap.org/{z}/{x}/{y}.png "
+      "tileProvider=${tileProvider.runtimeType} "
+      "tileLayerOpacity=1.0 "
+      "flutterMapChildrenCount=${userMarker == null ? 2 : 3} "
+      "mapCenter=${center.latitude.toStringAsFixed(4)},${center.longitude.toStringAsFixed(4)} "
+      "mapZoom=10 "
+      "topOverlayWidget=DraggableScrollableSheet",
+    );
     return FlutterMap(
       mapController: mapController,
       options: MapOptions(

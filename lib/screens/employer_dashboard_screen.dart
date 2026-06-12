@@ -432,6 +432,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     Job job,
     Map<String, dynamic>? employerData,
     String ownerId,
+    Set<String> ownerJobIds,
   ) {
     if (employerData == null &&
         job.ownerId.isNotEmpty &&
@@ -443,12 +444,13 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
             .get(),
         builder: (context, snapshot) {
           final data = snapshot.data?.data() as Map<String, dynamic>?;
-          return buildJobCardContent(context, job, data, ownerId);
+          return buildJobCardContent(context, job, data, ownerId, ownerJobIds);
         },
       );
     }
 
-    return buildJobCardContent(context, job, employerData, ownerId);
+    return buildJobCardContent(
+        context, job, employerData, ownerId, ownerJobIds);
   }
 
   Widget buildJobCardContent(
@@ -456,8 +458,9 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     Job job,
     Map<String, dynamic>? employerData,
     String ownerId,
+    Set<String> ownerJobIds,
   ) {
-    final isOwnJob = job.ownerId == ownerId;
+    final isOwnJob = ownerJobIds.contains(job.id) || job.ownerId == ownerId;
     final isClosed = job.isClosed;
     final companyName = companyNameFor(job, employerData);
 
@@ -640,12 +643,13 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                 }
 
                 final ownerJobs = ownerSnapshot.data ?? const <Job>[];
+                final ownerJobIds = ownerJobs.map((job) => job.id).toSet();
                 final jobs = mergeEmployerVisibleJobs(
                   publicJobs: publicSnapshot.data!,
                   ownerJobs: ownerJobs,
                 );
                 final visibleJobs = showOnlyMyJobs
-                    ? jobs.where((job) => job.ownerId == ownerId).toList()
+                    ? jobs.where((job) => ownerJobIds.contains(job.id)).toList()
                     : jobs;
 
                 final filteredJobs = visibleJobs.where((job) {
@@ -657,6 +661,25 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                     originJobs: visibleJobs,
                   );
                 }).toList();
+                debugPrint(
+                  "MY JOBS RAW COUNT=${ownerJobs.length} "
+                  "MY JOBS AFTER OWNER FILTER=${visibleJobs.length} "
+                  "MY JOBS AFTER STATUS FILTER=${visibleJobs.length} "
+                  "MY JOBS FINAL COUNT=${filteredJobs.length}",
+                );
+                if (showOnlyMyJobs) {
+                  final finalIds = filteredJobs.map((job) => job.id).toSet();
+                  for (final job in ownerJobs) {
+                    if (!finalIds.contains(job.id)) {
+                      debugPrint(
+                        "FILTERED OUT OWN JOB: "
+                        "jobId=${job.id} status=${job.status} "
+                        "active=${!job.isClosed} deleted=${job.status.toLowerCase() == "deleted"} "
+                        "reason=search_or_scope_filter",
+                      );
+                    }
+                  }
+                }
 
                 final totalPages = (filteredJobs.length / _jobsPerPage).ceil();
                 final safePage = totalPages == 0
@@ -721,10 +744,11 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                                     return buildJobCard(
                                       context,
                                       pageJobs[index],
-                                      pageJobs[index].ownerId == ownerId
+                                      ownerJobIds.contains(pageJobs[index].id)
                                           ? employerData
                                           : null,
                                       ownerId,
+                                      ownerJobIds,
                                     );
                                   },
                                 ),
