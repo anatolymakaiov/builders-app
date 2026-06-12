@@ -40,6 +40,16 @@ class JobRepository {
                 status == "moderation_required"));
   }
 
+  bool _isHardDeletedJobData(Map<String, dynamic> data) {
+    final status = data["status"]?.toString().trim().toLowerCase() ?? "";
+    return data["deleted"] == true ||
+        data["isDeleted"] == true ||
+        data["employerDeleted"] == true ||
+        data["companyDeleted"] == true ||
+        data["deletionReason"] != null ||
+        status == "deleted";
+  }
+
   Future<bool> _isOwnerActive(String ownerId) async {
     if (ownerId.trim().isEmpty || ownerId == "unknown") return false;
 
@@ -143,7 +153,7 @@ class JobRepository {
 
       final jobs = docsById.values.where((doc) {
         final data = doc.data();
-        return !_isDeletedOrInactiveJobData(data);
+        return !_isHardDeletedJobData(data);
       }).map((doc) {
         final data = doc.data();
         return Job.fromFirestore(doc.id, data);

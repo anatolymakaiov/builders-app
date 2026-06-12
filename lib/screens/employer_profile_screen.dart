@@ -107,13 +107,16 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
     required bool canViewAllJobs,
   }) {
     final status = job.status.trim().toLowerCase();
+    if (status == "deleted") return false;
+
+    if (canViewAllJobs) return true;
+
     final activeStatus = status.isEmpty ||
         status == "active" ||
         status == "published" ||
         status == "open";
 
     if (!activeStatus || job.isClosed) return false;
-    if (canViewAllJobs) return true;
     return job.isPubliclyVisible;
   }
 
@@ -329,17 +332,28 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                         StreamBuilder<List<Job>>(
                           stream: getJobs(),
                           builder: (context, snapshot) {
-                            if (!snapshot.hasData) {
+                            if (snapshot.connectionState ==
+                                    ConnectionState.waiting &&
+                                !snapshot.hasData) {
                               return const Center(
                                 child: CircularProgressIndicator(),
                               );
                             }
 
-                            final jobs = snapshot.data!;
+                            if (snapshot.hasError) {
+                              return const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(24),
+                                  child: Text("Could not load vacancies"),
+                                ),
+                              );
+                            }
+
+                            final jobs = snapshot.data ?? const <Job>[];
 
                             if (jobs.isEmpty) {
                               return const Center(
-                                child: Text("No active company jobs"),
+                                child: Text("No vacancies to display."),
                               );
                             }
 
@@ -352,7 +366,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                                     margin: const EdgeInsets.only(bottom: 10),
                                     padding: const EdgeInsets.all(14),
                                     child: Text(
-                                      "${jobs.length} active ${jobs.length == 1 ? "vacancy" : "vacancies"}",
+                                      "${jobs.length} ${jobs.length == 1 ? "vacancy" : "vacancies"}",
                                       style: const TextStyle(
                                         color: AppColors.ink,
                                         fontWeight: FontWeight.w900,

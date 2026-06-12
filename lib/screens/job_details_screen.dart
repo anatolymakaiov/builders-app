@@ -2518,13 +2518,15 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     required bool canViewAllCompanyJobs,
   }) {
     final status = job.status.trim().toLowerCase();
+    if (status == "deleted") return false;
+    if (canViewAllCompanyJobs) return true;
+
     final activeStatus = status.isEmpty ||
         status == "active" ||
         status == "published" ||
         status == "open";
 
     if (!activeStatus || job.isClosed) return false;
-    if (canViewAllCompanyJobs) return true;
     return job.isPubliclyVisible;
   }
 
