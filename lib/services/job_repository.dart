@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:async';
 import '../models/job.dart';
 import 'application_activity_service.dart';
 import 'notification_service.dart';
@@ -137,34 +136,18 @@ class JobRepository {
 
   /// 🔥 JOBS ПО РАБОТОДАТЕЛЮ (НОВОЕ)
   Stream<List<Job>> getJobsByOwner(String ownerId) {
-    final controller = StreamController<List<Job>>();
-    final latestByField =
-        <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
-    final subscriptions =
-        <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
+    final streamId = DateTime.now().microsecondsSinceEpoch;
+    debugPrint("JOBS STREAM INSTANCE ID=$streamId ownerId=$ownerId");
 
-    void emitJobs() {
-      final docsById = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
-      for (final docs in latestByField.values) {
-        for (final doc in docs) {
-          docsById[doc.id] = doc;
-        }
-      }
-
-      final jobs = docsById.values.where((doc) {
+    return _db.collection('jobs').snapshots().map((snapshot) {
+      final jobs = snapshot.docs.where((doc) {
         final data = doc.data();
+        final belongsToOwner = _jobBelongsToOwner(data, ownerId);
+        if (!belongsToOwner) return false;
         return !_isHardDeletedJobData(data);
       }).map((doc) {
-        final data = doc.data();
-        return Job.fromFirestore(doc.id, data);
+        return Job.fromFirestore(doc.id, doc.data());
       }).toList();
-
-      debugPrint(
-        "MY JOBS LOAD START employerId=$ownerId companyId=$ownerId jobsCount=${jobs.length}",
-      );
-      if (jobs.isEmpty) {
-        debugPrint("MY JOBS EMPTY STATE");
-      }
 
       jobs.sort((a, b) {
         final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -172,40 +155,30 @@ class JobRepository {
         return bDate.compareTo(aDate);
       });
 
-      if (!controller.isClosed) {
-        controller.add(jobs);
+      debugPrint(
+        "MY JOBS SOURCE UPDATED=$streamId employerId=$ownerId jobsCount=${jobs.length}",
+      );
+      if (jobs.isEmpty) {
+        debugPrint("MY JOBS EMPTY STATE");
       }
+
+      return jobs;
+    }).handleError((error) {
+      debugPrint("MY JOBS SOURCE ERROR=$streamId error=$error");
+    });
+  }
+
+  bool _jobBelongsToOwner(Map<String, dynamic> data, String ownerId) {
+    for (final field in const [
+      "ownerId",
+      "employerId",
+      "createdBy",
+      "userId"
+    ]) {
+      if (data[field]?.toString() == ownerId) return true;
     }
 
-    controller.onListen = () {
-      for (final field in const [
-        "ownerId",
-        "employerId",
-        "createdBy",
-        "userId"
-      ]) {
-        final subscription = _db
-            .collection('jobs')
-            .where(field, isEqualTo: ownerId)
-            .snapshots(includeMetadataChanges: true)
-            .listen(
-          (snapshot) {
-            latestByField[field] = snapshot.docs;
-            emitJobs();
-          },
-          onError: controller.addError,
-        );
-        subscriptions.add(subscription);
-      }
-    };
-
-    controller.onCancel = () async {
-      for (final subscription in subscriptions) {
-        await subscription.cancel();
-      }
-    };
-
-    return controller.stream;
+    return false;
   }
 
   /// 🔥 ПРОВЕРКА: УЖЕ ОТКЛИКНУЛСЯ?

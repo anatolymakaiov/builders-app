@@ -26,6 +26,8 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   static const int _jobsPerPage = 10;
 
   final jobRepository = JobRepository();
+  late final Stream<List<Job>> publicJobsStream;
+  final Map<String, Stream<List<Job>>> ownerJobsStreams = {};
   String selectedTrade = "All";
   String selectedSite = "All";
   String searchQuery = "";
@@ -33,6 +35,19 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   JobSearchFilters searchFilters = const JobSearchFilters();
   bool showOnlyMyJobs = false;
   int currentPage = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    publicJobsStream = jobRepository.getJobs();
+  }
+
+  Stream<List<Job>> ownerJobsStream(String ownerId) {
+    return ownerJobsStreams.putIfAbsent(
+      ownerId,
+      () => jobRepository.getJobsByOwner(ownerId),
+    );
+  }
 
   Widget buildCompanyAvatar(Job job, Map<String, dynamic>? employerData) {
     final avatarUrl = employerData?["companyLogo"] ??
@@ -624,7 +639,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
       ),
       body: StroykaScreenBody(
         child: StreamBuilder<List<Job>>(
-          stream: jobRepository.getJobs(),
+          stream: publicJobsStream,
           builder: (context, publicSnapshot) {
             if (publicSnapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -635,7 +650,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
             }
 
             return StreamBuilder<List<Job>>(
-              stream: jobRepository.getJobsByOwner(ownerId),
+              stream: ownerJobsStream(ownerId),
               builder: (context, ownerSnapshot) {
                 if (ownerSnapshot.connectionState == ConnectionState.waiting &&
                     !ownerSnapshot.hasData) {

@@ -29,6 +29,8 @@ class _MapScreenState extends State<MapScreen> {
   final ScrollController listController = ScrollController();
   final jobRepository = JobRepository();
   final tileProvider = QuietTileProvider();
+  late final Stream<List<Job>> publicJobsStream;
+  final Map<String, Stream<List<Job>>> ownerJobsStreams = {};
 
   Set<String> savedJobIds = {};
 
@@ -55,6 +57,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    publicJobsStream = jobRepository.getJobs();
     loadRole();
     requestLocation();
     loadSavedJobs();
@@ -79,6 +82,20 @@ class _MapScreenState extends State<MapScreen> {
         selectedJobId = job.id;
       });
     });
+  }
+
+  Stream<List<Job>> ownerJobsStream(String ownerId) {
+    return ownerJobsStreams.putIfAbsent(
+      ownerId,
+      () {
+        final streamId = DateTime.now().microsecondsSinceEpoch;
+        debugPrint("MAP STREAM INSTANCE ID=$streamId ownerId=$ownerId");
+        return jobRepository.getJobsByOwner(ownerId).map((jobs) {
+          debugPrint("MAP SOURCE UPDATED=$streamId jobsCount=${jobs.length}");
+          return jobs;
+        });
+      },
+    );
   }
 
   @override
@@ -678,7 +695,7 @@ class _MapScreenState extends State<MapScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text("Jobs Map")),
       body: StreamBuilder<List<Job>>(
-        stream: jobRepository.getJobs(),
+        stream: publicJobsStream,
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return buildMapContent(const <Job>[]);
@@ -691,7 +708,7 @@ class _MapScreenState extends State<MapScreen> {
           }
 
           return StreamBuilder<List<Job>>(
-            stream: jobRepository.getJobsByOwner(employerId),
+            stream: ownerJobsStream(employerId),
             builder: (context, ownerSnapshot) {
               if (ownerSnapshot.connectionState == ConnectionState.waiting &&
                   !ownerSnapshot.hasData) {
