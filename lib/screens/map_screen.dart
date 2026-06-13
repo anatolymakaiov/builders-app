@@ -268,6 +268,58 @@ class _MapScreenState extends State<MapScreen> {
     return result;
   }
 
+  bool isMapVisibleJob(Job job) {
+    final status = job.status.trim().toLowerCase();
+    final moderation = job.moderationStatus.trim().toLowerCase();
+
+    String? reason;
+    if (!job.active) {
+      reason = "active_false";
+    } else if (job.deleted) {
+      reason = "deleted_true";
+    } else if (job.employerDeleted) {
+      reason = "employer_deleted";
+    } else if (job.companyDeleted) {
+      reason = "company_deleted";
+    } else if (status == "inactive" ||
+        status == "deleted" ||
+        status == "draft" ||
+        status == "rejected" ||
+        status == "pending" ||
+        status == "on_hold" ||
+        status == "pending_review" ||
+        status == "moderation_required" ||
+        status == "hidden" ||
+        status == "archived" ||
+        status == "suspended" ||
+        status == "expired") {
+      reason = "status_$status";
+    } else if (moderation.isNotEmpty && moderation != "approved") {
+      reason = "moderation_$moderation";
+    } else if (!job.isPubliclyVisible) {
+      reason = "not_publicly_visible";
+    }
+
+    if (reason != null) {
+      debugPrint(
+        "MAP JOB EXCLUDED jobId=${job.id} status=${job.status} active=${job.active} deleted=${job.deleted} reason=$reason",
+      );
+      return false;
+    }
+
+    debugPrint(
+      "MAP JOB INCLUDED jobId=${job.id} status=${job.status} active=${job.active} deleted=${job.deleted}",
+    );
+    return true;
+  }
+
+  List<Job> mapVisibleJobs(List<Job> jobs) {
+    debugPrint("MAP JOB FILTER START rawCount=${jobs.length}");
+    final result = jobs.where(isMapVisibleJob).toList();
+    debugPrint("MAP JOB FINAL COUNT=${result.length}");
+    return result;
+  }
+
   Marker? buildUserMarker() {
     if (isEmployer || !showUserLocationMarker) return null;
     if (userLat == null || userLng == null) return null;
@@ -574,12 +626,13 @@ class _MapScreenState extends State<MapScreen> {
 
   Widget buildMapContent(List<Job> jobs) {
     debugPrint("EMPLOYER MAP LOAD START");
-    allJobs = jobs;
+    final mapJobs = mapVisibleJobs(jobs);
+    allJobs = mapJobs;
 
     List<Job> visibleJobs = getVisibleJobs();
 
     if (visibleJobs.isEmpty) {
-      visibleJobs = allJobs;
+      visibleJobs = mapJobs;
     }
 
     visibleJobs = applyFilters(visibleJobs);

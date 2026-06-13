@@ -48,6 +48,10 @@ class Job {
   final String status;
   final String moderationStatus;
   final String moderationReason;
+  final bool active;
+  final bool deleted;
+  final bool employerDeleted;
+  final bool companyDeleted;
 
   /// 🔥 NEW (КРИТИЧНО ДЛЯ БРИГАД)
   final int positions;
@@ -88,6 +92,10 @@ class Job {
     this.status = "active",
     this.moderationStatus = "",
     this.moderationReason = "",
+    this.active = true,
+    this.deleted = false,
+    this.employerDeleted = false,
+    this.companyDeleted = false,
 
     /// 🔥 NEW
     this.positions = 1,
@@ -173,7 +181,11 @@ class Job {
 
   bool get isPubliclyVisible {
     final normalizedStatus = status.trim().toLowerCase();
-    return moderationStatus == "approved" &&
+    return active &&
+        !deleted &&
+        !employerDeleted &&
+        !companyDeleted &&
+        moderationStatus == "approved" &&
         (normalizedStatus.isEmpty ||
             normalizedStatus == "active" ||
             normalizedStatus == "published" ||
@@ -320,6 +332,10 @@ class Job {
       status: data["status"]?.toString() ?? "active",
       moderationStatus: data["moderationStatus"]?.toString() ?? "",
       moderationReason: data["moderationReason"]?.toString() ?? "",
+      active: data["active"] != false && data["isActive"] != false,
+      deleted: data["deleted"] == true || data["isDeleted"] == true,
+      employerDeleted: data["employerDeleted"] == true,
+      companyDeleted: data["companyDeleted"] == true,
 
       /// 🔥 FIX
       positions: positionsRaw == 0 ? 1 : positionsRaw,

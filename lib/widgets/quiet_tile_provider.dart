@@ -8,9 +8,12 @@ import 'package:http/http.dart' as http;
 
 class QuietTileProvider extends TileProvider {
   final http.Client _client;
+  final int _id = DateTime.now().microsecondsSinceEpoch;
   bool _disposed = false;
 
-  QuietTileProvider({http.Client? client}) : _client = client ?? http.Client();
+  QuietTileProvider({http.Client? client}) : _client = client ?? http.Client() {
+    debugPrint("TILE PROVIDER CREATED id=$_id");
+  }
 
   @override
   ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
@@ -20,12 +23,14 @@ class QuietTileProvider extends TileProvider {
       headers: headers,
       client: _client,
       isDisposed: () => _disposed,
+      providerId: _id,
     );
   }
 
   @override
   void dispose() {
     _disposed = true;
+    debugPrint("TILE PROVIDER DISPOSED id=$_id");
     _client.close();
     super.dispose();
   }
@@ -37,6 +42,7 @@ class _QuietTileImageProvider extends ImageProvider<_QuietTileImageProvider> {
   final Map<String, String> headers;
   final http.Client client;
   final bool Function() isDisposed;
+  final int providerId;
 
   const _QuietTileImageProvider({
     required this.url,
@@ -44,6 +50,7 @@ class _QuietTileImageProvider extends ImageProvider<_QuietTileImageProvider> {
     required this.headers,
     required this.client,
     required this.isDisposed,
+    required this.providerId,
   });
 
   @override
@@ -93,18 +100,26 @@ class _QuietTileImageProvider extends ImageProvider<_QuietTileImageProvider> {
         } catch (error) {
           lastError = error;
           if (key.isDisposed() || error.toString().contains("already closed")) {
+            debugPrint(
+              "TILE REQUEST FAILED url=$url error=$error providerId=${key.providerId} disposed=${key.isDisposed()}",
+            );
             return _decodeTransparentTile(decode);
           }
           // Initial tile requests may be cancelled while the map settles.
           // Retry before failing so the first viewport is not cached blank.
-          debugPrint("MAP TILE LOAD FAILED url=$url error=$error");
+          debugPrint(
+            "TILE REQUEST FAILED url=$url error=$error providerId=${key.providerId} disposed=${key.isDisposed()}",
+          );
         }
       }
 
       await Future<void>.delayed(Duration(milliseconds: 180 * (attempt + 1)));
     }
 
-    throw StateError("Could not load map tile ${key.url}: $lastError");
+    debugPrint(
+      "TILE REQUEST FAILED url=${key.url} error=$lastError providerId=${key.providerId} disposed=${key.isDisposed()}",
+    );
+    return _decodeTransparentTile(decode);
   }
 
   Future<Codec> _decodeTransparentTile(ImageDecoderCallback decode) async {
