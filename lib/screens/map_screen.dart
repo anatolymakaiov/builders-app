@@ -10,8 +10,8 @@ import 'job_details_screen.dart';
 import '../services/job_repository.dart';
 import '../services/job_taxonomy_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_map_tile_layer.dart';
 import '../widgets/job_card.dart';
-import '../widgets/quiet_tile_provider.dart';
 import '../widgets/smart_job_search.dart';
 
 class MapScreen extends StatefulWidget {
@@ -28,7 +28,6 @@ class _MapScreenState extends State<MapScreen> {
   final MapController mapController = MapController();
   final ScrollController listController = ScrollController();
   final jobRepository = JobRepository();
-  final tileProvider = QuietTileProvider();
   late final Stream<List<Job>> publicJobsStream;
   final Map<String, Stream<List<Job>>> ownerJobsStreams = {};
 
@@ -101,7 +100,6 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void dispose() {
     listController.dispose();
-    tileProvider.dispose();
     super.dispose();
   }
 
@@ -398,7 +396,7 @@ class _MapScreenState extends State<MapScreen> {
     debugPrint(
       "EMPLOYER TILE LAYER BUILT "
       "tileUrlTemplate=https://tile.openstreetmap.org/{z}/{x}/{y}.png "
-      "tileProvider=${tileProvider.runtimeType} "
+      "tileProvider=default "
       "tileLayerOpacity=1.0 "
       "flutterMapChildrenCount=${userMarker == null ? 2 : 3} "
       "mapCenter=${center.latitude.toStringAsFixed(4)},${center.longitude.toStringAsFixed(4)} "
@@ -429,13 +427,7 @@ class _MapScreenState extends State<MapScreen> {
         },
       ),
       children: [
-        TileLayer(
-          urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-          fallbackUrl:
-              "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-          userAgentPackageName: "builder.jobs.app",
-          tileProvider: tileProvider,
-        ),
+        buildBaseTileLayer(),
         MarkerClusterLayerWidget(
           options: MarkerClusterLayerOptions(
             markers: jobMarkers,
