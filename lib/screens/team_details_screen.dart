@@ -312,26 +312,100 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
     }
   }
 
-  Future<void> removeMember(String userId, String userName) async {
-    final confirmed = await confirmAction(
-      title: "Remove member",
-      message: "Remove $userName from this team?",
-      confirmText: "Remove",
+  Future<void> messageMember(String userId) async {
+    await ProfileCommunicationService.openDirectProfileChat(
+      context: context,
+      targetUserId: userId,
+      targetRole: "worker",
     );
-    if (!confirmed) return;
+  }
+
+  Future<void> removeMember(String userId, String userName) async {
+    final uid = currentUserId;
+    if (uid == null || uid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Sign in again to manage this team")),
+      );
+      return;
+    }
+
+    if (uid == userId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Team leader cannot remove themselves here."),
+        ),
+      );
+      return;
+    }
 
     final teamRef =
         FirebaseFirestore.instance.collection("teams").doc(widget.teamId);
     final snap = await teamRef.get();
-    final data = snap.data();
-    final members = memberIdsFrom(data?["members"])
-      ..removeWhere((memberId) => memberId == userId);
+    if (!mounted) return;
 
-    await teamRef.set({
-      "members": members,
-      "memberStatuses.$userId": FieldValue.delete(),
-      "updatedAt": FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    if (!snap.exists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Team is no longer available.")),
+      );
+      return;
+    }
+
+    final data = snap.data() ?? <String, dynamic>{};
+    if (!isTeamLeader(data)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Only the team leader can manage team members."),
+        ),
+      );
+      return;
+    }
+
+    final latestMembers = memberIdsFrom(data["members"]);
+    if (!latestMembers.contains(userId)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("This worker is no longer in the team.")),
+      );
+      return;
+    }
+
+    final confirmed = await confirmAction(
+      title: "Remove from team",
+      message: "Are you sure you want to remove this worker from the team?",
+      confirmText: "Yes",
+    );
+    if (!confirmed) return;
+    if (!mounted) return;
+
+    try {
+      final members = latestMembers
+        ..removeWhere((memberId) => memberId == userId);
+
+      await teamRef.set({
+        "members": members,
+        "memberCount": members.length,
+        "memberStatuses.$userId": FieldValue.delete(),
+        "membersStatus.$userId": FieldValue.delete(),
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Worker removed from team.")),
+      );
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      final message = e.code == "permission-denied"
+          ? "Only the team leader can manage team members."
+          : "Could not remove worker from team.";
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not remove worker from team.")),
+      );
+    }
   }
 
   Future<void> leaveTeam(
@@ -555,11 +629,39 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
               ],
             ),
             trailing: canRemove
-                ? IconButton(
-                    tooltip: "Remove member",
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () =>
-                        removeMember(memberId, userName.toString()),
+                ? PopupMenuButton<String>(
+                    tooltip: "Member actions",
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (value) {
+                      if (value == "message") {
+                        messageMember(memberId);
+                      }
+                      if (value == "remove") {
+                        removeMember(memberId, userName.toString());
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: "message",
+                        child: Row(
+                          children: [
+                            Icon(Icons.chat_bubble_outline),
+                            SizedBox(width: 10),
+                            Text("Message"),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: "remove",
+                        child: Row(
+                          children: [
+                            Icon(Icons.person_remove_outlined),
+                            SizedBox(width: 10),
+                            Text("Remove from team"),
+                          ],
+                        ),
+                      ),
+                    ],
                   )
                 : isLeader
                     ? const Chip(label: Text("Leader"))
