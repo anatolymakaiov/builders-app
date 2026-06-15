@@ -128,6 +128,38 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         job.employerDeleted;
   }
 
+  String snapshotJobType(Map<String, dynamic> data) {
+    final raw = firstNonEmpty([
+      data["jobType"],
+      data["payType"],
+      data["workFormat"],
+      data["paymentType"],
+    ]).toLowerCase();
+    if (raw.isEmpty) return "";
+    if (raw.contains("negoti")) return "negotiable";
+    if (raw.contains("price") || raw.contains("fixed")) return "price";
+    if (raw.contains("day") || raw.contains("hour")) return "hourly";
+    return raw;
+  }
+
+  double snapshotRate(Map<String, dynamic> data) {
+    for (final value in [
+      data["rate"],
+      data["jobRate"],
+      data["payAmount"],
+      data["salary"],
+      data["amount"],
+    ]) {
+      if (value is num) return value.toDouble();
+      if (value is String) {
+        final parsed =
+            double.tryParse(value.replaceAll(RegExp(r"[^0-9.]"), ""));
+        if (parsed != null) return parsed;
+      }
+    }
+    return 0;
+  }
+
   Job stableApplicationJob(Job job, Map<String, dynamic>? applicationData) {
     final deletedCompany = applicationCompanyDeleted(applicationData, job);
     final companyName = deletedCompany
@@ -200,7 +232,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       "city": data["siteCity"] ?? data["city"] ?? "",
       "postcode": data["sitePostcode"] ?? data["postcode"] ?? "",
       "county": data["siteCounty"] ?? data["county"] ?? "",
-      "rate": data["rate"] ?? data["jobRate"] ?? 0,
+      "rate": snapshotRate(data),
       "companyName": data["companyName"] ??
           data["employerName"] ??
           data["ownerName"] ??
@@ -208,8 +240,12 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       "companyLogo":
           data["companyLogo"] ?? data["employerLogo"] ?? data["ownerLogo"],
       "photos": data["jobPhotos"] ?? data["photos"] ?? const [],
-      "jobType": data["jobType"] ?? "hourly",
-      "duration": data["duration"] ?? data["jobDuration"] ?? "",
+      "jobType": snapshotJobType(data),
+      "duration": firstNonEmpty([
+        data["duration"],
+        data["jobDuration"],
+        data["workPeriod"],
+      ]),
       "weeklyHours": data["weeklyHours"] ?? "",
       "employmentType": data["employmentType"] ?? "",
       "ownerId": data["ownerId"] ?? data["employerId"] ?? "",
@@ -491,9 +527,26 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                                     .doc(jobDocId)
                                     .snapshots(),
                                 builder: (context, jobSnapshot) {
-                                  if (!jobSnapshot.hasData ||
-                                      jobSnapshot.hasError ||
-                                      !jobSnapshot.data!.exists) {
+                                  if (jobSnapshot.hasError ||
+                                      (jobSnapshot.hasData &&
+                                          !jobSnapshot.data!.exists)) {
+                                    return buildCard(
+                                      fallbackJob.copyWith(
+                                        status: "deleted",
+                                        active: false,
+                                        deleted: true,
+                                      ),
+                                      status,
+                                      apps[index].id,
+                                      appliedAt: data["createdAt"],
+                                      isUnread: isUnread,
+                                      userId: user.uid,
+                                      applicationData: data,
+                                      isTeamApplication: isTeam,
+                                    );
+                                  }
+
+                                  if (!jobSnapshot.hasData) {
                                     return buildCard(
                                       fallbackJob,
                                       status,
@@ -513,9 +566,20 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                                     jobSnapshot.data!.id,
                                     jobData,
                                   );
+                                  final cardJob = jobUnavailableForWorker(job)
+                                      ? fallbackJob.copyWith(
+                                          status: job.status,
+                                          moderationStatus:
+                                              job.moderationStatus,
+                                          active: job.active,
+                                          deleted: job.deleted,
+                                          employerDeleted: job.employerDeleted,
+                                          companyDeleted: job.companyDeleted,
+                                        )
+                                      : job;
 
                                   return buildCard(
-                                    job,
+                                    cardJob,
                                     status,
                                     apps[index].id,
                                     appliedAt: data["createdAt"],

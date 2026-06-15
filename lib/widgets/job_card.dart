@@ -97,7 +97,9 @@ class JobCard extends StatelessWidget {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  AppChip(icon: Icons.work_outline, label: job.workFormatText),
+                  if (job.workFormatText.trim().isNotEmpty)
+                    AppChip(
+                        icon: Icons.work_outline, label: job.workFormatText),
                   if (job.duration.trim().isNotEmpty)
                     AppChip(icon: Icons.schedule, label: job.duration.trim()),
                   if (job.listRateText.isNotEmpty)

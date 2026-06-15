@@ -525,6 +525,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 "jobTrade": jobData["trade"] ?? activeJob.trade,
                 "jobSite": jobData["site"] ?? activeJob.site,
                 ...applicationPhysicalAddressFields(jobData),
+                ...applicationJobSnapshotFields(jobData),
                 "type": "team",
                 "teamId": teamId,
                 "teamName": teamName,
@@ -619,6 +620,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             "jobTrade": jobData["trade"] ?? activeJob.trade,
             "jobSite": jobData["site"] ?? activeJob.site,
             ...applicationPhysicalAddressFields(jobData),
+            ...applicationJobSnapshotFields(jobData),
             "workerId": uid,
             "applicantId": uid,
             "workerName": workerName,
@@ -827,6 +829,18 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       "siteCounty": county,
       "siteAddress": address.isNotEmpty ? address : composedAddress,
       "fullAddress": address.isNotEmpty ? address : composedAddress,
+    };
+  }
+
+  Map<String, dynamic> applicationJobSnapshotFields(
+    Map<String, dynamic> jobData,
+  ) {
+    return {
+      "jobType": (jobData["jobType"] ?? activeJob.jobType).toString(),
+      "rate": jobData["rate"] ?? activeJob.rate,
+      "jobRate": jobData["rate"] ?? activeJob.rate,
+      "duration": (jobData["duration"] ?? activeJob.duration).toString(),
+      "jobDuration": (jobData["duration"] ?? activeJob.duration).toString(),
     };
   }
 

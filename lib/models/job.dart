@@ -104,7 +104,15 @@ class Job {
 
   Job copyWith({
     String? companyName,
+    String? companyLogo,
     String? ownerId,
+    double? rate,
+    String? jobType,
+    String? duration,
+    String? status,
+    String? moderationStatus,
+    bool? active,
+    bool? deleted,
     bool? employerDeleted,
     bool? companyDeleted,
   }) {
@@ -121,7 +129,7 @@ class Job {
       city: city,
       postcode: postcode,
       county: county,
-      rate: rate,
+      rate: rate ?? this.rate,
       lat: lat,
       lng: lng,
       description: description,
@@ -130,21 +138,21 @@ class Job {
       requiredDocuments: requiredDocuments,
       additionalInformation: additionalInformation,
       companyName: companyName ?? this.companyName,
-      companyLogo: companyLogo,
+      companyLogo: companyLogo ?? this.companyLogo,
       photos: photos,
-      jobType: jobType,
-      duration: duration,
+      jobType: jobType ?? this.jobType,
+      duration: duration ?? this.duration,
       weeklyHours: weeklyHours,
       startDate: startDate,
       employmentType: employmentType,
       ownerId: ownerId ?? this.ownerId,
       applicantsCount: applicantsCount,
       createdAt: createdAt,
-      status: status,
-      moderationStatus: moderationStatus,
+      status: status ?? this.status,
+      moderationStatus: moderationStatus ?? this.moderationStatus,
       moderationReason: moderationReason,
-      active: active,
-      deleted: deleted,
+      active: active ?? this.active,
+      deleted: deleted ?? this.deleted,
       employerDeleted: employerDeleted ?? this.employerDeleted,
       companyDeleted: companyDeleted ?? this.companyDeleted,
       positions: positions,
@@ -166,6 +174,7 @@ class Job {
   }
 
   String get workFormatText {
+    if (jobType.trim().isEmpty) return "";
     if (jobType == "price") return "Price";
     if (jobType == "negotiable") return "Negotiable";
     return "Daywork";
