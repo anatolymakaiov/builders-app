@@ -41,6 +41,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       employerId: job.ownerId,
       moderationData: data,
     );
+    debugPrint("ADMIN APPROVED JOB id=${job.id}");
 
     await NotificationService().notifyEmployerJobModeration(
       employerId: job.ownerId,

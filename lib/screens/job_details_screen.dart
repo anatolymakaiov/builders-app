@@ -66,6 +66,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         .listen((snapshot) {
       final data = snapshot.data();
       if (!mounted || data == null) return;
+      debugPrint(
+        "JOB STATUS STREAM UPDATED "
+        "id=${snapshot.id} "
+        "status=${data["moderationStatus"]?.toString() ?? data["status"]?.toString() ?? ""}",
+      );
       setState(() => liveJob = Job.fromFirestore(snapshot.id, data));
     });
   }

@@ -639,28 +639,22 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
       ),
       body: StroykaScreenBody(
         child: StreamBuilder<List<Job>>(
-          stream: publicJobsStream,
-          builder: (context, publicSnapshot) {
-            if (publicSnapshot.connectionState == ConnectionState.waiting) {
+          stream: ownerJobsStream(ownerId),
+          builder: (context, ownerSnapshot) {
+            if (ownerSnapshot.connectionState == ConnectionState.waiting &&
+                !ownerSnapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (!publicSnapshot.hasData) {
-              return const Center(child: Text("Error loading jobs"));
-            }
+            final ownerJobs = ownerSnapshot.data ?? const <Job>[];
+            final ownerJobIds = ownerJobs.map((job) => job.id).toSet();
 
             return StreamBuilder<List<Job>>(
-              stream: ownerJobsStream(ownerId),
-              builder: (context, ownerSnapshot) {
-                if (ownerSnapshot.connectionState == ConnectionState.waiting &&
-                    !ownerSnapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final ownerJobs = ownerSnapshot.data ?? const <Job>[];
-                final ownerJobIds = ownerJobs.map((job) => job.id).toSet();
+              stream: publicJobsStream,
+              builder: (context, publicSnapshot) {
+                final publicJobs = publicSnapshot.data ?? const <Job>[];
                 final jobs = mergeEmployerVisibleJobs(
-                  publicJobs: publicSnapshot.data!,
+                  publicJobs: publicJobs,
                   ownerJobs: ownerJobs,
                 );
                 final visibleJobs = showOnlyMyJobs

@@ -460,10 +460,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
       /// 🔥 CREATE
       else {
-        await BillingService().createJobWithBillingLimit(
+        final createdJobId = await BillingService().createJobWithBillingLimit(
           employerId: user.uid,
           jobData: data,
         );
+        debugPrint("PENDING JOB CREATED id=$createdJobId");
       }
 
       widget.onJobCreated(true);

@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'edit_profile_screen.dart';
 import '../widgets/job_card.dart';
 import '../services/billing_service.dart';
+import '../services/job_repository.dart';
 import '../services/profile_communication_service.dart';
 import '../services/report_service.dart';
 import '../services/support_request_service.dart';
@@ -37,35 +38,49 @@ class EmployerProfileScreen extends StatefulWidget {
 
 class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   final picker = ImagePicker();
+  final jobRepository = JobRepository();
+  final Map<String, Stream<List<Job>>> jobStreams = {};
   String viewerRole = "worker";
   bool uploadingCompanyPhotos = false;
 
   Stream<List<Job>> getJobs() {
     final viewerId = FirebaseAuth.instance.currentUser?.uid;
     final canViewAllJobs = viewerId == widget.userId || viewerRole == "admin";
+    final streamKey =
+        canViewAllJobs ? "owner:${widget.userId}" : "public:${widget.userId}";
 
-    return FirebaseFirestore.instance
-        .collection("jobs")
-        .snapshots(includeMetadataChanges: true)
-        .map((snapshot) {
-      final jobs = snapshot.docs
-          .where((doc) => _jobDataBelongsToCompany(doc.data(), widget.userId))
-          .map((doc) => Job.fromFirestore(doc.id, doc.data()))
-          .where(
-            (job) => _isCompanyProfileVisibleJob(
-              job,
-              canViewAllJobs: canViewAllJobs,
-            ),
-          )
-          .toList();
+    return jobStreams.putIfAbsent(streamKey, () {
+      if (canViewAllJobs) {
+        return jobRepository.getJobsByOwner(widget.userId).map((jobs) {
+          debugPrint("COMPANY PROFILE JOBS COUNT=${jobs.length}");
+          return jobs;
+        });
+      }
 
-      jobs.sort((a, b) {
-        final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return bDate.compareTo(aDate);
+      return FirebaseFirestore.instance
+          .collection("jobs")
+          .snapshots(includeMetadataChanges: true)
+          .map((snapshot) {
+        final jobs = snapshot.docs
+            .where((doc) => _jobDataBelongsToCompany(doc.data(), widget.userId))
+            .map((doc) => Job.fromFirestore(doc.id, doc.data()))
+            .where(
+              (job) => _isCompanyProfileVisibleJob(
+                job,
+                canViewAllJobs: canViewAllJobs,
+              ),
+            )
+            .toList();
+
+        jobs.sort((a, b) {
+          final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          return bDate.compareTo(aDate);
+        });
+
+        debugPrint("COMPANY PROFILE JOBS COUNT=${jobs.length}");
+        return jobs;
       });
-
-      return jobs;
     });
   }
 

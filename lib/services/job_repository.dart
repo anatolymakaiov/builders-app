@@ -140,11 +140,22 @@ class JobRepository {
     debugPrint("JOBS STREAM INSTANCE ID=$streamId ownerId=$ownerId");
 
     return _db.collection('jobs').snapshots().map((snapshot) {
+      var rawOwnerCount = 0;
       final jobs = snapshot.docs.where((doc) {
         final data = doc.data();
         final belongsToOwner = _jobBelongsToOwner(data, ownerId);
         if (!belongsToOwner) return false;
-        return !_isHardDeletedJobData(data);
+        rawOwnerCount += 1;
+        final hardDeleted = _isHardDeletedJobData(data);
+        if (hardDeleted) {
+          debugPrint(
+            "OWNER JOB FILTERED OUT "
+            "jobId=${doc.id} "
+            "status=${data["status"]?.toString() ?? ""} "
+            "reason=hard_deleted",
+          );
+        }
+        return !hardDeleted;
       }).map((doc) {
         return Job.fromFirestore(doc.id, doc.data());
       }).toList();
@@ -155,6 +166,8 @@ class JobRepository {
         return bDate.compareTo(aDate);
       });
 
+      debugPrint("EMPLOYER OWN JOBS RAW COUNT=$rawOwnerCount");
+      debugPrint("EMPLOYER OWN JOBS FINAL COUNT=${jobs.length}");
       debugPrint(
         "MY JOBS SOURCE UPDATED=$streamId employerId=$ownerId jobsCount=${jobs.length}",
       );

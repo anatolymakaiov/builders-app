@@ -529,7 +529,7 @@ class BillingService {
     return next;
   }
 
-  Future<void> createJobWithBillingLimit({
+  Future<String> createJobWithBillingLimit({
     required String employerId,
     required Map<String, dynamic> jobData,
   }) async {
@@ -562,6 +562,7 @@ class BillingService {
         "createdAt": FieldValue.serverTimestamp(),
       });
     });
+    return jobRef.id;
   }
 
   Future<void> approveJobAndCountSlot({
