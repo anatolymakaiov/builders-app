@@ -51,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _lastNotificationCount = 0;
   int _lastChatCount = 0;
   int _lastApplicationCount = 0;
+  int employerJobsRefreshTick = 0;
   late int employerProfileInitialTab;
 
   @override
@@ -367,7 +368,13 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => PostJobScreen(
-          onJobCreated: (_) {},
+          onJobCreated: (_) {
+            if (!mounted) return;
+            setState(() {
+              currentIndex = 0;
+              employerJobsRefreshTick++;
+            });
+          },
         ),
       ),
     );
@@ -437,7 +444,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (role == "employer") {
       return [
-        const EmployerDashboardScreen(),
+        EmployerDashboardScreen(
+          key: ValueKey("employer-jobs-$employerJobsRefreshTick"),
+        ),
         const MapScreen(),
         const EmployerApplicationsScreen(),
         const NotificationsScreen(),

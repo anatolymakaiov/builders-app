@@ -41,8 +41,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   String? currentApplicationId;
   String role = "worker";
   int companyProfileRefreshTick = 0;
+  Job? liveJob;
+  StreamSubscription<DocumentSnapshot>? jobSubscription;
   final List<StreamSubscription> applyStateSubscriptions = [];
 
+  Job get activeJob => liveJob ?? widget.job;
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
 
   @override
@@ -51,7 +54,20 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     currentApplicationId = widget.applicationId;
     isApplied =
         widget.applicationId != null && widget.applicationId!.isNotEmpty;
+    watchJob();
     init();
+  }
+
+  void watchJob() {
+    jobSubscription = FirebaseFirestore.instance
+        .collection("jobs")
+        .doc(widget.job.id)
+        .snapshots()
+        .listen((snapshot) {
+      final data = snapshot.data();
+      if (!mounted || data == null) return;
+      setState(() => liveJob = Job.fromFirestore(snapshot.id, data));
+    });
   }
 
   Future<void> init() async {
@@ -62,6 +78,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
   @override
   void dispose() {
+    jobSubscription?.cancel();
     for (final subscription in applyStateSubscriptions) {
       subscription.cancel();
     }
@@ -106,7 +123,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
 
     addListener(applicationsRef
-        .where("jobId", isEqualTo: widget.job.id)
+        .where("jobId", isEqualTo: activeJob.id)
         .where("workerId", isEqualTo: uid));
 
     final teams = await loadMyTeams();
@@ -197,7 +214,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
 
     await addQuery(applicationsRef
-        .where("jobId", isEqualTo: widget.job.id)
+        .where("jobId", isEqualTo: activeJob.id)
         .where("workerId", isEqualTo: uid));
 
     final teams = await loadMyTeams();
@@ -229,7 +246,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   bool applicationBelongsToJob(Map<String, dynamic> data) {
-    return data["jobId"]?.toString() == widget.job.id;
+    return data["jobId"]?.toString() == activeJob.id;
   }
 
   bool sameUserId(dynamic value, String uid) {
@@ -288,7 +305,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   String teamApplicationDocumentId(String teamId) {
-    return "team_${widget.job.id}_$teamId";
+    return "team_${activeJob.id}_$teamId";
   }
 
   /// 🔥 PICK TEAM
@@ -471,7 +488,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           final jobRef =
-              FirebaseFirestore.instance.collection("jobs").doc(widget.job.id);
+              FirebaseFirestore.instance.collection("jobs").doc(activeJob.id);
           final existingAppSnap = await transaction.get(applicationRef);
           final jobSnap = await transaction.get(jobRef);
 
@@ -495,13 +512,13 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           transaction.set(
               applicationRef,
               {
-                "jobId": widget.job.id,
+                "jobId": activeJob.id,
                 "jobTitle": (jobData["title"] ??
                         jobData["trade"] ??
-                        widget.job.displayTitle)
+                        activeJob.displayTitle)
                     .toString(),
-                "jobTrade": jobData["trade"] ?? widget.job.trade,
-                "jobSite": jobData["site"] ?? widget.job.site,
+                "jobTrade": jobData["trade"] ?? activeJob.trade,
+                "jobSite": jobData["site"] ?? activeJob.site,
                 ...applicationPhysicalAddressFields(jobData),
                 "type": "team",
                 "teamId": teamId,
@@ -546,7 +563,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         /// 🔥 защита от дублей
         final existing = await FirebaseFirestore.instance
             .collection("applications")
-            .where("jobId", isEqualTo: widget.job.id)
+            .where("jobId", isEqualTo: activeJob.id)
             .where("workerId", isEqualTo: uid)
             .get();
 
@@ -577,7 +594,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           final jobRef =
-              FirebaseFirestore.instance.collection("jobs").doc(widget.job.id);
+              FirebaseFirestore.instance.collection("jobs").doc(activeJob.id);
           final jobSnap = await transaction.get(jobRef);
 
           if (!jobSnap.exists) throw Exception("Job not found");
@@ -590,13 +607,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           if (counts.remaining <= 0) throw Exception("no_positions_left");
 
           transaction.set(applicationRef, {
-            "jobId": widget.job.id,
-            "jobTitle": (jobData["title"] ??
-                    jobData["trade"] ??
-                    widget.job.displayTitle)
-                .toString(),
-            "jobTrade": jobData["trade"] ?? widget.job.trade,
-            "jobSite": jobData["site"] ?? widget.job.site,
+            "jobId": activeJob.id,
+            "jobTitle":
+                (jobData["title"] ?? jobData["trade"] ?? activeJob.displayTitle)
+                    .toString(),
+            "jobTrade": jobData["trade"] ?? activeJob.trade,
+            "jobSite": jobData["site"] ?? activeJob.site,
             ...applicationPhysicalAddressFields(jobData),
             "workerId": uid,
             "applicantId": uid,
@@ -692,9 +708,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Future<void> openMaps() async {
-    final query = widget.job.lat != 0 || widget.job.lng != 0
-        ? "${widget.job.lat},${widget.job.lng}"
-        : widget.job.fullAddress;
+    final query = activeJob.lat != 0 || activeJob.lng != 0
+        ? "${activeJob.lat},${activeJob.lng}"
+        : activeJob.fullAddress;
     final url =
         "https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}";
 
@@ -742,7 +758,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       data?["employerId"],
       data?["createdBy"],
       data?["userId"],
-      widget.job.ownerId,
+      activeJob.ownerId,
     ];
 
     for (final value in candidates) {
@@ -784,7 +800,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       postcode: postcode,
     );
     final projectName =
-        (jobData["site"] ?? widget.job.site).toString().trim().toLowerCase();
+        (jobData["site"] ?? activeJob.site).toString().trim().toLowerCase();
     final address = [
       jobData["siteAddress"],
       jobData["fullAddress"],
@@ -815,8 +831,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final rawPositions = readInt(data?["positions"]);
     final rawRemaining = readInt(data?["remainingPositions"]);
     final rawFilledPositions = readInt(data?["filledPositions"]);
-    final fallbackPositions =
-        widget.job.positions > 0 ? widget.job.positions : 0;
+    final fallbackPositions = activeJob.positions > 0 ? activeJob.positions : 0;
     final positions = rawPositions > 0
         ? rawPositions
         : rawRemaining > 0
@@ -894,7 +909,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Future<int> loadRemainingPositions() async {
     final jobDoc = await FirebaseFirestore.instance
         .collection("jobs")
-        .doc(widget.job.id)
+        .doc(activeJob.id)
         .get();
 
     if (!jobDoc.exists) {
@@ -906,7 +921,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final counts = jobPositionCounts(data);
 
     debugPrint(
-      "POSITION CHECK jobId=${widget.job.id} "
+      "POSITION CHECK jobId=${activeJob.id} "
       "positions=${counts.positions} "
       "filledPositions=${counts.filledPositions} "
       "remainingPositions=${counts.remaining} "
@@ -950,7 +965,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     try {
       await FirebaseFirestore.instance
           .collection("jobs")
-          .doc(widget.job.id)
+          .doc(activeJob.id)
           .delete();
 
       if (mounted) {
@@ -992,7 +1007,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Widget buildEditButton() {
     final uid = userId;
 
-    if (uid == null || uid != widget.job.ownerId) {
+    if (uid == null || uid != activeJob.ownerId) {
       return const SizedBox();
     }
 
@@ -1006,7 +1021,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             context,
             MaterialPageRoute(
               builder: (_) => PostJobScreen(
-                existingJob: widget.job,
+                existingJob: activeJob,
                 onJobCreated: (_) {},
               ),
             ),
@@ -1021,7 +1036,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Widget buildDeleteButton() {
     final uid = userId;
 
-    if (uid == null || uid != widget.job.ownerId) {
+    if (uid == null || uid != activeJob.ownerId) {
       return const SizedBox();
     }
 
@@ -1044,7 +1059,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
   /// 🔥 EMPLOYER BLOCK (FULL FIX)
   Widget buildCompany() {
-    final ownerId = widget.job.ownerId;
+    final ownerId = activeJob.ownerId;
 
     /// ❌ защита от битых данных
     if (ownerId.isEmpty || ownerId == "unknown") {
@@ -1128,7 +1143,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Widget buildPhotos() {
-    if (widget.job.ownerId.isEmpty || widget.job.ownerId == "unknown") {
+    if (activeJob.ownerId.isEmpty || activeJob.ownerId == "unknown") {
       return const SizedBox();
     }
 
@@ -1140,7 +1155,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
-        AppPhotoGridGallery(imageUrls: widget.job.photos),
+        AppPhotoGridGallery(imageUrls: activeJob.photos),
         const SizedBox(height: 24),
       ],
     );
@@ -1158,7 +1173,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           const Icon(Icons.payments),
           const SizedBox(width: 10),
           Text(
-            widget.job.rateText,
+            activeJob.rateText,
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -1182,7 +1197,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                widget.job.fullAddress,
+                activeJob.fullAddress,
                 style: const TextStyle(
                   color: AppColors.greenDark,
                   fontWeight: FontWeight.w600,
@@ -1205,8 +1220,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
-        Text(widget.job.description.isNotEmpty
-            ? widget.job.description
+        Text(activeJob.description.isNotEmpty
+            ? activeJob.description
             : "No description"),
       ],
     );
@@ -1236,7 +1251,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection("jobs")
-          .doc(widget.job.id)
+          .doc(activeJob.id)
           .snapshots(),
       builder: (context, snapshot) {
         final counts = jobPositionCounts(snapshot.data?.data());
@@ -1289,11 +1304,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       final storedAddress =
           (offer["fullAddress"] ?? offer["siteAddress"])?.toString().trim() ??
               "";
-      if (storedAddress.isNotEmpty && storedAddress != widget.job.site) {
+      if (storedAddress.isNotEmpty && storedAddress != activeJob.site) {
         return storedAddress;
       }
 
-      return widget.job.fullAddress;
+      return activeJob.fullAddress;
     }
 
     addRow("Work format", offer["workFormat"]);
@@ -1373,7 +1388,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           .collection("applications")
           .doc(applicationId);
       final jobRef =
-          FirebaseFirestore.instance.collection("jobs").doc(widget.job.id);
+          FirebaseFirestore.instance.collection("jobs").doc(activeJob.id);
 
       final appSnap = await transaction.get(appRef);
       final jobSnap = await transaction.get(jobRef);
@@ -1428,10 +1443,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
   Future<void> addOfferToCalendar(Map<String, dynamic> offer) async {
     final added = await CalendarService.addOfferToCalendar(
-      title: widget.job.displayTitle,
+      title: activeJob.displayTitle,
       offer: offer,
-      fallbackLocation: widget.job.fullAddress,
-      employerName: widget.job.companyName,
+      fallbackLocation: activeJob.fullAddress,
+      employerName: activeJob.companyName,
     );
 
     if (!mounted) return;
@@ -1542,14 +1557,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           final uid = userId;
           if (uid == null) return;
 
-          final employerId = widget.job.ownerId;
+          final employerId = activeJob.ownerId;
           if (employerId.isEmpty) return;
 
           final chatId = await ChatService.getOrCreateChat(
             workerId: uid,
             employerId: employerId,
-            jobId: widget.job.id,
-            jobTitle: widget.job.displayTitle,
+            jobId: activeJob.id,
+            jobTitle: activeJob.displayTitle,
           );
 
           if (!mounted) return;
@@ -1571,14 +1586,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     final uid = userId;
     if (uid == null) return;
 
-    final employerId = widget.job.ownerId;
+    final employerId = activeJob.ownerId;
     if (employerId.isEmpty) return;
 
     final chatId = await ChatService.getOrCreateChat(
       workerId: uid,
       employerId: employerId,
-      jobId: widget.job.id,
-      jobTitle: widget.job.displayTitle,
+      jobId: activeJob.id,
+      jobTitle: activeJob.displayTitle,
     );
 
     if (!mounted) return;
@@ -1592,7 +1607,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Widget buildActionPanel() {
-    final isOwner = userId == widget.job.ownerId;
+    final isOwner = userId == activeJob.ownerId;
 
     if (!isOwner) return const SizedBox();
 
@@ -1612,7 +1627,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               onPressed: () async {
                 await FirebaseFirestore.instance
                     .collection("jobs")
-                    .doc(widget.job.id)
+                    .doc(activeJob.id)
                     .update({
                   "status": "completed",
                 });
@@ -1836,14 +1851,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Widget buildEmployerStats() {
-    if (userId != widget.job.ownerId) return const SizedBox();
+    if (userId != activeJob.ownerId) return const SizedBox();
 
     void openApplicationsFor(String status) {
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => EmployerApplicationsScreen(
-            initialJobId: widget.job.id,
+            initialJobId: activeJob.id,
             initialStatus: status,
           ),
         ),
@@ -1853,7 +1868,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection("applications")
-          .where("jobId", isEqualTo: widget.job.id)
+          .where("jobId", isEqualTo: activeJob.id)
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
@@ -1890,8 +1905,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           if (status == "rejected" || status == "withdrawn") rejected++;
         }
 
-        final spotsLeft = (widget.job.positions - acceptedSlots)
-            .clamp(0, widget.job.positions);
+        final spotsLeft =
+            (activeJob.positions - acceptedSlots).clamp(0, activeJob.positions);
 
         final stats = [
           (
@@ -2033,9 +2048,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (widget.job.shouldShowTrade)
+              if (activeJob.shouldShowTrade)
                 Text(
-                  widget.job.trade,
+                  activeJob.trade,
                   style: const TextStyle(
                     color: AppColors.muted,
                     fontWeight: FontWeight.w800,
@@ -2043,7 +2058,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 ),
               const SizedBox(height: 4),
               Text(
-                widget.job.displayTitle,
+                activeJob.displayTitle,
                 style: const TextStyle(
                   color: AppColors.ink,
                   fontSize: 26,
@@ -2056,26 +2071,26 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 runSpacing: 8,
                 children: [
                   metaPill(
-                    widget.job.workFormatText,
+                    activeJob.workFormatText,
                     icon: Icons.work_outline,
                     color: AppColors.ink,
                   ),
-                  if (widget.job.duration.isNotEmpty)
+                  if (activeJob.duration.isNotEmpty)
                     metaPill(
-                      widget.job.duration,
+                      activeJob.duration,
                       icon: Icons.schedule,
                       color: AppColors.greenDark,
                     ),
-                  if (widget.job.listRateText.isNotEmpty)
+                  if (activeJob.listRateText.isNotEmpty)
                     metaPill(
-                      widget.job.listRateText,
+                      activeJob.listRateText,
                       icon: Icons.payments_outlined,
                       color: AppColors.greenDark,
                     ),
                 ],
               ),
               buildPositionsInfo(),
-              if (widget.job.weeklyHours.isNotEmpty)
+              if (activeJob.weeklyHours.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: Row(
@@ -2083,7 +2098,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                       const Icon(Icons.schedule, size: 18),
                       const SizedBox(width: 6),
                       Text(
-                        "${widget.job.weeklyHours} hours per week",
+                        "${activeJob.weeklyHours} hours per week",
                         style: const TextStyle(fontWeight: FontWeight.w500),
                       ),
                     ],
@@ -2103,19 +2118,19 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               buildDescription(),
               buildJobInfoSection(
                 "Responsibilities",
-                widget.job.responsibilities,
+                activeJob.responsibilities,
               ),
               buildJobInfoSection(
                 "Candidate requirements",
-                widget.job.candidateRequirements,
+                activeJob.candidateRequirements,
               ),
               buildJobInfoSection(
                 "Required documents / certifications",
-                widget.job.requiredDocuments,
+                activeJob.requiredDocuments,
               ),
               buildJobInfoSection(
                 "Additional information",
-                widget.job.additionalInformation,
+                activeJob.additionalInformation,
               ),
             ],
           ),
@@ -2134,13 +2149,13 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Widget buildPhotosTab() {
-    if (widget.job.photos.isEmpty) {
+    if (activeJob.photos.isEmpty) {
       return const Center(child: Text("No photos yet"));
     }
 
     return AppPhotoGridGallery(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      imageUrls: widget.job.photos,
+      imageUrls: activeJob.photos,
       shrinkWrap: false,
       physics: const AlwaysScrollableScrollPhysics(),
     );
@@ -2154,7 +2169,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Widget buildEmbeddedCompanyProfile() {
-    final ownerId = widget.job.ownerId;
+    final ownerId = activeJob.ownerId;
     if (ownerId.isEmpty || ownerId == "unknown") {
       return const StroykaSurface(
         padding: EdgeInsets.all(18),
@@ -2531,8 +2546,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   String _companyJobStatusLabel(Job job) {
-    if (job.moderationStatus == "pending_review") return "ADMIN REVIEW";
-    if (job.moderationStatus == "rejected") return "ADMIN REJECTED";
+    if (job.moderationStatus == "pending_review") return "PENDING";
+    if (job.moderationStatus == "rejected") return "REJECTED";
     return job.isClosed ? "INACTIVE" : "ACTIVE";
   }
 
@@ -2593,8 +2608,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 onPressed: () => ReportService.showReportDialog(
                   context,
                   type: "job",
-                  againstUserId: widget.job.ownerId,
-                  jobId: widget.job.id,
+                  againstUserId: activeJob.ownerId,
+                  jobId: activeJob.id,
                   applicationId: widget.applicationId,
                 ),
               ),
@@ -2627,7 +2642,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               ],
             ),
           ),
-          bottomNavigationBar: userId == widget.job.ownerId
+          bottomNavigationBar: userId == activeJob.ownerId
               ? SafeArea(
                   child: buildActionPanel(),
                 )

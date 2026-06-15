@@ -288,14 +288,14 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   Widget buildStatusBadge(Job job) {
     if (job.moderationStatus == "pending_review") {
       return AppChip.status(
-        "ADMIN REVIEW",
+        "PENDING",
         color: AppColors.blueprintLine,
       );
     }
 
     if (job.moderationStatus == "rejected") {
       return AppChip.status(
-        "ADMIN REJECTED",
+        "REJECTED",
         color: AppColors.danger,
       );
     }

@@ -5157,7 +5157,7 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
     required this.onHold,
   });
 
-  Future<void> approveAndClose(BuildContext context) async {
+  Future<void> approveAndClose(BuildContext context, Job currentJob) async {
     final note = await _askAdminReply(
       context,
       title: "Approve job",
@@ -5165,25 +5165,24 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
       hint: "Leave empty to approve without a message",
     );
     if (note == null) return;
-    await onApprove(jobRef, job);
+    await onApprove(jobRef, currentJob);
     if (note.trim().isNotEmpty) {
       await _sendAdminInboxMessage(
-        userId: job.ownerId,
+        userId: currentJob.ownerId,
         title: "Job publication approved",
         message: note.trim(),
         audience: "employer",
         relatedTargetType: "job",
-        relatedTargetId: job.id,
+        relatedTargetId: currentJob.id,
       );
     }
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Job approved")),
     );
-    Navigator.pop(context);
   }
 
-  Future<void> messageEmployer(BuildContext context) async {
+  Future<void> messageEmployer(BuildContext context, Job currentJob) async {
     final message = await _askAdminReply(
       context,
       title: "Message employer",
@@ -5193,12 +5192,12 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
     );
     if (message == null) return;
     await _sendAdminInboxMessage(
-      userId: job.ownerId,
-      title: "Message about ${job.displayTitle}",
+      userId: currentJob.ownerId,
+      title: "Message about ${currentJob.displayTitle}",
       message: message,
       audience: "employer",
       relatedTargetType: "job",
-      relatedTargetId: job.id,
+      relatedTargetId: currentJob.id,
     );
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -5227,10 +5226,22 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: jobRef.snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() as Map<String, dynamic>?;
+        final currentJob =
+            data == null ? job : Job.fromFirestore(snapshot.data!.id, data);
+        return buildLiveJobDetail(context, currentJob);
+      },
+    );
+  }
+
+  Widget buildLiveJobDetail(BuildContext context, Job currentJob) {
     final location = [
-      job.street,
-      job.city,
-      job.postcode,
+      currentJob.street,
+      currentJob.city,
+      currentJob.postcode,
     ].where((item) => item.trim().isNotEmpty).join(", ");
 
     return Scaffold(
@@ -5239,10 +5250,10 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
         actions: [
           PopupMenuButton<String>(
             onSelected: (value) {
-              if (value == "approve") approveAndClose(context);
+              if (value == "approve") approveAndClose(context, currentJob);
               if (value == "hold") holdAndClose(context);
               if (value == "reject") rejectAndClose(context);
-              if (value == "message") messageEmployer(context);
+              if (value == "message") messageEmployer(context, currentJob);
             },
             itemBuilder: (context) => const [
               PopupMenuItem(
@@ -5281,7 +5292,7 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 120),
           children: [
-            _AdminModerationOverview(job: job),
+            _AdminModerationOverview(job: currentJob),
             const SizedBox(height: 12),
             StroykaSurface(
               padding: const EdgeInsets.all(18),
@@ -5289,7 +5300,7 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    job.displayTitle,
+                    currentJob.displayTitle,
                     style: const TextStyle(
                       color: AppColors.ink,
                       fontSize: 24,
@@ -5297,27 +5308,29 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _AdminMetaLine(label: "Trade", value: job.trade),
-                  _AdminMetaLine(label: "Company", value: job.companyName),
-                  _AdminMetaLine(label: "Site", value: job.site),
+                  _AdminMetaLine(label: "Trade", value: currentJob.trade),
+                  _AdminMetaLine(
+                      label: "Company", value: currentJob.companyName),
+                  _AdminMetaLine(label: "Site", value: currentJob.site),
                   _AdminMetaLine(label: "Location", value: location),
                   _AdminMetaLine(
-                      label: "Work format", value: job.workFormatText),
-                  _AdminMetaLine(label: "Duration", value: job.duration),
-                  _AdminMetaLine(label: "Hours/week", value: job.weeklyHours),
-                  _AdminMetaLine(label: "Rate", value: job.rateText),
+                      label: "Work format", value: currentJob.workFormatText),
+                  _AdminMetaLine(label: "Duration", value: currentJob.duration),
+                  _AdminMetaLine(
+                      label: "Hours/week", value: currentJob.weeklyHours),
+                  _AdminMetaLine(label: "Rate", value: currentJob.rateText),
                   _AdminMetaLine(
                     label: "Workers needed",
-                    value: job.positions.toString(),
+                    value: currentJob.positions.toString(),
                   ),
-                  _AdminEmployerSlotsLine(employerId: job.ownerId),
+                  _AdminEmployerSlotsLine(employerId: currentJob.ownerId),
                   _AdminMetaLine(
                     label: "Created",
-                    value: _formatAdminDate(job.createdAt),
+                    value: _formatAdminDate(currentJob.createdAt),
                   ),
                   _AdminMetaLine(
                     label: "Moderation status",
-                    value: job.moderationLabel,
+                    value: currentJob.moderationLabel,
                   ),
                 ],
               ),
@@ -5325,20 +5338,20 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
             const SizedBox(height: 12),
             _AdminTextSection(
               title: "Job description",
-              text: job.description,
+              text: currentJob.description,
               emptyText: "No job description provided",
             ),
             _AdminTextSection(
               title: "Candidate requirements",
-              text: job.candidateRequirements,
+              text: currentJob.candidateRequirements,
               emptyText: "No candidate requirements provided",
             ),
             _AdminTextSection(
               title: "Required documents / certifications",
-              text: job.requiredDocuments,
+              text: currentJob.requiredDocuments,
               emptyText: "No required documents provided",
             ),
-            if (job.photos.isNotEmpty) ...[
+            if (currentJob.photos.isNotEmpty) ...[
               const SizedBox(height: 12),
               StroykaSurface(
                 padding: const EdgeInsets.all(18),
@@ -5354,7 +5367,7 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    AppPhotoGridGallery(imageUrls: job.photos),
+                    AppPhotoGridGallery(imageUrls: currentJob.photos),
                   ],
                 ),
               ),
