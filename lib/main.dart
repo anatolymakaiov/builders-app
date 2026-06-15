@@ -39,15 +39,50 @@ class JobApp extends StatelessWidget {
     return MaterialApp(
       title: 'STROYKA',
       navigatorKey: appNavigatorKey,
+      navigatorObservers: [KeyboardDismissNavigatorObserver()],
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       builder: (context, child) {
-        return StroykaBackground(
-          child: child ?? const SizedBox(),
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          child: StroykaBackground(
+            child: child ?? const SizedBox(),
+          ),
         );
       },
       home: const AuthGate(),
     );
+  }
+}
+
+class KeyboardDismissNavigatorObserver extends NavigatorObserver {
+  void dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    dismissKeyboard();
+    super.didPush(route, previousRoute);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    dismissKeyboard();
+    super.didPop(route, previousRoute);
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    dismissKeyboard();
+    super.didRemove(route, previousRoute);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    dismissKeyboard();
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
   }
 }
 

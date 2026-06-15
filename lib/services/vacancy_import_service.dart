@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/widgets.dart';
 
 import 'job_taxonomy_service.dart';
 
@@ -69,6 +70,7 @@ class VacancyImportService {
   static const maxFileSizeBytes = 10 * 1024 * 1024;
 
   static Future<ParsedVacancy?> pickAndParseVacancyFile() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: false,
       withData: true,

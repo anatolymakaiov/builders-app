@@ -115,6 +115,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   Future<void> pickJobPhotos() async {
     if (loading || pickingPhotos) return;
+    FocusManager.instance.primaryFocus?.unfocus();
 
     try {
       setState(() => pickingPhotos = true);
@@ -153,6 +154,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   Future<void> importVacancyFile() async {
     if (loading || importingVacancy) return;
+    FocusManager.instance.primaryFocus?.unfocus();
 
     try {
       setState(() => importingVacancy = true);

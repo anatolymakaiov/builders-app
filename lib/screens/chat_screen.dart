@@ -54,12 +54,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    dismissKeyboard();
     typingTimer?.cancel();
     updateTyping(false);
     audioRecorder.dispose();
     controller.dispose();
     scrollController.dispose();
     super.dispose();
+  }
+
+  void dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
   }
 
   String chatAttachmentPreview(List<Map<String, dynamic>> attachments) {
@@ -454,6 +459,7 @@ class _ChatScreenState extends State<ChatScreen> {
     required Map<String, dynamic> data,
     required String uid,
   }) async {
+    dismissKeyboard();
     final isMe = data["senderId"] == uid;
     final type = data["type"]?.toString() ?? "text";
     final deletedForEveryone = data["deletedForEveryone"] == true;
@@ -508,6 +514,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// 🔤 TEXT
   Future<void> sendMessage() async {
+    dismissKeyboard();
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     if (!await ensureChatDataLoaded()) return;
@@ -864,6 +871,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> sendImage() async {
+    dismissKeyboard();
     List<XFile> picked = [];
     try {
       picked = await picker.pickMultiImage();
@@ -895,6 +903,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> sendVideo() async {
+    dismissKeyboard();
     FilePickerResult? picked;
     try {
       picked = await FilePicker.platform.pickFiles(
@@ -934,6 +943,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> sendFiles() async {
+    dismissKeyboard();
     FilePickerResult? picked;
     try {
       picked = await FilePicker.platform.pickFiles(
@@ -972,6 +982,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> toggleRecording() async {
+    dismissKeyboard();
     if (isRecording) {
       await stopRecordingAndSend();
     } else {
@@ -1097,6 +1108,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> showAttachmentMenu() async {
+    dismissKeyboard();
     await showModalBottomSheet<void>(
       context: context,
       builder: (context) {

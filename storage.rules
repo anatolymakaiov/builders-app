@@ -17,9 +17,14 @@ service firebase.storage {
             && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants
           )
           || (
+            firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participantIds is list
+            && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participantIds
+          )
+          || (
             firestore.get(/databases/(default)/documents/chats/$(chatId)).data.members is list
             && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.members
           )
+          || firestore.get(/databases/(default)/documents/chats/$(chatId)).data.targetProfileId == request.auth.uid
         );
     }
 

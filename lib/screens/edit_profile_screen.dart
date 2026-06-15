@@ -642,6 +642,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   /// AVATAR
   Future<void> pickAndUploadAvatar() async {
     if (uploadingAvatar) return;
+    FocusManager.instance.primaryFocus?.unfocus();
 
     try {
       final picked = await picker.pickImage(source: ImageSource.gallery);
@@ -1132,6 +1133,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> pickHeaderImage() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
 
@@ -1140,6 +1142,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Future<void> pickAndUploadCompanyPhotos() async {
     if (role != "employer" || uploadingCompanyPhotos) return;
+    FocusManager.instance.primaryFocus?.unfocus();
 
     try {
       final picked = await picker.pickMultiImage();
