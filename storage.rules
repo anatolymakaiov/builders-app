@@ -6,6 +6,23 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function isChatParticipant(chatId) {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/chats/$(chatId))
+        && (
+          firestore.get(/databases/(default)/documents/chats/$(chatId)).data.workerId == request.auth.uid
+          || firestore.get(/databases/(default)/documents/chats/$(chatId)).data.employerId == request.auth.uid
+          || (
+            firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants is list
+            && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants
+          )
+          || (
+            firestore.get(/databases/(default)/documents/chats/$(chatId)).data.members is list
+            && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.members
+          )
+        );
+    }
+
     match /profile_photos/{fileName} {
       allow read: if signedIn();
       allow write: if signedIn();
@@ -59,6 +76,12 @@ service firebase.storage {
     match /chat_voice/{allPaths=**} {
       allow read: if signedIn();
       allow write: if signedIn();
+    }
+
+    match /chat_attachments/{chatId}/{messageId}/{senderId}/{fileName} {
+      allow read: if isChatParticipant(chatId);
+      allow write: if isChatParticipant(chatId)
+        && request.auth.uid == senderId;
     }
 
     match /admin_mail/{allPaths=**} {

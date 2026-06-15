@@ -598,6 +598,20 @@ class _ChatScreenState extends State<ChatScreen> {
       _isTyping = false;
       if (mounted) pendingAttachments.clear();
       scrollToBottom();
+    } on FirebaseException catch (e) {
+      debugPrint("SEND MESSAGE ERROR: [${e.plugin}/${e.code}] ${e.message}");
+      if (mounted) {
+        final isStorageError = e.plugin == "firebase_storage";
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isStorageError
+                  ? "Could not upload attachment. Please try again."
+                  : "Could not send message",
+            ),
+          ),
+        );
+      }
     } catch (e) {
       debugPrint("SEND MESSAGE ERROR: $e");
       if (mounted) {
@@ -700,15 +714,33 @@ class _ChatScreenState extends State<ChatScreen> {
               : mediaContentType(attachment.type, extension));
       final metadata = SettableMetadata(contentType: contentType);
 
-      if (attachment.path != null) {
-        await ref.putFile(File(attachment.path!), metadata);
-      } else if (attachment.bytes != null) {
-        await ref.putData(attachment.bytes!, metadata);
-      } else {
-        throw StateError("Selected attachment has no readable file data");
+      debugPrint(
+        "CHAT ATTACHMENT UPLOAD START "
+        "chatId=${widget.chatId} "
+        "messageId=$messageId "
+        "senderId=$senderId "
+        "storagePath=$storagePath",
+      );
+
+      try {
+        if (attachment.path != null) {
+          await ref.putFile(File(attachment.path!), metadata);
+        } else if (attachment.bytes != null) {
+          await ref.putData(attachment.bytes!, metadata);
+        } else {
+          throw StateError("Selected attachment has no readable file data");
+        }
+      } catch (error) {
+        debugPrint(
+          "CHAT ATTACHMENT UPLOAD FAILED "
+          "storagePath=$storagePath "
+          "error=$error",
+        );
+        rethrow;
       }
 
       final url = await ref.getDownloadURL();
+      debugPrint("CHAT ATTACHMENT UPLOAD SUCCESS storagePath=$storagePath");
       uploaded.add({
         "type": attachment.type,
         "url": url,
