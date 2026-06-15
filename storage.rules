@@ -7,24 +7,43 @@ service firebase.storage {
     }
 
     function isChatParticipant(chatId) {
+      let chat = firestore.get(/databases/(default)/documents/chats/$(chatId));
       return signedIn()
-        && firestore.exists(/databases/(default)/documents/chats/$(chatId))
+        && chat != null
         && (
-          firestore.get(/databases/(default)/documents/chats/$(chatId)).data.workerId == request.auth.uid
-          || firestore.get(/databases/(default)/documents/chats/$(chatId)).data.employerId == request.auth.uid
+          chat.data.workerId == request.auth.uid
+          || chat.data.employerId == request.auth.uid
+          || chat.data.senderId == request.auth.uid
+          || chat.data.receiverId == request.auth.uid
+          || chat.data.targetProfileId == request.auth.uid
           || (
-            firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants is list
-            && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants
+            chat.data.participants is list
+            && request.auth.uid in chat.data.participants
           )
           || (
-            firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participantIds is list
-            && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participantIds
+            chat.data.participants is map
+            && request.auth.uid in chat.data.participants
           )
           || (
-            firestore.get(/databases/(default)/documents/chats/$(chatId)).data.members is list
-            && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.members
+            chat.data.participantIds is list
+            && request.auth.uid in chat.data.participantIds
           )
-          || firestore.get(/databases/(default)/documents/chats/$(chatId)).data.targetProfileId == request.auth.uid
+          || (
+            chat.data.participantIds is map
+            && request.auth.uid in chat.data.participantIds
+          )
+          || (
+            chat.data.userIds is list
+            && request.auth.uid in chat.data.userIds
+          )
+          || (
+            chat.data.members is list
+            && request.auth.uid in chat.data.members
+          )
+          || (
+            chat.data.members is map
+            && request.auth.uid in chat.data.members
+          )
         );
     }
 

@@ -3,6 +3,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class ChatService {
   static final _firestore = FirebaseFirestore.instance;
 
+  static List<String> uniqueParticipantIds(Iterable<String> ids) {
+    return ids
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
   static String firstText(
     Map<String, dynamic>? data,
     List<String> keys, {
@@ -102,8 +110,9 @@ class ChatService {
       await query.docs.first.reference.set({
         "type": "single",
         if (applicationId != null) "applicationId": applicationId,
-        "participants": [workerId, employerId],
-        "members": [workerId, employerId],
+        "participants": uniqueParticipantIds([workerId, employerId]),
+        "participantIds": uniqueParticipantIds([workerId, employerId]),
+        "members": uniqueParticipantIds([workerId, employerId]),
         "updatedAt": FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       return query.docs.first.id;
@@ -120,8 +129,9 @@ class ChatService {
       if (applicationId != null) "applicationId": applicationId,
 
       /// 🔥 ВАЖНО (для будущего списка чатов)
-      "participants": [workerId, employerId],
-      "members": [workerId, employerId],
+      "participants": uniqueParticipantIds([workerId, employerId]),
+      "participantIds": uniqueParticipantIds([workerId, employerId]),
+      "members": uniqueParticipantIds([workerId, employerId]),
 
       /// 🔥 optional (удобно для UI)
       if (jobTitle != null) "jobTitle": jobTitle,
@@ -161,21 +171,25 @@ class ChatService {
         .get();
 
     if (existing.docs.isNotEmpty) {
+      final participantIds = uniqueParticipantIds([...members, employerId]);
       await existing.docs.first.reference.set({
         if (applicationId != null) "applicationId": applicationId,
-        "members": [...members, employerId],
-        "participants": [...members, employerId],
+        "members": participantIds,
+        "participants": participantIds,
+        "participantIds": participantIds,
         "updatedAt": FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       return existing.docs.first.id;
     }
 
+    final participantIds = uniqueParticipantIds([...members, employerId]);
     final doc = await chatsRef.add({
       "type": "team",
       "teamId": teamId,
       if (applicationId != null) "applicationId": applicationId,
-      "members": [...members, employerId],
-      "participants": [...members, employerId],
+      "members": participantIds,
+      "participants": participantIds,
+      "participantIds": participantIds,
       "employerId": employerId,
       "jobId": jobId,
       "lastMessage": "",
@@ -205,22 +219,26 @@ class ChatService {
         .get();
 
     if (existing.docs.isNotEmpty) {
+      final participantIds = uniqueParticipantIds(members);
       await existing.docs.first.reference.set({
-        "members": members,
-        "participants": members,
+        "members": participantIds,
+        "participants": participantIds,
+        "participantIds": participantIds,
         "teamName": teamName,
         "updatedAt": FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       return existing.docs.first.id;
     }
 
-    final anchorUser = members.isNotEmpty ? members.first : "";
+    final participantIds = uniqueParticipantIds(members);
+    final anchorUser = participantIds.isNotEmpty ? participantIds.first : "";
     final doc = await chatsRef.add({
       "type": "internal_team",
       "teamId": teamId,
       "teamName": teamName,
-      "members": members,
-      "participants": members,
+      "members": participantIds,
+      "participants": participantIds,
+      "participantIds": participantIds,
       "workerId": anchorUser,
       "employerId": anchorUser,
       "createdAt": FieldValue.serverTimestamp(),

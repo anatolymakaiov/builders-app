@@ -91,6 +91,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (data == null) return;
 
     setChatData(data);
+    await ensureRuleFriendlyParticipants(data, user.uid);
 
     final isWorker = user.uid == workerId;
 
@@ -110,6 +111,57 @@ class _ChatScreenState extends State<ChatScreen> {
     _chatLoaded = true;
   }
 
+  bool containsUserId(dynamic value, String uid) {
+    if (value is List) {
+      return value.map((item) => item.toString()).contains(uid);
+    }
+    if (value is Map) {
+      return value.containsKey(uid) ||
+          value.values.any((item) {
+            if (item is String) return item == uid;
+            if (item is Map) return item["userId"]?.toString() == uid;
+            return false;
+          });
+    }
+    return false;
+  }
+
+  Future<void> ensureRuleFriendlyParticipants(
+    Map<String, dynamic> data,
+    String uid,
+  ) async {
+    final participantIds = chatRecipientIds(data).toSet().toList();
+    final isSenderParticipant = participantIds.contains(uid);
+    debugPrint(
+      "ATTACHMENT AUTH DEBUG "
+      "authUid=$uid "
+      "chatId=${widget.chatId} "
+      "chatParticipantIds=$participantIds "
+      "isSenderParticipant=$isSenderParticipant",
+    );
+    if (!isSenderParticipant || participantIds.isEmpty) return;
+
+    final alreadyRuleFriendly = containsUserId(data["participantIds"], uid) &&
+        containsUserId(data["participants"], uid);
+    if (alreadyRuleFriendly) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection("chats")
+          .doc(widget.chatId)
+          .set({
+        "participantIds": participantIds,
+        "participants": participantIds,
+        "members": participantIds,
+      }, SetOptions(merge: true));
+    } on FirebaseException catch (error) {
+      debugPrint(
+        "ATTACHMENT AUTH DEBUG participant backfill failed "
+        "chatId=${widget.chatId} error=${error.code}",
+      );
+    }
+  }
+
   Future<bool> ensureChatDataLoaded() async {
     if (_chatLoaded && chatMembers.isNotEmpty) return true;
 
@@ -127,20 +179,36 @@ class _ChatScreenState extends State<ChatScreen> {
   List<String> chatRecipientIds(Map<String, dynamic> data) {
     final ids = <String>{};
 
-    final members = data["members"];
-    if (members is List) {
-      ids.addAll(members.map((item) => item.toString()));
+    void addIds(dynamic value) {
+      if (value is List) {
+        ids.addAll(value.map((item) {
+          if (item is Map) return item["userId"]?.toString() ?? "";
+          return item.toString();
+        }));
+      } else if (value is Map) {
+        ids.addAll(value.keys.map((key) => key.toString()));
+        ids.addAll(value.values.map((item) {
+          if (item is Map) return item["userId"]?.toString() ?? "";
+          return item is String ? item : "";
+        }));
+      }
     }
 
-    final participants = data["participants"];
-    if (participants is List) {
-      ids.addAll(participants.map((item) => item.toString()));
-    }
+    addIds(data["members"]);
+    addIds(data["participants"]);
+    addIds(data["participantIds"]);
+    addIds(data["userIds"]);
 
     final worker = data["workerId"]?.toString();
     final employer = data["employerId"]?.toString();
+    final sender = data["senderId"]?.toString();
+    final receiver = data["receiverId"]?.toString();
+    final target = data["targetProfileId"]?.toString();
     if (worker != null && worker.isNotEmpty) ids.add(worker);
     if (employer != null && employer.isNotEmpty) ids.add(employer);
+    if (sender != null && sender.isNotEmpty) ids.add(sender);
+    if (receiver != null && receiver.isNotEmpty) ids.add(receiver);
+    if (target != null && target.isNotEmpty) ids.add(target);
 
     return ids.where((id) => id.isNotEmpty).toList();
   }
@@ -707,6 +775,31 @@ class _ChatScreenState extends State<ChatScreen> {
     required String messageId,
     required String senderId,
   }) async {
+    final authUid = FirebaseAuth.instance.currentUser?.uid ?? "";
+    final isSenderParticipant = chatMembers.contains(senderId);
+    debugPrint(
+      "ATTACHMENT AUTH DEBUG "
+      "authUid=$authUid "
+      "senderId=$senderId "
+      "chatId=${widget.chatId} "
+      "chatParticipantIds=$chatMembers "
+      "isSenderParticipant=$isSenderParticipant",
+    );
+    if (authUid != senderId) {
+      throw FirebaseException(
+        plugin: "firebase_storage",
+        code: "unauthorized",
+        message: "Authenticated user does not match attachment sender.",
+      );
+    }
+    if (!isSenderParticipant) {
+      throw FirebaseException(
+        plugin: "firebase_storage",
+        code: "unauthorized",
+        message: "Sender is not a participant of this chat.",
+      );
+    }
+
     final uploaded = <Map<String, dynamic>>[];
 
     for (final attachment in pendingAttachments) {

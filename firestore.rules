@@ -101,12 +101,35 @@ service cloud.firestore {
         && (
           get(/databases/$(database)/documents/chats/$(chatId)).data.workerId == uid()
           || get(/databases/$(database)/documents/chats/$(chatId)).data.employerId == uid()
+          || get(/databases/$(database)/documents/chats/$(chatId)).data.senderId == uid()
+          || get(/databases/$(database)/documents/chats/$(chatId)).data.receiverId == uid()
+          || get(/databases/$(database)/documents/chats/$(chatId)).data.targetProfileId == uid()
           || (
             get(/databases/$(database)/documents/chats/$(chatId)).data.participants is list
             && uid() in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
           )
           || (
+            get(/databases/$(database)/documents/chats/$(chatId)).data.participants is map
+            && uid() in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+          )
+          || (
+            get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds is list
+            && uid() in get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds
+          )
+          || (
+            get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds is map
+            && uid() in get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds
+          )
+          || (
+            get(/databases/$(database)/documents/chats/$(chatId)).data.userIds is list
+            && uid() in get(/databases/$(database)/documents/chats/$(chatId)).data.userIds
+          )
+          || (
             get(/databases/$(database)/documents/chats/$(chatId)).data.members is list
+            && uid() in get(/databases/$(database)/documents/chats/$(chatId)).data.members
+          )
+          || (
+            get(/databases/$(database)/documents/chats/$(chatId)).data.members is map
             && uid() in get(/databases/$(database)/documents/chats/$(chatId)).data.members
           )
         );
@@ -250,8 +273,16 @@ service cloud.firestore {
       allow update: if isAdmin()
         || resource.data.workerId == uid()
         || resource.data.employerId == uid()
+        || resource.data.senderId == uid()
+        || resource.data.receiverId == uid()
+        || resource.data.targetProfileId == uid()
         || (resource.data.participants is list && uid() in resource.data.participants)
-        || (resource.data.members is list && uid() in resource.data.members);
+        || (resource.data.participants is map && uid() in resource.data.participants)
+        || (resource.data.participantIds is list && uid() in resource.data.participantIds)
+        || (resource.data.participantIds is map && uid() in resource.data.participantIds)
+        || (resource.data.userIds is list && uid() in resource.data.userIds)
+        || (resource.data.members is list && uid() in resource.data.members)
+        || (resource.data.members is map && uid() in resource.data.members);
       allow delete: if isAdmin();
 
       match /messages/{messageId} {

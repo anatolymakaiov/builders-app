@@ -209,10 +209,15 @@ class ProfileCommunicationService {
         targetRole == "employer" || targetRole == "company";
 
     if (currentIsEmployer == targetIsEmployer) {
+      final participantIds = ChatService.uniqueParticipantIds([
+        currentUserId,
+        targetUserId,
+      ]);
       final doc = await _db.collection("chats").add({
         "type": "direct",
-        "participants": [currentUserId, targetUserId],
-        "members": [currentUserId, targetUserId],
+        "participants": participantIds,
+        "participantIds": participantIds,
+        "members": participantIds,
         "participantRoles": {
           currentUserId: currentRole,
           targetUserId: targetRole,
