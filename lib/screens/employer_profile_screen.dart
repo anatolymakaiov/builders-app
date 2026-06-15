@@ -52,7 +52,9 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
     return jobStreams.putIfAbsent(streamKey, () {
       if (canViewAllJobs) {
         return jobRepository.getJobsByOwner(widget.userId).map((jobs) {
-          debugPrint("COMPANY PROFILE JOBS COUNT=${jobs.length}");
+          debugPrint(
+            "COMPANY PROFILE OWNER JOBS source=ownerId:${widget.userId} raw=${jobs.length} final=${jobs.length}",
+          );
           return jobs;
         });
       }
@@ -78,7 +80,9 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
           return bDate.compareTo(aDate);
         });
 
-        debugPrint("COMPANY PROFILE JOBS COUNT=${jobs.length}");
+        debugPrint(
+          "COMPANY PROFILE PUBLIC JOBS source=public raw=${snapshot.docs.length} final=${jobs.length}",
+        );
         return jobs;
       });
     });

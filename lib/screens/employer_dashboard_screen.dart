@@ -653,13 +653,11 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
               stream: publicJobsStream,
               builder: (context, publicSnapshot) {
                 final publicJobs = publicSnapshot.data ?? const <Job>[];
-                final jobs = mergeEmployerVisibleJobs(
+                final allJobs = mergeEmployerVisibleJobs(
                   publicJobs: publicJobs,
                   ownerJobs: ownerJobs,
                 );
-                final visibleJobs = showOnlyMyJobs
-                    ? jobs.where((job) => ownerJobIds.contains(job.id)).toList()
-                    : jobs;
+                final visibleJobs = showOnlyMyJobs ? ownerJobs : allJobs;
 
                 final filteredJobs = visibleJobs.where((job) {
                   return jobMatchesSearch(
@@ -670,18 +668,21 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                     originJobs: visibleJobs,
                   );
                 }).toList();
-                debugPrint(
-                  "MY JOBS RAW COUNT=${ownerJobs.length} "
-                  "MY JOBS AFTER OWNER FILTER=${visibleJobs.length} "
-                  "MY JOBS AFTER STATUS FILTER=${visibleJobs.length} "
-                  "MY JOBS FINAL COUNT=${filteredJobs.length}",
-                );
+                if (showOnlyMyJobs) {
+                  debugPrint(
+                    "EMPLOYER OWN JOBS source=dashboard raw=${ownerJobs.length} final=${filteredJobs.length}",
+                  );
+                } else {
+                  debugPrint(
+                    "EMPLOYER ALL JOBS source=dashboard public=${publicJobs.length} own=${ownerJobs.length} final=${filteredJobs.length}",
+                  );
+                }
                 if (showOnlyMyJobs) {
                   final finalIds = filteredJobs.map((job) => job.id).toSet();
                   for (final job in ownerJobs) {
                     if (!finalIds.contains(job.id)) {
                       debugPrint(
-                        "FILTERED OUT OWN JOB: "
+                        "OWNER JOB FILTERED OUT "
                         "jobId=${job.id} status=${job.status} "
                         "active=${!job.isClosed} deleted=${job.status.toLowerCase() == "deleted"} "
                         "reason=search_or_scope_filter",
@@ -716,7 +717,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                           selectedRoles: selectedRoles,
                           query: searchQuery,
                           filters: searchFilters,
-                          jobs: jobs,
+                          jobs: visibleJobs,
                           hintText: "Search jobs",
                           showJobScopeToggle: false,
                           showJobScopeToggleInField: false,

@@ -137,15 +137,18 @@ class JobRepository {
   /// 🔥 JOBS ПО РАБОТОДАТЕЛЮ (НОВОЕ)
   Stream<List<Job>> getJobsByOwner(String ownerId) {
     final streamId = DateTime.now().microsecondsSinceEpoch;
-    debugPrint("JOBS STREAM INSTANCE ID=$streamId ownerId=$ownerId");
+    debugPrint("EMPLOYER OWN JOBS STREAM id=$streamId ownerId=$ownerId");
 
-    return _db.collection('jobs').snapshots().map((snapshot) {
-      var rawOwnerCount = 0;
-      final jobs = snapshot.docs.where((doc) {
+    return _db
+        .collection('jobs')
+        .where('ownerId', isEqualTo: ownerId)
+        .snapshots(includeMetadataChanges: true)
+        .map((snapshot) {
+      final jobsById = <String, Job>{};
+      final rawOwnerCount = snapshot.docs.length;
+
+      for (final doc in snapshot.docs) {
         final data = doc.data();
-        final belongsToOwner = _jobBelongsToOwner(data, ownerId);
-        if (!belongsToOwner) return false;
-        rawOwnerCount += 1;
         final hardDeleted = _isHardDeletedJobData(data);
         if (hardDeleted) {
           debugPrint(
@@ -154,11 +157,16 @@ class JobRepository {
             "status=${data["status"]?.toString() ?? ""} "
             "reason=hard_deleted",
           );
+          continue;
         }
-        return !hardDeleted;
-      }).map((doc) {
-        return Job.fromFirestore(doc.id, doc.data());
-      }).toList();
+
+        if (jobsById.containsKey(doc.id)) {
+          debugPrint("DUPLICATE JOB REMOVED jobId=${doc.id}");
+        }
+        jobsById[doc.id] = Job.fromFirestore(doc.id, data);
+      }
+
+      final jobs = jobsById.values.toList();
 
       jobs.sort((a, b) {
         final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -166,32 +174,17 @@ class JobRepository {
         return bDate.compareTo(aDate);
       });
 
-      debugPrint("EMPLOYER OWN JOBS RAW COUNT=$rawOwnerCount");
-      debugPrint("EMPLOYER OWN JOBS FINAL COUNT=${jobs.length}");
       debugPrint(
-        "MY JOBS SOURCE UPDATED=$streamId employerId=$ownerId jobsCount=${jobs.length}",
+        "EMPLOYER OWN JOBS source=ownerId:$ownerId raw=$rawOwnerCount final=${jobs.length}",
       );
       if (jobs.isEmpty) {
-        debugPrint("MY JOBS EMPTY STATE");
+        debugPrint("EMPLOYER OWN JOBS EMPTY STATE");
       }
 
       return jobs;
     }).handleError((error) {
-      debugPrint("MY JOBS SOURCE ERROR=$streamId error=$error");
+      debugPrint("EMPLOYER OWN JOBS SOURCE ERROR=$streamId error=$error");
     });
-  }
-
-  bool _jobBelongsToOwner(Map<String, dynamic> data, String ownerId) {
-    for (final field in const [
-      "ownerId",
-      "employerId",
-      "createdBy",
-      "userId"
-    ]) {
-      if (data[field]?.toString() == ownerId) return true;
-    }
-
-    return false;
   }
 
   /// 🔥 ПРОВЕРКА: УЖЕ ОТКЛИКНУЛСЯ?

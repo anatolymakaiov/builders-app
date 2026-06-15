@@ -90,7 +90,7 @@ class _MapScreenState extends State<MapScreen> {
         final streamId = DateTime.now().microsecondsSinceEpoch;
         debugPrint("MAP STREAM INSTANCE ID=$streamId ownerId=$ownerId");
         return jobRepository.getJobsByOwner(ownerId).map((jobs) {
-          debugPrint("MAP SOURCE UPDATED=$streamId jobsCount=${jobs.length}");
+          debugPrint("MAP OWNER JOBS source=$streamId raw=${jobs.length}");
           return jobs;
         });
       },
@@ -314,7 +314,8 @@ class _MapScreenState extends State<MapScreen> {
   List<Job> mapVisibleJobs(List<Job> jobs) {
     debugPrint("MAP JOB FILTER START rawCount=${jobs.length}");
     final result = jobs.where(isMapVisibleJob).toList();
-    debugPrint("MAP JOB FINAL COUNT=${result.length}");
+    debugPrint(
+        "MAP VISIBLE JOBS source=map raw=${jobs.length} final=${result.length}");
     return result;
   }
 
