@@ -26,13 +26,60 @@ class WorkerProfileScreen extends StatelessWidget {
   final String userId;
   final String? jobId;
   final String? employerId;
+  final String? openedFrom;
+  final String? returnToTeamId;
 
   const WorkerProfileScreen({
     super.key,
     required this.userId,
     this.jobId,
     this.employerId,
+    this.openedFrom,
+    this.returnToTeamId,
   });
+
+  bool get openedFromTeam =>
+      openedFrom == "team" && (returnToTeamId?.trim().isNotEmpty ?? false);
+
+  Future<void> returnToTeam(BuildContext context) async {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+      return;
+    }
+
+    final teamId = returnToTeamId?.trim();
+    if (teamId == null || teamId.isEmpty) return;
+
+    try {
+      final teamSnap = await FirebaseFirestore.instance
+          .collection("teams")
+          .doc(teamId)
+          .get();
+      if (!context.mounted) return;
+
+      if (!teamSnap.exists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Team is no longer available.")),
+        );
+        return;
+      }
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TeamDetailsScreen(
+            teamId: teamId,
+            teamData: teamSnap.data() ?? <String, dynamic>{},
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Team is no longer available.")),
+      );
+    }
+  }
 
   Widget buildInfoSection(String title, dynamic value) {
     final text = value?.toString().trim() ?? "";
@@ -1445,18 +1492,28 @@ class WorkerProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
     final isMyProfile = currentUser?.uid == userId;
+    final useTeamReturn = openedFromTeam;
+    final showOwnProfileControls = isMyProfile && !useTeamReturn;
 
     return Scaffold(
-      drawer: isMyProfile ? const ProfileHamburgerMenu(role: "worker") : null,
+      drawer: showOwnProfileControls
+          ? const ProfileHamburgerMenu(role: "worker")
+          : null,
       appBar: AppBar(
-        leading: isMyProfile
-            ? Builder(
-                builder: (context) => const ProfileHamburgerButton(),
+        leading: useTeamReturn
+            ? IconButton(
+                tooltip: "Back to team",
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => returnToTeam(context),
               )
-            : null,
+            : isMyProfile
+                ? Builder(
+                    builder: (context) => const ProfileHamburgerButton(),
+                  )
+                : null,
         title: const Text("Worker Profile"),
         actions: [
-          if (isMyProfile) ...[
+          if (showOwnProfileControls) ...[
             IconButton(
               tooltip: "Support",
               icon: const Icon(Icons.support_agent_outlined),

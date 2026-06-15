@@ -568,7 +568,11 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => WorkerProfileScreen(userId: memberId),
+                  builder: (_) => WorkerProfileScreen(
+                    userId: memberId,
+                    openedFrom: "team",
+                    returnToTeamId: widget.teamId,
+                  ),
                 ),
               );
             },
