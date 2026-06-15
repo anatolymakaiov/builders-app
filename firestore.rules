@@ -137,9 +137,32 @@ service cloud.firestore {
 
     function isChatActive(chatId) {
       return exists(/databases/$(database)/documents/chats/$(chatId))
-        && get(/databases/$(database)/documents/chats/$(chatId)).data.canSendMessages != false
-        && get(/databases/$(database)/documents/chats/$(chatId)).data.chatStatus != "inactive"
-        && get(/databases/$(database)/documents/chats/$(chatId)).data.active != false;
+        && (
+          !("canSendMessages" in get(/databases/$(database)/documents/chats/$(chatId)).data)
+          || get(/databases/$(database)/documents/chats/$(chatId)).data.canSendMessages != false
+        )
+        && (
+          !("chatStatus" in get(/databases/$(database)/documents/chats/$(chatId)).data)
+          || get(/databases/$(database)/documents/chats/$(chatId)).data.chatStatus != "inactive"
+        )
+        && (
+          !("active" in get(/databases/$(database)/documents/chats/$(chatId)).data)
+          || get(/databases/$(database)/documents/chats/$(chatId)).data.active != false
+        );
+    }
+
+    function isValidChatMessageCreate(chatId, messageId) {
+      return isChatParticipant(chatId)
+        && isChatActive(chatId)
+        && request.resource.data.senderId == uid()
+        && (
+          !("chatId" in request.resource.data)
+          || request.resource.data.chatId == chatId
+        )
+        && (
+          !("messageId" in request.resource.data)
+          || request.resource.data.messageId == messageId
+        );
     }
 
     match /users/{userId} {
@@ -287,7 +310,7 @@ service cloud.firestore {
 
       match /messages/{messageId} {
         allow create: if isAdmin()
-          || (isChatParticipant(chatId) && isChatActive(chatId));
+          || isValidChatMessageCreate(chatId, messageId);
         allow read: if isAdmin() || isChatParticipant(chatId);
         allow update: if isAdmin() || isChatParticipant(chatId);
         allow delete: if isAdmin();

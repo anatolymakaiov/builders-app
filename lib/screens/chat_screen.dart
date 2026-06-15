@@ -613,35 +613,47 @@ class _ChatScreenState extends State<ChatScreen> {
         .doc(widget.chatId)
         .collection("messages")
         .doc();
+    var uploadedAttachments = <Map<String, dynamic>>[];
 
     try {
       if (mounted) setState(() => isUploadingMedia = true);
 
-      final attachments = await uploadPendingAttachments(
+      uploadedAttachments = await uploadPendingAttachments(
         messageId: messageRef.id,
         senderId: user.uid,
       );
-      final firstAttachment =
-          attachments.isNotEmpty ? attachments.first : <String, dynamic>{};
+      final firstAttachment = uploadedAttachments.isNotEmpty
+          ? uploadedAttachments.first
+          : <String, dynamic>{};
       final attachmentType = firstAttachment["type"]?.toString();
-      final messageType = attachments.isEmpty
+      final messageType = uploadedAttachments.isEmpty
           ? "text"
-          : attachments.length == 1 && attachmentType != "file"
+          : uploadedAttachments.length == 1 && attachmentType != "file"
               ? attachmentType
               : "attachments";
       final preview = text.isNotEmpty
           ? text
-          : attachments.isNotEmpty
+          : uploadedAttachments.isNotEmpty
               ? "Sent an attachment"
               : "";
 
+      debugPrint(
+        "CHAT MESSAGE FIRESTORE WRITE START "
+        "path=chats/${widget.chatId}/messages/${messageRef.id} "
+        "operation=create "
+        "authUid=${user.uid} "
+        "senderId=${user.uid} "
+        "chatId=${widget.chatId} "
+        "participantIds=$chatMembers "
+        "messageId=${messageRef.id}",
+      );
       await messageRef.set({
         "messageId": messageRef.id,
         "chatId": widget.chatId,
         "type": messageType,
         "text": text,
-        "attachments": attachments,
-        if (attachments.isNotEmpty) "mediaUrl": firstAttachment["url"],
+        "attachments": uploadedAttachments,
+        if (uploadedAttachments.isNotEmpty) "mediaUrl": firstAttachment["url"],
         if (attachmentType == "image") "imageUrl": firstAttachment["url"],
         if (attachmentType == "video") "videoUrl": firstAttachment["url"],
         if (firstAttachment["fileName"] != null)
@@ -652,6 +664,16 @@ class _ChatScreenState extends State<ChatScreen> {
         "readBy": [user.uid],
       });
 
+      debugPrint(
+        "CHAT MESSAGE FIRESTORE WRITE START "
+        "path=chats/${widget.chatId} "
+        "operation=update "
+        "authUid=${user.uid} "
+        "senderId=${user.uid} "
+        "chatId=${widget.chatId} "
+        "participantIds=$chatMembers "
+        "messageId=${messageRef.id}",
+      );
       await FirebaseFirestore.instance
           .collection("chats")
           .doc(widget.chatId)
@@ -675,6 +697,9 @@ class _ChatScreenState extends State<ChatScreen> {
       scrollToBottom();
     } on FirebaseException catch (e) {
       debugPrint("SEND MESSAGE ERROR: [${e.plugin}/${e.code}] ${e.message}");
+      if (uploadedAttachments.isNotEmpty) {
+        await cleanupUploadedAttachments(uploadedAttachments);
+      }
       if (mounted) {
         final isStorageError = e.plugin == "firebase_storage";
         ScaffoldMessenger.of(context).showSnackBar(
@@ -689,6 +714,9 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       debugPrint("SEND MESSAGE ERROR: $e");
+      if (uploadedAttachments.isNotEmpty) {
+        await cleanupUploadedAttachments(uploadedAttachments);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Could not send message")),
@@ -696,6 +724,24 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } finally {
       if (mounted) setState(() => isUploadingMedia = false);
+    }
+  }
+
+  Future<void> cleanupUploadedAttachments(
+    List<Map<String, dynamic>> attachments,
+  ) async {
+    for (final attachment in attachments) {
+      final storagePath = attachment["storagePath"]?.toString();
+      if (storagePath == null || storagePath.isEmpty) continue;
+      try {
+        await FirebaseStorage.instance.ref(storagePath).delete();
+      } catch (error) {
+        debugPrint(
+          "CHAT ATTACHMENT CLEANUP FAILED "
+          "storagePath=$storagePath "
+          "error=$error",
+        );
+      }
     }
   }
 
