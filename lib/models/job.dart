@@ -102,6 +102,56 @@ class Job {
     this.filledPositions = 0,
   });
 
+  Job copyWith({
+    String? companyName,
+    String? ownerId,
+    bool? employerDeleted,
+    bool? companyDeleted,
+  }) {
+    return Job(
+      id: id,
+      title: title,
+      trade: trade,
+      site: site,
+      canonicalRoleId: canonicalRoleId,
+      canonicalRoleName: canonicalRoleName,
+      originalEmployerInput: originalEmployerInput,
+      location: location,
+      street: street,
+      city: city,
+      postcode: postcode,
+      county: county,
+      rate: rate,
+      lat: lat,
+      lng: lng,
+      description: description,
+      responsibilities: responsibilities,
+      candidateRequirements: candidateRequirements,
+      requiredDocuments: requiredDocuments,
+      additionalInformation: additionalInformation,
+      companyName: companyName ?? this.companyName,
+      companyLogo: companyLogo,
+      photos: photos,
+      jobType: jobType,
+      duration: duration,
+      weeklyHours: weeklyHours,
+      startDate: startDate,
+      employmentType: employmentType,
+      ownerId: ownerId ?? this.ownerId,
+      applicantsCount: applicantsCount,
+      createdAt: createdAt,
+      status: status,
+      moderationStatus: moderationStatus,
+      moderationReason: moderationReason,
+      active: active,
+      deleted: deleted,
+      employerDeleted: employerDeleted ?? this.employerDeleted,
+      companyDeleted: companyDeleted ?? this.companyDeleted,
+      positions: positions,
+      filledPositions: filledPositions,
+    );
+  }
+
   /// 🔥 PAYMENT TEXT
   String get rateText {
     if (jobType == "negotiable") {

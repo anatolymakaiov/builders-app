@@ -111,6 +111,47 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     return name.isEmpty ? "Team application" : name;
   }
 
+  String firstNonEmpty(List<dynamic> values, {String fallback = ""}) {
+    for (final value in values) {
+      final text = value?.toString().trim() ?? "";
+      if (text.isNotEmpty) return text;
+    }
+    return fallback;
+  }
+
+  bool applicationCompanyDeleted(Map<String, dynamic>? data, Job job) {
+    return data?["companyDeleted"] == true ||
+        data?["employerDeleted"] == true ||
+        data?["accountDeleted"] == true ||
+        data?["deletedCompany"] == true ||
+        job.companyDeleted ||
+        job.employerDeleted;
+  }
+
+  Job stableApplicationJob(Job job, Map<String, dynamic>? applicationData) {
+    final deletedCompany = applicationCompanyDeleted(applicationData, job);
+    final companyName = deletedCompany
+        ? "Deleted Company"
+        : firstNonEmpty(
+            [
+              applicationData?["companyName"],
+              applicationData?["employerName"],
+              applicationData?["ownerName"],
+              job.companyName,
+            ],
+            fallback: "Company unavailable",
+          );
+
+    return job.copyWith(
+      companyName: companyName,
+      // Application cards already have a stable company label. Avoid a second
+      // profile lookup in JobCard that can flip closed jobs between labels.
+      ownerId: "",
+      companyDeleted: deletedCompany,
+      employerDeleted: deletedCompany,
+    );
+  }
+
   bool jobUnavailableForWorker(Job job) {
     return job.isClosed || job.moderationStatus == "rejected";
   }
@@ -663,11 +704,12 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     Map<String, dynamic>? applicationData,
     bool isTeamApplication = false,
   }) {
-    final unavailable = jobUnavailableForWorker(job);
-    final unavailableMessage = unavailableJobMessage(job);
+    final displayJob = stableApplicationJob(job, applicationData);
+    final unavailable = jobUnavailableForWorker(displayJob);
+    final unavailableMessage = unavailableJobMessage(displayJob);
 
     return JobCard(
-      job: job,
+      job: displayJob,
       unread: isUnread,
       statusText: statusLabel(status),
       statusColor: getStatusColor(status),
@@ -687,7 +729,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
           );
           return;
         }
-        await openJobDetails(context, job.id, applicationId);
+        await openJobDetails(context, displayJob.id, applicationId);
       },
     );
   }

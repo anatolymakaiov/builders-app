@@ -11,6 +11,39 @@ class SavedJobsScreen extends StatelessWidget {
 
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
 
+  Future<List<Job>> loadSavedJobs(List<QueryDocumentSnapshot> savedDocs) async {
+    final jobs = <Job>[];
+
+    for (final savedDoc in savedDocs) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection("jobs")
+            .doc(savedDoc.id)
+            .get();
+
+        if (!doc.exists) continue;
+
+        final data = doc.data();
+        if (data == null) continue;
+
+        final job = Job.fromFirestore(doc.id, data);
+        if (!job.isPubliclyVisible) continue;
+
+        jobs.add(job);
+      } on FirebaseException catch (error) {
+        debugPrint(
+          "SAVED JOB LOAD SKIPPED jobId=${savedDoc.id} error=${error.code}",
+        );
+      } catch (error) {
+        debugPrint(
+          "SAVED JOB LOAD SKIPPED jobId=${savedDoc.id} error=$error",
+        );
+      }
+    }
+
+    return jobs;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (userId == null) {
@@ -31,8 +64,16 @@ class SavedJobsScreen extends StatelessWidget {
               .collection("jobs")
               .snapshots(),
           builder: (context, snapshot) {
-            if (!snapshot.hasData) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError) {
+              debugPrint("SAVED JOBS STREAM ERROR=${snapshot.error}");
+              return const Center(
+                child: Text("Could not load saved jobs"),
+              );
             }
 
             final savedDocs = snapshot.data!.docs;
@@ -43,35 +84,26 @@ class SavedJobsScreen extends StatelessWidget {
               );
             }
 
-            final jobIds = savedDocs.map((doc) => doc.id).toList();
-
-            return FutureBuilder<List<Job?>>(
-              future: Future.wait(
-                jobIds.map((id) async {
-                  final doc = await FirebaseFirestore.instance
-                      .collection("jobs")
-                      .doc(id)
-                      .get();
-
-                  if (!doc.exists) return null;
-
-                  final data = doc.data() as Map<String, dynamic>;
-                  return Job.fromFirestore(doc.id, data);
-                }),
-              ),
+            return FutureBuilder<List<Job>>(
+              future: loadSavedJobs(savedDocs),
               builder: (context, jobsSnapshot) {
-                if (!jobsSnapshot.hasData) {
+                if (jobsSnapshot.connectionState == ConnectionState.waiting &&
+                    !jobsSnapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final jobs = jobsSnapshot.data!
-                    .where((job) => job != null)
-                    .cast<Job>()
-                    .toList();
+                if (jobsSnapshot.hasError) {
+                  debugPrint("SAVED JOBS LOAD ERROR=${jobsSnapshot.error}");
+                  return const Center(
+                    child: Text("Could not load saved jobs"),
+                  );
+                }
+
+                final jobs = jobsSnapshot.data ?? const <Job>[];
 
                 if (jobs.isEmpty) {
                   return const Center(
-                    child: Text("No saved jobs found"),
+                    child: Text("You have no saved jobs yet."),
                   );
                 }
 
