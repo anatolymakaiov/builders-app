@@ -812,7 +812,17 @@ class _ChatScreenState extends State<ChatScreen> {
           (attachment.type == "file"
               ? fileContentType(extension)
               : mediaContentType(attachment.type, extension));
-      final metadata = SettableMetadata(contentType: contentType);
+      final attachmentMetadata = <String, String>{
+        "chatId": widget.chatId,
+        "senderId": senderId,
+      };
+      for (final memberId in chatMembers) {
+        attachmentMetadata[memberId] = "true";
+      }
+      final metadata = SettableMetadata(
+        contentType: contentType,
+        customMetadata: attachmentMetadata,
+      );
 
       debugPrint(
         "CHAT ATTACHMENT UPLOAD START "

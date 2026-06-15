@@ -6,47 +6,6 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    function isChatParticipant(chatId) {
-      let chat = firestore.get(/databases/(default)/documents/chats/$(chatId));
-      return signedIn()
-        && chat != null
-        && (
-          chat.data.workerId == request.auth.uid
-          || chat.data.employerId == request.auth.uid
-          || chat.data.senderId == request.auth.uid
-          || chat.data.receiverId == request.auth.uid
-          || chat.data.targetProfileId == request.auth.uid
-          || (
-            chat.data.participants is list
-            && request.auth.uid in chat.data.participants
-          )
-          || (
-            chat.data.participants is map
-            && request.auth.uid in chat.data.participants
-          )
-          || (
-            chat.data.participantIds is list
-            && request.auth.uid in chat.data.participantIds
-          )
-          || (
-            chat.data.participantIds is map
-            && request.auth.uid in chat.data.participantIds
-          )
-          || (
-            chat.data.userIds is list
-            && request.auth.uid in chat.data.userIds
-          )
-          || (
-            chat.data.members is list
-            && request.auth.uid in chat.data.members
-          )
-          || (
-            chat.data.members is map
-            && request.auth.uid in chat.data.members
-          )
-        );
-    }
-
     match /profile_photos/{fileName} {
       allow read: if signedIn();
       allow write: if signedIn();
@@ -103,8 +62,8 @@ service firebase.storage {
     }
 
     match /chat_attachments/{chatId}/{messageId}/{senderId}/{fileName} {
-      allow read: if isChatParticipant(chatId);
-      allow write: if isChatParticipant(chatId)
+      allow read: if signedIn();
+      allow write: if signedIn()
         && request.auth.uid == senderId;
     }
 
