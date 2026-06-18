@@ -232,6 +232,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     required String userId,
     required String role,
   }) async {
+    ModerationHoldService.logHoldLifecycle(
+      "HOLD PROFILE BUTTON PRESSED",
+      context,
+    );
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final route = ModalRoute.of(context);
+    ModerationHoldService.logHoldLifecycle(
+        "HOLD PROFILE CONFIRM OPEN", context);
     final message = await _askAdminReply(
       context,
       title:
@@ -240,13 +248,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       hint: "Explain why this profile is temporarily suspended",
       requiredMessage: true,
     );
+    ModerationHoldService.logHoldLifecycleState(
+      "HOLD PROFILE CONFIRM CLOSED",
+      mounted: mounted,
+      routeIsCurrent: route?.isCurrent,
+    );
     if (message == null || message.trim().isEmpty) return;
-    await Future<void>.delayed(const Duration(milliseconds: 80));
+    await Future<void>.delayed(const Duration(milliseconds: 16));
+    if (!mounted) return;
 
+    ModerationHoldService.logHoldLifecycleState(
+      "HOLD PROFILE WRITE START",
+      mounted: mounted,
+      routeIsCurrent: route?.isCurrent,
+    );
     await ModerationHoldService().holdUser(
       targetUserId: userId,
       role: role,
       message: message,
+    );
+    ModerationHoldService.logHoldLifecycleState(
+      "HOLD PROFILE WRITE SUCCESS",
+      mounted: mounted,
+      routeIsCurrent: route?.isCurrent,
+    );
+    if (!mounted) return;
+    ModerationHoldService.logHoldLifecycleState(
+      "HOLD PROFILE MESSAGE START",
+      mounted: mounted,
+      routeIsCurrent: route?.isCurrent,
     );
     await _sendAdminInboxMessage(
       userId: userId,
@@ -256,10 +286,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       relatedTargetType: "profile_hold",
       relatedTargetId: userId,
     );
+    ModerationHoldService.logHoldLifecycleState(
+      "HOLD PROFILE MESSAGE SUCCESS",
+      mounted: mounted,
+      routeIsCurrent: route?.isCurrent,
+    );
     if (!mounted) return;
-    ModerationHoldService.showSafeSnackBar(
-      context,
+    ModerationHoldService.logHoldLifecycleState(
+      "HOLD PROFILE UI UPDATE START",
+      mounted: mounted,
+      routeIsCurrent: route?.isCurrent,
+    );
+    ModerationHoldService.showCapturedSnackBar(
+      messenger,
       "Profile temporarily suspended.",
+    );
+    ModerationHoldService.logHoldLifecycleState(
+      "HOLD PROFILE UI UPDATE END",
+      mounted: mounted,
+      routeIsCurrent: route?.isCurrent,
+    );
+    ModerationHoldService.logHoldLifecycleState(
+      "HOLD PROFILE NAVIGATION START",
+      mounted: mounted,
+      routeIsCurrent: route?.isCurrent,
+    );
+    ModerationHoldService.logHoldLifecycleState(
+      "HOLD PROFILE NAVIGATION END",
+      mounted: mounted,
+      routeIsCurrent: route?.isCurrent,
     );
   }
 

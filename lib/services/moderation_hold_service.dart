@@ -89,6 +89,36 @@ class ModerationHoldService {
     });
   }
 
+  static void logHoldLifecycle(String step, BuildContext? context) {
+    final mounted = context?.mounted;
+    final route = context == null ? null : ModalRoute.of(context);
+    logHoldLifecycleState(
+      step,
+      mounted: mounted,
+      routeIsCurrent: route?.isCurrent,
+    );
+  }
+
+  static void logHoldLifecycleState(
+    String step, {
+    bool? mounted,
+    bool? routeIsCurrent,
+  }) {
+    debugPrint(
+      "$step mounted=$mounted "
+      "routeIsCurrent=$routeIsCurrent contextValid=${mounted == true}",
+    );
+  }
+
+  static void showCapturedSnackBar(
+    ScaffoldMessengerState? messenger,
+    String message,
+  ) {
+    if (messenger == null || !messenger.mounted) return;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> holdUser({
     required String targetUserId,
     required String role,
