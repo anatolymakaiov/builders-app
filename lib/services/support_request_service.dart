@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -276,21 +278,58 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
     super.dispose();
   }
 
-  Future<void> pickAttachments() async {
+  Future<void> pickAttachments({
+    required List<String> allowedExtensions,
+  }) async {
     FocusScope.of(context).unfocus();
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
       withData: true,
-      type: FileType.any,
+      type: FileType.custom,
+      allowedExtensions: allowedExtensions,
     );
     if (result == null || !mounted) return;
 
     setState(() {
-      final existing = attachments.map((file) => file.name).toSet();
+      final existing =
+          attachments.map((file) => "${file.name}_${file.size}").toSet();
       attachments.addAll(
-        result.files.where((file) => !existing.contains(file.name)),
+        result.files
+            .where((file) => !existing.contains("${file.name}_${file.size}")),
       );
     });
+  }
+
+  Future<void> pickMediaAttachments() {
+    return pickAttachments(
+      allowedExtensions: [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "gif",
+        "heic",
+        "heif",
+        "mp4",
+        "mov",
+        "m4v",
+      ],
+    );
+  }
+
+  Future<void> pickFileAttachments() {
+    return pickAttachments(
+      allowedExtensions: [
+        "pdf",
+        "doc",
+        "docx",
+        "xls",
+        "xlsx",
+        "txt",
+        "zip",
+        "csv",
+      ],
+    );
   }
 
   Future<List<Map<String, dynamic>>> uploadAttachments() async {
@@ -380,6 +419,156 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
       default:
         return "application/octet-stream";
     }
+  }
+
+  bool _isImageExtension(String extension) {
+    return const {"jpg", "jpeg", "png", "gif", "webp", "heic", "heif"}
+        .contains(extension.toLowerCase());
+  }
+
+  bool _isVideoExtension(String extension) {
+    return const {"mp4", "mov", "m4v", "avi", "webm"}
+        .contains(extension.toLowerCase());
+  }
+
+  IconData _attachmentIcon(String extension) {
+    final normalized = extension.toLowerCase();
+    if (_isImageExtension(normalized)) return Icons.image_outlined;
+    if (_isVideoExtension(normalized)) return Icons.videocam_outlined;
+    if (normalized == "pdf") return Icons.picture_as_pdf_outlined;
+    if (normalized == "doc" || normalized == "docx") {
+      return Icons.description_outlined;
+    }
+    if (normalized == "xls" || normalized == "xlsx" || normalized == "csv") {
+      return Icons.table_chart_outlined;
+    }
+    return Icons.insert_drive_file_outlined;
+  }
+
+  String _fileTypeLabel(String extension) {
+    final normalized = extension.toLowerCase();
+    if (_isImageExtension(normalized)) return "Photo";
+    if (_isVideoExtension(normalized)) return "Video";
+    if (normalized.isEmpty) return "File";
+    return normalized.toUpperCase();
+  }
+
+  String _fileSizeLabel(int size) {
+    if (size <= 0) return "";
+    if (size < 1024) return "$size B";
+    if (size < 1024 * 1024) {
+      return "${(size / 1024).toStringAsFixed(1)} KB";
+    }
+    return "${(size / (1024 * 1024)).toStringAsFixed(1)} MB";
+  }
+
+  Widget _attachmentThumbnail(PlatformFile file) {
+    final extension = file.extension?.toLowerCase() ?? "";
+    if (_isImageExtension(extension)) {
+      final bytes = file.bytes;
+      if (bytes != null) {
+        return Image.memory(bytes, fit: BoxFit.cover);
+      }
+      final path = file.path;
+      if (path != null && path.isNotEmpty) {
+        return Image.file(File(path), fit: BoxFit.cover);
+      }
+    }
+
+    return Container(
+      color: Colors.white.withValues(alpha: 0.6),
+      alignment: Alignment.center,
+      child: Icon(
+        _attachmentIcon(extension),
+        color: Theme.of(context).colorScheme.primary,
+        size: 26,
+      ),
+    );
+  }
+
+  Widget _selectedAttachmentsPreview() {
+    if (attachments.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                "Selected attachments",
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+            Text(
+              "${attachments.length}",
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ...attachments.map((file) {
+          final extension = file.extension?.toLowerCase() ?? "";
+          final sizeLabel = _fileSizeLabel(file.size);
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.78),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.14)),
+            ),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: _attachmentThumbnail(file),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        file.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        [
+                          _fileTypeLabel(extension),
+                          if (sizeLabel.isNotEmpty) sizeLabel,
+                        ].join(" • "),
+                        style: TextStyle(
+                          color: Colors.black.withValues(alpha: 0.56),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: "Remove attachment",
+                  onPressed: submitting
+                      ? null
+                      : () => setState(() => attachments.remove(file)),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
   }
 
   Future<void> closeWithResult() async {
@@ -512,43 +701,23 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: submitting ? null : pickAttachments,
-                  icon: const Icon(Icons.attach_file),
-                  label: const Text("Attach files"),
-                ),
-              ),
-              if (attachments.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: attachments.map((file) {
-                      return InputChip(
-                        avatar: const Icon(Icons.insert_drive_file, size: 18),
-                        label: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: dialogWidth - 120,
-                          ),
-                          child: Text(
-                            file.name,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        onDeleted: submitting
-                            ? null
-                            : () {
-                                setState(() => attachments.remove(file));
-                              },
-                      );
-                    }).toList(),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: submitting ? null : pickMediaAttachments,
+                    icon: const Icon(Icons.perm_media_outlined),
+                    label: const Text("Attach media"),
                   ),
-                ),
-              ],
+                  OutlinedButton.icon(
+                    onPressed: submitting ? null : pickFileAttachments,
+                    icon: const Icon(Icons.attach_file),
+                    label: const Text("Attach files"),
+                  ),
+                ],
+              ),
+              _selectedAttachmentsPreview(),
             ],
           ),
         ),
