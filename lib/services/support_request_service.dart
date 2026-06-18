@@ -55,7 +55,13 @@ class SupportRequestService {
       ),
     );
 
-    if (result == null || result.message.isEmpty) return;
+    if (result == null ||
+        (result.message.trim().isEmpty && result.attachments.isEmpty)) {
+      return;
+    }
+    if (context.mounted) {
+      FocusScope.of(context).unfocus();
+    }
 
     try {
       final firestore = FirebaseFirestore.instance;
@@ -271,6 +277,7 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
   }
 
   Future<void> pickAttachments() async {
+    FocusScope.of(context).unfocus();
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
       withData: true,
@@ -302,17 +309,29 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
           "support_requests/${widget.userId}/${timestamp}_${index}_$safeName";
       final ref = storage.ref(path);
 
-      await ref.putData(
-        bytes,
-        SettableMetadata(
-          contentType: _contentTypeForExtension(extension),
-          customMetadata: {
-            "fileName": file.name,
-            "fileType": extension,
-          },
-        ),
+      debugPrint(
+        "SUPPORT ATTACHMENT UPLOAD START "
+        "path=$path userId=${widget.userId} fileName=${file.name}",
       );
-      final url = await ref.getDownloadURL();
+      String url;
+      try {
+        await ref.putData(
+          bytes,
+          SettableMetadata(
+            contentType: _contentTypeForExtension(extension),
+            customMetadata: {
+              "fileName": file.name,
+              "fileType": extension,
+              "userId": widget.userId,
+            },
+          ),
+        );
+        url = await ref.getDownloadURL();
+        debugPrint("SUPPORT ATTACHMENT UPLOAD SUCCESS path=$path");
+      } catch (error) {
+        debugPrint("SUPPORT ATTACHMENT UPLOAD FAILED path=$path error=$error");
+        rethrow;
+      }
       uploaded.add({
         "fileName": file.name,
         "fileUrl": url,
@@ -346,6 +365,10 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
         return "application/msword";
       case "docx":
         return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      case "xls":
+        return "application/vnd.ms-excel";
+      case "xlsx":
+        return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
       case "txt":
         return "text/plain";
       case "mp4":
@@ -361,9 +384,10 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
 
   Future<void> closeWithResult() async {
     final message = controller.text.trim();
-    if (message.isEmpty) {
+    if (message.isEmpty && attachments.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please describe your request")),
+        const SnackBar(
+            content: Text("Please describe your request or attach a file")),
       );
       return;
     }
@@ -374,6 +398,7 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
     try {
       final uploadedAttachments = await uploadAttachments();
       if (!mounted) return;
+      FocusScope.of(context).unfocus();
       Navigator.of(context).pop(
         _SupportRequestResult(
           type: selectedType,
@@ -530,7 +555,12 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: submitting ? null : () => Navigator.of(context).pop(null),
+          onPressed: submitting
+              ? null
+              : () {
+                  FocusScope.of(context).unfocus();
+                  Navigator.of(context).pop(null);
+                },
           child: const Text("Cancel"),
         ),
         ElevatedButton(

@@ -67,6 +67,13 @@ service firebase.storage {
         && request.auth.uid == senderId;
     }
 
+    match /support_requests/{userId}/{fileName} {
+      allow read: if signedIn()
+        && (request.auth.uid == userId || request.auth.token.admin == true);
+      allow write: if signedIn()
+        && request.auth.uid == userId;
+    }
+
     match /admin_mail/{allPaths=**} {
       allow read: if signedIn();
       allow write: if signedIn();
