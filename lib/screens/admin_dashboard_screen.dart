@@ -4247,18 +4247,23 @@ class _FinancialReportsSectionState extends State<_FinancialReportsSection> {
                     icon: Icons.people_outline,
                   ),
                   _AdminMetricTile(
-                    label: "Total workers",
-                    value: reports.totalWorkers.toString(),
+                    label: "Active Workers",
+                    value: reports.activeWorkers.toString(),
                     icon: Icons.engineering_outlined,
                   ),
                   _AdminMetricTile(
-                    label: "Total employers",
-                    value: reports.totalEmployers.toString(),
+                    label: "Active Employers",
+                    value: reports.activeEmployers.toString(),
                     icon: Icons.business_outlined,
                   ),
                   _AdminMetricTile(
-                    label: "Active paid employers",
-                    value: reports.activePaidEmployers.toString(),
+                    label: "Active Companies",
+                    value: reports.activeCompanies.toString(),
+                    icon: Icons.domain_verification_outlined,
+                  ),
+                  _AdminMetricTile(
+                    label: "Billable Companies",
+                    value: reports.billableCompanies.toString(),
                     icon: Icons.verified_outlined,
                   ),
                   _AdminMetricTile(
@@ -4562,11 +4567,17 @@ class _AdminReportsData {
       users.where((data) => _role(data) == "worker").length;
   late final int totalEmployers =
       users.where((data) => _role(data) == "employer").length;
+  late final List<Map<String, dynamic>> workers =
+      users.where((data) => _role(data) == "worker").toList();
   late final List<Map<String, dynamic>> employers =
-      users.where((data) => _role(data) == "employer").toList();
+      _uniqueCompanies(users.where((data) => _role(data) == "employer"));
+  late final int activeWorkers = workers.where(_isActiveAccount).length;
+  late final int activeEmployers = employers.where(_isActiveAccount).length;
+  late final int activeCompanies = activeEmployers;
   late final List<Map<String, dynamic>> activePaidEmployerDocs =
-      employers.where(_isActivePaidEmployer).toList();
+      employers.where(_isBillableCompany).toList();
   late final int activePaidEmployers = activePaidEmployerDocs.length;
+  late final int billableCompanies = activePaidEmployers;
   late final int directDebitUsers =
       activePaidEmployerDocs.where(_usesDirectDebit).length;
   late final int invoiceBasedUsers =
@@ -4655,7 +4666,10 @@ class _AdminReportsData {
   ) {
     List<Map<String, dynamic>> read(List<QueryDocumentSnapshot> docs) {
       return docs
-          .map((doc) => doc.data() as Map<String, dynamic>)
+          .map((doc) => {
+                ...(doc.data() as Map<String, dynamic>),
+                "_docId": doc.id,
+              })
           .where((data) => data["deletedByAdmin"] != true)
           .toList();
     }
@@ -4824,14 +4838,73 @@ class _AdminReportsData {
     return "GBP";
   }
 
-  bool _isActivePaidEmployer(Map<String, dynamic> data) {
+  List<Map<String, dynamic>> _uniqueCompanies(
+    Iterable<Map<String, dynamic>> source,
+  ) {
+    final byId = <String, Map<String, dynamic>>{};
+    for (final data in source) {
+      final key = (data["companyId"] ??
+              data["uid"] ??
+              data["userId"] ??
+              data["_docId"] ??
+              data["email"] ??
+              data["companyName"] ??
+              "")
+          .toString()
+          .trim()
+          .toLowerCase();
+      if (key.isEmpty) continue;
+      byId[key] = data;
+    }
+    return byId.values.toList();
+  }
+
+  bool _isActiveAccount(Map<String, dynamic> data) {
+    final status = _status(data);
+    return data["deleted"] != true &&
+        data["accountDeleted"] != true &&
+        data["anonymised"] != true &&
+        data["moderationHold"] != true &&
+        data["profileSuspended"] != true &&
+        data["profileHold"] != true &&
+        data["accountOnHold"] != true &&
+        data["active"] != false &&
+        !{
+          "deleted",
+          "suspended",
+          "on_hold",
+          "cancelled",
+          "inactive",
+        }.contains(status);
+  }
+
+  bool _isBillableCompany(Map<String, dynamic> data) {
+    if (!_isActiveAccount(data)) return false;
     final billing = BillingService.billingFromUserData(data);
-    final status = billing["status"]?.toString() ?? "";
-    final billingPlanStatus = billing["billingPlanStatus"]?.toString() ?? "";
+    final status = billing["status"]?.toString().trim().toLowerCase() ?? "";
+    final billingPlanStatus =
+        billing["billingPlanStatus"]?.toString().trim().toLowerCase() ?? "";
+    final subscriptionStatus =
+        billing["subscriptionStatus"]?.toString().trim().toLowerCase() ?? "";
+    final paymentStatus =
+        billing["paymentStatus"]?.toString().trim().toLowerCase() ?? "";
     final planId =
         (billing["activePlanId"] ?? billing["planId"])?.toString() ?? "";
+    final blockedBillingStatuses = {
+      "payment_required",
+      "billing_required",
+      "suspended",
+      "cancelled",
+      "expired",
+      "failed",
+      "rejected",
+      "deleted",
+    };
     return planId.isNotEmpty &&
-        (status == "active" || billingPlanStatus == "approved");
+        (status == "active" || billingPlanStatus == "approved") &&
+        !blockedBillingStatuses.contains(status) &&
+        !blockedBillingStatuses.contains(subscriptionStatus) &&
+        !blockedBillingStatuses.contains(paymentStatus);
   }
 
   bool _usesDirectDebit(Map<String, dynamic> data) {

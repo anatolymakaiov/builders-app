@@ -190,6 +190,10 @@ class BillingService {
     return "STK-${now.year}${now.month.toString().padLeft(2, "0")}-${invoiceId.substring(0, 6).toUpperCase()}";
   }
 
+  static String _billingPeriodKey(DateTime date) {
+    return "${date.year}${date.month.toString().padLeft(2, "0")}";
+  }
+
   static bool hasDirectDebitMandate(Map<String, dynamic> data) {
     final billing = billingFromUserData(data);
     final mandateId = (billing["directDebitMandateId"] ??
@@ -501,18 +505,20 @@ class BillingService {
     final wasTrial = billing["subscriptionStatus"] == "trial" ||
         billing["trialActive"] == true ||
         billing["trialStatus"] == "active";
+    var shouldLockForExpiredTrial = false;
+    DateTime? invoicePeriodStart;
 
     if (trialExpired && wasTrial) {
-      final status = subscriptionStatusFor(userData);
+      const status = "payment_required";
+      shouldLockForExpiredTrial = true;
+      invoicePeriodStart = trialEndDate;
       nextBilling["subscriptionStatus"] = status;
       nextBilling["trialActive"] = false;
       nextBilling["trialStatus"] = "expired";
-      if (status == "payment_required") {
-        nextBilling["paymentStatus"] = "payment_required";
-      }
-      if (status == "billing_required") {
-        nextBilling["billingPlanStatus"] = "billing_required";
-      }
+      nextBilling["paymentStatus"] = "payment_required";
+      nextBilling["invoiceStatus"] = "issued";
+      nextBilling["status"] = "payment_required";
+      nextBilling["billingPlanStatus"] = "payment_required";
     }
 
     next["billing"] = nextBilling;
@@ -526,7 +532,156 @@ class BillingService {
       },
       SetOptions(merge: true),
     );
+
+    if (shouldLockForExpiredTrial) {
+      await _deactivateJobsForExpiredTrial(employerId);
+      await _ensureInvoiceForBillingPeriod(
+        employerId: employerId,
+        employerData: next,
+        periodStart: invoicePeriodStart ?? DateTime.now(),
+      );
+    }
     return next;
+  }
+
+  Future<void> _deactivateJobsForExpiredTrial(String employerId) async {
+    if (employerId.trim().isEmpty) return;
+
+    final firestore = FirebaseFirestore.instance;
+    final ownerSnapshot = await firestore
+        .collection("jobs")
+        .where("ownerId", isEqualTo: employerId)
+        .get();
+    final employerSnapshot = await firestore
+        .collection("jobs")
+        .where("employerId", isEqualTo: employerId)
+        .get();
+    final docsById = {
+      for (final doc in [...ownerSnapshot.docs, ...employerSnapshot.docs])
+        doc.id: doc,
+    };
+    if (docsById.isEmpty) return;
+
+    final batch = firestore.batch();
+    for (final doc in docsById.values) {
+      final data = doc.data();
+      final deleted = data["deleted"] == true ||
+          data["isDeleted"] == true ||
+          data["status"]?.toString().trim().toLowerCase() == "deleted";
+      if (deleted) continue;
+
+      batch.set(
+          doc.reference,
+          {
+            "active": false,
+            "isActive": false,
+            "status": "inactive",
+            "billingDisabled": true,
+            "billingDisabledReason": "trial_expired_payment_required",
+            "billingStatus": "payment_required",
+            "deactivatedAt": FieldValue.serverTimestamp(),
+            "updatedAt": FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true));
+    }
+    await batch.commit();
+  }
+
+  Future<void> _ensureInvoiceForBillingPeriod({
+    required String employerId,
+    required Map<String, dynamic> employerData,
+    required DateTime periodStart,
+  }) async {
+    final billing = billingFromUserData(employerData);
+    final amount = readMoney(billing["monthlyPrice"]);
+    if (employerId.trim().isEmpty || amount <= 0) return;
+
+    final firestore = FirebaseFirestore.instance;
+    final periodKey = _billingPeriodKey(periodStart);
+    final invoiceId = "${employerId}_$periodKey";
+    final invoiceRef = firestore.collection("invoices").doc(invoiceId);
+    final existing = await invoiceRef.get();
+    if (existing.exists) return;
+
+    final currency = billing["currency"]?.toString() ?? "GBP";
+    final planId =
+        (billing["activePlanId"] ?? billing["planId"] ?? "").toString();
+    final planName =
+        (billing["activePlanName"] ?? billing["planName"] ?? "Subscription")
+            .toString();
+    final periodEnd = addOneMonth(periodStart);
+    final dueDate = periodStart.add(const Duration(days: 14));
+    final invoiceDate = Timestamp.fromDate(DateTime.now());
+    final dueDateStamp = Timestamp.fromDate(dueDate);
+    final planData = {
+      "name": planName,
+      "price": amount,
+      "currency": currency,
+      "jobPosts": billing["includedJobSlots"] ?? billing["availableJobPosts"],
+      "availableJobPosts":
+          billing["availableJobPosts"] ?? billing["includedJobSlots"],
+    };
+    final number = invoiceNumber(invoiceId);
+
+    String pdfUrl = "";
+    try {
+      pdfUrl = await createManualInvoicePdf(
+        invoiceId: invoiceId,
+        invoiceNumber: number,
+        employerData: employerData,
+        planData: planData,
+        planName: planName,
+        currency: currency,
+        amount: amount,
+        invoiceDate: invoiceDate,
+        dueDate: dueDateStamp,
+      );
+    } catch (e) {
+      // Invoice metadata is still useful if PDF generation/storage fails.
+      // Admin can retry delivery from the invoice record.
+    }
+
+    await invoiceRef.set({
+      "invoiceId": invoiceId,
+      "invoiceNumber": number,
+      "employerId": employerId,
+      "planId": planId,
+      "planName": planName,
+      "amount": amount,
+      "currency": currency,
+      "status": "issued",
+      "invoiceStatus": "issued",
+      "paymentStatus": "payment_required",
+      "billingEmail": billingEmailFromUserData(employerData),
+      "invoiceDate": invoiceDate,
+      "issuedAt": FieldValue.serverTimestamp(),
+      "billingPeriodStart": Timestamp.fromDate(periodStart),
+      "billingPeriodEnd": Timestamp.fromDate(periodEnd),
+      "dueDate": dueDateStamp,
+      "emailDeliveryRequired": true,
+      "emailDeliveryStatus": "queued",
+      if (pdfUrl.isNotEmpty) "invoicePdfUrl": pdfUrl,
+      "createdAt": FieldValue.serverTimestamp(),
+      "updatedAt": FieldValue.serverTimestamp(),
+    });
+
+    await firestore.collection("users").doc(employerId).set({
+      "billing": {
+        "lastInvoiceId": invoiceId,
+        "lastInvoicePdfUrl": pdfUrl,
+        "invoiceStatus": "issued",
+        "paymentStatus": "payment_required",
+        "subscriptionStatus": "payment_required",
+        "updatedAt": FieldValue.serverTimestamp(),
+      },
+    }, SetOptions(merge: true));
+
+    await NotificationService().notifyEmployerBillingEvent(
+      employerId: employerId,
+      paymentRequestId: invoiceId,
+      status: "invoice_issued",
+      planName: planName,
+    );
   }
 
   Future<String> createJobWithBillingLimit({

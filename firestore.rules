@@ -326,9 +326,13 @@ service cloud.firestore {
       allow create: if signedIn()
         && !isUserHeld(uid())
         && (
+          isAdmin()
+          ||
           !(request.resource.data.jobId is string)
           || !exists(jobPath(request.resource.data.jobId))
           || (
+            isPublicJob(get(jobPath(request.resource.data.jobId)).data)
+            &&
             !isJobHeldData(get(jobPath(request.resource.data.jobId)).data)
             && !isUserHeld(get(jobPath(request.resource.data.jobId)).data.ownerId)
             && !isUserHeld(get(jobPath(request.resource.data.jobId)).data.employerId)
@@ -536,7 +540,14 @@ service cloud.firestore {
     }
 
     match /invoices/{invoiceId} {
-      allow create, update, delete: if isAdmin();
+      allow create: if isAdmin()
+        || (
+          isEmployer()
+          && request.resource.data.employerId == uid()
+          && request.resource.data.status in ["issued", "pending"]
+          && request.resource.data.paymentStatus == "payment_required"
+        );
+      allow update, delete: if isAdmin();
       allow read: if isAdmin() || resource.data.employerId == uid();
     }
 
