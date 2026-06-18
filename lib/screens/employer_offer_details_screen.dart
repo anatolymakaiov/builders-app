@@ -177,6 +177,18 @@ class EmployerOfferDetailsScreen extends StatelessWidget {
 
   Widget detailRow(String label, String value) {
     if (value.trim().isEmpty) return const SizedBox.shrink();
+    return detailWidgetRow(
+        label,
+        Text(
+          value,
+          style: const TextStyle(
+            color: AppColors.ink,
+            fontWeight: FontWeight.w700,
+          ),
+        ));
+  }
+
+  Widget detailWidgetRow(String label, Widget child) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 9),
       child: Row(
@@ -193,13 +205,7 @@ class EmployerOfferDetailsScreen extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: AppColors.ink,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            child: child,
           ),
         ],
       ),
@@ -396,9 +402,12 @@ class EmployerOfferDetailsScreen extends StatelessWidget {
           detailRow("Location", location),
           detailRow("About", bio),
           if (phone.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: PhoneLink(phone: phone, label: phone),
+            detailWidgetRow(
+              "Phone",
+              Align(
+                alignment: Alignment.centerLeft,
+                child: PhoneLink(phone: phone, label: phone, compact: true),
+              ),
             ),
           detailRow("Email", email),
           const SizedBox(height: 8),

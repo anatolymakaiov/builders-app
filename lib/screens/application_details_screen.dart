@@ -680,7 +680,10 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 4),
-          PhoneLink(phone: phone),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: PhoneLink(phone: phone, compact: true),
+          ),
         ],
       ),
     );
@@ -910,6 +913,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
     Set<String> selectedMembers,
     Map<String, dynamic> source,
     Widget headerControls,
+    Widget navigationActions,
   ) {
     final teamId = source["teamId"];
     final memberIds = List<String>.from(source["members"] ?? []);
@@ -944,6 +948,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
               title: teamName.toString(),
               subtitle: "${memberIds.length} members",
             ),
+            navigationActions,
             const SizedBox(height: 24),
             if (description != null &&
                 description.toString().trim().isNotEmpty) ...[
@@ -1500,40 +1505,10 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
               Widget headerControls({required bool forEmployer}) {
                 final actions =
                     forEmployer ? employerMenuActions() : workerMenuActions();
-                final offer = liveData["offer"];
-                final hasOfferDetails = offer is Map && offer.isNotEmpty;
 
                 return Row(
                   children: [
                     statusBadge(forEmployer: forEmployer),
-                    if (forEmployer) ...[
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: () => openVacancyDetails(context, liveData),
-                        icon: const Icon(Icons.work_outline, size: 17),
-                        label: const Text("View Vacancy"),
-                      ),
-                      if (hasOfferDetails) ...[
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => EmployerOfferDetailsScreen(
-                                  applicationId: applicationId,
-                                  fallbackJobId: liveData["jobId"]?.toString(),
-                                  fallbackWorkerId: workerId?.toString(),
-                                ),
-                              ),
-                            );
-                          },
-                          icon:
-                              const Icon(Icons.receipt_long_outlined, size: 17),
-                          label: const Text("View Offer"),
-                        ),
-                      ],
-                    ],
                     const Spacer(),
                     if (actions.isEmpty)
                       const IconButton(
@@ -1575,6 +1550,54 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                         ),
                       ),
                   ],
+                );
+              }
+
+              Widget applicationNavigationActions() {
+                final offer = liveData["offer"];
+                final hasOfferDetails = offer is Map && offer.isNotEmpty;
+                final jobId = liveData["jobId"]?.toString().trim() ?? "";
+                if (jobId.isEmpty && !hasOfferDetails) {
+                  return const SizedBox.shrink();
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (jobId.isNotEmpty)
+                        OutlinedButton.icon(
+                          onPressed: () =>
+                              openVacancyDetails(context, liveData),
+                          icon: const Icon(Icons.work_outline, size: 17),
+                          label: const Text("View Vacancy"),
+                        ),
+                      if (hasOfferDetails)
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            if (!isEmployerViewer) {
+                              openVacancyDetails(context, liveData);
+                              return;
+                            }
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EmployerOfferDetailsScreen(
+                                  applicationId: applicationId,
+                                  fallbackJobId: liveData["jobId"]?.toString(),
+                                  fallbackWorkerId: workerId?.toString(),
+                                ),
+                              ),
+                            );
+                          },
+                          icon:
+                              const Icon(Icons.receipt_long_outlined, size: 17),
+                          label: const Text("Offer"),
+                        ),
+                    ],
+                  ),
                 );
               }
 
@@ -1641,6 +1664,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                             title: name.toString(),
                             subtitle: trade.toString(),
                           ),
+                          applicationNavigationActions(),
                           const SizedBox(height: 30),
                           buildWorkerPhoneSection(phone),
                           buildWorkerInfoSection("Location", location),
@@ -1665,6 +1689,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                             selectedMembers,
                             liveData,
                             headerControls(forEmployer: isEmployerViewer),
+                            applicationNavigationActions(),
                           )
                         else
                           buildPortfolioGallery(workerId.toString()),
