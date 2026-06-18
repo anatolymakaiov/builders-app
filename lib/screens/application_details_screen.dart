@@ -1014,8 +1014,10 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
     Set<String> selectedMembers,
     Map<String, dynamic> source,
     Widget headerControls,
-    Widget navigationActions,
-  ) {
+    Widget navigationActions, {
+    bool includeHeader = true,
+    bool includeNavigation = true,
+  }) {
     final teamId = source["teamId"];
     final memberIds = List<String>.from(source["members"] ?? []);
 
@@ -1036,20 +1038,23 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            applicationHeaderCard(
-              headerControls: headerControls,
-              avatar: CircleAvatar(
-                radius: 44,
-                backgroundColor: Colors.grey.shade300,
-                backgroundImage:
-                    avatar == null ? null : NetworkImage(avatar.toString()),
-                child:
-                    avatar == null ? const Icon(Icons.groups, size: 38) : null,
+            if (includeHeader) ...[
+              applicationHeaderCard(
+                headerControls: headerControls,
+                avatar: CircleAvatar(
+                  radius: 44,
+                  backgroundColor: Colors.grey.shade300,
+                  backgroundImage:
+                      avatar == null ? null : NetworkImage(avatar.toString()),
+                  child: avatar == null
+                      ? const Icon(Icons.groups, size: 38)
+                      : null,
+                ),
+                title: teamName.toString(),
+                subtitle: "${memberIds.length} members",
               ),
-              title: teamName.toString(),
-              subtitle: "${memberIds.length} members",
-            ),
-            navigationActions,
+            ],
+            if (includeNavigation) navigationActions,
             const SizedBox(height: 24),
             if (description != null &&
                 description.toString().trim().isNotEmpty) ...[
@@ -1716,6 +1721,26 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                   );
                 }
 
+                Widget teamHeader() {
+                  final memberIds =
+                      List<String>.from(liveData["members"] ?? []);
+                  final teamName =
+                      liveData["teamName"]?.toString().trim().isNotEmpty == true
+                          ? liveData["teamName"].toString().trim()
+                          : "Team";
+                  return applicationHeaderCard(
+                    headerControls:
+                        headerControls(forEmployer: isEmployerViewer),
+                    avatar: const CircleAvatar(
+                      radius: 44,
+                      backgroundColor: Color(0xFFE0E0E0),
+                      child: Icon(Icons.groups, size: 38),
+                    ),
+                    title: teamName,
+                    subtitle: "${memberIds.length} members",
+                  );
+                }
+
                 Widget offerTab() {
                   final offer = Map<String, dynamic>.from(offerRaw as Map);
                   return ListView(
@@ -1823,7 +1848,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                   );
                 }
 
-                if (isEmployerViewer && hasOfferDetails && !isTeam) {
+                if (isEmployerViewer && hasOfferDetails) {
                   return DefaultTabController(
                     length: 5,
                     initialIndex: widget.initialOfferTab ? 0 : 1,
@@ -1843,7 +1868,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 20),
                           child: Column(
                             children: [
-                              workerHeader(),
+                              if (isTeam) teamHeader() else workerHeader(),
                               applicationNavigationActions(),
                             ],
                           ),
@@ -1853,20 +1878,74 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                           child: TabBarView(
                             children: [
                               offerTab(),
-                              infoTab(),
-                              contactsTab(),
-                              ListView(
-                                padding: const EdgeInsets.all(20),
-                                children: [
-                                  StroykaSurface(
-                                    padding: const EdgeInsets.all(18),
-                                    child: buildPortfolioGallery(
-                                      workerId.toString(),
+                              if (isTeam)
+                                ListView(
+                                  padding: const EdgeInsets.all(20),
+                                  children: [
+                                    StroykaSurface(
+                                      padding: const EdgeInsets.all(18),
+                                      child: buildTeamProfile(
+                                        context,
+                                        selectedMembers,
+                                        liveData,
+                                        headerControls(
+                                          forEmployer: isEmployerViewer,
+                                        ),
+                                        applicationNavigationActions(),
+                                        includeHeader: false,
+                                        includeNavigation: false,
+                                      ),
                                     ),
+                                  ],
+                                )
+                              else
+                                infoTab(),
+                              if (isTeam)
+                                const Center(
+                                  child: Text(
+                                    "Team contacts are available through selected team members.",
                                   ),
-                                ],
-                              ),
-                              buildWorkerTeamsTab(workerId.toString()),
+                                )
+                              else
+                                contactsTab(),
+                              if (isTeam)
+                                const Center(
+                                  child: Text("No team photos available"),
+                                )
+                              else
+                                ListView(
+                                  padding: const EdgeInsets.all(20),
+                                  children: [
+                                    StroykaSurface(
+                                      padding: const EdgeInsets.all(18),
+                                      child: buildPortfolioGallery(
+                                        workerId.toString(),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              if (isTeam)
+                                ListView(
+                                  padding: const EdgeInsets.all(20),
+                                  children: [
+                                    StroykaSurface(
+                                      padding: const EdgeInsets.all(18),
+                                      child: buildTeamProfile(
+                                        context,
+                                        selectedMembers,
+                                        liveData,
+                                        headerControls(
+                                          forEmployer: isEmployerViewer,
+                                        ),
+                                        applicationNavigationActions(),
+                                        includeHeader: false,
+                                        includeNavigation: false,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              else
+                                buildWorkerTeamsTab(workerId.toString()),
                             ],
                           ),
                         ),
