@@ -1356,6 +1356,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       );
       if (!accepted) return;
 
+      if (userId != null) {
+        await ApplicationActivityService.markRead(applicationId, userId!);
+        await NotificationService().markApplicationNotificationsRead(
+          userId: userId!,
+          applicationId: applicationId,
+        );
+      }
+
       final appSnap = await FirebaseFirestore.instance
           .collection("applications")
           .doc(applicationId)

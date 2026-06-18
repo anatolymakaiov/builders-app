@@ -77,6 +77,34 @@ service cloud.firestore {
         );
     }
 
+    function canSyncAcceptedOfferCounters(jobId) {
+      let appId = request.resource.data.lastAcceptedApplicationId;
+      let appPath = /databases/$(database)/documents/applications/$(appId);
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return signedIn()
+        && appId is string
+        && existsAfter(appPath)
+        && getAfter(appPath).data.jobId == jobId
+        && getAfter(appPath).data.status in ["offer_accepted", "accepted", "hired"]
+        && (
+          getAfter(appPath).data.workerId == uid()
+          || getAfter(appPath).data.userId == uid()
+          || (
+            getAfter(appPath).data.members is list
+            && uid() in getAfter(appPath).data.members
+          )
+        )
+        && changed.hasOnly([
+          "filledPositions",
+          "remainingPositions",
+          "openSlots",
+          "availablePositions",
+          "lastAcceptedApplicationId",
+          "lastAcceptedCounterSyncAt",
+          "updatedAt",
+        ]);
+    }
+
     function teamPath(teamId) {
       return /databases/$(database)/documents/teams/$(teamId);
     }
@@ -241,7 +269,18 @@ service cloud.firestore {
           || resource.data.userId == uid()
           || isPublicJob(resource.data)
         );
-      allow update, delete: if isAdmin()
+      allow update: if isAdmin()
+        || (
+          isEmployer()
+          && (
+            resource.data.ownerId == uid()
+            || resource.data.employerId == uid()
+            || resource.data.createdBy == uid()
+            || resource.data.userId == uid()
+          )
+        )
+        || canSyncAcceptedOfferCounters(jobId);
+      allow delete: if isAdmin()
         || (
           isEmployer()
           && (

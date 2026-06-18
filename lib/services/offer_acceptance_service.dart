@@ -39,7 +39,6 @@ class OfferAcceptanceService {
   }) async {
     var accepted = false;
     final db = FirebaseFirestore.instance;
-    String? acceptedJobId;
 
     await db.runTransaction((transaction) async {
       final appRef = db.collection("applications").doc(applicationId);
@@ -77,9 +76,11 @@ class OfferAcceptanceService {
       final filled = readInt(jobData["filledPositions"]);
       final slotCount = applicationSlotCount(appData);
       final safePositions = positions <= 0 ? slotCount : positions;
-      if (filled + slotCount > safePositions) {
+      final nextFilled = filled + slotCount;
+      if (nextFilled > safePositions) {
         throw Exception("not_enough_positions");
       }
+      final remaining = (safePositions - nextFilled).clamp(0, safePositions);
 
       transaction.update(appRef, {
         "status": "offer_accepted",
@@ -88,54 +89,22 @@ class OfferAcceptanceService {
             currentUserId ?? FirebaseAuth.instance.currentUser?.uid,
         "applicationActivityAt": FieldValue.serverTimestamp(),
         "updatedAt": FieldValue.serverTimestamp(),
-        "unreadFor": FieldValue.arrayUnion(
-          ApplicationActivityService.employerRecipients(appData),
-        ),
+        "unreadFor": ApplicationActivityService.employerRecipients(appData),
       });
 
-      acceptedJobId = jobId;
+      transaction.update(jobRef, {
+        "filledPositions": nextFilled,
+        "remainingPositions": remaining,
+        "openSlots": remaining,
+        "availablePositions": remaining,
+        "lastAcceptedApplicationId": applicationId,
+        "lastAcceptedCounterSyncAt": FieldValue.serverTimestamp(),
+        "updatedAt": FieldValue.serverTimestamp(),
+      });
+
       accepted = true;
     });
 
-    if (accepted && acceptedJobId != null) {
-      await _syncAcceptedSlotCounters(acceptedJobId!);
-    }
-
     return accepted;
-  }
-
-  static Future<void> _syncAcceptedSlotCounters(String jobId) async {
-    final db = FirebaseFirestore.instance;
-
-    try {
-      final jobRef = db.collection("jobs").doc(jobId);
-      final jobSnap = await jobRef.get();
-      if (!jobSnap.exists) return;
-
-      final jobData = jobSnap.data() as Map<String, dynamic>;
-      final positions = readInt(jobData["positions"]);
-      final safePositions = positions <= 0 ? 1 : positions;
-
-      final acceptedApps = await db
-          .collection("applications")
-          .where("jobId", isEqualTo: jobId)
-          .where("status",
-              whereIn: ["offer_accepted", "accepted", "hired"]).get();
-
-      final filled = acceptedApps.docs.fold<int>(0, (total, doc) {
-        return total + applicationSlotCount(doc.data());
-      }).clamp(0, safePositions);
-
-      await jobRef.update({
-        "filledPositions": filled,
-        "remainingPositions":
-            (safePositions - filled).clamp(0, safePositions).toInt(),
-        "updatedAt": FieldValue.serverTimestamp(),
-      });
-    } catch (_) {
-      // Worker acceptance must not fail just because job counters are owner-managed
-      // or temporarily unavailable.
-      return;
-    }
   }
 }

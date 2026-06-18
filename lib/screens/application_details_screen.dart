@@ -195,11 +195,20 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
     if (jobId == null || jobId.isEmpty) return;
 
     try {
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
       final accepted = await OfferAcceptanceService.acceptOffer(
         applicationId: applicationId,
-        currentUserId: FirebaseAuth.instance.currentUser?.uid,
+        currentUserId: currentUserId,
       );
       if (!accepted) return;
+
+      if (currentUserId != null) {
+        await ApplicationActivityService.markRead(applicationId, currentUserId);
+        await NotificationService().markApplicationNotificationsRead(
+          userId: currentUserId,
+          applicationId: applicationId,
+        );
+      }
 
       final updatedApplication = await FirebaseFirestore.instance
           .collection("applications")
