@@ -263,6 +263,7 @@ class _SupportRequestDialog extends StatefulWidget {
 class _SupportRequestDialogState extends State<_SupportRequestDialog> {
   late String selectedType;
   late final TextEditingController controller;
+  late final ScrollController scrollController;
   final ImagePicker mediaPicker = ImagePicker();
   final List<PlatformFile> attachments = [];
   bool submitting = false;
@@ -272,12 +273,25 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
     super.initState();
     selectedType = widget.requestTypes.keys.first;
     controller = TextEditingController();
+    scrollController = ScrollController();
   }
 
   @override
   void dispose() {
     controller.dispose();
+    scrollController.dispose();
     super.dispose();
+  }
+
+  void revealAttachmentsPreview() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !scrollController.hasClients) return;
+      scrollController.animateTo(
+        scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   Future<void> pickAttachments({
@@ -295,6 +309,7 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
     setState(() {
       addUniqueAttachments(result.files);
     });
+    revealAttachmentsPreview();
   }
 
   Future<void> pickMediaAttachments() async {
@@ -331,6 +346,7 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
     setState(() {
       addUniqueAttachments(converted);
     });
+    revealAttachmentsPreview();
   }
 
   Future<void> pickFileAttachments() {
@@ -356,6 +372,15 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
     );
   }
 
+  String _extensionForFile(PlatformFile file) {
+    final directExtension = file.extension?.trim().toLowerCase() ?? "";
+    if (directExtension.isNotEmpty) return directExtension;
+    final name = file.name.trim().toLowerCase();
+    final dotIndex = name.lastIndexOf(".");
+    if (dotIndex < 0 || dotIndex == name.length - 1) return "";
+    return name.substring(dotIndex + 1);
+  }
+
   Future<List<Map<String, dynamic>>> uploadAttachments() async {
     final uploaded = <Map<String, dynamic>>[];
     final storage = FirebaseStorage.instance;
@@ -367,7 +392,7 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
       if (bytes == null) continue;
 
       final safeName = file.name.replaceAll(RegExp(r"[^A-Za-z0-9._-]"), "_");
-      final extension = file.extension?.toLowerCase() ?? "";
+      final extension = _extensionForFile(file);
       final path =
           "support_requests/${widget.userId}/${timestamp}_${index}_$safeName";
       final ref = storage.ref(path);
@@ -487,7 +512,7 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
   }
 
   Widget _attachmentThumbnail(PlatformFile file) {
-    final extension = file.extension?.toLowerCase() ?? "";
+    final extension = _extensionForFile(file);
     if (_isImageExtension(extension)) {
       final bytes = file.bytes;
       if (bytes != null) {
@@ -525,22 +550,43 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
                 style: TextStyle(fontWeight: FontWeight.w900),
               ),
             ),
-            Text(
-              "${attachments.length}",
-              style: const TextStyle(fontWeight: FontWeight.w800),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.24),
+                ),
+              ),
+              child: Text(
+                "${attachments.length}",
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                ),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 8),
         ...attachments.map((file) {
-          final extension = file.extension?.toLowerCase() ?? "";
+          final extension = _extensionForFile(file);
           final sizeLabel = _fileSizeLabel(file.size);
 
           return Container(
+            key: ValueKey("${file.name}_${file.size}"),
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.78),
+              color: Colors.white.withValues(alpha: 0.86),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.black.withValues(alpha: 0.14)),
             ),
@@ -639,6 +685,7 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
       content: SizedBox(
         width: dialogWidth,
         child: SingleChildScrollView(
+          controller: scrollController,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
