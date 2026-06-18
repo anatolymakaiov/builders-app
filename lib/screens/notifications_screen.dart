@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'application_details_screen.dart';
 import 'chat_screen.dart';
+import 'employer_offer_details_screen.dart';
 import 'job_details_screen.dart';
 import 'worker_profile_screen.dart';
 import '../models/job.dart';
@@ -294,12 +295,27 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return true;
     }
 
-    await openApplicationNotification(
-      context,
-      applicationId: id,
-      fallbackJobId: jobId,
-      openWorkerJobDetails: true,
-    );
+    final role = await currentUserRole();
+    if (!context.mounted) return true;
+    if (role == "employer") {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EmployerOfferDetailsScreen(
+            applicationId: id,
+            fallbackJobId: jobId,
+            fallbackWorkerId: cleanId(data["workerId"]),
+          ),
+        ),
+      );
+    } else {
+      await openApplicationNotification(
+        context,
+        applicationId: id,
+        fallbackJobId: jobId,
+        openWorkerJobDetails: true,
+      );
+    }
     return true;
   }
 

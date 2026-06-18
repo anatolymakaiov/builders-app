@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
+import 'employer_offer_details_screen.dart';
 import 'job_details_screen.dart';
 import 'job_list_screen.dart';
 import 'worker_profile_screen.dart';
@@ -1499,6 +1500,8 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
               Widget headerControls({required bool forEmployer}) {
                 final actions =
                     forEmployer ? employerMenuActions() : workerMenuActions();
+                final offer = liveData["offer"];
+                final hasOfferDetails = offer is Map && offer.isNotEmpty;
 
                 return Row(
                   children: [
@@ -1510,6 +1513,26 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                         icon: const Icon(Icons.work_outline, size: 17),
                         label: const Text("View Vacancy"),
                       ),
+                      if (hasOfferDetails) ...[
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EmployerOfferDetailsScreen(
+                                  applicationId: applicationId,
+                                  fallbackJobId: liveData["jobId"]?.toString(),
+                                  fallbackWorkerId: workerId?.toString(),
+                                ),
+                              ),
+                            );
+                          },
+                          icon:
+                              const Icon(Icons.receipt_long_outlined, size: 17),
+                          label: const Text("View Offer"),
+                        ),
+                      ],
                     ],
                     const Spacer(),
                     if (actions.isEmpty)
