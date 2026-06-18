@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'application_details_screen.dart';
 import 'chat_screen.dart';
-import 'employer_offer_details_screen.dart';
 import 'job_details_screen.dart';
 import 'worker_profile_screen.dart';
 import '../models/job.dart';
@@ -298,13 +297,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final role = await currentUserRole();
     if (!context.mounted) return true;
     if (role == "employer") {
+      final appDoc = await FirebaseFirestore.instance
+          .collection("applications")
+          .doc(id)
+          .get();
+      if (!context.mounted) return true;
+      final appData = appDoc.data();
+      if (appData == null) {
+        openNotificationDetails(context, data);
+        return true;
+      }
+      appData["id"] = appDoc.id;
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => EmployerOfferDetailsScreen(
+          builder: (_) => ApplicationDetailsScreen(
             applicationId: id,
-            fallbackJobId: jobId,
-            fallbackWorkerId: cleanId(data["workerId"]),
+            data: appData,
+            initialOfferTab: true,
           ),
         ),
       );

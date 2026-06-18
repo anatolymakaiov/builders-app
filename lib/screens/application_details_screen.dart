@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
-import 'employer_offer_details_screen.dart';
 import 'job_details_screen.dart';
 import 'job_list_screen.dart';
 import 'worker_profile_screen.dart';
@@ -22,11 +21,13 @@ import '../theme/stroyka_background.dart';
 class ApplicationDetailsScreen extends StatefulWidget {
   final String applicationId;
   final Map<String, dynamic> data;
+  final bool initialOfferTab;
 
   const ApplicationDetailsScreen({
     super.key,
     required this.applicationId,
     required this.data,
+    this.initialOfferTab = false,
   });
 
   @override
@@ -646,6 +647,53 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
     }
   }
 
+  List<Widget> buildOfferDetails(Map<String, dynamic> offer) {
+    final rows = <Widget>[];
+
+    void addRow(String label, dynamic value) {
+      final text = value?.toString().trim() ?? "";
+      if (text.isEmpty) return;
+
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 7),
+          child: Text("$label: $text"),
+        ),
+      );
+    }
+
+    String physicalAddressFromOffer() {
+      final street = offer["siteStreet"]?.toString().trim() ?? "";
+      final city = offer["siteCity"]?.toString().trim() ?? "";
+      final postcode = offer["sitePostcode"]?.toString().trim() ?? "";
+      final fromParts = [
+        street,
+        city,
+        postcode,
+      ].where((part) => part.isNotEmpty).join(", ");
+      if (fromParts.isNotEmpty) return fromParts;
+
+      return (offer["fullAddress"] ?? offer["siteAddress"])?.toString() ?? "";
+    }
+
+    addRow("Work format", offer["workFormat"]);
+    addRow("Rate / price", offer["rate"] == null ? null : "£${offer["rate"]}");
+    addRow("Work period", offer["workPeriod"]);
+    addRow("Hours per week", offer["weeklyHours"]);
+    addRow("Schedule", offer["schedule"]);
+    addRow("Start", offer["startDateTime"] ?? offer["startDate"]);
+    addRow("Site address", physicalAddressFromOffer());
+    addRow("Required on first day", offer["firstDayRequirements"]);
+    addRow("Description", offer["description"] ?? offer["message"]);
+    addRow("Valid until", offer["validUntil"]);
+
+    if (rows.isEmpty) {
+      rows.add(const Text("Offer details not provided"));
+    }
+
+    return rows;
+  }
+
   Widget buildWorkerInfoSection(String title, dynamic value) {
     final text = value?.toString().trim() ?? "";
     if (text.isEmpty) return const SizedBox();
@@ -903,6 +951,59 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
             AppPhotoGridGallery(imageUrls: items),
             const SizedBox(height: 20),
           ],
+        );
+      },
+    );
+  }
+
+  Widget buildWorkerTeamsTab(String userId) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("teams")
+          .where("members", arrayContains: userId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final teams = snapshot.data!.docs;
+        if (teams.isEmpty) {
+          return const Center(child: Text("No teams found"));
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(20),
+          itemCount: teams.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final data = teams[index].data() as Map<String, dynamic>;
+            final name = data["name"]?.toString().trim() ?? "Team";
+            final members = List<String>.from(data["members"] ?? []);
+            return StroykaSurface(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  const CircleAvatar(child: Icon(Icons.groups_outlined)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        Text(
+                          "${members.length} members",
+                          style: const TextStyle(color: AppColors.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -1554,10 +1655,8 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
               }
 
               Widget applicationNavigationActions() {
-                final offer = liveData["offer"];
-                final hasOfferDetails = offer is Map && offer.isNotEmpty;
                 final jobId = liveData["jobId"]?.toString().trim() ?? "";
-                if (jobId.isEmpty && !hasOfferDetails) {
+                if (jobId.isEmpty) {
                   return const SizedBox.shrink();
                 }
 
@@ -1573,28 +1672,6 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                               openVacancyDetails(context, liveData),
                           icon: const Icon(Icons.work_outline, size: 17),
                           label: const Text("View Vacancy"),
-                        ),
-                      if (hasOfferDetails)
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            if (!isEmployerViewer) {
-                              openVacancyDetails(context, liveData);
-                              return;
-                            }
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => EmployerOfferDetailsScreen(
-                                  applicationId: applicationId,
-                                  fallbackJobId: liveData["jobId"]?.toString(),
-                                  fallbackWorkerId: workerId?.toString(),
-                                ),
-                              ),
-                            );
-                          },
-                          icon:
-                              const Icon(Icons.receipt_long_outlined, size: 17),
-                          label: const Text("Offer"),
                         ),
                     ],
                   ),
@@ -1618,6 +1695,185 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                 final education = user["education"];
                 final previousWork = user["previousWork"];
                 final references = user["references"];
+                final offerRaw = liveData["offer"];
+                final hasOfferDetails = offerRaw is Map && offerRaw.isNotEmpty;
+
+                Widget workerHeader() {
+                  return applicationHeaderCard(
+                    headerControls:
+                        headerControls(forEmployer: isEmployerViewer),
+                    avatar: CircleAvatar(
+                      radius: 44,
+                      backgroundColor: Colors.grey.shade300,
+                      backgroundImage:
+                          photo != null ? NetworkImage(photo) : null,
+                      child: photo == null
+                          ? const Icon(Icons.person, size: 38)
+                          : null,
+                    ),
+                    title: name.toString(),
+                    subtitle: trade.toString(),
+                  );
+                }
+
+                Widget offerTab() {
+                  final offer = Map<String, dynamic>.from(offerRaw as Map);
+                  return ListView(
+                    padding: const EdgeInsets.all(20),
+                    children: [
+                      StroykaSurface(
+                        padding: const EdgeInsets.all(18),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            headerControls(forEmployer: true),
+                            const SizedBox(height: 16),
+                            const Text(
+                              "Offer details",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ...buildOfferDetails(offer),
+                            if (status == "offer_accepted" ||
+                                status == "accepted") ...[
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                onPressed: () => addEmployerOfferToCalendar(
+                                    context, liveData),
+                                icon: const Icon(Icons.calendar_month_outlined),
+                                label: const Text("Add to Calendar"),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                "Offer accepted.",
+                                style: TextStyle(
+                                  color: AppColors.success,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                            if (status == "offer_rejected")
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: Text(
+                                  "Offer rejected.",
+                                  style: TextStyle(
+                                    color: AppColors.danger,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                Widget infoTab() {
+                  return ListView(
+                    padding: const EdgeInsets.all(20),
+                    children: [
+                      StroykaSurface(
+                        padding: const EdgeInsets.all(18),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            buildWorkerInfoSection("Location", location),
+                            buildWorkerInfoSection("About worker", bio),
+                            buildWorkerInfoSection(
+                                "Work experience", experienceDuration),
+                            buildWorkerInfoSection(
+                                "Experience details", experience),
+                            buildWorkerInfoSection(
+                                "Permits / licences", permits),
+                            buildWorkerInfoSection(
+                                "Qualifications", qualifications),
+                            buildWorkerInfoSection(
+                                "Certifications", certifications),
+                            buildWorkerInfoSection(
+                                "Education (optional)", education),
+                            buildWorkerInfoSection(
+                                "Previous work", previousWork),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                Widget contactsTab() {
+                  return ListView(
+                    padding: const EdgeInsets.all(20),
+                    children: [
+                      StroykaSurface(
+                        padding: const EdgeInsets.all(18),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            buildWorkerPhoneSection(phone),
+                            buildReferencesSection(references),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                if (isEmployerViewer && hasOfferDetails && !isTeam) {
+                  return DefaultTabController(
+                    length: 5,
+                    initialIndex: widget.initialOfferTab ? 0 : 1,
+                    child: Column(
+                      children: [
+                        const StroykaTabBar(
+                          margin: EdgeInsets.fromLTRB(12, 12, 12, 10),
+                          labels: [
+                            "Offer",
+                            "Info",
+                            "Contacts",
+                            "Photos",
+                            "Teams"
+                          ],
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            children: [
+                              workerHeader(),
+                              applicationNavigationActions(),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              offerTab(),
+                              infoTab(),
+                              contactsTab(),
+                              ListView(
+                                padding: const EdgeInsets.all(20),
+                                children: [
+                                  StroykaSurface(
+                                    padding: const EdgeInsets.all(18),
+                                    child: buildPortfolioGallery(
+                                      workerId.toString(),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              buildWorkerTeamsTab(workerId.toString()),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
 
                 return SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
@@ -1649,21 +1905,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                           const SizedBox(height: 14),
                         ],
                         if (!isTeam) ...[
-                          applicationHeaderCard(
-                            headerControls:
-                                headerControls(forEmployer: isEmployerViewer),
-                            avatar: CircleAvatar(
-                              radius: 44,
-                              backgroundColor: Colors.grey.shade300,
-                              backgroundImage:
-                                  photo != null ? NetworkImage(photo) : null,
-                              child: photo == null
-                                  ? const Icon(Icons.person, size: 38)
-                                  : null,
-                            ),
-                            title: name.toString(),
-                            subtitle: trade.toString(),
-                          ),
+                          workerHeader(),
                           applicationNavigationActions(),
                           const SizedBox(height: 30),
                           buildWorkerPhoneSection(phone),

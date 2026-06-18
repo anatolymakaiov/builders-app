@@ -445,8 +445,11 @@ class _EmployerApplicationsScreenState
                             final jobId = data["jobId"]?.toString();
                             final applicationEmployerId =
                                 data["employerId"]?.toString();
+                            final offer = data["offer"];
+                            final hasOffer = offer is Map && offer.isNotEmpty;
 
                             if (type != "team" &&
+                                !hasOffer &&
                                 workerId != null &&
                                 workerId.isNotEmpty) {
                               Navigator.push(
