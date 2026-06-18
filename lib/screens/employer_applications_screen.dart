@@ -416,6 +416,9 @@ class _EmployerApplicationsScreenState
                         final members =
                             List<String>.from(data["members"] ?? []);
                         final jobTitle = data["jobTitle"] ?? "Job";
+                        final siteName = (data["jobSite"] ?? data["site"] ?? "")
+                            .toString()
+                            .trim();
                         final status = canonicalStatus(data["status"]);
                         final Timestamp? createdAt = data["createdAt"];
 
@@ -474,67 +477,92 @@ class _EmployerApplicationsScreenState
                                 horizontal: 16, vertical: 10),
                             padding: const EdgeInsets.all(16),
                             dimmed: isUnread,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Stack(
                               children: [
-                                Row(
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    if (isUnread)
-                                      Container(
-                                        width: 10,
-                                        height: 10,
-                                        margin: const EdgeInsets.only(right: 8),
-                                        decoration: const BoxDecoration(
-                                          color: AppColors.green,
-                                          shape: BoxShape.circle,
+                                    Row(
+                                      children: [
+                                        if (isUnread)
+                                          Container(
+                                            width: 10,
+                                            height: 10,
+                                            margin:
+                                                const EdgeInsets.only(right: 8),
+                                            decoration: const BoxDecoration(
+                                              color: AppColors.green,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                        buildApplicantAvatar(data),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Align(
+                                                alignment: Alignment.centerLeft,
+                                                child: AppChip.status(
+                                                  statusLabel(status),
+                                                  color: getStatusColor(status),
+                                                ),
+                                              ),
+                                              const SizedBox(height: 7),
+                                              Text(
+                                                type == "team"
+                                                    ? "Team application"
+                                                    : workerName,
+                                                style: TextStyle(
+                                                  color: AppColors.ink,
+                                                  fontWeight: isUnread
+                                                      ? FontWeight.w900
+                                                      : FontWeight.w800,
+                                                  fontSize: 16,
+                                                ),
+                                              ),
+                                              if (type == "team")
+                                                Text(
+                                                  "${members.length} members",
+                                                  style: const TextStyle(
+                                                      color: Colors.grey),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(jobTitle),
+                                    if (dateText.isNotEmpty)
+                                      Text(
+                                        dateText,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey,
                                         ),
                                       ),
-                                    buildApplicantAvatar(data),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Align(
-                                            alignment: Alignment.centerLeft,
-                                            child: AppChip.status(
-                                              statusLabel(status),
-                                              color: getStatusColor(status),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 7),
-                                          Text(
-                                            type == "team"
-                                                ? "Team application"
-                                                : workerName,
-                                            style: TextStyle(
-                                              color: AppColors.ink,
-                                              fontWeight: isUnread
-                                                  ? FontWeight.w900
-                                                  : FontWeight.w800,
-                                              fontSize: 16,
-                                            ),
-                                          ),
-                                          if (type == "team")
-                                            Text(
-                                              "${members.length} members",
-                                              style: const TextStyle(
-                                                  color: Colors.grey),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
-                                Text(jobTitle),
-                                if (dateText.isNotEmpty)
-                                  Text(
-                                    dateText,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey,
+                                if (siteName.isNotEmpty)
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: ConstrainedBox(
+                                      constraints:
+                                          const BoxConstraints(maxWidth: 132),
+                                      child: Text(
+                                        "Site: $siteName",
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.right,
+                                        style: const TextStyle(
+                                          color: AppColors.muted,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
                                     ),
                                   ),
                               ],

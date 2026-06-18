@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
+import 'job_details_screen.dart';
 import 'job_list_screen.dart';
 import 'worker_profile_screen.dart';
+import '../models/job.dart';
 import '../services/application_activity_service.dart';
 import '../services/application_status_utils.dart';
 import '../services/calendar_service.dart';
@@ -124,6 +126,41 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => ChatScreen(chatId: chatId),
+      ),
+    );
+  }
+
+  Future<void> openVacancyDetails(
+    BuildContext context,
+    Map<String, dynamic> source,
+  ) async {
+    final jobId = source["jobId"]?.toString().trim();
+    if (jobId == null || jobId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("This vacancy is no longer available")),
+      );
+      return;
+    }
+
+    final jobDoc =
+        await FirebaseFirestore.instance.collection("jobs").doc(jobId).get();
+    if (!context.mounted) return;
+
+    final jobData = jobDoc.data();
+    if (!jobDoc.exists || jobData == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("This vacancy is no longer available")),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JobDetailScreen(
+          job: Job.fromFirestore(jobDoc.id, jobData),
+          applicationId: applicationId,
+        ),
       ),
     );
   }
@@ -1457,6 +1494,14 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                 return Row(
                   children: [
                     statusBadge(forEmployer: forEmployer),
+                    if (forEmployer) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => openVacancyDetails(context, liveData),
+                        icon: const Icon(Icons.work_outline, size: 17),
+                        label: const Text("View Vacancy"),
+                      ),
+                    ],
                     const Spacer(),
                     if (actions.isEmpty)
                       const IconButton(
