@@ -13,6 +13,7 @@ import 'dart:ui' as ui;
 import 'portfolio_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../services/moderation_hold_service.dart';
 import '../services/registration_validation_service.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/legal_documents.dart';
@@ -1211,6 +1212,11 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   /// SAVE PROFILE
   Future<void> saveProfile() async {
+    if (!await ModerationHoldService().ensureCurrentUserNotHeld(context)) {
+      return;
+    }
+    if (!mounted) return;
+
     final name = nameController.text.trim();
     final phone = phoneController.text.trim();
     final normalizedPhone = RegistrationValidationService.normalizePhone(phone);

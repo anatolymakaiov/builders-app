@@ -174,6 +174,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   Future<void> holdProfile() async {
     final message = await askHoldMessage();
     if (message == null || message.trim().isEmpty) return;
+    await Future<void>.delayed(const Duration(milliseconds: 80));
     final service = ModerationHoldService();
     await service.holdUser(
       targetUserId: widget.userId,
@@ -189,16 +190,30 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
       relatedTargetId: widget.userId,
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Profile temporarily suspended.")),
+    ModerationHoldService.showSafeSnackBar(
+      context,
+      "Profile temporarily suspended.",
     );
   }
 
   Future<void> restoreProfile() async {
     await ModerationHoldService().restoreUser(widget.userId);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Profile restored.")),
+    ModerationHoldService.showSafeSnackBar(
+      context,
+      "Profile restored.",
+    );
+  }
+
+  void openAdminInbox() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AdminInboxScreen(
+          userId: widget.userId,
+          role: "employer",
+        ),
+      ),
     );
   }
 
@@ -416,16 +431,34 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                       child: StroykaSurface(
                         padding: const EdgeInsets.all(12),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Icon(Icons.info_outline,
                                 color: Colors.orange),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: Text(
-                                ModerationHoldService.holdMessage(data),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    ModerationHoldService.suspensionTitle,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    ModerationHoldService.suspensionMessage,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: openAdminInbox,
+                                    icon: const Icon(
+                                        Icons.mark_email_unread_outlined),
+                                    label: const Text(
+                                        "View Administrator Message"),
+                                  ),
+                                ],
                               ),
                             ),
                           ],

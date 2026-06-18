@@ -241,6 +241,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       requiredMessage: true,
     );
     if (message == null || message.trim().isEmpty) return;
+    await Future<void>.delayed(const Duration(milliseconds: 80));
 
     await ModerationHoldService().holdUser(
       targetUserId: userId,
@@ -256,16 +257,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       relatedTargetId: userId,
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Profile temporarily suspended.")),
+    ModerationHoldService.showSafeSnackBar(
+      context,
+      "Profile temporarily suspended.",
     );
   }
 
   Future<void> _restoreProfileFromAdmin(String userId) async {
     await ModerationHoldService().restoreUser(userId);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Profile restored.")),
+    ModerationHoldService.showSafeSnackBar(
+      context,
+      "Profile restored.",
     );
   }
 
@@ -282,6 +285,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       requiredMessage: true,
     );
     if (message == null || message.trim().isEmpty) return;
+    await Future<void>.delayed(const Duration(milliseconds: 80));
 
     await ModerationHoldService().holdJob(jobId: jobId, message: message);
     if (employerId.trim().isNotEmpty) {
@@ -295,16 +299,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       );
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Vacancy temporarily suspended.")),
+    ModerationHoldService.showSafeSnackBar(
+      context,
+      "Vacancy temporarily suspended.",
     );
   }
 
   Future<void> _restoreVacancyFromAdmin(String jobId) async {
     await ModerationHoldService().restoreJob(jobId);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Vacancy restored.")),
+    ModerationHoldService.showSafeSnackBar(
+      context,
+      "Vacancy restored.",
     );
   }
 

@@ -1085,6 +1085,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Future<void> holdVacancy() async {
     final message = await askJobHoldMessage();
     if (message == null || message.trim().isEmpty) return;
+    await Future<void>.delayed(const Duration(milliseconds: 80));
     final service = ModerationHoldService();
     await service.holdJob(jobId: activeJob.id, message: message);
     await service.sendAdminHoldMessage(
@@ -1096,16 +1097,18 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       relatedTargetId: activeJob.id,
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Vacancy temporarily suspended.")),
+    ModerationHoldService.showSafeSnackBar(
+      context,
+      "Vacancy temporarily suspended.",
     );
   }
 
   Future<void> restoreVacancy() async {
     await ModerationHoldService().restoreJob(activeJob.id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Vacancy restored.")),
+    ModerationHoldService.showSafeSnackBar(
+      context,
+      "Vacancy restored.",
     );
   }
 

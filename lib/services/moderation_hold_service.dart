@@ -12,6 +12,11 @@ class ModerationHoldService {
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
 
+  static const suspensionTitle = "PROFILE TEMPORARILY SUSPENDED";
+  static const suspensionMessage = "Please contact Administrator.";
+  static const suspensionSnackBarMessage =
+      "Your profile is temporarily suspended.\nPlease contact Administrator.";
+
   static bool isProfileHeld(Map<String, dynamic>? data) {
     if (data == null) return false;
     final status = data["status"]?.toString().toLowerCase().trim() ?? "";
@@ -62,17 +67,26 @@ class ModerationHoldService {
     final data = await currentUserHoldData();
     if (!context.mounted) return false;
     if (!isProfileHeld(data)) return true;
-    showHoldSnackBar(context, data: data);
+    showHoldSnackBar(context);
     return false;
   }
 
   static void showHoldSnackBar(
-    BuildContext context, {
-    Map<String, dynamic>? data,
-  }) {
+    BuildContext context,
+  ) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(holdMessage(data))),
+      const SnackBar(content: Text(suspensionSnackBarMessage)),
     );
+  }
+
+  static void showSafeSnackBar(BuildContext context, String message) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      if (messenger == null) return;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    });
   }
 
   Future<void> holdUser({
