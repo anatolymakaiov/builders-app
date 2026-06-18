@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 class SupportRequestService {
   static const workerRequestTypes = {
@@ -262,6 +263,7 @@ class _SupportRequestDialog extends StatefulWidget {
 class _SupportRequestDialogState extends State<_SupportRequestDialog> {
   late String selectedType;
   late final TextEditingController controller;
+  final ImagePicker mediaPicker = ImagePicker();
   final List<PlatformFile> attachments = [];
   bool submitting = false;
 
@@ -291,30 +293,44 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
     if (result == null || !mounted) return;
 
     setState(() {
-      final existing =
-          attachments.map((file) => "${file.name}_${file.size}").toSet();
-      attachments.addAll(
-        result.files
-            .where((file) => !existing.contains("${file.name}_${file.size}")),
-      );
+      addUniqueAttachments(result.files);
     });
   }
 
-  Future<void> pickMediaAttachments() {
-    return pickAttachments(
-      allowedExtensions: [
-        "jpg",
-        "jpeg",
-        "png",
-        "webp",
-        "gif",
-        "heic",
-        "heif",
-        "mp4",
-        "mov",
-        "m4v",
-      ],
-    );
+  Future<void> pickMediaAttachments() async {
+    FocusScope.of(context).unfocus();
+
+    List<XFile> picked;
+    try {
+      picked = await mediaPicker.pickMultipleMedia();
+    } catch (e) {
+      debugPrint("SUPPORT MEDIA PICK ERROR: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not select media")),
+      );
+      return;
+    }
+
+    if (picked.isEmpty || !mounted) return;
+
+    final converted = <PlatformFile>[];
+    for (final file in picked) {
+      final bytes = await file.readAsBytes();
+      converted.add(
+        PlatformFile(
+          name: file.name,
+          size: bytes.length,
+          bytes: bytes,
+          path: file.path,
+        ),
+      );
+    }
+    if (!mounted) return;
+
+    setState(() {
+      addUniqueAttachments(converted);
+    });
   }
 
   Future<void> pickFileAttachments() {
@@ -329,6 +345,14 @@ class _SupportRequestDialogState extends State<_SupportRequestDialog> {
         "zip",
         "csv",
       ],
+    );
+  }
+
+  void addUniqueAttachments(List<PlatformFile> files) {
+    final existing =
+        attachments.map((file) => "${file.name}_${file.size}").toSet();
+    attachments.addAll(
+      files.where((file) => !existing.contains("${file.name}_${file.size}")),
     );
   }
 
