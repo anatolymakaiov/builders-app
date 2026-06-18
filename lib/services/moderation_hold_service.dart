@@ -67,6 +67,7 @@ class ModerationHoldService {
     final data = await currentUserHoldData();
     if (!context.mounted) return false;
     if (!isProfileHeld(data)) return true;
+    FocusManager.instance.primaryFocus?.unfocus();
     showHoldSnackBar(context);
     return false;
   }
@@ -74,6 +75,7 @@ class ModerationHoldService {
   static void showHoldSnackBar(
     BuildContext context,
   ) {
+    FocusManager.instance.primaryFocus?.unfocus();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text(suspensionSnackBarMessage)),
     );
@@ -114,6 +116,7 @@ class ModerationHoldService {
     ScaffoldMessengerState? messenger,
     String message,
   ) {
+    FocusManager.instance.primaryFocus?.unfocus();
     if (messenger == null || !messenger.mounted) return;
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(content: Text(message)));

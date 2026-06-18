@@ -181,6 +181,7 @@ class WorkerProfileScreen extends StatelessWidget {
   }
 
   void openAdminInbox(BuildContext context) {
+    FocusManager.instance.primaryFocus?.unfocus();
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -1647,6 +1648,7 @@ class WorkerProfileScreen extends StatelessWidget {
     final showOwnProfileControls = isMyProfile && !useTeamReturn;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       drawer: showOwnProfileControls
           ? const ProfileHamburgerMenu(role: "worker")
           : null,
@@ -1800,6 +1802,11 @@ class WorkerProfileScreen extends StatelessWidget {
               jobId != null;
           final profileHeld = ModerationHoldService.isProfileHeld(data);
           final isAdminViewer = currentRole == "admin";
+          if (profileHeld) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              FocusManager.instance.primaryFocus?.unfocus();
+            });
+          }
 
           if (profileHeld && !isMyProfile && !isAdminViewer) {
             return const StroykaScreenBody(

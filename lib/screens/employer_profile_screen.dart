@@ -262,6 +262,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   }
 
   void openAdminInbox() {
+    FocusManager.instance.primaryFocus?.unfocus();
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -350,6 +351,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
     final isMyCompany = FirebaseAuth.instance.currentUser?.uid == widget.userId;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       drawer: isMyCompany ? const ProfileHamburgerMenu(role: "employer") : null,
       appBar: AppBar(
         leading: isMyCompany
@@ -449,6 +451,11 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
           final initialTab = widget.initialTab.clamp(0, tabCount - 1).toInt();
           final profileHeld = ModerationHoldService.isProfileHeld(data);
           final isAdminViewer = viewerRole == "admin";
+          if (profileHeld) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              FocusManager.instance.primaryFocus?.unfocus();
+            });
+          }
 
           if (profileHeld && !isMyCompany && !isAdminViewer) {
             return const StroykaScreenBody(
