@@ -260,8 +260,47 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   bool isWorkerOfferNotification(Map<String, dynamic> data) {
+    return isOfferRelatedNotification(data);
+  }
+
+  bool isOfferRelatedNotification(Map<String, dynamic> data) {
     final type = data["type"]?.toString().trim().toLowerCase() ?? "";
-    return type == "offer" || type == "offer_expiry" || type == "work_start";
+    final category = data["category"]?.toString().trim().toLowerCase() ?? "";
+    return category == "offer" ||
+        type == "offer" ||
+        type == "offer_accepted" ||
+        type == "offer_rejected" ||
+        type == "offer_expiry" ||
+        type == "work_start" ||
+        type == "work_start_reminder";
+  }
+
+  Future<bool> openOfferRelatedNotification(
+    BuildContext context,
+    Map<String, dynamic> data, {
+    String? applicationId,
+    String? jobId,
+  }) async {
+    if (!isOfferRelatedNotification(data)) return false;
+
+    final id = await resolveApplicationId(
+      data,
+      preferredId: applicationId,
+      fallbackJobId: jobId,
+    );
+    if (!context.mounted) return true;
+    if (id == null) {
+      openNotificationDetails(context, data);
+      return true;
+    }
+
+    await openApplicationNotification(
+      context,
+      applicationId: id,
+      fallbackJobId: jobId,
+      openWorkerJobDetails: true,
+    );
+    return true;
   }
 
   Future<void> openChatNotification(
@@ -363,12 +402,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return "support_request";
     }
     if (type == "admin_message") return "admin_message";
+    if (isOfferRelatedNotification(data)) {
+      return "offer";
+    }
     if (type == "application" ||
         type == "application_status" ||
-        type == "offer" ||
-        type == "offer_accepted" ||
-        type == "offer_rejected" ||
-        type == "offer_expiry" ||
         type == "work_start") {
       return "application";
     }
@@ -411,6 +449,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final jobId = cleanId(data["relatedJobId"] ?? data["jobId"]);
     final workerId = cleanId(data["workerId"]);
     final role = await currentUserRole();
+    if (!context.mounted) return;
+
+    if (await openOfferRelatedNotification(
+      context,
+      data,
+      applicationId: applicationId,
+      jobId: jobId,
+    )) {
+      return;
+    }
     if (!context.mounted) return;
 
     switch (targetType) {
