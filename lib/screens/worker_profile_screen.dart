@@ -10,6 +10,7 @@ import 'edit_profile_screen.dart';
 import '../services/application_activity_service.dart';
 import '../services/calendar_service.dart';
 import '../services/chat_service.dart';
+import '../services/moderation_hold_service.dart';
 import '../services/notification_service.dart';
 import '../services/profile_communication_service.dart';
 import '../services/report_service.dart';
@@ -40,6 +41,85 @@ class WorkerProfileScreen extends StatelessWidget {
 
   bool get openedFromTeam =>
       openedFrom == "team" && (returnToTeamId?.trim().isNotEmpty ?? false);
+
+  Future<String?> askHoldMessage(BuildContext context) async {
+    final controller = TextEditingController();
+    String? errorText;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text("Hold worker profile"),
+              content: TextField(
+                controller: controller,
+                maxLines: 5,
+                decoration: InputDecoration(
+                  labelText: "Message to worker",
+                  hintText: "Explain why this profile is temporarily suspended",
+                  errorText: errorText,
+                  border: const StroykaInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final text = controller.text.trim();
+                    if (text.isEmpty) {
+                      setDialogState(() {
+                        errorText = "Moderator message is required";
+                      });
+                      return;
+                    }
+                    Navigator.pop(context, text);
+                  },
+                  child: const Text("Hold"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> holdProfile(BuildContext context) async {
+    final message = await askHoldMessage(context);
+    if (message == null || message.trim().isEmpty) return;
+    final service = ModerationHoldService();
+    await service.holdUser(
+      targetUserId: userId,
+      role: "worker",
+      message: message,
+    );
+    await service.sendAdminHoldMessage(
+      userId: userId,
+      role: "worker",
+      title: "Profile temporarily suspended",
+      message: message,
+      relatedTargetType: "profile_hold",
+      relatedTargetId: userId,
+    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Profile temporarily suspended.")),
+    );
+  }
+
+  Future<void> restoreProfile(BuildContext context) async {
+    await ModerationHoldService().restoreUser(userId);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Profile restored.")),
+    );
+  }
 
   Future<void> returnToTeam(BuildContext context) async {
     if (Navigator.canPop(context)) {
@@ -1647,12 +1727,61 @@ class WorkerProfileScreen extends StatelessWidget {
               applicationId != null &&
               employerId != null &&
               jobId != null;
+          final profileHeld = ModerationHoldService.isProfileHeld(data);
+          final isAdminViewer = currentRole == "admin";
+
+          if (profileHeld && !isMyProfile && !isAdminViewer) {
+            return const StroykaScreenBody(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: StroykaSurface(
+                    padding: EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.lock_clock_outlined, size: 42),
+                        SizedBox(height: 12),
+                        Text(
+                          "This profile is temporarily unavailable.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
 
           return DefaultTabController(
             length: 4,
             child: StroykaScreenBody(
               child: Column(
                 children: [
+                  if (profileHeld && isMyProfile)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                      child: StroykaSurface(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline,
+                                color: Colors.orange),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                ModerationHoldService.holdMessage(data),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   StroykaProfileHeader(
                     title: name.toString(),
                     avatarUrl: photo is String ? photo : null,
@@ -1689,7 +1818,24 @@ class WorkerProfileScreen extends StatelessWidget {
                             employerId: employerId!,
                             jobId: jobId!,
                           )
-                        : null,
+                        : isAdminViewer
+                            ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: profileHeld
+                                        ? () => restoreProfile(context)
+                                        : () => holdProfile(context),
+                                    icon: Icon(profileHeld
+                                        ? Icons.restore_outlined
+                                        : Icons.pause_circle_outline),
+                                    label: Text(profileHeld
+                                        ? "Restore Profile"
+                                        : "Hold Profile"),
+                                  ),
+                                ],
+                              )
+                            : null,
                   ),
                   const StroykaTabBar(
                     labels: ["Info", "Contacts", "Photos", "Teams"],
@@ -1843,6 +1989,10 @@ class _CreateTeamDialogState extends State<_CreateTeamDialog> {
 
   Future<void> createTeam() async {
     if (isSaving || createRequestInProgress) return;
+
+    if (!await ModerationHoldService().ensureCurrentUserNotHeld(context)) {
+      return;
+    }
 
     final name = controller.text.trim();
     if (name.isEmpty) {

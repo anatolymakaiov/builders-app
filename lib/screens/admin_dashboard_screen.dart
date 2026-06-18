@@ -9,10 +9,13 @@ import 'dart:io';
 import '../models/job.dart';
 import '../services/billing_service.dart';
 import '../services/job_alert_service.dart';
+import '../services/moderation_hold_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/job_card.dart';
+import 'job_details_screen.dart';
 import 'employer_profile_screen.dart';
+import 'worker_profile_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -225,10 +228,96 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     await BillingService().updatePaymentRequestStatus(ref, status);
   }
 
+  Future<void> _holdProfileFromAdmin({
+    required String userId,
+    required String role,
+  }) async {
+    final message = await _askAdminReply(
+      context,
+      title:
+          role == "employer" ? "Hold employer profile" : "Hold worker profile",
+      label: "Message to user",
+      hint: "Explain why this profile is temporarily suspended",
+      requiredMessage: true,
+    );
+    if (message == null || message.trim().isEmpty) return;
+
+    await ModerationHoldService().holdUser(
+      targetUserId: userId,
+      role: role,
+      message: message,
+    );
+    await _sendAdminInboxMessage(
+      userId: userId,
+      title: "Profile temporarily suspended",
+      message: message,
+      audience: role,
+      relatedTargetType: "profile_hold",
+      relatedTargetId: userId,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Profile temporarily suspended.")),
+    );
+  }
+
+  Future<void> _restoreProfileFromAdmin(String userId) async {
+    await ModerationHoldService().restoreUser(userId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Profile restored.")),
+    );
+  }
+
+  Future<void> _holdVacancyFromAdmin({
+    required String jobId,
+    required String employerId,
+    required String jobTitle,
+  }) async {
+    final message = await _askAdminReply(
+      context,
+      title: "Hold vacancy",
+      label: "Message to employer",
+      hint: "Explain why this vacancy is temporarily suspended",
+      requiredMessage: true,
+    );
+    if (message == null || message.trim().isEmpty) return;
+
+    await ModerationHoldService().holdJob(jobId: jobId, message: message);
+    if (employerId.trim().isNotEmpty) {
+      await _sendAdminInboxMessage(
+        userId: employerId,
+        title: "Vacancy temporarily suspended",
+        message: "$jobTitle\n\n$message",
+        audience: "employer",
+        relatedTargetType: "job_hold",
+        relatedTargetId: jobId,
+      );
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Vacancy temporarily suspended.")),
+    );
+  }
+
+  Future<void> _restoreVacancyFromAdmin(String jobId) async {
+    await ModerationHoldService().restoreJob(jobId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Vacancy restored.")),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
       const _AdminInboxTab(),
+      _AdminSearchSection(
+        onHoldUser: _holdProfileFromAdmin,
+        onRestoreUser: _restoreProfileFromAdmin,
+        onHoldJob: _holdVacancyFromAdmin,
+        onRestoreJob: _restoreVacancyFromAdmin,
+      ),
       _JobModerationSection(
         onApprove: approveJob,
         onReject: rejectJob,
@@ -295,6 +384,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
             label: "Inbox",
           ),
+          const NavigationDestination(
+            icon: Icon(Icons.search_outlined),
+            label: "Search",
+          ),
           NavigationDestination(
             icon: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -325,6 +418,410 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             label: "Reports",
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AdminSearchSection extends StatefulWidget {
+  final Future<void> Function({
+    required String userId,
+    required String role,
+  }) onHoldUser;
+  final Future<void> Function(String userId) onRestoreUser;
+  final Future<void> Function({
+    required String jobId,
+    required String employerId,
+    required String jobTitle,
+  }) onHoldJob;
+  final Future<void> Function(String jobId) onRestoreJob;
+
+  const _AdminSearchSection({
+    required this.onHoldUser,
+    required this.onRestoreUser,
+    required this.onHoldJob,
+    required this.onRestoreJob,
+  });
+
+  @override
+  State<_AdminSearchSection> createState() => _AdminSearchSectionState();
+}
+
+class _AdminSearchSectionState extends State<_AdminSearchSection> {
+  final controller = TextEditingController();
+  String query = "";
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  String _norm(String value) =>
+      value.toLowerCase().replaceAll(RegExp(r"[^a-z0-9@+]+"), "");
+
+  bool _matchesUser(Map<String, dynamic> data, String id) {
+    final q = _norm(query);
+    if (q.isEmpty) return false;
+    final searchable = [
+      id,
+      data["name"],
+      data["displayName"],
+      data["firstName"],
+      data["lastName"],
+      data["companyName"],
+      data["email"],
+      data["normalizedEmail"],
+      data["phone"],
+      data["normalizedPhone"],
+      data["role"],
+    ].whereType<Object>().map((value) => value.toString()).join(" ");
+    return _norm(searchable).contains(q);
+  }
+
+  bool _matchesJob(Map<String, dynamic> data, String id) {
+    final q = _norm(query);
+    if (q.isEmpty) return false;
+    final searchable = [
+      id,
+      data["title"],
+      data["trade"],
+      data["companyName"],
+      data["site"],
+      data["postcode"],
+      data["ownerId"],
+      data["employerId"],
+      data["status"],
+      data["moderationStatus"],
+    ].whereType<Object>().map((value) => value.toString()).join(" ");
+    return _norm(searchable).contains(q);
+  }
+
+  String _userName(Map<String, dynamic> data, String fallback) {
+    final fullName = [
+      data["firstName"]?.toString().trim(),
+      data["lastName"]?.toString().trim(),
+    ].where((value) => value != null && value.isNotEmpty).join(" ");
+    if (fullName.isNotEmpty) return fullName;
+    for (final key in ["companyName", "name", "displayName", "email"]) {
+      final value = data[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return fallback;
+  }
+
+  Future<void> _openUser(
+    BuildContext context,
+    String userId,
+    Map<String, dynamic> data,
+  ) async {
+    final role = data["role"]?.toString().toLowerCase().trim() ?? "";
+    if (role == "employer") {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EmployerProfileScreen(
+            userId: userId,
+            showBackButton: true,
+          ),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WorkerProfileScreen(userId: userId),
+      ),
+    );
+  }
+
+  Future<void> _openJob(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JobDetailScreen(
+          job: Job.fromFirestore(doc.id, doc.data()),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: "Search users, companies, phone, email or vacancies",
+            prefixIcon: Icon(Icons.search_outlined),
+            border: StroykaInputBorder(),
+          ),
+          onChanged: (value) => setState(() => query = value.trim()),
+        ),
+        const SizedBox(height: 16),
+        if (query.trim().isEmpty)
+          const _AdminEmptyHint(
+            icon: Icons.manage_search_outlined,
+            text:
+                "Search for a worker, employer, company, phone, email or vacancy.",
+          )
+        else ...[
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection("users").snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return const _AdminEmptyHint(
+                  icon: Icons.error_outline,
+                  text: "Could not load user search results.",
+                );
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final users = snapshot.data!.docs
+                  .where((doc) => _matchesUser(doc.data(), doc.id))
+                  .take(20)
+                  .toList();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Profiles",
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (users.isEmpty)
+                    const _AdminEmptyHint(
+                      icon: Icons.person_search_outlined,
+                      text: "No matching profiles.",
+                    )
+                  else
+                    ...users.map((doc) {
+                      final data = doc.data();
+                      final role =
+                          data["role"]?.toString().trim().isNotEmpty == true
+                              ? data["role"].toString()
+                              : "worker";
+                      final held = ModerationHoldService.isProfileHeld(data);
+                      return _AdminSearchResultCard(
+                        icon: role == "employer"
+                            ? Icons.business_outlined
+                            : Icons.engineering_outlined,
+                        title: _userName(data, doc.id),
+                        subtitle: [
+                          role,
+                          data["email"]?.toString(),
+                          data["phone"]?.toString(),
+                        ]
+                            .where((value) =>
+                                value != null && value.trim().isNotEmpty)
+                            .join(" • "),
+                        status: held ? "On hold" : "Active",
+                        statusColor:
+                            held ? Colors.orange.shade700 : AppColors.green,
+                        onOpen: () => _openUser(context, doc.id, data),
+                        primaryActionLabel: held ? "Restore" : "Hold",
+                        primaryActionIcon: held
+                            ? Icons.restore_outlined
+                            : Icons.pause_circle_outline,
+                        onPrimaryAction: held
+                            ? () => widget.onRestoreUser(doc.id)
+                            : () => widget.onHoldUser(
+                                  userId: doc.id,
+                                  role: role,
+                                ),
+                      );
+                    }),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection("jobs").snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return const _AdminEmptyHint(
+                  icon: Icons.error_outline,
+                  text: "Could not load vacancy search results.",
+                );
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final jobs = snapshot.data!.docs
+                  .where((doc) => _matchesJob(doc.data(), doc.id))
+                  .take(20)
+                  .toList();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Vacancies",
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (jobs.isEmpty)
+                    const _AdminEmptyHint(
+                      icon: Icons.work_outline,
+                      text: "No matching vacancies.",
+                    )
+                  else
+                    ...jobs.map((doc) {
+                      final data = doc.data();
+                      final job = Job.fromFirestore(doc.id, data);
+                      final held = ModerationHoldService.isJobHeld(data);
+                      return _AdminSearchResultCard(
+                        icon: Icons.work_outline,
+                        title: job.displayTitle,
+                        subtitle: [
+                          job.companyName,
+                          job.postcode,
+                          job.moderationLabel,
+                        ].where((value) => value.trim().isNotEmpty).join(" • "),
+                        status: held ? "On hold" : job.moderationLabel,
+                        statusColor: held
+                            ? Colors.orange.shade700
+                            : AppColors.status(job.moderationStatus),
+                        onOpen: () => _openJob(context, doc),
+                        primaryActionLabel: held ? "Restore" : "Hold",
+                        primaryActionIcon: held
+                            ? Icons.restore_outlined
+                            : Icons.pause_circle_outline,
+                        onPrimaryAction: held
+                            ? () => widget.onRestoreJob(doc.id)
+                            : () => widget.onHoldJob(
+                                  jobId: doc.id,
+                                  employerId: job.ownerId,
+                                  jobTitle: job.displayTitle,
+                                ),
+                      );
+                    }),
+                ],
+              );
+            },
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _AdminEmptyHint extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _AdminEmptyHint({
+    required this.icon,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.muted),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminSearchResultCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String status;
+  final Color statusColor;
+  final VoidCallback onOpen;
+  final String primaryActionLabel;
+  final IconData primaryActionIcon;
+  final VoidCallback onPrimaryAction;
+
+  const _AdminSearchResultCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.status,
+    required this.statusColor,
+    required this.onOpen,
+    required this.primaryActionLabel,
+    required this.primaryActionIcon,
+    required this.onPrimaryAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: AppColors.blueprintLine.withValues(alpha: 0.12),
+          child: Icon(icon, color: AppColors.blueprintLine),
+        ),
+        title: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (subtitle.trim().isNotEmpty)
+              Text(
+                subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            const SizedBox(height: 4),
+            Text(
+              status,
+              style: TextStyle(
+                color: statusColor,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        onTap: onOpen,
+        trailing: PopupMenuButton<String>(
+          onSelected: (value) {
+            if (value == "open") onOpen();
+            if (value == "primary") onPrimaryAction();
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: "open",
+              child: ListTile(
+                leading: Icon(Icons.open_in_new_outlined),
+                title: Text("Open"),
+              ),
+            ),
+            PopupMenuItem(
+              value: "primary",
+              child: ListTile(
+                leading: Icon(primaryActionIcon),
+                title: Text(primaryActionLabel),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

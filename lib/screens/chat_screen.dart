@@ -16,6 +16,7 @@ import 'image_viewer_screen.dart';
 import '../services/chat_profile_navigation_service.dart';
 import '../services/report_service.dart';
 import '../services/chat_service.dart';
+import '../services/moderation_hold_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
@@ -585,6 +586,9 @@ class _ChatScreenState extends State<ChatScreen> {
     dismissKeyboard();
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    if (!await ModerationHoldService().ensureCurrentUserNotHeld(context)) {
+      return;
+    }
     if (!await ensureChatDataLoaded()) return;
 
     final chatDoc = await FirebaseFirestore.instance

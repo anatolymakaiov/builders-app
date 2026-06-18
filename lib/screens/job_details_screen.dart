@@ -12,6 +12,7 @@ import '../models/job.dart';
 import '../services/application_activity_service.dart';
 import '../services/calendar_service.dart';
 import '../services/chat_service.dart';
+import '../services/moderation_hold_service.dart';
 import '../services/notification_service.dart';
 import '../services/offer_acceptance_service.dart';
 import '../services/report_service.dart';
@@ -382,6 +383,31 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Future<void> apply() async {
     final uid = userId;
     if (uid == null) return;
+
+    if (!await ModerationHoldService().ensureCurrentUserNotHeld(context)) {
+      return;
+    }
+
+    if (ModerationHoldService.isJobHeld(liveJobData())) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("This vacancy is temporarily suspended.")),
+      );
+      return;
+    }
+
+    final employerSnap = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(activeJob.ownerId)
+        .get();
+    if (ModerationHoldService.isProfileHeld(employerSnap.data())) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text("This employer is temporarily suspended.")),
+      );
+      return;
+    }
 
     if (isApplying) return;
     setState(() => isApplying = true);
@@ -996,6 +1022,91 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     } catch (e) {
       debugPrint("DELETE ERROR: $e");
     }
+  }
+
+  Future<String?> askJobHoldMessage() async {
+    final controller = TextEditingController();
+    String? errorText;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text(ModerationHoldService.isJobHeld(liveJobData())
+                  ? "Restore vacancy"
+                  : "Hold vacancy"),
+              content: TextField(
+                controller: controller,
+                maxLines: 5,
+                decoration: InputDecoration(
+                  labelText: "Message to employer",
+                  hintText: "Explain why this vacancy is temporarily suspended",
+                  errorText: errorText,
+                  border: const StroykaInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final text = controller.text.trim();
+                    if (text.isEmpty) {
+                      setDialogState(() {
+                        errorText = "Moderator message is required";
+                      });
+                      return;
+                    }
+                    Navigator.pop(context, text);
+                  },
+                  child: const Text("Hold"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Map<String, dynamic> liveJobData() {
+    final job = activeJob;
+    return {
+      "status": job.status,
+      "moderationStatus": job.moderationStatus,
+    };
+  }
+
+  Future<void> holdVacancy() async {
+    final message = await askJobHoldMessage();
+    if (message == null || message.trim().isEmpty) return;
+    final service = ModerationHoldService();
+    await service.holdJob(jobId: activeJob.id, message: message);
+    await service.sendAdminHoldMessage(
+      userId: activeJob.ownerId,
+      role: "employer",
+      title: "Vacancy temporarily suspended",
+      message: "${activeJob.displayTitle}\n\n$message",
+      relatedTargetType: "job_hold",
+      relatedTargetId: activeJob.id,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Vacancy temporarily suspended.")),
+    );
+  }
+
+  Future<void> restoreVacancy() async {
+    await ModerationHoldService().restoreJob(activeJob.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Vacancy restored.")),
+    );
   }
 
   Widget buildApplyButton() {
@@ -2629,6 +2740,18 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           appBar: AppBar(
             title: const Text("Job"),
             actions: [
+              if (role == "admin")
+                IconButton(
+                  tooltip: ModerationHoldService.isJobHeld(liveJobData())
+                      ? "Restore vacancy"
+                      : "Hold vacancy",
+                  icon: Icon(ModerationHoldService.isJobHeld(liveJobData())
+                      ? Icons.restore_outlined
+                      : Icons.pause_circle_outline),
+                  onPressed: ModerationHoldService.isJobHeld(liveJobData())
+                      ? restoreVacancy
+                      : holdVacancy,
+                ),
               IconButton(
                 tooltip: "Report job",
                 icon: const Icon(Icons.flag_outlined),

@@ -11,6 +11,7 @@ import 'dart:io';
 import '../models/job.dart';
 import '../services/billing_service.dart';
 import '../services/job_taxonomy_service.dart';
+import '../services/moderation_hold_service.dart';
 import '../services/vacancy_import_service.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/smart_job_search.dart';
@@ -336,6 +337,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
   Future<void> saveJob() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
+    if (!await ModerationHoldService().ensureCurrentUserNotHeld(context)) {
+      return;
+    }
 
     final taxonomyRole = JobTaxonomyService.bestRoleFor(selectedTrade);
     final title = JobTaxonomyService.bestCanonicalFor(selectedTrade);

@@ -38,9 +38,32 @@ service cloud.firestore {
       return signedIn() && uid() == userId;
     }
 
+    function isHeldData(data) {
+      return ("moderationHold" in data && data.moderationHold == true)
+        || ("profileSuspended" in data && data.profileSuspended == true)
+        || ("profileHold" in data && data.profileHold == true)
+        || ("accountOnHold" in data && data.accountOnHold == true)
+        || ("status" in data && data.status in ["suspended", "on_hold"]);
+    }
+
+    function isUserHeld(userId) {
+      return userId is string
+        && exists(userPath(userId))
+        && isHeldData(get(userPath(userId)).data);
+    }
+
+    function isJobHeldData(data) {
+      return ("moderationHold" in data && data.moderationHold == true)
+        || ("vacancyHold" in data && data.vacancyHold == true)
+        || ("jobSuspended" in data && data.jobSuspended == true)
+        || ("status" in data && data.status in ["suspended", "on_hold"])
+        || ("moderationStatus" in data && data.moderationStatus == "on_hold");
+    }
+
     function isPublicJob(data) {
       return data.moderationStatus == "approved"
-        && (!("status" in data) || data.status in ["active", "published", "open"]);
+        && (!("status" in data) || data.status in ["active", "published", "open"])
+        && !isJobHeldData(data);
     }
 
     function isAdminMailParticipant(data) {
@@ -182,6 +205,7 @@ service cloud.firestore {
     function isValidChatMessageCreate(chatId, messageId) {
       return isChatParticipant(chatId)
         && isChatActive(chatId)
+        && !isUserHeld(uid())
         && request.resource.data.senderId == uid()
         && (
           !("chatId" in request.resource.data)
@@ -259,7 +283,11 @@ service cloud.firestore {
 
     match /jobs/{jobId} {
       allow create: if isAdmin()
-        || (isEmployer() && request.resource.data.ownerId == uid());
+        || (
+          isEmployer()
+          && !isUserHeld(uid())
+          && request.resource.data.ownerId == uid()
+        );
       allow read: if signedIn()
         && (
           isAdmin()
@@ -272,6 +300,7 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (
           isEmployer()
+          && !isUserHeld(uid())
           && (
             resource.data.ownerId == uid()
             || resource.data.employerId == uid()
@@ -283,6 +312,7 @@ service cloud.firestore {
       allow delete: if isAdmin()
         || (
           isEmployer()
+          && !isUserHeld(uid())
           && (
             resource.data.ownerId == uid()
             || resource.data.employerId == uid()
@@ -294,6 +324,16 @@ service cloud.firestore {
 
     match /applications/{applicationId} {
       allow create: if signedIn()
+        && !isUserHeld(uid())
+        && (
+          !(request.resource.data.jobId is string)
+          || !exists(jobPath(request.resource.data.jobId))
+          || (
+            !isJobHeldData(get(jobPath(request.resource.data.jobId)).data)
+            && !isUserHeld(get(jobPath(request.resource.data.jobId)).data.ownerId)
+            && !isUserHeld(get(jobPath(request.resource.data.jobId)).data.employerId)
+          )
+        )
         && (
           isAdmin()
           || request.resource.data.workerId == uid()

@@ -11,6 +11,7 @@ import 'edit_profile_screen.dart';
 import '../widgets/job_card.dart';
 import '../services/billing_service.dart';
 import '../services/job_repository.dart';
+import '../services/moderation_hold_service.dart';
 import '../services/profile_communication_service.dart';
 import '../services/report_service.dart';
 import '../services/support_request_service.dart';
@@ -120,6 +121,85 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
     setState(() {
       viewerRole = snapshot.data()?["role"]?.toString() ?? "worker";
     });
+  }
+
+  Future<String?> askHoldMessage() async {
+    final controller = TextEditingController();
+    String? errorText;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text("Hold employer profile"),
+              content: TextField(
+                controller: controller,
+                maxLines: 5,
+                decoration: InputDecoration(
+                  labelText: "Message to employer",
+                  hintText: "Explain why this profile is temporarily suspended",
+                  errorText: errorText,
+                  border: const StroykaInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final text = controller.text.trim();
+                    if (text.isEmpty) {
+                      setDialogState(() {
+                        errorText = "Moderator message is required";
+                      });
+                      return;
+                    }
+                    Navigator.pop(context, text);
+                  },
+                  child: const Text("Hold"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> holdProfile() async {
+    final message = await askHoldMessage();
+    if (message == null || message.trim().isEmpty) return;
+    final service = ModerationHoldService();
+    await service.holdUser(
+      targetUserId: widget.userId,
+      role: "employer",
+      message: message,
+    );
+    await service.sendAdminHoldMessage(
+      userId: widget.userId,
+      role: "employer",
+      title: "Profile temporarily suspended",
+      message: message,
+      relatedTargetType: "profile_hold",
+      relatedTargetId: widget.userId,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Profile temporarily suspended.")),
+    );
+  }
+
+  Future<void> restoreProfile() async {
+    await ModerationHoldService().restoreUser(widget.userId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Profile restored.")),
+    );
   }
 
   bool _isCompanyProfileVisibleJob(
@@ -296,6 +376,33 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
           final showBilling = isMyCompany && role == "employer";
           final tabCount = showBilling ? 5 : 4;
           final initialTab = widget.initialTab.clamp(0, tabCount - 1).toInt();
+          final profileHeld = ModerationHoldService.isProfileHeld(data);
+          final isAdminViewer = viewerRole == "admin";
+
+          if (profileHeld && !isMyCompany && !isAdminViewer) {
+            return const StroykaScreenBody(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: StroykaSurface(
+                    padding: EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.lock_clock_outlined, size: 42),
+                        SizedBox(height: 12),
+                        Text(
+                          "This profile is temporarily unavailable.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
 
           return DefaultTabController(
             length: tabCount,
@@ -303,6 +410,28 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
             child: StroykaScreenBody(
               child: Column(
                 children: [
+                  if (profileHeld && isMyCompany)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                      child: StroykaSurface(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline,
+                                color: Colors.orange),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                ModerationHoldService.holdMessage(data),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   StroykaProfileHeader(
                     title: name,
                     avatarUrl: logo is String ? logo : null,
@@ -318,6 +447,23 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                               targetUserId: widget.userId,
                               targetRole: "employer",
                             ),
+                          )
+                        : null,
+                    headerControls: isAdminViewer
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              ElevatedButton.icon(
+                                onPressed:
+                                    profileHeld ? restoreProfile : holdProfile,
+                                icon: Icon(profileHeld
+                                    ? Icons.restore_outlined
+                                    : Icons.pause_circle_outline),
+                                label: Text(profileHeld
+                                    ? "Restore Profile"
+                                    : "Hold Profile"),
+                              ),
+                            ],
                           )
                         : null,
                   ),
