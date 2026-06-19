@@ -162,7 +162,10 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
       MaterialPageRoute(
         builder: (_) => JobDetailScreen(
           job: Job.fromFirestore(jobDoc.id, jobData),
-          applicationId: applicationId,
+          applicationId:
+              FirebaseAuth.instance.currentUser?.uid == source["employerId"]
+                  ? null
+                  : applicationId,
         ),
       ),
     );
@@ -1227,7 +1230,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
         return const Center(child: Text("No team photos yet"));
       }
       return ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
         children: [
           StroykaSurface(
             padding: const EdgeInsets.all(18),
@@ -1268,7 +1271,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
               return const Center(child: Text("No team photos yet"));
             }
             return ListView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
               children: [
                 StroykaSurface(
                   padding: const EdgeInsets.all(18),
@@ -1943,7 +1946,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                 Widget offerTab() {
                   final offer = Map<String, dynamic>.from(offerRaw as Map);
                   return ListView(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                     children: [
                       StroykaSurface(
                         padding: const EdgeInsets.all(18),
@@ -1999,7 +2002,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
 
                 Widget infoTab() {
                   return ListView(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                     children: [
                       StroykaSurface(
                         padding: const EdgeInsets.all(18),
@@ -2031,7 +2034,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
 
                 Widget contactsTab() {
                   return ListView(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                     children: [
                       StroykaSurface(
                         padding: const EdgeInsets.all(18),
@@ -2049,7 +2052,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
 
                 Widget teamInfoTab() {
                   return ListView(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                     children: [
                       StroykaSurface(
                         padding: const EdgeInsets.all(18),
@@ -2131,7 +2134,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                             leader["email"],
                           ]);
                           return ListView(
-                            padding: const EdgeInsets.all(20),
+                            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                             children: [
                               StroykaSurface(
                                 padding: const EdgeInsets.all(18),
@@ -2179,7 +2182,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
 
                 Widget teamMembersTab() {
                   return ListView(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                     children: [
                       StroykaSurface(
                         padding: const EdgeInsets.all(18),
@@ -2215,7 +2218,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                       buildTeamPhotosTab(liveData)
                     else
                       ListView(
-                        padding: const EdgeInsets.all(20),
+                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                         children: [
                           StroykaSurface(
                             padding: const EdgeInsets.all(18),

@@ -41,6 +41,8 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
   bool deletingTeam = false;
   bool teamDeletedLocally = false;
   String viewerRole = "worker";
+  String? localAvatarUrl;
+  String? localHeaderImageUrl;
 
   String? get currentUserId => FirebaseAuth.instance.currentUser?.uid;
 
@@ -194,6 +196,7 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
       "avatarUrl": url,
       "photo": url,
     }, SetOptions(merge: true));
+    if (mounted) setState(() => localAvatarUrl = url);
   }
 
   Future<void> updateTeamBackground() async {
@@ -214,6 +217,7 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
       "profileHeaderImage": url,
       "headerImage": url,
     }, SetOptions(merge: true));
+    if (mounted) setState(() => localHeaderImageUrl = url);
   }
 
   Future<void> addTeamPortfolioImages() async {
@@ -743,8 +747,12 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
         final name = team["name"]?.toString() ?? "Team";
         final description =
             (team["description"] ?? team["bio"])?.toString().trim() ?? "";
-        final avatar = team["avatarUrl"] ?? team["photo"] ?? team["logo"];
-        final headerImage = team["profileHeaderImage"] ??
+        final avatar = localAvatarUrl ??
+            team["avatarUrl"] ??
+            team["photo"] ??
+            team["logo"];
+        final headerImage = localHeaderImageUrl ??
+            team["profileHeaderImage"] ??
             team["headerImageUrl"] ??
             team["headerImage"] ??
             team["backgroundUrl"] ??
@@ -851,11 +859,18 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 10),
                   if (widget.showInternalChat) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.blueprintLine,
+                          side: const BorderSide(
+                            color: AppColors.blueprintLine,
+                          ),
+                          backgroundColor: Colors.white.withValues(alpha: 0.18),
+                        ),
                         onPressed: members.isEmpty
                             ? null
                             : () => openInternalChat(name, members),
@@ -863,13 +878,16 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                         label: const Text("Team chat"),
                       ),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 10),
                   ],
                   if (canEdit || isMember) ...[
-                    StroykaSurface(
-                      padding: const EdgeInsets.all(14),
-                      child: SizedBox(
-                        width: double.infinity,
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: StroykaSurface(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.red,
@@ -885,7 +903,7 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 10),
                   ],
                   StroykaSurface(
                     padding: const EdgeInsets.all(18),
@@ -916,12 +934,12 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 10),
                   StroykaSurface(
                     padding: const EdgeInsets.all(18),
                     child: buildTeamPortfolio(canEdit),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 10),
                   StroykaSurface(
                     padding: const EdgeInsets.all(18),
                     child: Column(
