@@ -2044,7 +2044,9 @@ class _CreateTeamDialogState extends State<_CreateTeamDialog> {
   final descriptionController = TextEditingController();
   final picker = ImagePicker();
   XFile? pickedAvatar;
+  XFile? pickedBackground;
   String? previewPath;
+  String? backgroundPreviewPath;
   bool isSaving = false;
   bool createRequestInProgress = false;
   String? validationError;
@@ -2077,9 +2079,26 @@ class _CreateTeamDialogState extends State<_CreateTeamDialog> {
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (!mounted || picked == null) return;
 
+    final cropped = await showDialog<File>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => TeamAvatarCropDialog(imageFile: File(picked.path)),
+    );
+    if (!mounted || cropped == null) return;
+
     setState(() {
-      pickedAvatar = picked;
-      previewPath = picked.path;
+      pickedAvatar = XFile(cropped.path, name: cropped.uri.pathSegments.last);
+      previewPath = cropped.path;
+    });
+  }
+
+  Future<void> pickBackground() async {
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (!mounted || picked == null) return;
+
+    setState(() {
+      pickedBackground = picked;
+      backgroundPreviewPath = picked.path;
     });
   }
 
@@ -2121,11 +2140,26 @@ class _CreateTeamDialogState extends State<_CreateTeamDialog> {
       final avatar = pickedAvatar;
       if (avatar != null) {
         final ref = FirebaseStorage.instance.ref().child(
-              "team_avatars/${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg",
+              "team_avatars/${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.png",
             );
 
-        await ref.putFile(File(avatar.path));
+        await ref.putFile(
+          File(avatar.path),
+          SettableMetadata(contentType: "image/png"),
+        );
         avatarUrl = await ref.getDownloadURL();
+        if (!mounted) return;
+      }
+
+      String? headerImageUrl;
+      final background = pickedBackground;
+      if (background != null) {
+        final ref = FirebaseStorage.instance.ref().child(
+              "team_headers/${widget.userId}_${DateTime.now().millisecondsSinceEpoch}_${background.name}",
+            );
+
+        await ref.putFile(File(background.path));
+        headerImageUrl = await ref.getDownloadURL();
         if (!mounted) return;
       }
 
@@ -2140,6 +2174,9 @@ class _CreateTeamDialogState extends State<_CreateTeamDialog> {
         "memberStatuses": {widget.userId: "active"},
         if (avatarUrl != null) "avatarUrl": avatarUrl,
         if (avatarUrl != null) "photo": avatarUrl,
+        if (headerImageUrl != null) "headerImageUrl": headerImageUrl,
+        if (headerImageUrl != null) "profileHeaderImage": headerImageUrl,
+        if (headerImageUrl != null) "headerImage": headerImageUrl,
         "createdAt": FieldValue.serverTimestamp(),
         "updatedAt": FieldValue.serverTimestamp(),
       });
@@ -2169,17 +2206,68 @@ class _CreateTeamDialogState extends State<_CreateTeamDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            GestureDetector(
-              onTap: isSaving ? null : pickAvatar,
-              child: CircleAvatar(
-                radius: 38,
-                backgroundColor: Colors.grey.shade300,
-                backgroundImage:
-                    previewPath != null ? FileImage(File(previewPath!)) : null,
-                child: previewPath == null
-                    ? const Icon(Icons.add_a_photo, size: 28)
-                    : null,
-              ),
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                GestureDetector(
+                  onTap: isSaving ? null : pickBackground,
+                  child: Container(
+                    width: double.infinity,
+                    height: 128,
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceAlt,
+                      borderRadius: BorderRadius.circular(14),
+                      image: backgroundPreviewPath == null
+                          ? null
+                          : DecorationImage(
+                              image: FileImage(File(backgroundPreviewPath!)),
+                              fit: BoxFit.cover,
+                            ),
+                      border: Border.all(
+                        color: AppColors.blueprintLine.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: backgroundPreviewPath == null
+                        ? const Center(
+                            child: Icon(Icons.image_outlined, size: 30),
+                          )
+                        : null,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: isSaving ? null : pickAvatar,
+                  child: CircleAvatar(
+                    radius: 42,
+                    backgroundColor: Colors.grey.shade300,
+                    backgroundImage: previewPath != null
+                        ? FileImage(File(previewPath!))
+                        : null,
+                    child: previewPath == null
+                        ? const Icon(Icons.add_a_photo, size: 28)
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: isSaving ? null : pickBackground,
+                    icon: const Icon(Icons.image_outlined),
+                    label: const Text("Choose Background"),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: isSaving ? null : pickAvatar,
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: const Text("Choose Avatar"),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 14),
             TextField(

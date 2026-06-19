@@ -1,4 +1,7 @@
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -166,11 +169,22 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
   Future<void> updateTeamAvatar() async {
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
+    if (!mounted) return;
+
+    final cropped = await showDialog<File>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => TeamAvatarCropDialog(imageFile: File(picked.path)),
+    );
+    if (cropped == null) return;
 
     final ref = FirebaseStorage.instance.ref().child(
-        "team_avatars/${widget.teamId}_${DateTime.now().millisecondsSinceEpoch}.jpg");
+        "team_avatars/${widget.teamId}_${DateTime.now().millisecondsSinceEpoch}.png");
 
-    await ref.putFile(File(picked.path));
+    await ref.putFile(
+      cropped,
+      SettableMetadata(contentType: "image/png"),
+    );
     final url = await ref.getDownloadURL();
 
     await FirebaseFirestore.instance
@@ -179,6 +193,26 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
         .set({
       "avatarUrl": url,
       "photo": url,
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> updateTeamBackground() async {
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
+
+    final ref = FirebaseStorage.instance.ref().child(
+        "team_headers/${widget.teamId}_${DateTime.now().millisecondsSinceEpoch}_${picked.name}");
+
+    await ref.putFile(File(picked.path));
+    final url = await ref.getDownloadURL();
+
+    await FirebaseFirestore.instance
+        .collection("teams")
+        .doc(widget.teamId)
+        .set({
+      "headerImageUrl": url,
+      "profileHeaderImage": url,
+      "headerImage": url,
     }, SetOptions(merge: true));
   }
 
@@ -710,6 +744,11 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
         final description =
             (team["description"] ?? team["bio"])?.toString().trim() ?? "";
         final avatar = team["avatarUrl"] ?? team["photo"] ?? team["logo"];
+        final headerImage = team["profileHeaderImage"] ??
+            team["headerImageUrl"] ??
+            team["headerImage"] ??
+            team["backgroundUrl"] ??
+            team["backgroundImage"];
         final canEdit = canEditTeam(team, members);
         final isMember = isTeamMember(members);
 
@@ -737,46 +776,80 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  GestureDetector(
-                    onTap: canEdit ? updateTeamAvatar : null,
-                    child: StroykaProfileHeader(
-                      title: name,
-                      subtitle: "${members.length} members",
-                      avatarUrl: avatar?.toString(),
-                      fallbackIcon: Icons.groups,
-                      margin: EdgeInsets.zero,
-                      leftBottomAction: viewerRole == "employer"
-                          ? ProfileCommunicationService.circleAction(
-                              icon: Icons.phone,
-                              tooltip: "Call team",
-                              onPressed: () async {
-                                final phone =
-                                    await ProfileCommunicationService.teamPhone(
-                                  team,
-                                );
-                                if (!context.mounted) return;
-                                await ProfileCommunicationService.callPhone(
-                                  context,
-                                  profileData: team,
-                                  phone: phone,
-                                );
-                              },
-                            )
-                          : null,
-                      rightBottomAction: currentUserId != null
-                          ? ProfileCommunicationService.circleAction(
-                              icon: Icons.chat_bubble_outline,
-                              tooltip: "Message team",
-                              onPressed: () => ProfileCommunicationService
-                                  .openTeamProfileChat(
-                                context: context,
-                                teamId: widget.teamId,
-                                teamName: name,
-                                memberIds: members,
-                              ),
-                            )
-                          : null,
-                    ),
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: canEdit ? updateTeamBackground : null,
+                        child: StroykaProfileHeader(
+                          title: name,
+                          subtitle: "${members.length} members",
+                          avatarUrl: avatar?.toString(),
+                          headerImageUrl: headerImage?.toString(),
+                          fallbackIcon: Icons.groups,
+                          margin: EdgeInsets.zero,
+                          headerControls: canEdit
+                              ? Row(
+                                  children: [
+                                    ProfileCommunicationService.circleAction(
+                                      icon: Icons.image_outlined,
+                                      tooltip: "Choose background",
+                                      onPressed: updateTeamBackground,
+                                    ),
+                                    const Spacer(),
+                                    ProfileCommunicationService.circleAction(
+                                      icon: Icons.photo_camera_outlined,
+                                      tooltip: "Choose avatar",
+                                      onPressed: updateTeamAvatar,
+                                    ),
+                                  ],
+                                )
+                              : null,
+                          leftBottomAction: viewerRole == "employer"
+                              ? ProfileCommunicationService.circleAction(
+                                  icon: Icons.phone,
+                                  tooltip: "Call team",
+                                  onPressed: () async {
+                                    final phone =
+                                        await ProfileCommunicationService
+                                            .teamPhone(team);
+                                    if (!context.mounted) return;
+                                    await ProfileCommunicationService.callPhone(
+                                      context,
+                                      profileData: team,
+                                      phone: phone,
+                                    );
+                                  },
+                                )
+                              : null,
+                          rightBottomAction: currentUserId != null
+                              ? ProfileCommunicationService.circleAction(
+                                  icon: Icons.chat_bubble_outline,
+                                  tooltip: "Message team",
+                                  onPressed: () => ProfileCommunicationService
+                                      .openTeamProfileChat(
+                                    context: context,
+                                    teamId: widget.teamId,
+                                    teamName: name,
+                                    memberIds: members,
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ),
+                      if (canEdit)
+                        Positioned(
+                          top: 64,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: updateTeamAvatar,
+                            child: const SizedBox(
+                              width: 104,
+                              height: 104,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 18),
                   if (widget.showInternalChat) ...[
@@ -947,4 +1020,203 @@ class _AddTeamMemberDialogState extends State<_AddTeamMemberDialog> {
       ],
     );
   }
+}
+
+class TeamAvatarCropDialog extends StatefulWidget {
+  final File imageFile;
+
+  const TeamAvatarCropDialog({
+    super.key,
+    required this.imageFile,
+  });
+
+  @override
+  State<TeamAvatarCropDialog> createState() => _TeamAvatarCropDialogState();
+}
+
+class _TeamAvatarCropDialogState extends State<TeamAvatarCropDialog> {
+  final TransformationController controller = TransformationController();
+  bool processing = false;
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> confirmCrop(double cropSize) async {
+    if (processing) return;
+    setState(() => processing = true);
+    try {
+      final cropped = await _cropTeamAvatarFile(
+        imageFile: widget.imageFile,
+        matrix: controller.value,
+        cropSize: cropSize,
+      );
+      if (!mounted) return;
+      Navigator.pop(context, cropped);
+    } catch (error) {
+      debugPrint("Team avatar crop error: $error");
+      if (!mounted) return;
+      setState(() => processing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not crop avatar image")),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final cropSize = math.min(screenWidth - 80, 300).toDouble();
+
+    return AlertDialog(
+      title: const Text("Position team avatar"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: cropSize,
+            height: cropSize,
+            child: Stack(
+              children: [
+                ClipOval(
+                  child: SizedBox(
+                    width: cropSize,
+                    height: cropSize,
+                    child: InteractiveViewer(
+                      transformationController: controller,
+                      minScale: 1,
+                      maxScale: 4,
+                      boundaryMargin: EdgeInsets.zero,
+                      clipBehavior: Clip.none,
+                      child: SizedBox(
+                        width: cropSize,
+                        height: cropSize,
+                        child: Image.file(
+                          widget.imageFile,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppColors.blueprintLine,
+                        width: 3,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            "Drag to position. Pinch to zoom.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.muted,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: processing ? null : () => Navigator.pop(context),
+          child: const Text("Cancel"),
+        ),
+        ElevatedButton(
+          onPressed: processing ? null : () => confirmCrop(cropSize),
+          child: processing
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text("Use avatar"),
+        ),
+      ],
+    );
+  }
+}
+
+Future<File> _cropTeamAvatarFile({
+  required File imageFile,
+  required Matrix4 matrix,
+  required double cropSize,
+}) async {
+  final bytes = await imageFile.readAsBytes();
+  final sourceImage = await _decodeTeamUiImage(bytes);
+  final inverse = Matrix4.inverted(matrix);
+  final topLeft = MatrixUtils.transformPoint(inverse, Offset.zero);
+  final bottomRight = MatrixUtils.transformPoint(
+    inverse,
+    Offset(cropSize, cropSize),
+  );
+
+  final imageWidth = sourceImage.width.toDouble();
+  final imageHeight = sourceImage.height.toDouble();
+  final baseScale = math.max(cropSize / imageWidth, cropSize / imageHeight);
+  final fittedWidth = imageWidth * baseScale;
+  final fittedHeight = imageHeight * baseScale;
+  final fittedLeft = (cropSize - fittedWidth) / 2;
+  final fittedTop = (cropSize - fittedHeight) / 2;
+
+  double sourceLeft = (topLeft.dx - fittedLeft) / baseScale;
+  double sourceTop = (topLeft.dy - fittedTop) / baseScale;
+  double sourceRight = (bottomRight.dx - fittedLeft) / baseScale;
+  double sourceBottom = (bottomRight.dy - fittedTop) / baseScale;
+
+  sourceLeft = sourceLeft.clamp(0, imageWidth - 1);
+  sourceTop = sourceTop.clamp(0, imageHeight - 1);
+  sourceRight = sourceRight.clamp(sourceLeft + 1, imageWidth);
+  sourceBottom = sourceBottom.clamp(sourceTop + 1, imageHeight);
+
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  const outputSize = 512.0;
+  final sourceRect = Rect.fromLTRB(
+    sourceLeft,
+    sourceTop,
+    sourceRight,
+    sourceBottom,
+  );
+  canvas.drawImageRect(
+    sourceImage,
+    sourceRect,
+    const Rect.fromLTWH(0, 0, outputSize, outputSize),
+    Paint()..filterQuality = FilterQuality.high,
+  );
+
+  final picture = recorder.endRecording();
+  final croppedImage = await picture.toImage(
+    outputSize.toInt(),
+    outputSize.toInt(),
+  );
+  final pngBytes =
+      await croppedImage.toByteData(format: ui.ImageByteFormat.png);
+  if (pngBytes == null) {
+    throw StateError("Could not encode cropped team avatar");
+  }
+
+  final outputFile = File(
+    "${Directory.systemTemp.path}/stroyka_team_avatar_${DateTime.now().millisecondsSinceEpoch}.png",
+  );
+  await outputFile.writeAsBytes(pngBytes.buffer.asUint8List());
+  return outputFile;
+}
+
+Future<ui.Image> _decodeTeamUiImage(Uint8List bytes) async {
+  final codec = await ui.instantiateImageCodec(bytes);
+  final frame = await codec.getNextFrame();
+  return frame.image;
 }

@@ -12,6 +12,7 @@ import '../services/calendar_service.dart';
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../services/offer_acceptance_service.dart';
+import '../services/profile_communication_service.dart';
 import '../widgets/make_offer_dialog.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/phone_link.dart';
@@ -1243,18 +1244,39 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
           .snapshots(),
       builder: (context, snapshot) {
         final data = snapshot.data?.data() as Map<String, dynamic>?;
-        final photos = _teamPhotoUrls(data ?? source);
-        if (photos.isEmpty) {
-          return const Center(child: Text("No team photos yet"));
-        }
-        return ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            StroykaSurface(
-              padding: const EdgeInsets.all(18),
-              child: AppPhotoGridGallery(imageUrls: photos),
-            ),
-          ],
+        final documentPhotos = _teamPhotoUrls(data ?? source);
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection("teams")
+              .doc(teamId)
+              .collection("portfolio")
+              .orderBy("createdAt", descending: true)
+              .snapshots(),
+          builder: (context, portfolioSnapshot) {
+            final portfolioPhotos = (portfolioSnapshot.data?.docs ??
+                    const <QueryDocumentSnapshot>[])
+                .map((doc) => doc.data() as Map<String, dynamic>)
+                .map((data) =>
+                    (data["imageUrl"] ?? data["image"])?.toString() ?? "")
+                .where((url) => url.trim().isNotEmpty)
+                .toList();
+            final photos = <String>{
+              ...documentPhotos,
+              ...portfolioPhotos,
+            }.toList();
+            if (photos.isEmpty) {
+              return const Center(child: Text("No team photos yet"));
+            }
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                StroykaSurface(
+                  padding: const EdgeInsets.all(18),
+                  child: AppPhotoGridGallery(imageUrls: photos),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -1736,17 +1758,30 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                   return const SizedBox.shrink();
                 }
 
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.90),
+                return Material(
+                  color: Colors.white.withValues(alpha: 0.90),
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
                     borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: OutlinedButton.icon(
-                    onPressed: () => openVacancyDetails(context, liveData),
-                    icon: const Icon(Icons.work_outline, size: 17),
-                    label: const Text("View Vacancy"),
+                    onTap: () => openVacancyDetails(context, liveData),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.work_outline, size: 18),
+                          SizedBox(width: 8),
+                          Text(
+                            "View Vacancy",
+                            style: TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 );
               }
@@ -1771,41 +1806,137 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                 final offerRaw = liveData["offer"];
                 final hasOfferDetails = offerRaw is Map && offerRaw.isNotEmpty;
 
+                String firstText(List<dynamic> values) {
+                  for (final value in values) {
+                    final text = value?.toString().trim() ?? "";
+                    if (text.isNotEmpty) return text;
+                  }
+                  return "";
+                }
+
                 Widget workerHeader() {
-                  return applicationHeaderCard(
-                    headerControls:
-                        headerControls(forEmployer: isEmployerViewer),
-                    avatar: CircleAvatar(
-                      radius: 44,
-                      backgroundColor: Colors.grey.shade300,
-                      backgroundImage:
-                          photo != null ? NetworkImage(photo) : null,
-                      child: photo == null
-                          ? const Icon(Icons.person, size: 38)
-                          : null,
-                    ),
+                  final headerImage = firstText([
+                    user["profileHeaderImage"],
+                    user["headerImageUrl"],
+                    user["headerImage"],
+                    user["backgroundUrl"],
+                    user["backgroundImage"],
+                  ]);
+
+                  return StroykaProfileHeader(
+                    margin: EdgeInsets.zero,
                     title: name.toString(),
                     subtitle: trade.toString(),
+                    avatarUrl: photo is String ? photo : null,
+                    headerImageUrl: headerImage,
+                    fallbackIcon: Icons.person,
+                    headerControls:
+                        headerControls(forEmployer: isEmployerViewer),
+                    leftBottomAction: isEmployerViewer && phone != null
+                        ? ProfileCommunicationService.circleAction(
+                            icon: Icons.phone,
+                            tooltip: "Call worker",
+                            onPressed: () =>
+                                ProfileCommunicationService.callPhone(
+                              context,
+                              profileData: user,
+                              phone: phone.toString(),
+                            ),
+                          )
+                        : null,
+                    rightBottomAction: isEmployerViewer && workerId != null
+                        ? ProfileCommunicationService.circleAction(
+                            icon: Icons.chat_bubble_outline,
+                            tooltip: "Message worker",
+                            onPressed: () => ProfileCommunicationService
+                                .openDirectProfileChat(
+                              context: context,
+                              targetUserId: workerId.toString(),
+                              targetRole: "worker",
+                            ),
+                          )
+                        : null,
                   );
                 }
 
                 Widget teamHeader() {
                   final memberIds =
                       List<String>.from(liveData["members"] ?? []);
-                  final teamName =
-                      liveData["teamName"]?.toString().trim().isNotEmpty == true
-                          ? liveData["teamName"].toString().trim()
-                          : "Team";
-                  return applicationHeaderCard(
-                    headerControls:
-                        headerControls(forEmployer: isEmployerViewer),
-                    avatar: const CircleAvatar(
-                      radius: 44,
-                      backgroundColor: Color(0xFFE0E0E0),
-                      child: Icon(Icons.groups, size: 38),
-                    ),
-                    title: teamName,
-                    subtitle: "${memberIds.length} members",
+                  final teamId = liveData["teamId"]?.toString().trim() ?? "";
+                  return StreamBuilder<DocumentSnapshot>(
+                    stream: teamId.isEmpty
+                        ? null
+                        : FirebaseFirestore.instance
+                            .collection("teams")
+                            .doc(teamId)
+                            .snapshots(),
+                    builder: (context, snapshot) {
+                      final teamData =
+                          snapshot.data?.data() as Map<String, dynamic>?;
+                      final merged = {
+                        ...liveData,
+                        if (teamData != null) ...teamData,
+                      };
+                      final teamName = firstText([
+                        merged["name"],
+                        merged["teamName"],
+                      ]);
+                      final avatar = firstText([
+                        merged["avatarUrl"],
+                        merged["photo"],
+                        merged["logo"],
+                      ]);
+                      final headerImage = firstText([
+                        merged["profileHeaderImage"],
+                        merged["headerImageUrl"],
+                        merged["headerImage"],
+                        merged["backgroundUrl"],
+                        merged["backgroundImage"],
+                      ]);
+                      return StroykaProfileHeader(
+                        margin: EdgeInsets.zero,
+                        title: teamName.isEmpty ? "Team" : teamName,
+                        subtitle: "${memberIds.length} members",
+                        avatarUrl: avatar,
+                        headerImageUrl: headerImage,
+                        fallbackIcon: Icons.groups,
+                        headerControls:
+                            headerControls(forEmployer: isEmployerViewer),
+                        leftBottomAction: isEmployerViewer
+                            ? ProfileCommunicationService.circleAction(
+                                icon: Icons.phone,
+                                tooltip: "Call team",
+                                onPressed: () async {
+                                  final phone =
+                                      await ProfileCommunicationService
+                                          .teamPhone(
+                                    merged,
+                                  );
+                                  if (!context.mounted) return;
+                                  await ProfileCommunicationService.callPhone(
+                                    context,
+                                    profileData: merged,
+                                    phone: phone,
+                                  );
+                                },
+                              )
+                            : null,
+                        rightBottomAction: isEmployerViewer && teamId.isNotEmpty
+                            ? ProfileCommunicationService.circleAction(
+                                icon: Icons.chat_bubble_outline,
+                                tooltip: "Message team",
+                                onPressed: () => ProfileCommunicationService
+                                    .openTeamProfileChat(
+                                  context: context,
+                                  teamId: teamId,
+                                  teamName:
+                                      teamName.isEmpty ? "Team" : teamName,
+                                  memberIds: memberIds,
+                                ),
+                              )
+                            : null,
+                      );
+                    },
                   );
                 }
 
@@ -1939,32 +2070,110 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                 }
 
                 Widget teamContactsTab() {
-                  return ListView(
-                    padding: const EdgeInsets.all(20),
-                    // StroykaSurface is intentionally non-const.
-                    // ignore: prefer_const_literals_to_create_immutables
-                    children: [
-                      // ignore: prefer_const_constructors
-                      StroykaSurface(
-                        padding: const EdgeInsets.all(18),
-                        child: const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Contacts",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
+                  final teamId = liveData["teamId"]?.toString().trim() ?? "";
+                  return StreamBuilder<DocumentSnapshot>(
+                    stream: teamId.isEmpty
+                        ? null
+                        : FirebaseFirestore.instance
+                            .collection("teams")
+                            .doc(teamId)
+                            .snapshots(),
+                    builder: (context, teamSnapshot) {
+                      final teamData =
+                          teamSnapshot.data?.data() as Map<String, dynamic>?;
+                      final merged = {
+                        ...liveData,
+                        if (teamData != null) ...teamData,
+                      };
+                      final leaderId = firstText([
+                        merged["leaderId"],
+                        merged["ownerId"],
+                        merged["createdBy"],
+                      ]);
+                      if (leaderId.isEmpty) {
+                        return const Center(
+                          child: Text("No team contact available"),
+                        );
+                      }
+
+                      return StreamBuilder<DocumentSnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection("users")
+                            .doc(leaderId)
+                            .snapshots(),
+                        builder: (context, leaderSnapshot) {
+                          final leader = leaderSnapshot.data?.data()
+                              as Map<String, dynamic>?;
+                          final leaderStatus = leader?["status"]
+                                  ?.toString()
+                                  .trim()
+                                  .toLowerCase() ??
+                              "";
+                          if (leader == null ||
+                              leader["deleted"] == true ||
+                              leader["accountDeleted"] == true ||
+                              leader["active"] == false ||
+                              leaderStatus == "deleted") {
+                            return const Center(
+                              child: Text("No team contact available"),
+                            );
+                          }
+                          final phone = firstText([
+                            merged["phone"],
+                            merged["contactPhone"],
+                            merged["teamPhone"],
+                            leader["phone"],
+                          ]);
+                          final email = firstText([
+                            merged["email"],
+                            merged["contactEmail"],
+                            merged["teamEmail"],
+                            leader["email"],
+                          ]);
+                          return ListView(
+                            padding: const EdgeInsets.all(20),
+                            children: [
+                              StroykaSurface(
+                                padding: const EdgeInsets.all(18),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      "Team leader contact",
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      leader["name"]?.toString() ??
+                                          "Team leader",
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    if (phone.isNotEmpty) ...[
+                                      const SizedBox(height: 10),
+                                      PhoneLink(phone: phone),
+                                    ],
+                                    if (email.isNotEmpty) ...[
+                                      const SizedBox(height: 10),
+                                      Text(email),
+                                    ],
+                                    if (phone.isEmpty && email.isEmpty) ...[
+                                      const SizedBox(height: 10),
+                                      const Text(
+                                          "No contact details available"),
+                                    ],
+                                  ],
+                                ),
                               ),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              "Team contact details are available through selected team members.",
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                            ],
+                          );
+                        },
+                      );
+                    },
                   );
                 }
 
@@ -2029,8 +2238,12 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                         : (hasOfferDetails ? 1 : 0),
                     child: Column(
                       children: [
+                        StroykaTabBar(
+                          margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                          labels: labels,
+                        ),
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
                           child: Column(
                             children: [
                               if (isTeam) teamHeader() else workerHeader(),
@@ -2039,10 +2252,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                             ],
                           ),
                         ),
-                        StroykaTabBar(
-                          margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                          labels: labels,
-                        ),
+                        const SizedBox(height: 12),
                         Expanded(
                           child: TabBarView(children: pages),
                         ),
