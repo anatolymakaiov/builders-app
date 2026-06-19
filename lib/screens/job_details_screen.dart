@@ -1115,23 +1115,28 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Widget buildApplyButton() {
     if (role != "worker") return const SizedBox();
 
-    return SizedBox(
-      width: double.infinity,
-      height: 42,
-      child: ElevatedButton(
-        style: compactPrimaryActionStyle,
-        onPressed: isApplying
-            ? null
-            : () async {
-                if (isApplied) {
-                  await withdrawApplication();
-                } else {
-                  await apply();
-                }
-              },
-        child: Text(
-          isApplied ? "Withdraw application" : "Apply for this job",
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+    return Align(
+      alignment: Alignment.center,
+      child: FractionallySizedBox(
+        widthFactor: 0.86,
+        child: SizedBox(
+          height: 42,
+          child: ElevatedButton(
+            style: compactPrimaryActionStyle,
+            onPressed: isApplying
+                ? null
+                : () async {
+                    if (isApplied) {
+                      await withdrawApplication();
+                    } else {
+                      await apply();
+                    }
+                  },
+            child: Text(
+              isApplied ? "Withdraw application" : "Apply for this job",
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+            ),
+          ),
         ),
       ),
     );

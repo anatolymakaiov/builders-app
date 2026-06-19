@@ -203,21 +203,37 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
 
-    final ref = FirebaseStorage.instance.ref().child(
-        "team_headers/${widget.teamId}_${DateTime.now().millisecondsSinceEpoch}_${picked.name}");
+    try {
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child("team_avatars/${widget.teamId}_header_$timestamp.png");
 
-    await ref.putFile(File(picked.path));
-    final url = await ref.getDownloadURL();
+      await ref.putFile(
+        File(picked.path),
+        SettableMetadata(contentType: picked.mimeType ?? "image/png"),
+      );
+      final url = await ref.getDownloadURL();
 
-    await FirebaseFirestore.instance
-        .collection("teams")
-        .doc(widget.teamId)
-        .set({
-      "headerImageUrl": url,
-      "profileHeaderImage": url,
-      "headerImage": url,
-    }, SetOptions(merge: true));
-    if (mounted) setState(() => localHeaderImageUrl = url);
+      await FirebaseFirestore.instance
+          .collection("teams")
+          .doc(widget.teamId)
+          .set({
+        "headerImageUrl": url,
+        "profileHeaderImage": url,
+        "headerImage": url,
+        "backgroundUrl": url,
+        "backgroundImage": url,
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (mounted) setState(() => localHeaderImageUrl = url);
+    } catch (error) {
+      debugPrint("TEAM BACKGROUND UPDATE FAILED: $error");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not update team background.")),
+      );
+    }
   }
 
   Future<void> addTeamPortfolioImages() async {
@@ -860,46 +876,39 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  if (widget.showInternalChat) ...[
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.blueprintLine,
-                          side: const BorderSide(
-                            color: AppColors.blueprintLine,
-                          ),
-                          backgroundColor: Colors.white.withValues(alpha: 0.18),
-                        ),
-                        onPressed: members.isEmpty
-                            ? null
-                            : () => openInternalChat(name, members),
-                        icon: const Icon(Icons.forum),
-                        label: const Text("Team chat"),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
                   if (canEdit || isMember) ...[
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: StroykaSurface(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                            side: const BorderSide(color: Colors.red),
+                    Material(
+                      color: Colors.white.withValues(alpha: 0.82),
+                      borderRadius: BorderRadius.circular(14),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: canEdit
+                            ? (deletingTeam ? null : deleteTeam)
+                            : () => leaveTeam(team, members),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 13,
                           ),
-                          onPressed: canEdit
-                              ? (deletingTeam ? null : deleteTeam)
-                              : () => leaveTeam(team, members),
-                          icon: Icon(
-                            canEdit ? Icons.delete_outline : Icons.logout,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                canEdit ? Icons.delete_outline : Icons.logout,
+                                size: 18,
+                                color: Colors.red,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                canEdit ? "Delete team" : "Leave team",
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
                           ),
-                          label: Text(canEdit ? "Delete team" : "Leave team"),
                         ),
                       ),
                     ),

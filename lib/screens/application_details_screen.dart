@@ -2250,12 +2250,11 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                           child: Column(
                             children: [
                               if (isTeam) teamHeader() else workerHeader(),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 10),
                               applicationNavigationActions(),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 12),
                         Expanded(
                           child: TabBarView(children: pages),
                         ),

@@ -2155,10 +2155,13 @@ class _CreateTeamDialogState extends State<_CreateTeamDialog> {
       final background = pickedBackground;
       if (background != null) {
         final ref = FirebaseStorage.instance.ref().child(
-              "team_headers/${widget.userId}_${DateTime.now().millisecondsSinceEpoch}_${background.name}",
+              "team_avatars/${widget.userId}_header_${DateTime.now().millisecondsSinceEpoch}.png",
             );
 
-        await ref.putFile(File(background.path));
+        await ref.putFile(
+          File(background.path),
+          SettableMetadata(contentType: background.mimeType ?? "image/png"),
+        );
         headerImageUrl = await ref.getDownloadURL();
         if (!mounted) return;
       }
@@ -2177,6 +2180,8 @@ class _CreateTeamDialogState extends State<_CreateTeamDialog> {
         if (headerImageUrl != null) "headerImageUrl": headerImageUrl,
         if (headerImageUrl != null) "profileHeaderImage": headerImageUrl,
         if (headerImageUrl != null) "headerImage": headerImageUrl,
+        if (headerImageUrl != null) "backgroundUrl": headerImageUrl,
+        if (headerImageUrl != null) "backgroundImage": headerImageUrl,
         "createdAt": FieldValue.serverTimestamp(),
         "updatedAt": FieldValue.serverTimestamp(),
       });
