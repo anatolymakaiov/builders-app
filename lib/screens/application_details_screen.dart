@@ -1017,6 +1017,8 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
     Widget navigationActions, {
     bool includeHeader = true,
     bool includeNavigation = true,
+    bool includeDescription = true,
+    bool includeMembers = true,
   }) {
     final teamId = source["teamId"];
     final memberIds = List<String>.from(source["members"] ?? []);
@@ -1056,7 +1058,8 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
             ],
             if (includeNavigation) navigationActions,
             const SizedBox(height: 24),
-            if (description != null &&
+            if (includeDescription &&
+                description != null &&
                 description.toString().trim().isNotEmpty) ...[
               Container(
                 width: double.infinity,
@@ -1079,110 +1082,178 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
               ),
               const SizedBox(height: 20),
             ],
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.90),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      "Team members",
-                      style: TextStyle(
-                        color: AppColors.ink,
-                        fontWeight: FontWeight.w900,
+            if (includeMembers) ...[
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.90),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        "Team members",
+                        style: TextStyle(
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: memberIds.isEmpty
-                        ? null
-                        : () {
+                    TextButton(
+                      onPressed: memberIds.isEmpty
+                          ? null
+                          : () {
+                              setState(() {
+                                if (allSelected) {
+                                  selectedMembers.clear();
+                                } else {
+                                  selectedMembers
+                                    ..clear()
+                                    ..addAll(memberIds);
+                                }
+                              });
+                            },
+                      child: Text(allSelected ? "Deselect All" : "Select All"),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              ...memberIds.map((memberId) {
+                return StreamBuilder<DocumentSnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection("users")
+                      .doc(memberId)
+                      .snapshots(),
+                  builder: (context, snap) {
+                    if (!snap.hasData || !snap.data!.exists) {
+                      return const SizedBox();
+                    }
+
+                    final user = snap.data!.data() as Map<String, dynamic>;
+                    final userStatus =
+                        user["status"]?.toString().trim().toLowerCase() ?? "";
+                    if (user["deleted"] == true ||
+                        user["accountDeleted"] == true ||
+                        user["active"] == false ||
+                        userStatus == "deleted") {
+                      return const SizedBox.shrink();
+                    }
+                    final photo = user["photo"] ?? user["avatarUrl"];
+                    final isSelected = selectedMembers.contains(memberId);
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundImage: photo == null
+                              ? null
+                              : NetworkImage(photo.toString()),
+                          child:
+                              photo == null ? const Icon(Icons.person) : null,
+                        ),
+                        title: Text(user["name"] ?? "Worker"),
+                        subtitle: Text(user["trade"] ?? ""),
+                        trailing: Checkbox(
+                          value: isSelected,
+                          onChanged: (value) {
                             setState(() {
-                              if (allSelected) {
-                                selectedMembers.clear();
+                              if (value == true) {
+                                selectedMembers.add(memberId);
                               } else {
-                                selectedMembers
-                                  ..clear()
-                                  ..addAll(memberIds);
+                                selectedMembers.remove(memberId);
                               }
                             });
                           },
-                    child: Text(allSelected ? "Deselect All" : "Select All"),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            ...memberIds.map((memberId) {
-              return StreamBuilder<DocumentSnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection("users")
-                    .doc(memberId)
-                    .snapshots(),
-                builder: (context, snap) {
-                  if (!snap.hasData || !snap.data!.exists) {
-                    return const SizedBox();
-                  }
-
-                  final user = snap.data!.data() as Map<String, dynamic>;
-                  final userStatus =
-                      user["status"]?.toString().trim().toLowerCase() ?? "";
-                  if (user["deleted"] == true ||
-                      user["accountDeleted"] == true ||
-                      user["active"] == false ||
-                      userStatus == "deleted") {
-                    return const SizedBox.shrink();
-                  }
-                  final photo = user["photo"] ?? user["avatarUrl"];
-                  final isSelected = selectedMembers.contains(memberId);
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundImage: photo == null
-                            ? null
-                            : NetworkImage(photo.toString()),
-                        child: photo == null ? const Icon(Icons.person) : null,
-                      ),
-                      title: Text(user["name"] ?? "Worker"),
-                      subtitle: Text(user["trade"] ?? ""),
-                      trailing: Checkbox(
-                        value: isSelected,
-                        onChanged: (value) {
-                          setState(() {
-                            if (value == true) {
-                              selectedMembers.add(memberId);
-                            } else {
-                              selectedMembers.remove(memberId);
-                            }
-                          });
+                        ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => WorkerProfileScreen(
+                                userId: memberId,
+                              ),
+                            ),
+                          );
                         },
                       ),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => WorkerProfileScreen(
-                              userId: memberId,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  );
-                },
-              );
-            }),
+                    );
+                  },
+                );
+              }),
+            ],
             const SizedBox(height: 20),
+          ],
+        );
+      },
+    );
+  }
+
+  List<String> _teamPhotoUrls(Map<String, dynamic> data) {
+    final values = <String>{};
+    for (final key in const [
+      "gallery",
+      "galleryUrls",
+      "photoUrls",
+      "photos",
+      "portfolio",
+      "portfolioUrls",
+    ]) {
+      final raw = data[key];
+      if (raw is List) {
+        values.addAll(
+          raw
+              .map((item) => item?.toString().trim() ?? "")
+              .where((item) => item.isNotEmpty),
+        );
+      }
+    }
+    return values.toList();
+  }
+
+  Widget buildTeamPhotosTab(Map<String, dynamic> source) {
+    final teamId = source["teamId"]?.toString().trim();
+    if (teamId == null || teamId.isEmpty) {
+      final sourcePhotos = _teamPhotoUrls(source);
+      if (sourcePhotos.isEmpty) {
+        return const Center(child: Text("No team photos yet"));
+      }
+      return ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          StroykaSurface(
+            padding: const EdgeInsets.all(18),
+            child: AppPhotoGridGallery(imageUrls: sourcePhotos),
+          ),
+        ],
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("teams")
+          .doc(teamId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() as Map<String, dynamic>?;
+        final photos = _teamPhotoUrls(data ?? source);
+        if (photos.isEmpty) {
+          return const Center(child: Text("No team photos yet"));
+        }
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            StroykaSurface(
+              padding: const EdgeInsets.all(18),
+              child: AppPhotoGridGallery(imageUrls: photos),
+            ),
           ],
         );
       },
@@ -1665,20 +1736,17 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                   return const SizedBox.shrink();
                 }
 
-                return Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      if (jobId.isNotEmpty)
-                        OutlinedButton.icon(
-                          onPressed: () =>
-                              openVacancyDetails(context, liveData),
-                          icon: const Icon(Icons.work_outline, size: 17),
-                          label: const Text("View Vacancy"),
-                        ),
-                    ],
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.90),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: OutlinedButton.icon(
+                    onPressed: () => openVacancyDetails(context, liveData),
+                    icon: const Icon(Icons.work_outline, size: 17),
+                    label: const Text("View Vacancy"),
                   ),
                 );
               }
@@ -1848,106 +1916,135 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                   );
                 }
 
-                if (isEmployerViewer && hasOfferDetails) {
-                  return DefaultTabController(
-                    length: 5,
-                    initialIndex: widget.initialOfferTab ? 0 : 1,
-                    child: Column(
-                      children: [
-                        const StroykaTabBar(
-                          margin: EdgeInsets.fromLTRB(12, 12, 12, 10),
-                          labels: [
-                            "Offer",
-                            "Info",
-                            "Contacts",
-                            "Photos",
-                            "Teams"
+                Widget teamInfoTab() {
+                  return ListView(
+                    padding: const EdgeInsets.all(20),
+                    children: [
+                      StroykaSurface(
+                        padding: const EdgeInsets.all(18),
+                        child: buildTeamProfile(
+                          context,
+                          selectedMembers,
+                          liveData,
+                          headerControls(forEmployer: isEmployerViewer),
+                          applicationNavigationActions(),
+                          includeHeader: false,
+                          includeNavigation: false,
+                          includeDescription: true,
+                          includeMembers: false,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                Widget teamContactsTab() {
+                  return ListView(
+                    padding: const EdgeInsets.all(20),
+                    // StroykaSurface is intentionally non-const.
+                    // ignore: prefer_const_literals_to_create_immutables
+                    children: [
+                      // ignore: prefer_const_constructors
+                      StroykaSurface(
+                        padding: const EdgeInsets.all(18),
+                        child: const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Contacts",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              "Team contact details are available through selected team members.",
+                            ),
                           ],
                         ),
+                      ),
+                    ],
+                  );
+                }
+
+                Widget teamMembersTab() {
+                  return ListView(
+                    padding: const EdgeInsets.all(20),
+                    children: [
+                      StroykaSurface(
+                        padding: const EdgeInsets.all(18),
+                        child: buildTeamProfile(
+                          context,
+                          selectedMembers,
+                          liveData,
+                          headerControls(forEmployer: isEmployerViewer),
+                          applicationNavigationActions(),
+                          includeHeader: false,
+                          includeNavigation: false,
+                          includeDescription: false,
+                          includeMembers: true,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                if (isEmployerViewer) {
+                  final labels = <String>[
+                    if (hasOfferDetails) "Offer",
+                    "Info",
+                    "Contacts",
+                    "Photos",
+                    isTeam ? "Members" : "Teams",
+                  ];
+                  final pages = <Widget>[
+                    if (hasOfferDetails) offerTab(),
+                    if (isTeam) teamInfoTab() else infoTab(),
+                    if (isTeam) teamContactsTab() else contactsTab(),
+                    if (isTeam)
+                      buildTeamPhotosTab(liveData)
+                    else
+                      ListView(
+                        padding: const EdgeInsets.all(20),
+                        children: [
+                          StroykaSurface(
+                            padding: const EdgeInsets.all(18),
+                            child: buildPortfolioGallery(
+                              workerId.toString(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    if (isTeam)
+                      teamMembersTab()
+                    else
+                      buildWorkerTeamsTab(workerId.toString()),
+                  ];
+
+                  return DefaultTabController(
+                    length: labels.length,
+                    initialIndex: hasOfferDetails && widget.initialOfferTab
+                        ? 0
+                        : (hasOfferDetails ? 1 : 0),
+                    child: Column(
+                      children: [
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
                           child: Column(
                             children: [
                               if (isTeam) teamHeader() else workerHeader(),
+                              const SizedBox(height: 12),
                               applicationNavigationActions(),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 10),
+                        StroykaTabBar(
+                          margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                          labels: labels,
+                        ),
                         Expanded(
-                          child: TabBarView(
-                            children: [
-                              offerTab(),
-                              if (isTeam)
-                                ListView(
-                                  padding: const EdgeInsets.all(20),
-                                  children: [
-                                    StroykaSurface(
-                                      padding: const EdgeInsets.all(18),
-                                      child: buildTeamProfile(
-                                        context,
-                                        selectedMembers,
-                                        liveData,
-                                        headerControls(
-                                          forEmployer: isEmployerViewer,
-                                        ),
-                                        applicationNavigationActions(),
-                                        includeHeader: false,
-                                        includeNavigation: false,
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              else
-                                infoTab(),
-                              if (isTeam)
-                                const Center(
-                                  child: Text(
-                                    "Team contacts are available through selected team members.",
-                                  ),
-                                )
-                              else
-                                contactsTab(),
-                              if (isTeam)
-                                const Center(
-                                  child: Text("No team photos available"),
-                                )
-                              else
-                                ListView(
-                                  padding: const EdgeInsets.all(20),
-                                  children: [
-                                    StroykaSurface(
-                                      padding: const EdgeInsets.all(18),
-                                      child: buildPortfolioGallery(
-                                        workerId.toString(),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              if (isTeam)
-                                ListView(
-                                  padding: const EdgeInsets.all(20),
-                                  children: [
-                                    StroykaSurface(
-                                      padding: const EdgeInsets.all(18),
-                                      child: buildTeamProfile(
-                                        context,
-                                        selectedMembers,
-                                        liveData,
-                                        headerControls(
-                                          forEmployer: isEmployerViewer,
-                                        ),
-                                        applicationNavigationActions(),
-                                        includeHeader: false,
-                                        includeNavigation: false,
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              else
-                                buildWorkerTeamsTab(workerId.toString()),
-                            ],
-                          ),
+                          child: TabBarView(children: pages),
                         ),
                       ],
                     ),

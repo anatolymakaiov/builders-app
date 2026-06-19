@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'application_details_screen.dart';
-import 'worker_profile_screen.dart';
 import '../services/application_activity_service.dart';
 import '../services/application_status_utils.dart';
 import '../theme/app_theme.dart';
@@ -440,30 +439,6 @@ class _EmployerApplicationsScreenState
                                   .markViewedByEmployer(doc.id);
                             }
                             if (!context.mounted) return;
-
-                            final workerId = data["workerId"]?.toString();
-                            final jobId = data["jobId"]?.toString();
-                            final applicationEmployerId =
-                                data["employerId"]?.toString();
-                            final offer = data["offer"];
-                            final hasOffer = offer is Map && offer.isNotEmpty;
-
-                            if (type != "team" &&
-                                !hasOffer &&
-                                workerId != null &&
-                                workerId.isNotEmpty) {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => WorkerProfileScreen(
-                                    userId: workerId,
-                                    jobId: jobId,
-                                    employerId: applicationEmployerId,
-                                  ),
-                                ),
-                              );
-                              return;
-                            }
 
                             Navigator.push(
                               context,
