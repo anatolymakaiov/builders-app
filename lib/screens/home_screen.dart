@@ -747,15 +747,22 @@ class _HomeScreenState extends State<HomeScreen> {
       left: 8,
       top: 0,
       child: SafeArea(
-        child: IconButton(
-          tooltip: "Notifications",
-          onPressed: openNotifications,
-          icon: IconTheme(
-            data: const IconThemeData(
-              color: Colors.white,
-              size: 24,
+        child: SizedBox(
+          width: kToolbarHeight,
+          height: kToolbarHeight,
+          child: Center(
+            child: IconButton(
+              tooltip: "Notifications",
+              iconSize: 24,
+              onPressed: openNotifications,
+              icon: IconTheme(
+                data: const IconThemeData(
+                  color: Colors.white,
+                  size: 24,
+                ),
+                child: buildBadgeIcon(Icons.notifications_outlined, notifCount),
+              ),
             ),
-            child: buildBadgeIcon(Icons.notifications_outlined, notifCount),
           ),
         ),
       ),
@@ -933,7 +940,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                         ),
-                        if (!_showOnboardingTour)
+                        if (!_showOnboardingTour &&
+                            !(role == "worker" && currentIndex == 4))
                           buildTopNotificationBell(notifCount),
                         if (_showOnboardingTour)
                           _buildTourOverlay(items.length),
