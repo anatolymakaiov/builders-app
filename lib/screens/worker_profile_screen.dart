@@ -1664,7 +1664,7 @@ class WorkerProfileScreen extends StatelessWidget {
                     builder: (context) => const ProfileHamburgerButton(),
                   )
                 : null,
-        title: const Text("Worker Profile"),
+        title: Text(showOwnProfileControls ? "Profile" : "Worker Profile"),
         actions: [
           if (showOwnProfileControls) ...[
             IconButton(
