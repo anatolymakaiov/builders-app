@@ -9,6 +9,7 @@ import '../services/job_repository.dart';
 import '../services/notification_service.dart';
 import '../services/billing_service.dart';
 import '../services/job_taxonomy_service.dart';
+import '../services/offer_acceptance_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/job_pagination.dart';
@@ -112,16 +113,6 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     }
 
     return chips;
-  }
-
-  int applicationSlotCount(Map<String, dynamic> data) {
-    final workersCount = data["workersCount"];
-    if (workersCount is num && workersCount > 0) return workersCount.toInt();
-
-    final members = data["members"];
-    if (members is List && members.isNotEmpty) return members.length;
-
-    return 1;
   }
 
   Widget buildStatTile({
@@ -335,8 +326,8 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
             inReview++;
           }
           if (status == "offer_sent") offer++;
-          if (status == "offer_accepted" || status == "accepted") {
-            acceptedSlots += applicationSlotCount(data);
+          if (OfferAcceptanceService.isAcceptedStatus(status)) {
+            acceptedSlots += OfferAcceptanceService.applicationSlotCount(data);
           }
           if (status == "rejected" || status == "withdrawn") rejected++;
         }

@@ -45,6 +45,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Job? liveJob;
   StreamSubscription<DocumentSnapshot>? jobSubscription;
   final List<StreamSubscription> applyStateSubscriptions = [];
+  final Set<String> _slotCounterLogKeys = <String>{};
 
   Job get activeJob => liveJob ?? widget.job;
   String? get userId => FirebaseAuth.instance.currentUser?.uid;
@@ -754,25 +755,13 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
   }
 
-  int applicationSlotCount(Map<String, dynamic> data) {
-    final workersCount = data["workersCount"];
-    if (workersCount is num && workersCount > 0) return workersCount.toInt();
-
-    final members = data["members"];
-    if (members is List && members.isNotEmpty) return members.length;
-
-    return 1;
-  }
-
   int acceptedSlotsFromDocs(List<QueryDocumentSnapshot> docs) {
     int accepted = 0;
 
     for (final doc in docs) {
       final data = doc.data() as Map<String, dynamic>;
-      final status = data["status"] ?? "";
-
-      if (status == "offer_accepted" || status == "accepted") {
-        accepted += applicationSlotCount(data);
+      if (OfferAcceptanceService.isAcceptedStatus(data["status"])) {
+        accepted += OfferAcceptanceService.applicationSlotCount(data);
       }
     }
 
@@ -1392,7 +1381,24 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           .doc(activeJob.id)
           .snapshots(),
       builder: (context, snapshot) {
-        final counts = jobPositionCounts(snapshot.data?.data());
+        final data = snapshot.data?.data();
+        final counts = jobPositionCounts(data);
+        final logKey = [
+          activeJob.id,
+          counts.remaining,
+          counts.positions,
+          counts.filledPositions,
+        ].join(":");
+        if (_slotCounterLogKeys.add(logKey)) {
+          debugPrint(
+            "JOB SLOT COUNTER SOURCE "
+            "jobId=${activeJob.id} "
+            "availableField=${data?["remainingPositions"] ?? data?["openSlots"] ?? data?["availableSlots"] ?? ""} "
+            "totalField=${data?["positions"] ?? activeJob.positions} "
+            "acceptedHiredCount=${counts.filledPositions} "
+            "displayText=${counts.remaining}/${counts.positions} spots available",
+          );
+        }
 
         return Padding(
           padding: const EdgeInsets.only(top: 12),
@@ -2043,8 +2049,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             inReview++;
           }
           if (status == "offer_sent") offer++;
-          if (status == "offer_accepted" || status == "accepted") {
-            acceptedSlots += applicationSlotCount(
+          if (OfferAcceptanceService.isAcceptedStatus(status)) {
+            acceptedSlots += OfferAcceptanceService.applicationSlotCount(
               doc.data() as Map<String, dynamic>,
             );
           }

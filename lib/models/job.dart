@@ -405,7 +405,12 @@ class Job {
 
       /// 🔥 FIX
       positions: positionsRaw == 0 ? 1 : positionsRaw,
-      filledPositions: safeInt(data["filledPositions"]),
+      filledPositions: safeInt(
+        data["filledPositions"] ??
+            data["acceptedSlotTotal"] ??
+            data["hiredCount"] ??
+            data["acceptedCount"],
+      ),
     );
   }
 }

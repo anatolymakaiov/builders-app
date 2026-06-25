@@ -105,7 +105,7 @@ async function main() {
       applications: [],
     };
     current.filled += count;
-    current.applications.push({ id: appDoc.id, count });
+    current.applications.push({ id: appDoc.id, ref: appDoc.ref, count });
     acceptedByJob.set(jobId, current);
   }
 
@@ -125,27 +125,40 @@ async function main() {
     const currentRemaining = readInt(
       data.remainingPositions ?? data.openSlots ?? data.availablePositions,
     );
-
+    const storedIds = Array.isArray(data.slotDecrementApplicationIds)
+      ? new Set(data.slotDecrementApplicationIds.map((item) => String(item)))
+      : new Set();
+    const missingJobMarkers = actual.applications.filter(
+      (item) => !storedIds.has(item.id),
+    );
     const mismatch =
-      currentFilled !== expectedFilled || currentRemaining !== expectedRemaining;
+      currentFilled !== expectedFilled ||
+      currentRemaining !== expectedRemaining ||
+      missingJobMarkers.length > 0;
     if (!mismatch) continue;
 
     mismatches += 1;
+    const acceptedAppsText = actual.applications
+      .map((item) => `${item.id}:${item.count}`)
+      .join(",");
     console.log(
       [
-        commit ? "WRITE" : "DRY-RUN",
-        `job=${jobDoc.id}`,
-        `positions=${positions}`,
-        `filled ${currentFilled}->${expectedFilled}`,
-        `remaining ${currentRemaining}->${expectedRemaining}`,
-        `acceptedApps=${actual.applications
-          .map((item) => `${item.id}:${item.count}`)
-          .join(",")}`,
+        "JOB SLOT MISMATCH",
+        `jobId=${jobDoc.id}`,
+        `totalSlots=${positions}`,
+        `storedFilledSlots=${currentFilled}`,
+        `storedAvailableSlots=${currentRemaining}`,
+        `acceptedHiredCount=${expectedFilled}`,
+        `expectedAvailableSlots=${expectedRemaining}`,
+        `acceptedApps=${acceptedAppsText}`,
+        `missingJobMarkers=${missingJobMarkers.map((item) => item.id).join(",")}`,
+        `mode=${commit ? "commit" : "dry-run"}`,
       ].join(" "),
     );
 
     if (commit) {
-      await jobDoc.ref.update({
+      const batch = db.batch();
+      batch.update(jobDoc.ref, {
         filledPositions: expectedFilled,
         remainingPositions: expectedRemaining,
         openSlots: expectedRemaining,
@@ -154,8 +167,20 @@ async function main() {
         remainingSlots: expectedRemaining,
         positionsAvailable: expectedRemaining,
         hiredCount: expectedFilled,
+        acceptedSlotTotal: expectedFilled,
+        slotDecrementApplicationIds: actual.applications.map((item) => item.id),
         lastSlotReconcileAt: FieldValue.serverTimestamp(),
       });
+      for (const item of actual.applications) {
+        batch.update(item.ref, {
+          acceptedSlotCount: item.count,
+          slotDecrementApplied: true,
+          slotDecrementJobId: jobDoc.id,
+          slotDecrementReconciledAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
       writes += 1;
     }
   }

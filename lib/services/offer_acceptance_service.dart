@@ -1,10 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import 'application_activity_service.dart';
 
 class OfferAcceptanceService {
   const OfferAcceptanceService._();
+
+  static bool isAcceptedStatus(dynamic value) {
+    final status = value?.toString().trim().toLowerCase() ?? "";
+    return status == "accepted" ||
+        status == "offer_accepted" ||
+        status == "hired";
+  }
 
   static int applicationSlotCount(Map<String, dynamic> data) {
     final offerRaw = data["offer"];
@@ -48,12 +56,18 @@ class OfferAcceptanceService {
       final appData = appSnap.data() as Map<String, dynamic>;
       final currentStatus =
           appData["status"]?.toString().trim().toLowerCase() ?? "";
-      final acceptedStatus = currentStatus == "accepted" ||
-          currentStatus == "offer_accepted" ||
-          currentStatus == "hired";
-      if (acceptedStatus || appData["slotDecrementApplied"] == true) {
-        return;
-      }
+      final acceptedStatus = isAcceptedStatus(currentStatus);
+      final slotCount = applicationSlotCount(appData);
+
+      debugPrint(
+        "OFFER ACCEPT SLOT UPDATE START "
+        "jobId=${appData["jobId"] ?? ""} "
+        "offerId=${appData["offerId"] ?? ""} "
+        "applicationId=$applicationId "
+        "previousStatus=$currentStatus "
+        "newStatus=offer_accepted "
+        "acceptedCount=$slotCount",
+      );
 
       final offerRaw = appData["offer"];
       final offer = offerRaw is Map
@@ -76,12 +90,46 @@ class OfferAcceptanceService {
       if (!jobSnap.exists) throw Exception("job_not_found");
 
       final jobData = jobSnap.data() as Map<String, dynamic>;
+      final appliedIdsRaw = jobData["slotDecrementApplicationIds"];
+      final appliedIds = appliedIdsRaw is List
+          ? appliedIdsRaw.map((id) => id.toString()).toSet()
+          : <String>{};
+      final alreadyApplied = appData["slotDecrementApplied"] == true ||
+          appliedIds.contains(applicationId);
+      if (alreadyApplied) {
+        debugPrint(
+          "OFFER ACCEPT SLOT UPDATE SKIPPED "
+          "applicationId=$applicationId "
+          "reason=slot_decrement_already_applied",
+        );
+        return;
+      }
+
+      if (acceptedStatus) {
+        debugPrint(
+          "OFFER ACCEPT SLOT UPDATE RECOVERING "
+          "applicationId=$applicationId "
+          "reason=accepted_status_without_slot_marker",
+        );
+      }
+
       final positions = readInt(jobData["positions"]);
-      final filled = readInt(jobData["filledPositions"]);
-      final slotCount = applicationSlotCount(appData);
+      final filled = readInt(
+        jobData["filledPositions"] ??
+            jobData["acceptedSlotTotal"] ??
+            jobData["hiredCount"],
+      );
       final safePositions = positions <= 0 ? slotCount : positions;
       final nextFilled = filled + slotCount;
       if (nextFilled > safePositions) {
+        debugPrint(
+          "OFFER ACCEPT SLOT UPDATE SKIPPED "
+          "applicationId=$applicationId "
+          "reason=not_enough_positions "
+          "filled=$filled "
+          "acceptedCount=$slotCount "
+          "positions=$safePositions",
+        );
         throw Exception("not_enough_positions");
       }
       final remaining = (safePositions - nextFilled).clamp(0, safePositions);
@@ -95,6 +143,7 @@ class OfferAcceptanceService {
         "acceptedSlotCount": slotCount,
         "slotDecrementApplied": true,
         "slotDecrementAppliedAt": FieldValue.serverTimestamp(),
+        "slotDecrementJobId": jobId,
         "updatedAt": FieldValue.serverTimestamp(),
         "unreadFor": ApplicationActivityService.employerRecipients(appData),
       });
@@ -109,11 +158,20 @@ class OfferAcceptanceService {
         "positionsAvailable": remaining,
         "acceptedOffersCount": FieldValue.increment(1),
         "hiredCount": nextFilled,
+        "acceptedSlotTotal": nextFilled,
+        "slotDecrementApplicationIds": FieldValue.arrayUnion([applicationId]),
         "lastAcceptedApplicationId": applicationId,
         "lastAcceptedCounterSyncAt": FieldValue.serverTimestamp(),
         "updatedAt": FieldValue.serverTimestamp(),
       });
 
+      debugPrint(
+        "OFFER ACCEPT SLOT UPDATE SUCCESS "
+        "jobId=$jobId "
+        "oldAvailable=${(safePositions - filled).clamp(0, safePositions)} "
+        "newAvailable=$remaining "
+        "totalSlots=$safePositions",
+      );
       accepted = true;
     });
 
