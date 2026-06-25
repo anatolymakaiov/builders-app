@@ -177,8 +177,8 @@ service cloud.firestore {
         && exists(jobPath(jobId))
         && isPublicJob(get(jobPath(jobId)).data)
         && !isJobHeldData(get(jobPath(jobId)).data)
-        && !isUserHeld(get(jobPath(jobId)).data.ownerId)
-        && !isUserHeld(get(jobPath(jobId)).data.employerId);
+        && (!("ownerId" in get(jobPath(jobId)).data) || !isUserHeld(get(jobPath(jobId)).data.ownerId))
+        && (!("employerId" in get(jobPath(jobId)).data) || !isUserHeld(get(jobPath(jobId)).data.employerId));
     }
 
     function isSingleApplicationCreate(data) {
