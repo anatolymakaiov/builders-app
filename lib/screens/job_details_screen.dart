@@ -518,6 +518,16 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             .collection("applications")
             .doc(teamApplicationDocumentId(teamId));
 
+        debugPrint(
+          "APPLY WRITE START "
+          "path=applications/${applicationRef.id} "
+          "type=team "
+          "workerId=$uid "
+          "teamId=$teamId "
+          "jobId=${activeJob.id} "
+          "authUid=$uid",
+        );
+
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           final jobRef =
               FirebaseFirestore.instance.collection("jobs").doc(activeJob.id);
@@ -624,6 +634,16 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
         final applicationRef =
             FirebaseFirestore.instance.collection("applications").doc();
+
+        debugPrint(
+          "APPLY WRITE START "
+          "path=applications/${applicationRef.id} "
+          "type=single "
+          "workerId=$uid "
+          "teamId= "
+          "jobId=${activeJob.id} "
+          "authUid=$uid",
+        );
 
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           final jobRef =
