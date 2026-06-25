@@ -45,6 +45,7 @@ class Job {
 
   final int applicantsCount;
   final DateTime? createdAt;
+  final DateTime? postedAt;
   final String status;
   final String moderationStatus;
   final String moderationReason;
@@ -89,6 +90,7 @@ class Job {
     required this.ownerId,
     this.applicantsCount = 0,
     this.createdAt,
+    this.postedAt,
     this.status = "active",
     this.moderationStatus = "",
     this.moderationReason = "",
@@ -148,6 +150,7 @@ class Job {
       ownerId: ownerId ?? this.ownerId,
       applicantsCount: applicantsCount,
       createdAt: createdAt,
+      postedAt: postedAt,
       status: status ?? this.status,
       moderationStatus: moderationStatus ?? this.moderationStatus,
       moderationReason: moderationReason,
@@ -388,6 +391,10 @@ class Job {
 
       applicantsCount: safeInt(data["applicantsCount"]),
       createdAt: safeDate(data["createdAt"]),
+      postedAt: safeDate(data["publishedAt"]) ??
+          safeDate(data["approvedAt"]) ??
+          safeDate(data["postedAt"]) ??
+          safeDate(data["createdAt"]),
       status: data["status"]?.toString() ?? "active",
       moderationStatus: data["moderationStatus"]?.toString() ?? "",
       moderationReason: data["moderationReason"]?.toString() ?? "",

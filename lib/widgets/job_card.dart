@@ -182,6 +182,9 @@ class _TitleBlock extends StatelessWidget {
       job.city.trim(),
       job.postcode.trim(),
     ].where((item) => item.isNotEmpty).join(" ");
+    final postedDate = job.postedAt;
+    final postedText =
+        postedDate == null ? "" : "Posted: ${_formatPostedDate(postedDate)}";
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,6 +221,19 @@ class _TitleBlock extends StatelessWidget {
             ),
           ),
         ],
+        if (postedText.isNotEmpty) ...[
+          const SizedBox(height: 3),
+          Text(
+            postedText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ],
         if (detailText != null && detailText!.trim().isNotEmpty) ...[
           const SizedBox(height: 3),
           Text(
@@ -233,6 +249,25 @@ class _TitleBlock extends StatelessWidget {
         ],
       ],
     );
+  }
+
+  String _formatPostedDate(DateTime date) {
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    final month = months[(date.month - 1).clamp(0, 11)];
+    return "${date.day} $month ${date.year}";
   }
 }
 
