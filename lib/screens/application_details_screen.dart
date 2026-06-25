@@ -131,6 +131,15 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
 
     try {
       final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+      debugPrint(
+        "OFFER_ACCEPT_HANDLER_START "
+        "entryPoint=ApplicationDetailsScreen.acceptOfferFromWorker "
+        "applicationId=$applicationId "
+        "jobId=$jobId "
+        "offerId=${source["offerId"] ?? ""} "
+        "previousStatus=${source["status"] ?? ""} "
+        "newStatus=offer_accepted",
+      );
       final accepted = await OfferAcceptanceService.acceptOffer(
         applicationId: applicationId,
         currentUserId: currentUserId,

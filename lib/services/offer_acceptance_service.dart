@@ -55,156 +55,177 @@ class OfferAcceptanceService {
     var accepted = false;
     final db = FirebaseFirestore.instance;
 
-    await db.runTransaction((transaction) async {
-      final appRef = db.collection("applications").doc(applicationId);
-      final appSnap = await transaction.get(appRef);
-      if (!appSnap.exists) return;
+    try {
+      await db.runTransaction((transaction) async {
+        final appRef = db.collection("applications").doc(applicationId);
+        final appSnap = await transaction.get(appRef);
+        if (!appSnap.exists) return;
 
-      final appData = appSnap.data() as Map<String, dynamic>;
-      final currentStatus =
-          appData["status"]?.toString().trim().toLowerCase() ?? "";
-      final acceptedStatus = isAcceptedStatus(currentStatus);
-      final slotCount = applicationSlotCount(appData);
+        final appData = appSnap.data() as Map<String, dynamic>;
+        final currentStatus =
+            appData["status"]?.toString().trim().toLowerCase() ?? "";
+        final acceptedStatus = isAcceptedStatus(currentStatus);
+        final slotCount = applicationSlotCount(appData);
 
-      debugPrint(
-        "ACCEPT_OFFER_WRITE_TRACE "
-        "entryPoint=OfferAcceptanceService.acceptOffer "
-        "jobId=${appData["jobId"] ?? ""} "
-        "jobPath=jobs/${appData["jobId"] ?? ""} "
-        "offerId=${appData["offerId"] ?? ""} "
-        "applicationId=$applicationId "
-        "oldStatus=$currentStatus "
-        "newStatus=$forcedAcceptedStatus "
-        "currentUserId=${currentUserId ?? FirebaseAuth.instance.currentUser?.uid ?? ""} "
-        "acceptedCount=$slotCount",
-      );
-
-      final offerRaw = appData["offer"];
-      final offer = offerRaw is Map
-          ? Map<String, dynamic>.from(offerRaw)
-          : <String, dynamic>{};
-      final selectedWorkerIds = offer["selectedWorkerIds"];
-      if (selectedWorkerIds is List && selectedWorkerIds.isNotEmpty) {
-        final currentId =
-            currentUserId ?? FirebaseAuth.instance.currentUser?.uid;
-        final allowed =
-            selectedWorkerIds.map((id) => id.toString()).contains(currentId);
-        if (!allowed) throw Exception("worker_not_selected_for_offer");
-      }
-
-      final jobId = appData["jobId"]?.toString() ?? "";
-      if (jobId.isEmpty) throw Exception("missing_job_id");
-
-      final jobRef = db.collection("jobs").doc(jobId);
-      final jobSnap = await transaction.get(jobRef);
-      if (!jobSnap.exists) throw Exception("job_not_found");
-
-      final jobData = jobSnap.data() as Map<String, dynamic>;
-      final appliedIdsRaw = jobData["slotDecrementApplicationIds"];
-      final appliedIds = appliedIdsRaw is List
-          ? appliedIdsRaw.map((id) => id.toString()).toSet()
-          : <String>{};
-      final alreadyApplied = appData["slotDecrementApplied"] == true ||
-          appliedIds.contains(applicationId);
-      if (alreadyApplied) {
         debugPrint(
-          "OFFER ACCEPT SLOT UPDATE SKIPPED "
+          "ACCEPT_OFFER_WRITE_TRACE "
+          "entryPoint=OfferAcceptanceService.acceptOffer "
+          "jobId=${appData["jobId"] ?? ""} "
+          "jobPath=jobs/${appData["jobId"] ?? ""} "
+          "offerId=${appData["offerId"] ?? ""} "
           "applicationId=$applicationId "
-          "reason=slot_decrement_already_applied",
+          "oldStatus=$currentStatus "
+          "newStatus=$forcedAcceptedStatus "
+          "currentUserId=${currentUserId ?? FirebaseAuth.instance.currentUser?.uid ?? ""} "
+          "acceptedCount=$slotCount",
         );
-        if (currentStatus != forcedAcceptedStatus ||
-            appData["slotDecrementApplied"] != true) {
-          transaction.update(appRef, {
-            "status": forcedAcceptedStatus,
-            "slotDecrementApplied": true,
-            "slotDecrementJobId": jobId,
-            "applicationActivityAt": FieldValue.serverTimestamp(),
-            "updatedAt": FieldValue.serverTimestamp(),
-            if (unreadFor != null && unreadFor.isNotEmpty)
-              "unreadFor": FieldValue.arrayUnion(unreadFor),
-            if (extra.isNotEmpty) ...extra,
-          });
+
+        final offerRaw = appData["offer"];
+        final offer = offerRaw is Map
+            ? Map<String, dynamic>.from(offerRaw)
+            : <String, dynamic>{};
+        final selectedWorkerIds = offer["selectedWorkerIds"];
+        if (selectedWorkerIds is List && selectedWorkerIds.isNotEmpty) {
+          final currentId =
+              currentUserId ?? FirebaseAuth.instance.currentUser?.uid;
+          final allowed =
+              selectedWorkerIds.map((id) => id.toString()).contains(currentId);
+          if (!allowed) throw Exception("worker_not_selected_for_offer");
         }
-        return;
-      }
 
-      if (acceptedStatus) {
-        debugPrint(
-          "OFFER ACCEPT SLOT UPDATE RECOVERING "
-          "applicationId=$applicationId "
-          "reason=accepted_status_without_slot_marker",
+        final jobId = appData["jobId"]?.toString() ?? "";
+        if (jobId.isEmpty) throw Exception("missing_job_id");
+
+        final jobRef = db.collection("jobs").doc(jobId);
+        final jobSnap = await transaction.get(jobRef);
+        if (!jobSnap.exists) throw Exception("job_not_found");
+
+        final jobData = jobSnap.data() as Map<String, dynamic>;
+        final appliedIdsRaw = jobData["slotDecrementApplicationIds"];
+        final appliedIds = appliedIdsRaw is List
+            ? appliedIdsRaw.map((id) => id.toString()).toSet()
+            : <String>{};
+        final alreadyApplied = appData["slotDecrementApplied"] == true ||
+            appliedIds.contains(applicationId);
+        if (alreadyApplied) {
+          debugPrint(
+            "SLOT_DECREMENT_SKIPPED "
+            "jobId=$jobId "
+            "applicationId=$applicationId "
+            "reason=slot_decrement_already_applied",
+          );
+          if (currentStatus != forcedAcceptedStatus ||
+              appData["slotDecrementApplied"] != true) {
+            transaction.update(appRef, {
+              "status": forcedAcceptedStatus,
+              "slotDecrementApplied": true,
+              "slotDecrementJobId": jobId,
+              "applicationActivityAt": FieldValue.serverTimestamp(),
+              "updatedAt": FieldValue.serverTimestamp(),
+              if (unreadFor != null && unreadFor.isNotEmpty)
+                "unreadFor": FieldValue.arrayUnion(unreadFor),
+              if (extra.isNotEmpty) ...extra,
+            });
+          }
+          return;
+        }
+
+        if (acceptedStatus) {
+          debugPrint(
+            "SLOT_DECREMENT_FUNCTION_ENTERED "
+            "jobId=$jobId "
+            "applicationId=$applicationId "
+            "reason=accepted_status_without_slot_marker",
+          );
+        }
+
+        final positions = readInt(jobData["positions"]);
+        final filled = readInt(
+          jobData["filledPositions"] ??
+              jobData["acceptedSlotTotal"] ??
+              jobData["hiredCount"],
         );
-      }
-
-      final positions = readInt(jobData["positions"]);
-      final filled = readInt(
-        jobData["filledPositions"] ??
-            jobData["acceptedSlotTotal"] ??
-            jobData["hiredCount"],
-      );
-      final safePositions = positions <= 0 ? slotCount : positions;
-      final nextFilled = filled + slotCount;
-      if (nextFilled > safePositions) {
+        final safePositions = positions <= 0 ? slotCount : positions;
         debugPrint(
-          "OFFER ACCEPT SLOT UPDATE SKIPPED "
-          "applicationId=$applicationId "
-          "reason=not_enough_positions "
-          "filled=$filled "
-          "acceptedCount=$slotCount "
-          "positions=$safePositions",
+          "SLOT_DECREMENT_FUNCTION_ENTERED "
+          "jobId=$jobId "
+          "availableBefore=${(safePositions - filled).clamp(0, safePositions)} "
+          "total=$safePositions",
         );
-        throw Exception("not_enough_positions");
-      }
-      final remaining = (safePositions - nextFilled).clamp(0, safePositions);
-      final unreadRecipients = unreadFor ?? employerRecipients(appData);
+        final nextFilled = filled + slotCount;
+        if (nextFilled > safePositions) {
+          debugPrint(
+            "SLOT_DECREMENT_SKIPPED "
+            "jobId=$jobId "
+            "applicationId=$applicationId "
+            "reason=not_enough_positions "
+            "filled=$filled "
+            "acceptedCount=$slotCount "
+            "positions=$safePositions",
+          );
+          throw Exception("not_enough_positions");
+        }
+        final remaining = (safePositions - nextFilled).clamp(0, safePositions);
+        final unreadRecipients = unreadFor ?? employerRecipients(appData);
 
-      transaction.update(appRef, {
-        "status": forcedAcceptedStatus,
-        "offerAcceptedAt": FieldValue.serverTimestamp(),
-        "acceptedByWorkerId":
-            currentUserId ?? FirebaseAuth.instance.currentUser?.uid,
-        "applicationActivityAt": FieldValue.serverTimestamp(),
-        "acceptedSlotCount": slotCount,
-        "slotDecrementApplied": true,
-        "slotDecrementAppliedAt": FieldValue.serverTimestamp(),
-        "slotDecrementJobId": jobId,
-        "updatedAt": FieldValue.serverTimestamp(),
-        if (unreadRecipients.isNotEmpty)
-          "unreadFor": FieldValue.arrayUnion(unreadRecipients),
-        ...extra,
+        transaction.update(appRef, {
+          "status": forcedAcceptedStatus,
+          "offerAcceptedAt": FieldValue.serverTimestamp(),
+          "acceptedByWorkerId":
+              currentUserId ?? FirebaseAuth.instance.currentUser?.uid,
+          "applicationActivityAt": FieldValue.serverTimestamp(),
+          "acceptedSlotCount": slotCount,
+          "slotDecrementApplied": true,
+          "slotDecrementAppliedAt": FieldValue.serverTimestamp(),
+          "slotDecrementJobId": jobId,
+          "updatedAt": FieldValue.serverTimestamp(),
+          if (unreadRecipients.isNotEmpty)
+            "unreadFor": FieldValue.arrayUnion(unreadRecipients),
+          ...extra,
+        });
+
+        transaction.update(jobRef, {
+          "filledPositions": nextFilled,
+          "remainingPositions": remaining,
+          "openSlots": remaining,
+          "availablePositions": remaining,
+          "availableSlots": remaining,
+          "remainingSlots": remaining,
+          "positionsAvailable": remaining,
+          "acceptedOffersCount": FieldValue.increment(1),
+          "hiredCount": nextFilled,
+          "acceptedSlotTotal": nextFilled,
+          "slotDecrementApplicationIds": FieldValue.arrayUnion([applicationId]),
+          "lastAcceptedApplicationId": applicationId,
+          "lastAcceptedCounterSyncAt": FieldValue.serverTimestamp(),
+          "updatedAt": FieldValue.serverTimestamp(),
+        });
+
+        debugPrint(
+          "SLOT_DECREMENT_TRANSACTION_SUCCESS "
+          "jobId=$jobId "
+          "applicationId=$applicationId "
+          "sourcePath=jobs/$jobId "
+          "fieldsUpdated=filledPositions,remainingPositions,openSlots,availablePositions,availableSlots,remainingSlots,positionsAvailable,slotDecrementApplied "
+          "oldFilled=$filled "
+          "newFilled=$nextFilled "
+          "oldAvailable=${(safePositions - filled).clamp(0, safePositions)} "
+          "newAvailable=$remaining "
+          "availableAfter=$remaining "
+          "totalSlots=$safePositions "
+          "slotDecrementApplied=true",
+        );
+        accepted = true;
       });
-
-      transaction.update(jobRef, {
-        "filledPositions": nextFilled,
-        "remainingPositions": remaining,
-        "openSlots": remaining,
-        "availablePositions": remaining,
-        "availableSlots": remaining,
-        "remainingSlots": remaining,
-        "positionsAvailable": remaining,
-        "acceptedOffersCount": FieldValue.increment(1),
-        "hiredCount": nextFilled,
-        "acceptedSlotTotal": nextFilled,
-        "slotDecrementApplicationIds": FieldValue.arrayUnion([applicationId]),
-        "lastAcceptedApplicationId": applicationId,
-        "lastAcceptedCounterSyncAt": FieldValue.serverTimestamp(),
-        "updatedAt": FieldValue.serverTimestamp(),
-      });
-
+    } catch (error) {
       debugPrint(
-        "SLOT_UPDATE_TRACE "
-        "jobId=$jobId "
+        "SLOT_DECREMENT_SKIPPED "
         "applicationId=$applicationId "
-        "sourcePath=jobs/$jobId "
-        "field=filledPositions "
-        "oldFilled=$filled "
-        "newFilled=$nextFilled "
-        "oldAvailable=${(safePositions - filled).clamp(0, safePositions)} "
-        "newAvailable=$remaining "
-        "totalSlots=$safePositions",
+        "reason=transaction_failed "
+        "error=$error",
       );
-      accepted = true;
-    });
+      rethrow;
+    }
 
     return accepted;
   }

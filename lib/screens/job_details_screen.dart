@@ -1493,6 +1493,15 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
   Future<void> acceptOffer(String applicationId) async {
     try {
+      debugPrint(
+        "OFFER_ACCEPT_HANDLER_START "
+        "entryPoint=JobDetailScreen.acceptOffer "
+        "applicationId=$applicationId "
+        "jobId=${activeJob.id} "
+        "offerId= "
+        "previousStatus=unknown "
+        "newStatus=offer_accepted",
+      );
       final accepted = await OfferAcceptanceService.acceptOffer(
         applicationId: applicationId,
         currentUserId: userId,
