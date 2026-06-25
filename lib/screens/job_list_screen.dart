@@ -50,6 +50,7 @@ class _JobListScreenState extends State<JobListScreen> {
   JobSearchFilters searchFilters = const JobSearchFilters();
   int currentPage = 1;
   int refreshTick = 0;
+  bool showSavedOnly = false;
 
   @override
   void initState() {
@@ -209,8 +210,21 @@ class _JobListScreenState extends State<JobListScreen> {
         actions: [
           IconButton(
             tooltip: "Subscribe to jobs",
-            icon: const Icon(Icons.notifications_active),
+            icon: const Icon(Icons.rss_feed),
             onPressed: saveJobAlert,
+          ),
+          IconButton(
+            tooltip: showSavedOnly ? "Show all jobs" : "Show saved jobs",
+            icon: Icon(
+              showSavedOnly ? Icons.favorite : Icons.favorite_border,
+              color: showSavedOnly ? Colors.red : null,
+            ),
+            onPressed: () {
+              setState(() {
+                showSavedOnly = !showSavedOnly;
+                currentPage = 1;
+              });
+            },
           ),
         ],
       ),
@@ -234,12 +248,17 @@ class _JobListScreenState extends State<JobListScreen> {
                       }
 
                       final jobs = snapshot.data!;
+                      final sourceJobs = showSavedOnly
+                          ? jobs
+                              .where((job) => savedJobIds.contains(job.id))
+                              .toList()
+                          : jobs;
 
                       final searchField = SmartJobSearchField(
                         selectedRoles: selectedRoles,
                         query: searchQuery,
                         filters: searchFilters,
-                        jobs: jobs,
+                        jobs: sourceJobs,
                         onChanged: (value) {
                           setState(() {
                             selectedRoles = value.roles;
@@ -250,13 +269,13 @@ class _JobListScreenState extends State<JobListScreen> {
                         },
                       );
 
-                      final filteredJobs = jobs.where((job) {
+                      final filteredJobs = sourceJobs.where((job) {
                         if (!jobMatchesSearch(
                           job,
                           roles: selectedRoles,
                           query: searchQuery,
                           filters: searchFilters,
-                          originJobs: jobs,
+                          originJobs: sourceJobs,
                         )) {
                           return false;
                         }
@@ -312,18 +331,38 @@ class _JobListScreenState extends State<JobListScreen> {
                           Expanded(
                             child: RefreshIndicator(
                               onRefresh: refreshJobs,
-                              child: ListView.builder(
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                itemCount: pageJobs.length,
-                                itemBuilder: (context, index) {
-                                  final job = pageJobs[index];
+                              child: pageJobs.isEmpty
+                                  ? ListView(
+                                      physics:
+                                          const AlwaysScrollableScrollPhysics(),
+                                      children: [
+                                        SizedBox(
+                                          height: MediaQuery.sizeOf(context)
+                                                  .height *
+                                              0.42,
+                                          child: Center(
+                                            child: Text(
+                                              showSavedOnly
+                                                  ? "No saved jobs yet."
+                                                  : "No jobs found.",
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : ListView.builder(
+                                      physics:
+                                          const AlwaysScrollableScrollPhysics(),
+                                      itemCount: pageJobs.length,
+                                      itemBuilder: (context, index) {
+                                        final job = pageJobs[index];
 
-                                  return buildJobCard(
-                                    job,
-                                    savedJobIds.contains(job.id),
-                                  );
-                                },
-                              ),
+                                        return buildJobCard(
+                                          job,
+                                          savedJobIds.contains(job.id),
+                                        );
+                                      },
+                                    ),
                             ),
                           ),
                           JobPagination(
