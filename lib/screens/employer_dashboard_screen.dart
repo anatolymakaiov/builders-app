@@ -36,6 +36,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   JobSearchFilters searchFilters = const JobSearchFilters();
   bool showOnlyMyJobs = false;
   int currentPage = 1;
+  final Set<String> _slotDisplayTraceKeys = <String>{};
 
   @override
   void initState() {
@@ -334,6 +335,19 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
 
         final spotsLeft =
             (job.positions - acceptedSlots).clamp(0, job.positions);
+        final traceKey = "${job.id}:$spotsLeft:${job.positions}:$acceptedSlots";
+        if (_slotDisplayTraceKeys.add(traceKey)) {
+          debugPrint(
+            "SLOT_DISPLAY_TRACE "
+            "screen=EmployerDashboardScreen "
+            "jobId=${job.id} "
+            "displayText=$spotsLeft/${job.positions} left "
+            "fieldA=positions:${job.positions} "
+            "fieldB=acceptedApplications:$acceptedSlots "
+            "fieldC=filledPositions:${job.filledPositions} "
+            "sourcePath=applications where jobId=${job.id}",
+          );
+        }
 
         final stats = [
           (

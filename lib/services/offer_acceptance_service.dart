@@ -2,8 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
-import 'application_activity_service.dart';
-
 class OfferAcceptanceService {
   const OfferAcceptanceService._();
 
@@ -41,9 +39,18 @@ class OfferAcceptanceService {
     return int.tryParse(value?.toString() ?? "") ?? 0;
   }
 
+  static List<String> employerRecipients(Map<String, dynamic> data) {
+    final employerId = data["employerId"]?.toString();
+    if (employerId == null || employerId.isEmpty) return [];
+    return [employerId];
+  }
+
   static Future<bool> acceptOffer({
     required String applicationId,
     String? currentUserId,
+    String forcedAcceptedStatus = "offer_accepted",
+    List<String>? unreadFor,
+    Map<String, dynamic> extra = const {},
   }) async {
     var accepted = false;
     final db = FirebaseFirestore.instance;
@@ -60,12 +67,14 @@ class OfferAcceptanceService {
       final slotCount = applicationSlotCount(appData);
 
       debugPrint(
-        "OFFER ACCEPT SLOT UPDATE START "
+        "OFFER_ACCEPT_TRACE "
+        "entryPoint=OfferAcceptanceService.acceptOffer "
         "jobId=${appData["jobId"] ?? ""} "
         "offerId=${appData["offerId"] ?? ""} "
         "applicationId=$applicationId "
-        "previousStatus=$currentStatus "
-        "newStatus=offer_accepted "
+        "oldStatus=$currentStatus "
+        "newStatus=$forcedAcceptedStatus "
+        "currentUserId=${currentUserId ?? FirebaseAuth.instance.currentUser?.uid ?? ""} "
         "acceptedCount=$slotCount",
       );
 
@@ -102,6 +111,19 @@ class OfferAcceptanceService {
           "applicationId=$applicationId "
           "reason=slot_decrement_already_applied",
         );
+        if (currentStatus != forcedAcceptedStatus ||
+            appData["slotDecrementApplied"] != true) {
+          transaction.update(appRef, {
+            "status": forcedAcceptedStatus,
+            "slotDecrementApplied": true,
+            "slotDecrementJobId": jobId,
+            "applicationActivityAt": FieldValue.serverTimestamp(),
+            "updatedAt": FieldValue.serverTimestamp(),
+            if (unreadFor != null && unreadFor.isNotEmpty)
+              "unreadFor": FieldValue.arrayUnion(unreadFor),
+            if (extra.isNotEmpty) ...extra,
+          });
+        }
         return;
       }
 
@@ -133,9 +155,10 @@ class OfferAcceptanceService {
         throw Exception("not_enough_positions");
       }
       final remaining = (safePositions - nextFilled).clamp(0, safePositions);
+      final unreadRecipients = unreadFor ?? employerRecipients(appData);
 
       transaction.update(appRef, {
-        "status": "offer_accepted",
+        "status": forcedAcceptedStatus,
         "offerAcceptedAt": FieldValue.serverTimestamp(),
         "acceptedByWorkerId":
             currentUserId ?? FirebaseAuth.instance.currentUser?.uid,
@@ -145,7 +168,9 @@ class OfferAcceptanceService {
         "slotDecrementAppliedAt": FieldValue.serverTimestamp(),
         "slotDecrementJobId": jobId,
         "updatedAt": FieldValue.serverTimestamp(),
-        "unreadFor": ApplicationActivityService.employerRecipients(appData),
+        if (unreadRecipients.isNotEmpty)
+          "unreadFor": FieldValue.arrayUnion(unreadRecipients),
+        ...extra,
       });
 
       transaction.update(jobRef, {
@@ -166,8 +191,13 @@ class OfferAcceptanceService {
       });
 
       debugPrint(
-        "OFFER ACCEPT SLOT UPDATE SUCCESS "
+        "SLOT_UPDATE_TRACE "
         "jobId=$jobId "
+        "applicationId=$applicationId "
+        "sourcePath=jobs/$jobId "
+        "field=filledPositions "
+        "oldFilled=$filled "
+        "newFilled=$nextFilled "
         "oldAvailable=${(safePositions - filled).clamp(0, safePositions)} "
         "newAvailable=$remaining "
         "totalSlots=$safePositions",

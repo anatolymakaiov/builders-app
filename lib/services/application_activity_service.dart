@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'application_status_utils.dart';
+import 'offer_acceptance_service.dart';
 
 class ApplicationActivityService {
   static Map<String, dynamic> createdForEmployer(String? employerId) {
@@ -87,6 +88,16 @@ class ApplicationActivityService {
     required List<String> unreadFor,
     Map<String, dynamic> extra = const {},
   }) async {
+    if (OfferAcceptanceService.isAcceptedStatus(status)) {
+      await OfferAcceptanceService.acceptOffer(
+        applicationId: applicationId,
+        forcedAcceptedStatus: status,
+        unreadFor: unreadFor,
+        extra: extra,
+      );
+      return;
+    }
+
     await FirebaseFirestore.instance
         .collection("applications")
         .doc(applicationId)

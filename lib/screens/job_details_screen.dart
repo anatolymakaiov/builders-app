@@ -863,8 +863,19 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     Map<String, dynamic>? data,
   ) {
     final rawPositions = readInt(data?["positions"]);
-    final rawRemaining = readInt(data?["remainingPositions"]);
-    final rawFilledPositions = readInt(data?["filledPositions"]);
+    final rawRemaining = readInt(
+      data?["remainingPositions"] ??
+          data?["openSlots"] ??
+          data?["availableSlots"] ??
+          data?["availablePositions"] ??
+          data?["positionsAvailable"],
+    );
+    final rawFilledPositions = readInt(
+      data?["filledPositions"] ??
+          data?["acceptedSlotTotal"] ??
+          data?["hiredCount"] ??
+          data?["acceptedCount"],
+    );
     final fallbackPositions = activeJob.positions > 0 ? activeJob.positions : 0;
     final positions = rawPositions > 0
         ? rawPositions
@@ -1391,12 +1402,17 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         ].join(":");
         if (_slotCounterLogKeys.add(logKey)) {
           debugPrint(
-            "JOB SLOT COUNTER SOURCE "
+            "SLOT_DISPLAY_TRACE "
+            "screen=JobDetailScreen "
             "jobId=${activeJob.id} "
+            "displayText=${counts.remaining}/${counts.positions} spots available "
+            "fieldA=positions:${data?["positions"] ?? activeJob.positions} "
+            "fieldB=filledPositions:${data?["filledPositions"] ?? ""} "
+            "fieldC=remainingPositions:${data?["remainingPositions"] ?? ""} "
+            "sourcePath=jobs/${activeJob.id} "
             "availableField=${data?["remainingPositions"] ?? data?["openSlots"] ?? data?["availableSlots"] ?? ""} "
             "totalField=${data?["positions"] ?? activeJob.positions} "
-            "acceptedHiredCount=${counts.filledPositions} "
-            "displayText=${counts.remaining}/${counts.positions} spots available",
+            "acceptedHiredCount=${counts.filledPositions}",
           );
         }
 
@@ -2059,6 +2075,20 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
         final spotsLeft =
             (activeJob.positions - acceptedSlots).clamp(0, activeJob.positions);
+        final traceKey =
+            "employer:${activeJob.id}:$spotsLeft:${activeJob.positions}:$acceptedSlots";
+        if (_slotCounterLogKeys.add(traceKey)) {
+          debugPrint(
+            "SLOT_DISPLAY_TRACE "
+            "screen=JobDetailScreenEmployerStats "
+            "jobId=${activeJob.id} "
+            "displayText=$spotsLeft/${activeJob.positions} left "
+            "fieldA=positions:${activeJob.positions} "
+            "fieldB=acceptedApplications:$acceptedSlots "
+            "fieldC=filledPositions:${activeJob.filledPositions} "
+            "sourcePath=applications where jobId=${activeJob.id}",
+          );
+        }
 
         final stats = [
           (
