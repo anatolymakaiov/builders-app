@@ -10,7 +10,6 @@ import 'map_screen.dart';
 import 'employer_dashboard_screen.dart';
 import 'my_applications_screen.dart';
 import 'my_chats_screen.dart';
-import 'saved_jobs_screen.dart';
 import 'notifications_screen.dart';
 import 'employer_applications_screen.dart';
 import 'post_job_screen.dart';
@@ -72,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void selectBottomTab(int index) {
     if (index == currentIndex) return;
     setState(() {
-      if (role == "employer" && index == 5 && currentIndex != 5) {
+      if (role == "employer" && index == 4 && currentIndex != 4) {
         employerProfileInitialTab = 0;
       }
       currentIndex = index;
@@ -348,7 +347,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         employerProfileInitialTab = 4;
-        currentIndex = 5;
+        currentIndex = 4;
       });
       return;
     } catch (e) {
@@ -449,7 +448,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const MapScreen(),
         const EmployerApplicationsScreen(),
-        const NotificationsScreen(),
         const MyChatsScreen(),
         EmployerProfileScreen(
           key: ValueKey("employer-profile-$employerProfileInitialTab"),
@@ -462,9 +460,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return [
       const JobListScreen(),
       const MapScreen(),
-      const SavedJobsScreen(),
       const MyApplicationsScreen(),
-      const NotificationsScreen(),
       const MyChatsScreen(),
       WorkerProfileScreen(
         userId: userId!,
@@ -494,12 +490,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         _GuidedTourStep(
           tabIndex: 3,
-          title: "Alerts / Notifications",
+          title: "Chat",
           description:
-              "Here you will see important updates from the app and from the admin team.",
+              "Here you can communicate with workers, teams, and applicants.",
         ),
         _GuidedTourStep(
-          tabIndex: 5,
+          tabIndex: 4,
           title: "Profile / My Account",
           description:
               "Here you can manage your company profile, billing plan, support requests, admin inbox, and account settings.",
@@ -520,19 +516,19 @@ class _HomeScreenState extends State<HomeScreen> {
         description: "Here you can view active vacancies on the UK map.",
       ),
       _GuidedTourStep(
-        tabIndex: 3,
+        tabIndex: 2,
         title: "Applications",
         description:
             "Here you can track your applications, offers, and status changes.",
       ),
       _GuidedTourStep(
-        tabIndex: 4,
-        title: "Alerts / Notifications",
+        tabIndex: 3,
+        title: "Chat",
         description:
-            "Here you will see important updates from employers, the app, and the admin team.",
+            "Here you can communicate with employers, teams, and the admin team.",
       ),
       _GuidedTourStep(
-        tabIndex: 6,
+        tabIndex: 4,
         title: "Profile / My Account",
         description:
             "Here you can manage your profile, teams, photos, support requests, admin inbox, and account settings.",
@@ -574,7 +570,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _tourStepIndex = nextIndex;
       currentIndex = steps[nextIndex].tabIndex;
-      if (role == "employer" && currentIndex == 5) {
+      if (role == "employer" && currentIndex == 4) {
         employerProfileInitialTab = 0;
       }
     });
@@ -738,9 +734,43 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> openNotifications() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+    );
+  }
+
+  Widget buildTopNotificationBell(int notifCount) {
+    return Positioned(
+      left: 10,
+      top: 0,
+      child: SafeArea(
+        child: Material(
+          color: AppColors.deep.withValues(alpha: 0.78),
+          borderRadius: BorderRadius.circular(999),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: openNotifications,
+            child: Padding(
+              padding: const EdgeInsets.all(9),
+              child: IconTheme(
+                data: const IconThemeData(
+                  color: Colors.white,
+                  size: 22,
+                ),
+                child: buildBadgeIcon(Icons.notifications_outlined, notifCount),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// 📌 MENU
   List<BottomNavigationBarItem> getMenuItems(
-    int notifCount,
     int chatCount,
     int applicationCount,
     int profileCount,
@@ -758,7 +788,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return [
         const BottomNavigationBarItem(
           icon: Icon(Icons.work),
-          label: "My Jobs",
+          label: "Jobs",
         ),
         const BottomNavigationBarItem(
           icon: Icon(Icons.map),
@@ -769,12 +799,8 @@ class _HomeScreenState extends State<HomeScreen> {
           label: "Applications",
         ),
         BottomNavigationBarItem(
-          icon: buildBadgeIcon(Icons.notifications, notifCount),
-          label: "Alerts",
-        ),
-        BottomNavigationBarItem(
           icon: buildBadgeIcon(Icons.chat, chatCount),
-          label: "Chats",
+          label: "Chat",
         ),
         BottomNavigationBarItem(
           icon: buildBadgeIcon(Icons.person, profileCount),
@@ -792,21 +818,13 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: Icon(Icons.map),
         label: "Map",
       ),
-      const BottomNavigationBarItem(
-        icon: Icon(Icons.favorite),
-        label: "Saved",
-      ),
       BottomNavigationBarItem(
         icon: buildBadgeIcon(Icons.assignment, applicationCount),
         label: "Applications",
       ),
       BottomNavigationBarItem(
-        icon: buildBadgeIcon(Icons.notifications, notifCount),
-        label: "Alerts",
-      ),
-      BottomNavigationBarItem(
         icon: buildBadgeIcon(Icons.chat, chatCount),
-        label: "Chats",
+        label: "Chat",
       ),
       BottomNavigationBarItem(
         icon: buildBadgeIcon(Icons.person, profileCount),
@@ -857,7 +875,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     final screens = getScreens();
                     final items = getMenuItems(
-                      notifCount,
                       chatCount,
                       applicationCount,
                       profileCount,
@@ -923,6 +940,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                         ),
+                        if (!_showOnboardingTour)
+                          buildTopNotificationBell(notifCount),
                         if (_showOnboardingTour)
                           _buildTourOverlay(items.length),
                       ],

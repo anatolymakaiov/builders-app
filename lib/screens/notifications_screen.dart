@@ -393,7 +393,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     shellNavigationCommand.value = const ShellNavigationCommand(
       role: "employer",
-      tabIndex: 5,
+      tabIndex: 4,
       employerProfileInitialTab: 4,
     );
     Navigator.of(context, rootNavigator: true)
