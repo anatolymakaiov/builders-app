@@ -744,25 +744,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget buildTopNotificationBell(int notifCount) {
     return Positioned(
-      left: 10,
+      left: 8,
       top: 0,
       child: SafeArea(
-        child: Material(
-          color: AppColors.deep.withValues(alpha: 0.78),
-          borderRadius: BorderRadius.circular(999),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(999),
-            onTap: openNotifications,
-            child: Padding(
-              padding: const EdgeInsets.all(9),
-              child: IconTheme(
-                data: const IconThemeData(
-                  color: Colors.white,
-                  size: 22,
-                ),
-                child: buildBadgeIcon(Icons.notifications_outlined, notifCount),
-              ),
+        child: IconButton(
+          tooltip: "Notifications",
+          onPressed: openNotifications,
+          icon: IconTheme(
+            data: const IconThemeData(
+              color: Colors.white,
+              size: 24,
             ),
+            child: buildBadgeIcon(Icons.notifications_outlined, notifCount),
           ),
         ),
       ),

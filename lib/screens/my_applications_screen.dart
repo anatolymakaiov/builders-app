@@ -614,7 +614,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     }) {
       final selected = applicationSection == value;
       return SizedBox(
-        width: 82,
+        width: 96,
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: () => setState(() => applicationSection = value),
@@ -646,7 +646,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           tab(value: "single", label: "Single"),
-          const SizedBox(width: 18),
+          const SizedBox(width: 28),
           tab(value: "team", label: "Team"),
         ],
       ),

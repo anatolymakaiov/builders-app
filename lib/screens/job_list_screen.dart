@@ -210,7 +210,7 @@ class _JobListScreenState extends State<JobListScreen> {
         actions: [
           IconButton(
             tooltip: "Subscribe to jobs",
-            icon: const Icon(Icons.rss_feed),
+            icon: const Icon(Icons.business_center_outlined),
             onPressed: saveJobAlert,
           ),
           IconButton(
