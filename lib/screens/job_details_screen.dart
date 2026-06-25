@@ -291,6 +291,13 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     return snap.docs.where((doc) {
       final data = doc.data();
+      final active = data["deleted"] != true &&
+          data["accountDeleted"] != true &&
+          data["active"] != false &&
+          data["status"] != "deleted" &&
+          data["status"] != "suspended" &&
+          data["status"] != "on_hold";
+      if (!active) return false;
       return teamMemberIds(data["members"]).contains(uid) ||
           data["ownerId"] == uid;
     }).toList();
@@ -460,10 +467,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       return;
     }
 
+    String? selectedApplyType;
     try {
       /// 🔥 ШАГ 1 — ВЫБОР ТИПА
       if (!mounted) return;
       final type = await pickApplyType(context);
+      selectedApplyType = type;
 
       /// ❌ пользователь закрыл выбор
       if (!mounted) return;
@@ -525,7 +534,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           "workerId=$uid "
           "teamId=$teamId "
           "jobId=${activeJob.id} "
-          "authUid=$uid",
+          "authUid=$uid "
+          "payloadKeys=jobId,jobTitle,jobTrade,jobSite,type,teamId,teamName,workerId,applicantId,members,workersCount,membersStatus,employerId,ownerId,status,viewedByEmployer,createdAt,updatedAt,applicationActivityAt,unreadFor",
         );
 
         await FirebaseFirestore.instance.runTransaction((transaction) async {
@@ -642,7 +652,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           "workerId=$uid "
           "teamId= "
           "jobId=${activeJob.id} "
-          "authUid=$uid",
+          "authUid=$uid "
+          "payloadKeys=jobId,jobTitle,jobTrade,jobSite,workerId,applicantId,workerName,type,members,workersCount,membersStatus,employerId,ownerId,status,createdAt,applicationActivityAt,unreadFor",
         );
 
         await FirebaseFirestore.instance.runTransaction((transaction) async {
@@ -701,7 +712,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       if (mounted) {
         setState(() => isApplying = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(applicationErrorMessage(e))),
+          SnackBar(
+            content: Text(
+              applicationErrorMessage(e, applyType: selectedApplyType),
+            ),
+          ),
         );
       }
     }
@@ -938,7 +953,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return "Could not check available positions";
   }
 
-  String applicationErrorMessage(Object error) {
+  String applicationErrorMessage(Object error, {String? applyType}) {
     final text = error.toString();
     if (text.contains("no_positions_left") ||
         text.contains("not_enough_spots")) {
@@ -963,10 +978,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       return "Job is no longer available";
     }
     if (text.contains("permission-denied")) {
-      return "Could not send team application because access was denied. Please try again.";
+      return applyType == "team"
+          ? "Could not send team application because access was denied. Please try again."
+          : "Could not send application because access was denied. Please try again.";
     }
     if (text.contains("failed-precondition")) {
-      return "Could not send team application because this query needs updating. Please try again.";
+      return applyType == "team"
+          ? "Could not send team application because this query needs updating. Please try again."
+          : "Could not send application because this query needs updating. Please try again.";
     }
     return "Could not send application";
   }
