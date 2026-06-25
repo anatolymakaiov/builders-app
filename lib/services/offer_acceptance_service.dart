@@ -47,7 +47,11 @@ class OfferAcceptanceService {
 
       final appData = appSnap.data() as Map<String, dynamic>;
       final currentStatus = appData["status"]?.toString() ?? "";
-      if (currentStatus == "accepted" || currentStatus == "offer_accepted") {
+      final alreadyAccepted = currentStatus == "accepted" ||
+          currentStatus == "offer_accepted" ||
+          currentStatus == "hired" ||
+          readInt(appData["acceptedSlotCount"]) > 0;
+      if (alreadyAccepted) {
         return;
       }
 
@@ -88,6 +92,7 @@ class OfferAcceptanceService {
         "acceptedByWorkerId":
             currentUserId ?? FirebaseAuth.instance.currentUser?.uid,
         "applicationActivityAt": FieldValue.serverTimestamp(),
+        "acceptedSlotCount": slotCount,
         "updatedAt": FieldValue.serverTimestamp(),
         "unreadFor": ApplicationActivityService.employerRecipients(appData),
       });

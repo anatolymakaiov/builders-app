@@ -23,6 +23,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   String statusFilter = "all";
   String applicationSection = "single";
   int refreshTick = 0;
+  final Map<String, String> employerLogoCache = {};
 
   Future<void> refreshApplications() async {
     setState(() => refreshTick++);
@@ -119,6 +120,55 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     return fallback;
   }
 
+  Future<String?> resolveEmployerLogo(String ownerId) async {
+    if (employerLogoCache.containsKey(ownerId)) {
+      final cached = employerLogoCache[ownerId] ?? "";
+      return cached.isEmpty ? null : cached;
+    }
+
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(ownerId)
+          .get();
+      if (userDoc.exists) {
+        final data = userDoc.data() ?? {};
+        final logo = firstNonEmpty([
+          data["companyLogoUrl"],
+          data["companyLogo"],
+          data["companyAvatarUrl"],
+          data["photo"],
+          data["avatarUrl"],
+          data["logo"],
+        ]);
+        employerLogoCache[ownerId] = logo;
+        return logo.isEmpty ? null : logo;
+      }
+
+      final companyDoc = await FirebaseFirestore.instance
+          .collection("companies")
+          .doc(ownerId)
+          .get();
+      if (companyDoc.exists) {
+        final data = companyDoc.data() ?? {};
+        final logo = firstNonEmpty([
+          data["companyLogoUrl"],
+          data["companyLogo"],
+          data["logo"],
+          data["photo"],
+          data["avatarUrl"],
+        ]);
+        employerLogoCache[ownerId] = logo;
+        return logo.isEmpty ? null : logo;
+      }
+    } catch (error) {
+      debugPrint("APPLICATION EMPLOYER LOGO RESOLVE ERROR: $error");
+    }
+
+    employerLogoCache[ownerId] = "";
+    return null;
+  }
+
   bool applicationCompanyDeleted(Map<String, dynamic>? data, Job job) {
     return data?["companyDeleted"] == true ||
         data?["employerDeleted"] == true ||
@@ -126,6 +176,23 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         data?["deletedCompany"] == true ||
         job.companyDeleted ||
         job.employerDeleted;
+  }
+
+  String? applicationCompanyLogo(Map<String, dynamic>? data, Job job) {
+    final logo = firstNonEmpty([
+      data?["companyLogoUrl"],
+      data?["companyLogo"],
+      data?["companyAvatarUrl"],
+      data?["employerAvatarUrl"],
+      data?["employerLogo"],
+      data?["ownerAvatarUrl"],
+      data?["ownerLogo"],
+      data?["logo"],
+      data?["photo"],
+      data?["avatarUrl"],
+      job.companyLogo,
+    ]);
+    return logo.isEmpty ? null : logo;
   }
 
   String snapshotJobType(Map<String, dynamic> data) {
@@ -176,6 +243,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
 
     return job.copyWith(
       companyName: companyName,
+      companyLogo: applicationCompanyLogo(applicationData, job),
       // Application cards already have a stable company label. Avoid a second
       // profile lookup in JobCard that can flip closed jobs between labels.
       ownerId: "",
@@ -237,8 +305,18 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
           data["employerName"] ??
           data["ownerName"] ??
           "",
-      "companyLogo":
-          data["companyLogo"] ?? data["employerLogo"] ?? data["ownerLogo"],
+      "companyLogo": firstNonEmpty([
+        data["companyLogoUrl"],
+        data["companyLogo"],
+        data["companyAvatarUrl"],
+        data["employerAvatarUrl"],
+        data["employerLogo"],
+        data["ownerAvatarUrl"],
+        data["ownerLogo"],
+        data["logo"],
+        data["photo"],
+        data["avatarUrl"],
+      ]),
       "photos": data["jobPhotos"] ?? data["photos"] ?? const [],
       "jobType": snapshotJobType(data),
       "duration": firstNonEmpty([
@@ -760,6 +838,66 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
 
   /// 🔥 reusable card
   Widget buildCard(
+    Job job,
+    String status,
+    String applicationId, {
+    dynamic appliedAt,
+    required bool isUnread,
+    required String userId,
+    Map<String, dynamic>? applicationData,
+    bool isTeamApplication = false,
+  }) {
+    final ownerIdForLogo = firstNonEmpty([
+      applicationData?["companyId"],
+      applicationData?["employerId"],
+      applicationData?["ownerId"],
+      job.ownerId,
+    ]);
+    final snapshotLogo = applicationCompanyLogo(applicationData, job);
+    final shouldResolveLogo = snapshotLogo == null &&
+        ownerIdForLogo.isNotEmpty &&
+        !applicationCompanyDeleted(applicationData, job);
+
+    if (shouldResolveLogo && !employerLogoCache.containsKey(ownerIdForLogo)) {
+      return FutureBuilder<String?>(
+        future: resolveEmployerLogo(ownerIdForLogo),
+        builder: (context, snapshot) {
+          final logo = snapshot.data;
+          return buildApplicationCardContent(
+            logo == null || logo.isEmpty
+                ? job
+                : job.copyWith(companyLogo: logo),
+            status,
+            applicationId,
+            appliedAt: appliedAt,
+            isUnread: isUnread,
+            userId: userId,
+            applicationData: applicationData,
+            isTeamApplication: isTeamApplication,
+          );
+        },
+      );
+    }
+
+    final cachedLogo = employerLogoCache[ownerIdForLogo];
+    final logoJob =
+        snapshotLogo == null && cachedLogo != null && cachedLogo.isNotEmpty
+            ? job.copyWith(companyLogo: cachedLogo)
+            : job;
+
+    return buildApplicationCardContent(
+      logoJob,
+      status,
+      applicationId,
+      appliedAt: appliedAt,
+      isUnread: isUnread,
+      userId: userId,
+      applicationData: applicationData,
+      isTeamApplication: isTeamApplication,
+    );
+  }
+
+  Widget buildApplicationCardContent(
     Job job,
     String status,
     String applicationId, {
