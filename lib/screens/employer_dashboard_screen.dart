@@ -338,10 +338,12 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
         final traceKey = "${job.id}:$spotsLeft:${job.positions}:$acceptedSlots";
         if (_slotDisplayTraceKeys.add(traceKey)) {
           debugPrint(
-            "SLOT_DISPLAY_TRACE "
+            "SLOT_COUNTER_DISPLAY_SOURCE "
             "screen=EmployerDashboardScreen "
+            "file=lib/screens/employer_dashboard_screen.dart "
             "jobId=${job.id} "
             "displayText=$spotsLeft/${job.positions} left "
+            "fieldsUsed=applications.status,applications.offer.selectedWorkerIds,job.positions "
             "fieldA=positions:${job.positions} "
             "fieldB=acceptedApplications:$acceptedSlots "
             "fieldC=filledPositions:${job.filledPositions} "

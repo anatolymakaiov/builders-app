@@ -67,9 +67,10 @@ class OfferAcceptanceService {
       final slotCount = applicationSlotCount(appData);
 
       debugPrint(
-        "OFFER_ACCEPT_TRACE "
+        "ACCEPT_OFFER_WRITE_TRACE "
         "entryPoint=OfferAcceptanceService.acceptOffer "
         "jobId=${appData["jobId"] ?? ""} "
+        "jobPath=jobs/${appData["jobId"] ?? ""} "
         "offerId=${appData["offerId"] ?? ""} "
         "applicationId=$applicationId "
         "oldStatus=$currentStatus "

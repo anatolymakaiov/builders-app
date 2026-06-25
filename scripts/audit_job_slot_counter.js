@@ -5,10 +5,10 @@
  * offers and applications.
  *
  * Dry-run:
- *   node scripts/audit_and_reconcile_job_slots.js --job <jobId> --dry-run
+ *   node scripts/audit_job_slot_counter.js --job <jobId> --dry-run
  *
  * Commit:
- *   node scripts/audit_and_reconcile_job_slots.js --job <jobId> --commit
+ *   node scripts/audit_job_slot_counter.js --job <jobId> --commit
  */
 
 const path = require("path");
@@ -149,13 +149,16 @@ async function main() {
   const job = jobSnap.data();
   const totalSlots = Math.max(readInt(job.positions) || 1, 1);
   const storedFilled = readInt(job.filledPositions ?? job.acceptedSlotTotal ?? job.hiredCount);
-  const storedAvailable = readInt(
+  const availableFieldValue =
     job.remainingPositions ??
-      job.openSlots ??
-      job.availableSlots ??
-      job.availablePositions ??
-      job.positionsAvailable,
-  );
+    job.openSlots ??
+    job.availableSlots ??
+    job.availablePositions ??
+    job.positionsAvailable;
+  const storedAvailable =
+    availableFieldValue == null
+      ? Math.max(totalSlots - storedFilled, 0)
+      : readInt(availableFieldValue);
   const acceptedDocs = await collectAcceptedDocs(targetJobId);
   const acceptedWorkerCount = acceptedDocs.reduce((sum, doc) => sum + doc.count, 0);
   const expectedFilled = Math.min(acceptedWorkerCount, totalSlots);
@@ -171,7 +174,7 @@ async function main() {
       "totalSlotsField=positions",
       `totalSlotsValue=${totalSlots}`,
       "availableSlotsField=remainingPositions/openSlots/availableSlots",
-      `availableSlotsValue=${storedAvailable}`,
+      `currentDisplayedAvailable=${storedAvailable}`,
       `storedFilledSlots=${storedFilled}`,
       `acceptedOfferDocsFound=${acceptedDocs.length}`,
       `acceptedWorkerCount=${acceptedWorkerCount}`,

@@ -1402,10 +1402,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         ].join(":");
         if (_slotCounterLogKeys.add(logKey)) {
           debugPrint(
-            "SLOT_DISPLAY_TRACE "
+            "SLOT_COUNTER_DISPLAY_SOURCE "
             "screen=JobDetailScreen "
+            "file=lib/screens/job_details_screen.dart "
             "jobId=${activeJob.id} "
             "displayText=${counts.remaining}/${counts.positions} spots available "
+            "fieldsUsed=positions,filledPositions,remainingPositions "
             "fieldA=positions:${data?["positions"] ?? activeJob.positions} "
             "fieldB=filledPositions:${data?["filledPositions"] ?? ""} "
             "fieldC=remainingPositions:${data?["remainingPositions"] ?? ""} "
@@ -2079,10 +2081,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             "employer:${activeJob.id}:$spotsLeft:${activeJob.positions}:$acceptedSlots";
         if (_slotCounterLogKeys.add(traceKey)) {
           debugPrint(
-            "SLOT_DISPLAY_TRACE "
+            "SLOT_COUNTER_DISPLAY_SOURCE "
             "screen=JobDetailScreenEmployerStats "
+            "file=lib/screens/job_details_screen.dart "
             "jobId=${activeJob.id} "
             "displayText=$spotsLeft/${activeJob.positions} left "
+            "fieldsUsed=applications.status,applications.offer.selectedWorkerIds,job.positions "
             "fieldA=positions:${activeJob.positions} "
             "fieldB=acceptedApplications:$acceptedSlots "
             "fieldC=filledPositions:${activeJob.filledPositions} "
