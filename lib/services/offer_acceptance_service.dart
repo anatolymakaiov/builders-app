@@ -46,11 +46,12 @@ class OfferAcceptanceService {
       if (!appSnap.exists) return;
 
       final appData = appSnap.data() as Map<String, dynamic>;
-      final currentStatus = appData["status"]?.toString() ?? "";
+      final currentStatus =
+          appData["status"]?.toString().trim().toLowerCase() ?? "";
       final acceptedStatus = currentStatus == "accepted" ||
           currentStatus == "offer_accepted" ||
           currentStatus == "hired";
-      if (acceptedStatus && appData["slotDecrementApplied"] == true) {
+      if (acceptedStatus || appData["slotDecrementApplied"] == true) {
         return;
       }
 
@@ -103,6 +104,11 @@ class OfferAcceptanceService {
         "remainingPositions": remaining,
         "openSlots": remaining,
         "availablePositions": remaining,
+        "availableSlots": remaining,
+        "remainingSlots": remaining,
+        "positionsAvailable": remaining,
+        "acceptedOffersCount": FieldValue.increment(1),
+        "hiredCount": nextFilled,
         "lastAcceptedApplicationId": applicationId,
         "lastAcceptedCounterSyncAt": FieldValue.serverTimestamp(),
         "updatedAt": FieldValue.serverTimestamp(),

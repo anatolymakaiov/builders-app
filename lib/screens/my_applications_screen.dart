@@ -914,6 +914,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     return JobCard(
       job: displayJob,
       unread: isUnread,
+      showPostedDate: false,
       statusText: statusLabel(status),
       statusColor: getStatusColor(status),
       detailText: applicationDateText(appliedAt),

@@ -150,6 +150,10 @@ async function main() {
         remainingPositions: expectedRemaining,
         openSlots: expectedRemaining,
         availablePositions: expectedRemaining,
+        availableSlots: expectedRemaining,
+        remainingSlots: expectedRemaining,
+        positionsAvailable: expectedRemaining,
+        hiredCount: expectedFilled,
         lastSlotReconcileAt: FieldValue.serverTimestamp(),
       });
       writes += 1;

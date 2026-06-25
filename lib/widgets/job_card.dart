@@ -18,6 +18,7 @@ class JobCard extends StatelessWidget {
   final String? distanceText;
   final EdgeInsetsGeometry margin;
   final bool dense;
+  final bool showPostedDate;
 
   const JobCard({
     super.key,
@@ -32,6 +33,7 @@ class JobCard extends StatelessWidget {
     this.distanceText,
     this.margin = const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     this.dense = false,
+    this.showPostedDate = true,
   });
 
   @override
@@ -70,7 +72,12 @@ class JobCard extends StatelessWidget {
                     ),
                   ],
                   Expanded(
-                      child: _CompanyHeader(job: job, detailText: detailText)),
+                    child: _CompanyHeader(
+                      job: job,
+                      detailText: detailText,
+                      showPostedDate: showPostedDate,
+                    ),
+                  ),
                   const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -127,10 +134,12 @@ class JobCard extends StatelessWidget {
 class _CompanyHeader extends StatelessWidget {
   final Job job;
   final String? detailText;
+  final bool showPostedDate;
 
   const _CompanyHeader({
     required this.job,
     this.detailText,
+    required this.showPostedDate,
   });
 
   @override
@@ -140,6 +149,7 @@ class _CompanyHeader extends StatelessWidget {
         job: job,
         companyName: job.companyName,
         detailText: detailText,
+        showPostedDate: showPostedDate,
       );
     }
 
@@ -159,6 +169,7 @@ class _CompanyHeader extends StatelessWidget {
           job: job,
           companyName: companyName,
           detailText: detailText,
+          showPostedDate: showPostedDate,
         );
       },
     );
@@ -169,11 +180,13 @@ class _TitleBlock extends StatelessWidget {
   final Job job;
   final String companyName;
   final String? detailText;
+  final bool showPostedDate;
 
   const _TitleBlock({
     required this.job,
     required this.companyName,
     this.detailText,
+    required this.showPostedDate,
   });
 
   @override
@@ -182,7 +195,7 @@ class _TitleBlock extends StatelessWidget {
       job.city.trim(),
       job.postcode.trim(),
     ].where((item) => item.isNotEmpty).join(" ");
-    final postedDate = job.postedAt;
+    final postedDate = showPostedDate ? job.postedAt : null;
     final postedText =
         postedDate == null ? "" : "Posted: ${_formatPostedDate(postedDate)}";
 
