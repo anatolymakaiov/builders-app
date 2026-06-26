@@ -9,9 +9,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'image_viewer_screen.dart';
 import '../services/chat_profile_navigation_service.dart';
 import '../services/report_service.dart';
@@ -46,6 +46,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool isUploadingMedia = false;
   final List<_PendingChatAttachment> pendingAttachments = [];
   final Set<String> _markedRead = {};
+  _ReplyDraft? replyDraft;
 
   @override
   void initState() {
@@ -331,6 +332,56 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  String senderNameForMessage(Map<String, dynamic> data, String uid) {
+    if (data["senderId"]?.toString() == uid) return "You";
+    final senderName = data["senderName"]?.toString().trim();
+    if (senderName != null && senderName.isNotEmpty) return senderName;
+    final role = data["senderRole"]?.toString();
+    if (role == "employer") return "Employer";
+    if (role == "worker") return "Worker";
+    return "User";
+  }
+
+  String attachmentCopyText(List<Map<String, dynamic>> attachments) {
+    final names = attachments
+        .map((item) => item["fileName"]?.toString().trim() ?? "")
+        .where((name) => name.isNotEmpty)
+        .toList();
+    return names.join("\n");
+  }
+
+  _ReplyDraft replyDraftFromMessage({
+    required QueryDocumentSnapshot message,
+    required Map<String, dynamic> data,
+    required String uid,
+  }) {
+    final attachments = attachmentsFromMessage(data);
+    final textPreview = messagePreview(data).trim();
+    return _ReplyDraft(
+      messageId: message.id,
+      chatId: widget.chatId,
+      senderId: data["senderId"]?.toString() ?? "",
+      senderName: senderNameForMessage(data, uid),
+      textPreview: textPreview.length > 90
+          ? "${textPreview.substring(0, 90).trim()}..."
+          : textPreview,
+      attachmentPreview:
+          attachments.isEmpty ? null : chatAttachmentPreview(attachments),
+    );
+  }
+
+  Map<String, dynamic> replyMetadata(_ReplyDraft draft) {
+    return {
+      "replyToMessageId": draft.messageId,
+      "replyToChatId": draft.chatId,
+      "replyToSenderId": draft.senderId,
+      "replyToSenderName": draft.senderName,
+      "replyToTextPreview": draft.textPreview,
+      if (draft.attachmentPreview != null)
+        "replyToAttachmentPreview": draft.attachmentPreview,
+    };
+  }
+
   List<Map<String, dynamic>> attachmentsFromMessage(Map<String, dynamic> data) {
     final rawAttachments = data["attachments"];
     if (rawAttachments is List) {
@@ -523,6 +574,582 @@ class _ChatScreenState extends State<ChatScreen> {
     await refreshChatLastMessage();
   }
 
+  Future<void> copyMessageText(Map<String, dynamic> data) async {
+    final text = data["text"]?.toString().trim() ?? "";
+    final copyText = text.isNotEmpty
+        ? text
+        : attachmentCopyText(attachmentsFromMessage(data));
+    if (!mounted) return;
+    if (copyText.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Nothing to copy")),
+      );
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: copyText));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Copied")),
+    );
+  }
+
+  void startReply({
+    required QueryDocumentSnapshot message,
+    required Map<String, dynamic> data,
+    required String uid,
+  }) {
+    setState(() {
+      replyDraft =
+          replyDraftFromMessage(message: message, data: data, uid: uid);
+    });
+  }
+
+  String cleanText(dynamic value) => value?.toString().trim() ?? "";
+
+  String firstNonEmpty(List<dynamic> values, {String fallback = ""}) {
+    for (final value in values) {
+      final text = cleanText(value);
+      if (text.isNotEmpty) return text;
+    }
+    return fallback;
+  }
+
+  String normalizeSearch(String value) => value.toLowerCase().trim();
+
+  String normalizePhoneForSearch(String value) {
+    final digits = value.replaceAll(RegExp(r"[^0-9+]"), "");
+    if (digits.startsWith("+44")) return "0${digits.substring(3)}";
+    if (digits.startsWith("44") && digits.length > 10) {
+      return "0${digits.substring(2)}";
+    }
+    return digits;
+  }
+
+  List<String> idsFrom(dynamic value) {
+    if (value is List) {
+      return value
+          .map((item) => item.toString())
+          .where((id) => id.isNotEmpty)
+          .toList();
+    }
+    if (value is Map) {
+      return [
+        ...value.keys.map((key) => key.toString()),
+        ...value.values.map((item) {
+          if (item is Map) return item["userId"]?.toString() ?? "";
+          return item is String ? item : "";
+        }),
+      ].where((id) => id.isNotEmpty).toList();
+    }
+    return const [];
+  }
+
+  bool isInactiveProfile(Map<String, dynamic> data) {
+    final status = cleanText(data["status"]).toLowerCase();
+    return data["deleted"] == true ||
+        data["accountDeleted"] == true ||
+        data["anonymised"] == true ||
+        data["companyDeleted"] == true ||
+        data["active"] == false ||
+        status == "deleted" ||
+        status == "inactive" ||
+        status == "suspended";
+  }
+
+  List<String> chatRecipientIdsFromData(Map<String, dynamic> data) {
+    final ids = <String>{};
+    ids.addAll(idsFrom(data["participants"]));
+    ids.addAll(idsFrom(data["participantIds"]));
+    ids.addAll(idsFrom(data["members"]));
+    ids.addAll(idsFrom(data["userIds"]));
+    for (final key in const [
+      "workerId",
+      "employerId",
+      "senderId",
+      "receiverId",
+      "targetProfileId",
+    ]) {
+      final id = cleanText(data[key]);
+      if (id.isNotEmpty) ids.add(id);
+    }
+    return ids.toList();
+  }
+
+  Future<List<_ForwardRecipient>> loadRecentForwardChats(String uid) async {
+    final seen = <String>{};
+    final results = <_ForwardRecipient>[];
+
+    Future<void> addFromQuery(QuerySnapshot<Map<String, dynamic>> snap) async {
+      for (final doc in snap.docs) {
+        if (!seen.add(doc.id)) continue;
+        final data = doc.data();
+        if (!chatRecipientIdsFromData(data).contains(uid)) continue;
+        final isTeam = data["type"] == "team" ||
+            data["type"] == "internal_team" ||
+            data["teamId"] != null;
+        final title = isTeam
+            ? firstNonEmpty([data["teamName"], data["name"]], fallback: "Team")
+            : firstNonEmpty([
+                data["companyName"],
+                data["employerName"],
+                data["workerName"],
+                data["displayName"],
+                data["name"],
+              ], fallback: "Chat");
+        final subtitle = firstNonEmpty([
+          data["jobTitle"],
+          data["lastMessage"],
+          data["type"],
+        ]);
+        results.add(
+          _ForwardRecipient(
+            id: doc.id,
+            name: title,
+            subtitle: subtitle.isEmpty ? "Recent chat" : subtitle,
+            role: isTeam ? "team" : "chat",
+            existingChatId: doc.id,
+            icon: isTeam ? Icons.group : Icons.chat_bubble_outline,
+          ),
+        );
+      }
+    }
+
+    final chats = FirebaseFirestore.instance.collection("chats");
+    await addFromQuery(
+      await chats.where("participants", arrayContains: uid).limit(30).get(),
+    );
+    if (results.length < 10) {
+      await addFromQuery(
+        await chats.where("participantIds", arrayContains: uid).limit(30).get(),
+      );
+    }
+    return results;
+  }
+
+  Future<List<_ForwardRecipient>> searchForwardRecipients(
+    String query,
+    String uid,
+  ) async {
+    final normalizedQuery = normalizeSearch(query);
+    final phoneQuery = normalizePhoneForSearch(query);
+    final currentUserSnap =
+        await FirebaseFirestore.instance.collection("users").doc(uid).get();
+    final currentRole =
+        cleanText(currentUserSnap.data()?["role"]).toLowerCase();
+
+    final results = <_ForwardRecipient>[];
+    final users =
+        await FirebaseFirestore.instance.collection("users").limit(250).get();
+    for (final doc in users.docs) {
+      if (doc.id == uid) continue;
+      final data = doc.data();
+      if (isInactiveProfile(data)) continue;
+      final role = cleanText(data["role"]).toLowerCase();
+      if (role == "admin") continue;
+      final firstName = cleanText(data["firstName"]);
+      final lastName = cleanText(data["lastName"]);
+      final phone = firstNonEmpty([data["phone"], data["billingPhone"]]);
+      final name = role == "employer"
+          ? firstNonEmpty([
+              data["companyName"],
+              data["name"],
+              data["displayName"],
+              "$firstName $lastName",
+            ], fallback: "Company")
+          : firstNonEmpty([
+              data["name"],
+              data["displayName"],
+              "$firstName $lastName",
+              data["nickname"],
+            ], fallback: "Worker");
+      final haystack = normalizeSearch([
+        doc.id,
+        name,
+        firstName,
+        lastName,
+        data["nickname"],
+        data["companyName"],
+        phone,
+        data["normalizedPhone"],
+      ].whereType<Object>().join(" "));
+      final phoneMatches = phoneQuery.isNotEmpty &&
+          normalizePhoneForSearch(haystack).contains(phoneQuery);
+      if (!haystack.contains(normalizedQuery) && !phoneMatches) continue;
+
+      final recipient = _ForwardRecipient(
+        id: doc.id,
+        name: name,
+        subtitle: role == "employer" ? "Employer" : "Worker",
+        role: role == "employer" ? "employer" : "worker",
+        phone: phone,
+        avatarUrl: firstNonEmpty([
+          data["avatarUrl"],
+          data["profilePhotoUrl"],
+          data["photo"],
+          data["companyLogo"],
+        ]),
+        existingChatId: await findExistingForwardChat(uid, doc.id),
+      );
+      results.add(recipient);
+    }
+
+    final teams =
+        await FirebaseFirestore.instance.collection("teams").limit(150).get();
+    for (final doc in teams.docs) {
+      final data = doc.data();
+      if (isInactiveProfile(data)) continue;
+      final members = idsFrom(data["members"]);
+      if (currentRole == "worker" && !members.contains(uid)) continue;
+      final name =
+          firstNonEmpty([data["name"], data["teamName"]], fallback: "Team");
+      final haystack = normalizeSearch([
+        doc.id,
+        name,
+        data["description"],
+        data["trade"],
+      ].whereType<Object>().join(" "));
+      if (!haystack.contains(normalizedQuery)) continue;
+      results.add(
+        _ForwardRecipient(
+          id: doc.id,
+          name: name,
+          subtitle: "Team",
+          role: "team",
+          avatarUrl: firstNonEmpty([
+            data["avatarUrl"],
+            data["photo"],
+            data["teamLogo"],
+          ]),
+          memberIds: members,
+          existingChatId: await findExistingForwardChat(uid, doc.id),
+          icon: Icons.group,
+        ),
+      );
+    }
+
+    return results.take(25).toList();
+  }
+
+  Future<String?> findExistingForwardChat(String uid, String targetId) async {
+    final snap = await FirebaseFirestore.instance
+        .collection("chats")
+        .where("participants", arrayContains: uid)
+        .limit(100)
+        .get();
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      if (data["teamId"]?.toString() == targetId) return doc.id;
+      final ids = chatRecipientIdsFromData(data);
+      if (ids.contains(targetId)) return doc.id;
+    }
+    return null;
+  }
+
+  Future<String> openOrCreateForwardChat(
+    _ForwardRecipient recipient,
+    String uid,
+  ) async {
+    if (recipient.existingChatId != null) return recipient.existingChatId!;
+    if (recipient.role == "chat") return recipient.id;
+
+    final currentUserSnap =
+        await FirebaseFirestore.instance.collection("users").doc(uid).get();
+    final currentRole =
+        cleanText(currentUserSnap.data()?["role"]).toLowerCase();
+
+    if (recipient.role == "team") {
+      if (currentRole == "employer") {
+        return ChatService.getOrCreateTeamChat(
+          teamId: recipient.id,
+          employerId: uid,
+          jobId: "",
+          members: recipient.memberIds,
+        );
+      }
+      return ChatService.getOrCreateInternalTeamChat(
+        teamId: recipient.id,
+        teamName: recipient.name,
+        members:
+            recipient.memberIds.contains(uid) ? recipient.memberIds : [uid],
+      );
+    }
+
+    final currentUserIsEmployer = currentRole == "employer";
+    return ChatService.getOrCreateChat(
+      workerId: currentUserIsEmployer ? recipient.id : uid,
+      employerId: currentUserIsEmployer ? uid : recipient.id,
+      jobId: "",
+      jobTitle: "General",
+    );
+  }
+
+  Future<void> openForwardPicker(
+      Map<String, dynamic> source, String uid) async {
+    dismissKeyboard();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final searchController = TextEditingController();
+        var query = "";
+        var searching = false;
+        var searchResults = <_ForwardRecipient>[];
+        Timer? debounce;
+
+        Future<void> runSearch(
+          String value,
+          void Function(void Function()) setSheetState,
+        ) async {
+          debounce?.cancel();
+          debounce = Timer(const Duration(milliseconds: 300), () async {
+            final trimmed = value.trim();
+            if (trimmed.isEmpty) {
+              setSheetState(() {
+                query = "";
+                searchResults = [];
+                searching = false;
+              });
+              return;
+            }
+            setSheetState(() {
+              query = trimmed;
+              searching = true;
+            });
+            try {
+              final results = await searchForwardRecipients(trimmed, uid);
+              if (!mounted) return;
+              setSheetState(() {
+                searchResults = results;
+                searching = false;
+              });
+            } catch (error) {
+              debugPrint("FORWARD SEARCH ERROR: $error");
+              if (!mounted) return;
+              setSheetState(() => searching = false);
+            }
+          });
+        }
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.78,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      child: TextField(
+                        controller: searchController,
+                        autofocus: true,
+                        onChanged: (value) => runSearch(value, setSheetState),
+                        decoration: InputDecoration(
+                          hintText: "Search users, teams or chats",
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: searchController.text.trim().isEmpty
+                              ? null
+                              : IconButton(
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () {
+                                    searchController.clear();
+                                    setSheetState(() {
+                                      query = "";
+                                      searchResults = [];
+                                      searching = false;
+                                    });
+                                  },
+                                ),
+                        ),
+                      ),
+                    ),
+                    if (searching)
+                      const Padding(
+                        padding: EdgeInsets.all(18),
+                        child: CircularProgressIndicator(),
+                      )
+                    else
+                      Expanded(
+                        child: query.isEmpty
+                            ? FutureBuilder<List<_ForwardRecipient>>(
+                                future: loadRecentForwardChats(uid),
+                                builder: (context, snapshot) {
+                                  if (!snapshot.hasData) {
+                                    return const Center(
+                                      child: CircularProgressIndicator(),
+                                    );
+                                  }
+                                  return buildForwardRecipientList(
+                                    snapshot.data!,
+                                    source,
+                                    uid,
+                                    emptyText: "No recent chats.",
+                                  );
+                                },
+                              )
+                            : buildForwardRecipientList(
+                                searchResults,
+                                source,
+                                uid,
+                                emptyText: "No matches.",
+                              ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget buildForwardRecipientList(
+    List<_ForwardRecipient> recipients,
+    Map<String, dynamic> source,
+    String uid, {
+    required String emptyText,
+  }) {
+    if (recipients.isEmpty) {
+      return Center(child: Text(emptyText));
+    }
+    return ListView.builder(
+      itemCount: recipients.length,
+      itemBuilder: (context, index) {
+        final recipient = recipients[index];
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: AppColors.surfaceAlt,
+            child: recipient.avatarUrl == null || recipient.avatarUrl!.isEmpty
+                ? Icon(recipient.icon, color: AppColors.greenDark)
+                : ClipOval(
+                    child: Image.network(
+                      recipient.avatarUrl!,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          Icon(recipient.icon, color: AppColors.greenDark),
+                    ),
+                  ),
+          ),
+          title: Text(recipient.name,
+              maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            [recipient.subtitle, recipient.phone]
+                .where((item) => item.trim().isNotEmpty)
+                .join(" · "),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          onTap: () async {
+            Navigator.pop(context);
+            await forwardMessage(source, recipient, uid);
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> forwardMessage(
+    Map<String, dynamic> source,
+    _ForwardRecipient recipient,
+    String uid,
+  ) async {
+    try {
+      final targetChatId = await openOrCreateForwardChat(recipient, uid);
+      final targetChatRef =
+          FirebaseFirestore.instance.collection("chats").doc(targetChatId);
+      final targetChat = await targetChatRef.get();
+      final targetData = targetChat.data();
+      if (targetData == null) throw StateError("Target chat not found.");
+      final targetMembers = chatRecipientIdsFromData(targetData);
+      if (!targetMembers.contains(uid)) {
+        throw StateError("Current user is not a participant of target chat.");
+      }
+
+      final sourceAttachments = attachmentsFromMessage(source);
+      final text = source["text"]?.toString().trim() ?? "";
+      final audioUrl = firstNonEmpty([source["audioUrl"], source["mediaUrl"]]);
+      if (text.isEmpty && sourceAttachments.isEmpty && audioUrl.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Nothing to forward")),
+        );
+        return;
+      }
+
+      final firstAttachment = sourceAttachments.isNotEmpty
+          ? sourceAttachments.first
+          : <String, dynamic>{};
+      final attachmentType = firstAttachment["type"]?.toString();
+      final sourceType = source["type"]?.toString() ?? "text";
+      final messageType = audioUrl.isNotEmpty && sourceType == "audio"
+          ? "audio"
+          : sourceAttachments.isEmpty
+              ? "text"
+              : sourceAttachments.length == 1 && attachmentType != "file"
+                  ? attachmentType
+                  : "attachments";
+      final messageRef = targetChatRef.collection("messages").doc();
+      final isWorker = uid == targetData["workerId"]?.toString();
+      final unread = targetMembers.where((id) => id != uid).toList();
+      final originalSenderName = firstNonEmpty([source["senderName"]],
+          fallback: senderNameForMessage(source, uid));
+
+      await messageRef.set({
+        "messageId": messageRef.id,
+        "chatId": targetChatId,
+        "type": messageType,
+        "text": text,
+        "attachments": sourceAttachments,
+        if (audioUrl.isNotEmpty) "audioUrl": audioUrl,
+        if (audioUrl.isNotEmpty) "mediaUrl": audioUrl,
+        if (sourceAttachments.isNotEmpty) "mediaUrl": firstAttachment["url"],
+        if (attachmentType == "image") "imageUrl": firstAttachment["url"],
+        if (attachmentType == "video") "videoUrl": firstAttachment["url"],
+        if (firstAttachment["fileName"] != null)
+          "fileName": firstAttachment["fileName"],
+        "senderId": uid,
+        "senderRole": isWorker ? "worker" : "employer",
+        "createdAt": FieldValue.serverTimestamp(),
+        "readBy": [uid],
+        "forwarded": true,
+        "forwardedFromMessageId": source["messageId"]?.toString() ?? "",
+        "forwardedFromChatId": source["chatId"]?.toString() ?? widget.chatId,
+        "forwardedFromSenderId": source["senderId"]?.toString() ?? "",
+        "forwardedFromSenderName": originalSenderName,
+      });
+
+      final preview = text.isNotEmpty
+          ? "Forwarded: $text"
+          : audioUrl.isNotEmpty
+              ? "Forwarded: Voice message"
+              : "Forwarded: ${chatAttachmentPreview(sourceAttachments)}";
+      await targetChatRef.set({
+        "lastMessage": preview,
+        "lastMessageType": messageType,
+        "updatedAt": FieldValue.serverTimestamp(),
+        "unreadFor": FieldValue.arrayUnion(unread),
+        if (isWorker)
+          "unreadCount_employer": FieldValue.increment(1)
+        else
+          "unreadCount_worker": FieldValue.increment(1),
+      }, SetOptions(merge: true));
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Message forwarded")),
+      );
+    } catch (error) {
+      debugPrint("FORWARD MESSAGE ERROR: $error");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not forward message")),
+      );
+    }
+  }
+
   Future<void> showMessageActions({
     required QueryDocumentSnapshot message,
     required Map<String, dynamic> data,
@@ -556,6 +1183,34 @@ class _ChatScreenState extends State<ChatScreen> {
                     editTextMessage(message, data);
                   },
                 ),
+              ListTile(
+                leading: const Icon(Icons.reply),
+                title: const Text("Reply"),
+                onTap: () {
+                  Navigator.pop(context);
+                  startReply(message: message, data: data, uid: uid);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.copy),
+                title: const Text("Copy"),
+                onTap: () {
+                  Navigator.pop(context);
+                  copyMessageText(data);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.forward),
+                title: const Text("Forward"),
+                onTap: () {
+                  Navigator.pop(context);
+                  openForwardPicker({
+                    ...data,
+                    "messageId": message.id,
+                    "chatId": widget.chatId,
+                  }, uid);
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.visibility_off_outlined),
                 title: const Text("Delete for me"),
@@ -610,6 +1265,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = controller.text.trim();
     if (text.isEmpty && pendingAttachments.isEmpty) return;
     if (isUploadingMedia) return;
+    final activeReplyDraft = replyDraft;
 
     final isWorker = user.uid == workerId;
     final messageRef = FirebaseFirestore.instance
@@ -666,6 +1322,7 @@ class _ChatScreenState extends State<ChatScreen> {
         "senderRole": isWorker ? "worker" : "employer",
         "createdAt": FieldValue.serverTimestamp(),
         "readBy": [user.uid],
+        if (activeReplyDraft != null) ...replyMetadata(activeReplyDraft),
       });
 
       debugPrint(
@@ -697,7 +1354,12 @@ class _ChatScreenState extends State<ChatScreen> {
       controller.clear();
       typingTimer?.cancel();
       _isTyping = false;
-      if (mounted) pendingAttachments.clear();
+      if (mounted) {
+        setState(() {
+          pendingAttachments.clear();
+          replyDraft = null;
+        });
+      }
       scrollToBottom();
     } on FirebaseException catch (e) {
       debugPrint("SEND MESSAGE ERROR: [${e.plugin}/${e.code}] ${e.message}");
@@ -1514,6 +2176,125 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget buildComposerReplyPreview() {
+    final draft = replyDraft;
+    if (draft == null) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(8),
+        border: const Border(
+          left: BorderSide(color: AppColors.greenDark, width: 4),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.reply, size: 18, color: AppColors.greenDark),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  draft.senderName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.navy,
+                  ),
+                ),
+                Text(
+                  draft.textPreview.isNotEmpty
+                      ? draft.textPreview
+                      : draft.attachmentPreview ?? "Attachment",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: "Cancel reply",
+            icon: const Icon(Icons.close),
+            onPressed: () => setState(() => replyDraft = null),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildReplyQuote(Map<String, dynamic> data) {
+    final sender = data["replyToSenderName"]?.toString().trim() ?? "";
+    final text = data["replyToTextPreview"]?.toString().trim() ?? "";
+    final attachment =
+        data["replyToAttachmentPreview"]?.toString().trim() ?? "";
+    if (sender.isEmpty && text.isEmpty && attachment.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(8),
+        border: const Border(
+          left: BorderSide(color: AppColors.greenDark, width: 3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (sender.isNotEmpty)
+            Text(
+              sender,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: AppColors.navy,
+              ),
+            ),
+          Text(
+            text.isNotEmpty ? text : attachment,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildForwardedLabel(Map<String, dynamic> data) {
+    if (data["forwarded"] != true) return const SizedBox.shrink();
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.forward, size: 14, color: AppColors.muted),
+          SizedBox(width: 4),
+          Text(
+            "Forwarded",
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.muted,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String formatDateLabel(DateTime date) {
     final now = DateTime.now();
     final diff = DateTime(now.year, now.month, now.day)
@@ -1866,6 +2647,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                                 crossAxisAlignment:
                                                     CrossAxisAlignment.end,
                                                 children: [
+                                                  if (!deletedForEveryone)
+                                                    buildForwardedLabel(data),
+                                                  if (!deletedForEveryone)
+                                                    buildReplyQuote(data),
                                                   if (deletedForEveryone)
                                                     const Text(
                                                       "Message deleted",
@@ -2040,6 +2825,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       padding: EdgeInsets.only(bottom: 8),
                                       child: LinearProgressIndicator(),
                                     ),
+                                  buildComposerReplyPreview(),
                                   buildPendingAttachments(),
                                   Row(
                                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -2117,6 +2903,48 @@ class _ChatScreenState extends State<ChatScreen> {
       },
     );
   }
+}
+
+class _ReplyDraft {
+  final String messageId;
+  final String chatId;
+  final String senderId;
+  final String senderName;
+  final String textPreview;
+  final String? attachmentPreview;
+
+  const _ReplyDraft({
+    required this.messageId,
+    required this.chatId,
+    required this.senderId,
+    required this.senderName,
+    required this.textPreview,
+    this.attachmentPreview,
+  });
+}
+
+class _ForwardRecipient {
+  final String id;
+  final String name;
+  final String subtitle;
+  final String role;
+  final String phone;
+  final String? avatarUrl;
+  final String? existingChatId;
+  final List<String> memberIds;
+  final IconData icon;
+
+  const _ForwardRecipient({
+    required this.id,
+    required this.name,
+    required this.subtitle,
+    required this.role,
+    this.phone = "",
+    this.avatarUrl,
+    this.existingChatId,
+    this.memberIds = const [],
+    this.icon = Icons.person_outline,
+  });
 }
 
 class _PendingChatAttachment {
