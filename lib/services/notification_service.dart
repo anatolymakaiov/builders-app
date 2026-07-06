@@ -32,6 +32,11 @@ class NotificationService {
 
   /// 🔥 INIT
   Future<void> init() async {
+    if (kIsWeb) {
+      debugPrint("NotificationService skipped on web");
+      return;
+    }
+
     /// 🔐 Permissions
     await _fcm.requestPermission(
       alert: true,
@@ -116,6 +121,11 @@ class NotificationService {
 
   /// 🔥 SAVE TOKEN (без краша на iOS)
   Future<void> saveToken(String userId) async {
+    if (kIsWeb) {
+      debugPrint("saveToken skipped on web");
+      return;
+    }
+
     debugPrint("saveToken called");
 
     try {

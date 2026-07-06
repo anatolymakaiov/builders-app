@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_preferences_service.dart';
@@ -88,17 +89,44 @@ class _LoginScreenState extends State<LoginScreen> {
       return null;
     }
 
-    final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-    final user = credential.user;
-    if (user != null) {
-      await authPreferences.enrollBiometricLoginForPasswordSession(
-        user: user,
+    if (kIsWeb) {
+      debugPrint(
+        "WEB_SIGN_IN_START platform=web emailProvided=${email.isNotEmpty}",
+      );
+    }
+
+    UserCredential credential;
+    try {
+      credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
+    } on FirebaseAuthException catch (error) {
+      if (kIsWeb) {
+        debugPrint(
+          "WEB_SIGN_IN_ERROR code=${error.code} message=${error.message}",
+        );
+      }
+      rethrow;
+    }
+    final user = credential.user;
+    if (user != null) {
+      if (kIsWeb) {
+        final userDoc = await FirebaseFirestore.instance
+            .collection("users")
+            .doc(user.uid)
+            .get();
+        debugPrint(
+          "WEB_SIGN_IN_SUCCESS uid=${user.uid} role=${userDoc.data()?["role"] ?? "unknown"}",
+        );
+      }
+      if (!kIsWeb) {
+        await authPreferences.enrollBiometricLoginForPasswordSession(
+          user: user,
+          email: email,
+          password: password,
+        );
+      }
     }
     return credential;
   }
@@ -555,6 +583,20 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         return;
       }
+    } on FirebaseAuthException catch (error) {
+      debugPrint("Registration submit failed: $error");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isLogin && kIsWeb
+                ? "${error.code}: ${error.message ?? "Could not sign in."}"
+                : isLogin
+                    ? "Could not sign in. Please try again."
+                    : "Could not create account. Please try again.",
+          ),
+        ),
+      );
     } catch (e) {
       debugPrint("Registration submit failed: $e");
       if (!mounted) return;
@@ -917,22 +959,54 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
 
     setState(() => loading = true);
     try {
+      if (kIsWeb) {
+        debugPrint(
+          "WEB_SIGN_IN_START platform=web emailProvided=${email.isNotEmpty}",
+        );
+      }
       final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
       final user = credential.user;
       if (user != null) {
-        await authPreferences.enrollBiometricLoginForPasswordSession(
-          user: user,
-          email: email,
-          password: password,
-        );
+        if (kIsWeb) {
+          final userDoc = await FirebaseFirestore.instance
+              .collection("users")
+              .doc(user.uid)
+              .get();
+          debugPrint(
+            "WEB_SIGN_IN_SUCCESS uid=${user.uid} role=${userDoc.data()?["role"] ?? "unknown"}",
+          );
+        }
+        if (!kIsWeb) {
+          await authPreferences.enrollBiometricLoginForPasswordSession(
+            user: user,
+            email: email,
+            password: password,
+          );
+        }
       }
       widget.onSessionUnlocked?.call();
       await Future<void>.delayed(Duration.zero);
       if (!mounted) return;
       if (Navigator.canPop(context)) Navigator.pop(context);
+    } on FirebaseAuthException catch (error) {
+      if (kIsWeb) {
+        debugPrint(
+          "WEB_SIGN_IN_ERROR code=${error.code} message=${error.message}",
+        );
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            kIsWeb
+                ? "${error.code}: ${error.message ?? "Could not sign in."}"
+                : "Could not sign in. Please try again.",
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

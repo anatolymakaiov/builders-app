@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 
 import 'firebase_options.dart';
 import 'services/app_navigation.dart';
@@ -30,7 +31,9 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  if (!kIsWeb) {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
   await NotificationService().init();
 
   runApp(const JobApp());
@@ -180,6 +183,15 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return WebBootstrapScreen(
+        onSessionUnlocked: () {
+          if (!mounted) return;
+          setState(() => sessionUnlocked = true);
+        },
+      );
+    }
+
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
@@ -342,6 +354,126 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
           },
         );
       },
+    );
+  }
+}
+
+class WebBootstrapScreen extends StatelessWidget {
+  final VoidCallback onSessionUnlocked;
+
+  const WebBootstrapScreen({
+    super.key,
+    required this.onSessionUnlocked,
+  });
+
+  String roleFrom(Map<String, dynamic>? data) {
+    final role = data?["role"]?.toString().trim().toLowerCase();
+    if (role == "admin" || role == "employer") return role!;
+    return "worker";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, authSnapshot) {
+        if (authSnapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final user = authSnapshot.data;
+        if (user == null) {
+          return LoginScreen(onSessionUnlocked: onSessionUnlocked);
+        }
+
+        return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          future: FirebaseFirestore.instance
+              .collection("users")
+              .doc(user.uid)
+              .get(),
+          builder: (context, userSnapshot) {
+            if (userSnapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            final data = userSnapshot.data?.data();
+            final role = roleFrom(data);
+            if (role == "worker") {
+              return _WebBootstrapMessage(
+                title: "Please use mobile app",
+                message:
+                    "Worker access is currently available in the mobile app.",
+                user: user,
+              );
+            }
+
+            return _WebBootstrapMessage(
+              title: "Web login ready",
+              message:
+                  "Your $role account is signed in. Web dashboard loading is temporarily disabled while web support is being stabilized.",
+              user: user,
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _WebBootstrapMessage extends StatelessWidget {
+  final String title;
+  final String message;
+  final User user;
+
+  const _WebBootstrapMessage({
+    required this.title,
+    required this.message,
+    required this.user,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  user.email ?? user.uid,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppColors.muted),
+                ),
+                const SizedBox(height: 20),
+                OutlinedButton(
+                  onPressed: () => FirebaseAuth.instance.signOut(),
+                  child: const Text("Sign out"),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
