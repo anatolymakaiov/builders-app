@@ -13,6 +13,7 @@ import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../services/offer_acceptance_service.dart';
 import '../services/profile_communication_service.dart';
+import '../services/stroyka_action_feedback.dart';
 import '../widgets/app_cached_image.dart';
 import '../widgets/make_offer_dialog.dart';
 import '../widgets/app_photo_grid_gallery.dart';
@@ -102,23 +103,42 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
   }
 
   Future<void> updateWorkerActionStatus({
+    required BuildContext context,
     required String status,
     required Map<String, dynamic> source,
   }) async {
-    await ApplicationActivityService.updateStatus(
-      applicationId: applicationId,
-      status: status,
-      unreadFor: ApplicationActivityService.employerRecipients(source),
-    );
-
-    if (status == "offer_rejected") {
-      await NotificationService().notifyEmployerOfferDecision(
+    try {
+      await ApplicationActivityService.updateStatus(
         applicationId: applicationId,
-        applicationData: {
-          ...source,
-          "status": status,
-        },
         status: status,
+        unreadFor: ApplicationActivityService.employerRecipients(source),
+      );
+
+      if (status == "offer_rejected") {
+        await NotificationService().notifyEmployerOfferDecision(
+          applicationId: applicationId,
+          applicationData: {
+            ...source,
+            "status": status,
+          },
+          status: status,
+        );
+      }
+      if (context.mounted && status == "offer_rejected") {
+        StroykaActionFeedback.showSuccess(
+          context,
+          semanticLabel: "Offer rejected",
+        );
+      }
+    } catch (e) {
+      debugPrint("WORKER ACTION STATUS ERROR: $e");
+      if (!context.mounted) return;
+      StroykaActionFeedback.showError(
+        context,
+        message: status == "offer_rejected"
+            ? "Could not reject offer"
+            : "Could not update application",
+        semanticLabel: "Could not update application",
       );
     }
   }
@@ -190,14 +210,17 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
         }
       }
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Offer accepted")),
+      StroykaActionFeedback.showSuccess(
+        context,
+        semanticLabel: "Offer accepted",
       );
     } catch (e) {
       debugPrint("ACCEPT OFFER ERROR: $e");
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Could not accept offer")),
+      StroykaActionFeedback.showError(
+        context,
+        message: "Could not accept offer",
+        semanticLabel: "Could not accept offer",
       );
     }
   }
@@ -504,14 +527,17 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
       }
 
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Offer sent")),
+      StroykaActionFeedback.showSuccess(
+        context,
+        semanticLabel: "Offer sent",
       );
     } catch (e) {
       debugPrint("MAKE OFFER ERROR: $e");
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Could not send offer")),
+      StroykaActionFeedback.showError(
+        context,
+        message: "Could not send offer",
+        semanticLabel: "Could not send offer",
       );
     }
   }
@@ -1645,6 +1671,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                       icon: Icons.cancel_outlined,
                       label: "Reject Offer",
                       run: () => updateWorkerActionStatus(
+                            context: context,
                             status: "offer_rejected",
                             source: liveData,
                           ),

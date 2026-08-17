@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'notification_service.dart';
+import 'stroyka_action_feedback.dart';
 
 class ReportService {
   static Future<void> showReportDialog(
@@ -62,19 +63,18 @@ class ReportService {
 
       if (!context.mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Your request has been sent successfully."),
-        ),
+      StroykaActionFeedback.showSuccess(
+        context,
+        semanticLabel: "Report sent",
       );
     } catch (e) {
       debugPrint("REPORT SUBMIT ERROR: $e");
       if (!context.mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Could not submit report. Please try again."),
-        ),
+      StroykaActionFeedback.showError(
+        context,
+        message: "Could not submit report. Please try again.",
+        semanticLabel: "Could not submit report",
       );
     }
   }

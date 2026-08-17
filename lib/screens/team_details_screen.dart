@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../services/chat_service.dart';
 import '../services/profile_communication_service.dart';
+import '../services/stroyka_action_feedback.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/phone_link.dart';
 import '../theme/app_theme.dart';
@@ -355,11 +356,18 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
         "memberStatuses.$workerId": "active",
         "updatedAt": FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      if (!mounted) return;
+      StroykaActionFeedback.showSuccess(
+        context,
+        semanticLabel: "Team member added",
+      );
     } catch (e) {
       debugPrint("ADD TEAM MEMBER ERROR: $e");
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Could not add team member")),
+      StroykaActionFeedback.showError(
+        context,
+        message: "Could not add team member",
+        semanticLabel: "Could not add team member",
       );
     } finally {
       if (mounted) setState(() => addingMember = false);
@@ -443,21 +451,26 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
       }, SetOptions(merge: true));
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Worker removed from team.")),
+      StroykaActionFeedback.showSuccess(
+        context,
+        semanticLabel: "Worker removed from team",
       );
     } on FirebaseException catch (e) {
       if (!mounted) return;
       final message = e.code == "permission-denied"
           ? "Only the team leader can manage team members."
           : "Could not remove worker from team.";
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
+      StroykaActionFeedback.showError(
+        context,
+        message: message,
+        semanticLabel: "Could not remove worker from team",
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Could not remove worker from team.")),
+      StroykaActionFeedback.showError(
+        context,
+        message: "Could not remove worker from team.",
+        semanticLabel: "Could not remove worker from team",
       );
     }
   }

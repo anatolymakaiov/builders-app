@@ -11,6 +11,7 @@ import '../services/address_lookup_service.dart';
 import '../services/billing_service.dart';
 import '../services/job_taxonomy_service.dart';
 import '../services/moderation_hold_service.dart';
+import '../services/stroyka_action_feedback.dart';
 import '../services/vacancy_import_service.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/smart_job_search.dart';
@@ -463,7 +464,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
       widget.onJobCreated(true);
 
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        StroykaActionFeedback.showSuccess(
+          context,
+          semanticLabel: widget.existingJob != null
+              ? "Vacancy saved"
+              : "Vacancy published",
+        );
+        Navigator.pop(context);
+      }
     } on BillingLimitException catch (e) {
       debugPrint("Billing limit: ${e.message}");
       if (mounted) {
@@ -474,8 +483,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
       debugPrint("Save error: $e");
       if (mounted) {
         setState(() => loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Could not save job")),
+        StroykaActionFeedback.showError(
+          context,
+          message: "Could not save job",
+          semanticLabel: "Could not save job",
         );
       }
     }

@@ -7,6 +7,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'stroyka_action_feedback.dart';
+
 class SupportRequestService {
   static const workerRequestTypes = {
     "technical_issue": "Technical issue",
@@ -114,18 +116,17 @@ class SupportRequestService {
 
       if (!context.mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Your request has been sent successfully."),
-        ),
+      StroykaActionFeedback.showSuccess(
+        context,
+        semanticLabel: "Support request sent",
       );
     } catch (e) {
       debugPrint("SUPPORT REQUEST SUBMIT ERROR: $e");
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Could not submit support request. Please try again."),
-        ),
+      StroykaActionFeedback.showError(
+        context,
+        message: "Could not submit support request. Please try again.",
+        semanticLabel: "Could not submit support request",
       );
     }
   }

@@ -14,6 +14,7 @@ import '../services/moderation_hold_service.dart';
 import '../services/notification_service.dart';
 import '../services/profile_communication_service.dart';
 import '../services/report_service.dart';
+import '../services/stroyka_action_feedback.dart';
 import '../services/support_request_service.dart';
 import 'chat_screen.dart';
 import '../widgets/make_offer_dialog.dart';
@@ -1684,8 +1685,9 @@ class WorkerProfileScreen extends StatelessWidget {
                   ),
                 );
                 if (!context.mounted || saved != true) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Profile saved")),
+                StroykaActionFeedback.showSuccess(
+                  context,
+                  semanticLabel: "Profile saved",
                 );
               },
             ),
@@ -2187,18 +2189,20 @@ class _CreateTeamDialogState extends State<_CreateTeamDialog> {
       });
 
       if (!mounted) return;
-      final messenger = ScaffoldMessenger.maybeOf(context);
-      Navigator.pop(context, true);
-      messenger?.showSnackBar(
-        const SnackBar(content: Text("Team created")),
+      StroykaActionFeedback.showSuccess(
+        context,
+        semanticLabel: "Team created",
       );
+      Navigator.pop(context, true);
     } catch (e) {
       debugPrint("CREATE TEAM ERROR: $e");
       createRequestInProgress = false;
       if (!mounted) return;
       setState(() => isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Could not create team")),
+      StroykaActionFeedback.showError(
+        context,
+        message: "Could not create team",
+        semanticLabel: "Could not create team",
       );
     }
   }

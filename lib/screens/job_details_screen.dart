@@ -16,6 +16,7 @@ import '../services/moderation_hold_service.dart';
 import '../services/notification_service.dart';
 import '../services/offer_acceptance_service.dart';
 import '../services/report_service.dart';
+import '../services/stroyka_action_feedback.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/app_cached_image.dart';
@@ -601,8 +602,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             isApplied = true;
             currentApplicationId = applicationRef.id;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Application sent")),
+          StroykaActionFeedback.showSuccess(
+            context,
+            semanticLabel: "Team application sent",
           );
         }
 
@@ -702,8 +704,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             isApplied = true;
             currentApplicationId = applicationRef.id;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Application sent")),
+          StroykaActionFeedback.showSuccess(
+            context,
+            semanticLabel: "Application sent",
           );
         }
 
@@ -713,12 +716,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       debugPrint("APPLY ERROR: $e");
       if (mounted) {
         setState(() => isApplying = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              applicationErrorMessage(e, applyType: selectedApplyType),
-            ),
-          ),
+        StroykaActionFeedback.showError(
+          context,
+          message: applicationErrorMessage(e, applyType: selectedApplyType),
+          semanticLabel: "Could not send application",
         );
       }
     }
@@ -1591,14 +1592,17 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         }
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Offer accepted")),
+      StroykaActionFeedback.showSuccess(
+        context,
+        semanticLabel: "Offer accepted",
       );
     } catch (e) {
       debugPrint("ACCEPT OFFER ERROR: $e");
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Could not accept offer")),
+      StroykaActionFeedback.showError(
+        context,
+        message: "Could not accept offer",
+        semanticLabel: "Could not accept offer",
       );
     }
   }

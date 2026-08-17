@@ -15,6 +15,7 @@ import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../services/moderation_hold_service.dart';
 import '../services/registration_validation_service.dart';
+import '../services/stroyka_action_feedback.dart';
 import '../widgets/app_cached_image.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/legal_documents.dart';
@@ -1872,6 +1873,12 @@ class _ProfileScreenState extends State<ProfileScreen>
       if (!mounted) return;
 
       if (widget.onProfileSaved != null) {
+        if (wasFirstProfileCreation) {
+          StroykaActionFeedback.showSuccess(
+            context,
+            semanticLabel: "Registration completed",
+          );
+        }
         await widget.onProfileSaved!.call();
       } else {
         Navigator.pop(context, true);
@@ -1880,8 +1887,10 @@ class _ProfileScreenState extends State<ProfileScreen>
       debugPrint("Save profile error: $e");
       if (!mounted) return;
       setState(() => loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Could not save profile")),
+      StroykaActionFeedback.showError(
+        context,
+        message: "Could not save profile",
+        semanticLabel: "Could not save profile",
       );
     }
   }

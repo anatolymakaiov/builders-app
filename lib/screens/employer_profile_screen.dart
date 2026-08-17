@@ -14,6 +14,7 @@ import '../services/job_repository.dart';
 import '../services/moderation_hold_service.dart';
 import '../services/profile_communication_service.dart';
 import '../services/report_service.dart';
+import '../services/stroyka_action_feedback.dart';
 import '../services/support_request_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -379,8 +380,9 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                   ),
                 );
                 if (!context.mounted || saved != true) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Profile saved")),
+                StroykaActionFeedback.showSuccess(
+                  context,
+                  semanticLabel: "Profile saved",
                 );
               },
             ),
