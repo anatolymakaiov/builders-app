@@ -206,11 +206,11 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => loading = true);
       try {
         final result = await authPreferences.restoreBiometricSession();
-        if (!mounted) return;
         if (result.success) {
           widget.onSessionUnlocked?.call();
           return;
         }
+        if (!mounted) return;
 
         setState(() {
           selectedAction = null;
