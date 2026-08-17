@@ -941,7 +941,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         if (!_showOnboardingTour &&
-                            !(role == "worker" && currentIndex == 4))
+                            !(role == "worker" && currentIndex == 4) &&
+                            !(role == "employer" && currentIndex == 4))
                           buildTopNotificationBell(notifCount),
                         if (_showOnboardingTour)
                           _buildTourOverlay(items.length),
