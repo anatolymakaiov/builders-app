@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+
+import '../widgets/app_cached_image.dart';
 
 class ImageViewerScreen extends StatelessWidget {
   final String imageUrl;
@@ -17,19 +18,17 @@ class ImageViewerScreen extends StatelessWidget {
             child: InteractiveViewer(
               minScale: 0.5,
               maxScale: 4,
-              child: CachedNetworkImage(
+              child: AppCachedImage(
                 imageUrl: imageUrl,
                 fit: BoxFit.contain,
-
-                /// ⏳ LOADER
-                placeholder: (context, url) => const Center(
-                  child: CircularProgressIndicator(
+                placeholder: const Center(
+                  child: Icon(
+                    Icons.image_outlined,
                     color: Colors.white,
+                    size: 50,
                   ),
                 ),
-
-                /// ❌ ERROR
-                errorWidget: (context, url, error) => const Center(
+                errorWidget: const Center(
                   child: Icon(
                     Icons.broken_image,
                     color: Colors.white,

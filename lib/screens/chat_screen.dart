@@ -19,6 +19,7 @@ import '../services/chat_service.dart';
 import '../services/moderation_hold_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/app_cached_image.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -268,10 +269,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final data = doc.data() as Map<String, dynamic>;
 
       if (data["type"] == "image" && data["imageUrl"] != null) {
-        precacheImage(
-          NetworkImage(data["imageUrl"].toString()),
-          context,
-        );
+        precacheAppRemoteImage(context, data["imageUrl"].toString());
         count++;
       }
     }
@@ -1023,12 +1021,14 @@ class _ChatScreenState extends State<ChatScreen> {
             child: recipient.avatarUrl == null || recipient.avatarUrl!.isEmpty
                 ? Icon(recipient.icon, color: AppColors.greenDark)
                 : ClipOval(
-                    child: Image.network(
-                      recipient.avatarUrl!,
+                    child: AppCachedImage(
+                      imageUrl: recipient.avatarUrl!,
                       width: 40,
                       height: 40,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
+                      placeholder:
+                          Icon(recipient.icon, color: AppColors.greenDark),
+                      errorWidget:
                           Icon(recipient.icon, color: AppColors.greenDark),
                     ),
                   ),
@@ -2048,23 +2048,12 @@ class _ChatScreenState extends State<ChatScreen> {
         },
         child: ClipRRect(
           borderRadius: BorderRadius.circular(10),
-          child: Image.network(
-            url,
+          child: AppCachedImage(
+            imageUrl: url,
             width: 200,
             height: 150,
             fit: BoxFit.cover,
-            gaplessPlayback: true,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return Container(
-                width: 200,
-                height: 150,
-                alignment: Alignment.center,
-                color: AppColors.surfaceAlt,
-                child: const Icon(Icons.image_outlined, color: AppColors.muted),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) => Container(
+            errorWidget: Container(
               width: 200,
               height: 150,
               alignment: Alignment.center,

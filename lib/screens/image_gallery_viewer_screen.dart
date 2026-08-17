@@ -1,5 +1,6 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import '../widgets/app_cached_image.dart';
 
 class ImageGalleryViewerScreen extends StatefulWidget {
   final List<String> imageUrls;
@@ -26,12 +27,23 @@ class _ImageGalleryViewerScreenState extends State<ImageGalleryViewerScreen> {
     final maxIndex = widget.imageUrls.isEmpty ? 0 : widget.imageUrls.length - 1;
     index = widget.initialIndex.clamp(0, maxIndex);
     controller = PageController(initialPage: index);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      precacheNearbyImages();
+    });
   }
 
   @override
   void dispose() {
     controller.dispose();
     super.dispose();
+  }
+
+  void precacheNearbyImages() {
+    if (!mounted || widget.imageUrls.isEmpty) return;
+    for (final nextIndex in [index - 1, index + 1]) {
+      if (nextIndex < 0 || nextIndex >= widget.imageUrls.length) continue;
+      precacheAppRemoteImage(context, widget.imageUrls[nextIndex]);
+    }
   }
 
   @override
@@ -43,19 +55,24 @@ class _ImageGalleryViewerScreenState extends State<ImageGalleryViewerScreen> {
           PageView.builder(
             controller: controller,
             itemCount: widget.imageUrls.length,
-            onPageChanged: (value) => setState(() => index = value),
+            onPageChanged: (value) {
+              setState(() => index = value);
+              precacheNearbyImages();
+            },
             itemBuilder: (context, pageIndex) {
               return Center(
                 child: InteractiveViewer(
                   minScale: 0.5,
                   maxScale: 4,
-                  child: CachedNetworkImage(
+                  child: AppCachedImage(
                     imageUrl: widget.imageUrls[pageIndex],
                     fit: BoxFit.contain,
-                    placeholder: (context, url) => const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
+                    placeholder: const Icon(
+                      Icons.image_outlined,
+                      color: Colors.white,
+                      size: 56,
                     ),
-                    errorWidget: (context, url, error) => const Icon(
+                    errorWidget: const Icon(
                       Icons.broken_image,
                       color: Colors.white,
                       size: 56,

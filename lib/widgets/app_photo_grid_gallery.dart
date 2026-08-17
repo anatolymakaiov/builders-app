@@ -1,8 +1,7 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../screens/image_gallery_viewer_screen.dart';
-import '../theme/app_theme.dart';
+import 'app_cached_image.dart';
 
 class AppPhotoGridGallery extends StatelessWidget {
   final List<String> imageUrls;
@@ -63,22 +62,9 @@ class AppPhotoGridGallery extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                CachedNetworkImage(
+                AppCachedImage(
                   imageUrl: imageUrl,
                   fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    color: AppColors.surfaceAlt,
-                    alignment: Alignment.center,
-                    child: const CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    color: AppColors.surfaceAlt,
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.broken_image_outlined,
-                      color: AppColors.muted,
-                    ),
-                  ),
                 ),
                 if (overlayBuilder != null)
                   overlayBuilder!(context, index, imageUrl),

@@ -4,6 +4,7 @@ import 'app_blueprint.dart';
 import 'app_cards.dart';
 import 'app_colors.dart';
 import 'app_typography.dart';
+import '../widgets/app_cached_image.dart';
 
 class StroykaAvatar extends StatelessWidget {
   final String? imageUrl;
@@ -27,7 +28,7 @@ class StroykaAvatar extends StatelessWidget {
     return CircleAvatar(
       radius: size / 2,
       backgroundColor: backgroundColor,
-      backgroundImage: hasImage ? NetworkImage(url) : null,
+      backgroundImage: hasImage ? appCachedImageProvider(url) : null,
       child: hasImage
           ? null
           : Icon(
@@ -84,7 +85,7 @@ class StroykaProfileHeader extends StatelessWidget {
             decoration: BoxDecoration(
               image: hasHeaderImage
                   ? DecorationImage(
-                      image: NetworkImage(headerImage),
+                      image: appCachedImageProvider(headerImage),
                       fit: BoxFit.cover,
                     )
                   : null,

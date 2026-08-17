@@ -13,6 +13,7 @@ import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../services/offer_acceptance_service.dart';
 import '../services/profile_communication_service.dart';
+import '../widgets/app_cached_image.dart';
 import '../widgets/make_offer_dialog.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/phone_link.dart';
@@ -1015,8 +1016,9 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                 avatar: CircleAvatar(
                   radius: 44,
                   backgroundColor: Colors.grey.shade300,
-                  backgroundImage:
-                      avatar == null ? null : NetworkImage(avatar.toString()),
+                  backgroundImage: avatar == null
+                      ? null
+                      : appCachedImageProvider(avatar.toString()),
                   child: avatar == null
                       ? const Icon(Icons.groups, size: 38)
                       : null,
@@ -1124,7 +1126,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                         leading: CircleAvatar(
                           backgroundImage: photo == null
                               ? null
-                              : NetworkImage(photo.toString()),
+                              : appCachedImageProvider(photo.toString()),
                           child:
                               photo == null ? const Icon(Icons.person) : null,
                         ),

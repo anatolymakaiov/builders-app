@@ -15,6 +15,7 @@ import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../services/moderation_hold_service.dart';
 import '../services/registration_validation_service.dart';
+import '../widgets/app_cached_image.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/legal_documents.dart';
 import '../widgets/uk_postal_address_form.dart';
@@ -1908,7 +1909,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ? DecorationImage(
                       image: headerImageFile != null
                           ? FileImage(headerImageFile!) as ImageProvider
-                          : NetworkImage(headerImageUrl!),
+                          : appCachedImageProvider(headerImageUrl!),
                       fit: BoxFit.cover,
                     )
                   : null,
@@ -1939,7 +1940,8 @@ class _ProfileScreenState extends State<ProfileScreen>
       child: CircleAvatar(
         radius: 50,
         backgroundColor: Colors.grey.shade300,
-        backgroundImage: photoUrl != null ? NetworkImage(photoUrl!) : null,
+        backgroundImage:
+            photoUrl != null ? appCachedImageProvider(photoUrl!) : null,
         child: uploadingAvatar
             ? const CircularProgressIndicator()
             : photoUrl == null
@@ -1952,7 +1954,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   ImageProvider? profileHeaderImageProvider() {
     if (headerImageFile != null) return FileImage(headerImageFile!);
     final url = headerImageUrl?.trim();
-    if (url != null && url.isNotEmpty) return NetworkImage(url);
+    if (url != null && url.isNotEmpty) return appCachedImageProvider(url);
     return null;
   }
 

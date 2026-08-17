@@ -7,6 +7,7 @@ import '../services/chat_profile_navigation_service.dart';
 import '../services/chat_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/app_cached_image.dart';
 
 class MyChatsScreen extends StatefulWidget {
   const MyChatsScreen({super.key});
@@ -118,17 +119,13 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
           backgroundColor: AppColors.surfaceAlt,
           child: ClipOval(
             child: avatarUrl != null
-                ? Image.network(
-                    avatarUrl,
+                ? AppCachedImage(
+                    imageUrl: avatarUrl,
                     width: 52,
                     height: 52,
                     fit: BoxFit.cover,
-                    gaplessPlayback: true,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return fallback;
-                    },
-                    errorBuilder: (context, error, stackTrace) => fallback,
+                    placeholder: fallback,
+                    errorWidget: fallback,
                   )
                 : fallback,
           ),

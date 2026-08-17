@@ -18,6 +18,7 @@ import '../services/offer_acceptance_service.dart';
 import '../services/report_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/app_cached_image.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/company_profile_sections.dart';
 import '../widgets/job_card.dart';
@@ -341,8 +342,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
             return ListTile(
               leading: CircleAvatar(
-                backgroundImage:
-                    avatarUrl is String ? NetworkImage(avatarUrl) : null,
+                backgroundImage: avatarUrl is String
+                    ? appCachedImageProvider(avatarUrl)
+                    : null,
                 child: avatarUrl is String ? null : const Icon(Icons.group),
               ),
               title: Text(data["name"] ?? "Team"),
@@ -1283,7 +1285,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               CircleAvatar(
                 radius: 28,
                 backgroundColor: Colors.grey.shade300,
-                backgroundImage: photo != null ? NetworkImage(photo) : null,
+                backgroundImage:
+                    photo != null ? appCachedImageProvider(photo) : null,
                 child:
                     photo == null ? const Icon(Icons.business, size: 28) : null,
               ),
