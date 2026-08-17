@@ -18,6 +18,7 @@ class PendingRegistrationDetails {
   });
 
   Map<String, dynamic> toUserDocument() {
+    final requiresPhoneVerification = role == "employer";
     return {
       "role": role,
       "email": email,
@@ -27,8 +28,8 @@ class PendingRegistrationDetails {
       "normalizedPhone": normalizedPhone,
       "emailVerified": false,
       "phoneVerified": false,
-      "phoneVerificationRequired": false,
-      "phoneVerificationProviderConfigured": false,
+      "phoneVerificationRequired": requiresPhoneVerification,
+      "phoneVerificationProviderConfigured": requiresPhoneVerification,
       "legalAccepted": false,
       "onboardingLegalStepComplete": false,
       "profileComplete": false,

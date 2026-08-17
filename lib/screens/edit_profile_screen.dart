@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
@@ -1245,12 +1244,20 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Future<void> verifyPhoneFromDialog() async {
+  Future<bool> verifyPhoneFromDialog() async {
     final phone = phoneController.text.trim();
+    final normalizedPhone = normalizePhoneValue(phone);
+    if (normalizedPhone.isEmpty) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter phone number")),
+      );
+      return false;
+    }
     final availability =
         await RegistrationValidationService().checkPhoneAvailability(phone);
     if (!availability.available) {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1259,14 +1266,14 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
         ),
       );
-      return;
+      return false;
     }
-    if (!mounted) return;
+    if (!mounted) return false;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text("Verify phone"),
-        content: Text("Send SMS verification code to $phone?"),
+        content: Text("Send SMS verification code to $normalizedPhone?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -1279,45 +1286,31 @@ class _ProfileScreenState extends State<ProfileScreen>
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted) return false;
 
-    const allowDevVerification = kDebugMode;
     final verified = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text("SMS verification"),
-        content: const Text(
-          allowDevVerification
-              ? "SMS verification backend is not configured yet. Development verification can mark this phone as verified for testing."
-              : "SMS verification backend is not configured yet. Phone cannot be marked as verified until SMS provider is connected.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text("Cancel"),
-          ),
-          if (allowDevVerification)
-            ElevatedButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text("Use development verification"),
-            ),
-        ],
+      barrierDismissible: false,
+      builder: (_) => _PhoneSmsVerificationDialog(
+        phoneNumber: normalizedPhone,
       ),
     );
-    if (verified != true) return;
+    if (verified != true) return false;
 
     debugPrint("PHONE VERIFIED: uid=$userId");
     final verifiedPhoneValue = phoneController.text.trim();
     final verifiedNormalizedPhoneValue =
         normalizePhoneValue(verifiedPhoneValue);
     await setRegistrationState({
+      "phone": verifiedPhoneValue,
+      "normalizedPhone": verifiedNormalizedPhoneValue,
       "phoneVerified": true,
       "phoneVerifiedAt": FieldValue.serverTimestamp(),
       "verifiedPhone": verifiedPhoneValue,
       "verifiedNormalizedPhone": verifiedNormalizedPhoneValue,
       "updatedAt": FieldValue.serverTimestamp(),
     });
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() {
       phoneVerified = true;
       verifiedPhone = verifiedPhoneValue;
@@ -1326,6 +1319,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Phone verified")),
     );
+    return true;
   }
 
   Future<void> showVerificationRequiredDialog({
@@ -1359,7 +1353,9 @@ class _ProfileScreenState extends State<ProfileScreen>
             TextButton(
               onPressed: () {
                 Navigator.pop(dialogContext);
-                unawaited(verifyPhoneFromDialog());
+                unawaited(() async {
+                  await verifyPhoneFromDialog();
+                }());
               },
               child: const Text("Verify phone"),
             ),
@@ -1513,7 +1509,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     await refreshEmailVerification(silent: true);
     final authUser = FirebaseAuth.instance.currentUser;
     final emailIsVerified = isCurrentEmailVerified();
-    final phoneIsVerified = isCurrentPhoneVerified();
+    final requireSmsPhoneVerification = role == "employer";
+    var phoneIsVerified =
+        requireSmsPhoneVerification && isCurrentPhoneVerified();
 
     if (emailChanged || firstProfileCreation) {
       final emailAvailability =
@@ -1551,28 +1549,50 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
     }
 
-    if (firstProfileCreation && (!emailIsVerified || !phoneIsVerified)) {
-      await showVerificationRequiredDialog(
-        requireEmail: !emailIsVerified,
-        requirePhone: !phoneIsVerified,
-      );
-      return;
+    if (firstProfileCreation &&
+        (!emailIsVerified ||
+            (requireSmsPhoneVerification && !phoneIsVerified))) {
+      if (emailIsVerified && requireSmsPhoneVerification && !phoneIsVerified) {
+        final verified = await verifyPhoneFromDialog();
+        if (!verified) return;
+        phoneIsVerified = isCurrentPhoneVerified();
+        if (!phoneIsVerified) return;
+      } else {
+        await showVerificationRequiredDialog(
+          requireEmail: !emailIsVerified,
+          requirePhone: requireSmsPhoneVerification && !phoneIsVerified,
+        );
+        return;
+      }
     }
 
-    if (!firstProfileCreation && phoneChanged && !phoneIsVerified) {
-      await showVerificationRequiredDialog(
-        requireEmail: false,
-        requirePhone: true,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Please verify your updated email address and phone number before continuing.",
+    if (!firstProfileCreation &&
+        requireSmsPhoneVerification &&
+        phoneChanged &&
+        !phoneIsVerified) {
+      final verified = await verifyPhoneFromDialog();
+      if (!verified) return;
+      phoneIsVerified = isCurrentPhoneVerified();
+      if (!phoneIsVerified) return;
+    }
+
+    if (requireSmsPhoneVerification &&
+        phoneIsVerified &&
+        (phoneChanged || firstProfileCreation)) {
+      final finalPhoneAvailability =
+          await RegistrationValidationService().checkPhoneAvailability(phone);
+      if (!finalPhoneAvailability.available) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              finalPhoneAvailability.blockingMessage ??
+                  "An active account with this phone number already exists.",
+            ),
           ),
-        ),
-      );
-      return;
+        );
+        return;
+      }
     }
 
     setState(() => loading = true);
@@ -1607,6 +1627,8 @@ class _ProfileScreenState extends State<ProfileScreen>
         "normalizedEmail": normalizeEmailValue(profileEmail),
         "phone": phone,
         "normalizedPhone": normalizedPhone,
+        "phoneVerificationRequired": requireSmsPhoneVerification,
+        "phoneVerificationProviderConfigured": requireSmsPhoneVerification,
         "bio": bioController.text.trim(),
         "description": bioController.text.trim(),
         "location": profileLocation,
@@ -1639,6 +1661,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         profileData["verifiedNormalizedPhone"] = FieldValue.delete();
       } else {
         profileData["phoneVerified"] = true;
+        profileData["phoneVerifiedAt"] = FieldValue.serverTimestamp();
         profileData["verifiedPhone"] = phone;
         profileData["verifiedNormalizedPhone"] = normalizedPhone;
       }
@@ -1866,7 +1889,10 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
           );
         }
-        if (phoneChanged && mounted) {
+        if (requireSmsPhoneVerification &&
+            phoneChanged &&
+            !phoneIsVerified &&
+            mounted) {
           await verifyPhoneFromDialog();
         }
       }
@@ -2240,6 +2266,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget buildVerificationPanel() {
     final emailVerified = isCurrentEmailVerified();
     final phoneVerified = isCurrentPhoneVerified();
+    final showPhoneVerification = role == "employer";
     return StroykaSurface(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
@@ -2275,28 +2302,28 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(
-                phoneVerified ? Icons.verified : Icons.sms_failed_outlined,
-                color: phoneVerified ? AppColors.success : AppColors.warning,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  phoneVerified
-                      ? "Phone verified"
-                      : "Phone verification prepared. SMS provider is not configured yet.",
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+          if (showPhoneVerification) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  phoneVerified ? Icons.verified : Icons.sms_failed_outlined,
+                  color: phoneVerified ? AppColors.success : AppColors.warning,
                 ),
-              ),
-              TextButton(
-                onPressed: verifyPhoneFromDialog,
-                child: Text(phoneVerified ? "Refresh" : "Verify"),
-              ),
-            ],
-          ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    phoneVerified ? "Phone verified" : "Phone not verified",
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                TextButton(
+                  onPressed: verifyPhoneFromDialog,
+                  child: Text(phoneVerified ? "Refresh" : "Verify"),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -2808,6 +2835,264 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PhoneSmsVerificationDialog extends StatefulWidget {
+  final String phoneNumber;
+
+  const _PhoneSmsVerificationDialog({
+    required this.phoneNumber,
+  });
+
+  @override
+  State<_PhoneSmsVerificationDialog> createState() =>
+      _PhoneSmsVerificationDialogState();
+}
+
+class _PhoneSmsVerificationDialogState
+    extends State<_PhoneSmsVerificationDialog> {
+  final codeController = TextEditingController();
+  String? verificationId;
+  String? errorMessage;
+  int? resendToken;
+  int resendSeconds = 0;
+  bool sendingCode = false;
+  bool verifyingCode = false;
+  Timer? resendTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) sendCode();
+    });
+  }
+
+  @override
+  void dispose() {
+    resendTimer?.cancel();
+    codeController.dispose();
+    super.dispose();
+  }
+
+  void startResendCooldown() {
+    resendTimer?.cancel();
+    setState(() => resendSeconds = 45);
+    resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (resendSeconds <= 1) {
+        timer.cancel();
+        setState(() => resendSeconds = 0);
+        return;
+      }
+      setState(() => resendSeconds -= 1);
+    });
+  }
+
+  Future<void> sendCode({bool resend = false}) async {
+    if (sendingCode || verifyingCode) return;
+    if (resend && resendSeconds > 0) return;
+
+    setState(() {
+      sendingCode = true;
+      errorMessage = null;
+    });
+
+    startResendCooldown();
+
+    try {
+      await FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: widget.phoneNumber,
+        forceResendingToken: resend ? resendToken : null,
+        verificationCompleted: (credential) async {
+          await verifyCredential(credential);
+        },
+        verificationFailed: (error) {
+          if (!mounted) return;
+          setState(() {
+            sendingCode = false;
+            errorMessage = phoneAuthErrorMessage(error);
+          });
+        },
+        codeSent: (id, token) {
+          if (!mounted) return;
+          setState(() {
+            verificationId = id;
+            resendToken = token;
+            sendingCode = false;
+            errorMessage = null;
+          });
+        },
+        codeAutoRetrievalTimeout: (id) {
+          if (!mounted) return;
+          setState(() {
+            verificationId = id;
+            sendingCode = false;
+          });
+        },
+      );
+    } on FirebaseAuthException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        sendingCode = false;
+        errorMessage = phoneAuthErrorMessage(error);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        sendingCode = false;
+        errorMessage =
+            "Could not send SMS verification code. Please try again.";
+      });
+    }
+  }
+
+  Future<void> verifyCode() async {
+    final id = verificationId;
+    final code = codeController.text.trim();
+    if (id == null || id.isEmpty) {
+      setState(() => errorMessage = "Wait for the SMS code to be sent.");
+      return;
+    }
+    if (!RegExp(r"^\d{6}$").hasMatch(code)) {
+      setState(() => errorMessage = "Enter the 6-digit verification code.");
+      return;
+    }
+    final credential = PhoneAuthProvider.credential(
+      verificationId: id,
+      smsCode: code,
+    );
+    await verifyCredential(credential);
+  }
+
+  Future<void> verifyCredential(PhoneAuthCredential credential) async {
+    if (verifyingCode) return;
+    setState(() {
+      verifyingCode = true;
+      errorMessage = null;
+    });
+
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        throw FirebaseAuthException(
+          code: "user-signed-out",
+          message: "Please sign in again before verifying your phone number.",
+        );
+      }
+
+      final hasPhoneProvider = currentUser.providerData.any(
+        (provider) => provider.providerId == PhoneAuthProvider.PROVIDER_ID,
+      );
+      if (hasPhoneProvider || (currentUser.phoneNumber ?? "").isNotEmpty) {
+        await currentUser.updatePhoneNumber(credential);
+      } else {
+        await currentUser.linkWithCredential(credential);
+      }
+      await currentUser.reload();
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } on FirebaseAuthException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        verifyingCode = false;
+        errorMessage = phoneAuthErrorMessage(error);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        verifyingCode = false;
+        errorMessage = "Could not verify this phone number. Please try again.";
+      });
+    }
+  }
+
+  String phoneAuthErrorMessage(FirebaseAuthException error) {
+    return switch (error.code) {
+      "credential-already-in-use" =>
+        "This phone number is already linked to another account.",
+      "invalid-verification-code" => "The verification code is incorrect.",
+      "session-expired" =>
+        "The verification code has expired. Resend the code.",
+      "invalid-phone-number" => "Enter a valid UK phone number.",
+      "too-many-requests" =>
+        "Too many SMS attempts. Please wait before trying again.",
+      "quota-exceeded" =>
+        "SMS verification is temporarily unavailable. Please try again later.",
+      "network-request-failed" =>
+        "Network error while verifying phone. Please try again.",
+      "provider-already-linked" =>
+        "A phone number is already linked to this account.",
+      "user-signed-out" => error.message ?? "Please sign in again.",
+      _ => error.message?.trim().isNotEmpty == true
+          ? error.message!
+          : "Could not verify this phone number. Please try again.",
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final busy = sendingCode || verifyingCode;
+    return AlertDialog(
+      title: const Text("Verify your phone number"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            "A verification code was sent to ${widget.phoneNumber}.",
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: codeController,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            enabled: !busy,
+            decoration: const InputDecoration(
+              labelText: "6-digit verification code",
+              counterText: "",
+            ),
+          ),
+          if (errorMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              errorMessage!,
+              style: const TextStyle(
+                color: AppColors.danger,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: busy ? null : () => Navigator.pop(context, false),
+          child: const Text("Change phone number"),
+        ),
+        TextButton(
+          onPressed:
+              busy || resendSeconds > 0 ? null : () => sendCode(resend: true),
+          child: Text(
+            resendSeconds > 0 ? "Resend in ${resendSeconds}s" : "Resend code",
+          ),
+        ),
+        ElevatedButton(
+          onPressed: busy ? null : verifyCode,
+          child: verifyingCode
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text("Verify"),
+        ),
+      ],
     );
   }
 }
