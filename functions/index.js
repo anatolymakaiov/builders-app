@@ -82,6 +82,25 @@ function tokenList(user) {
   return [...tokens];
 }
 
+async function userTokenList(userId, user) {
+  const tokens = new Set(tokenList(user));
+  const snapshot = await admin
+    .firestore()
+    .collection("users")
+    .doc(userId)
+    .collection("deviceTokens")
+    .where("active", "==", true)
+    .get();
+
+  snapshot.forEach((doc) => {
+    const data = doc.data() || {};
+    const token = typeof data.token === "string" ? data.token.trim() : "";
+    if (token) tokens.add(token);
+  });
+
+  return [...tokens];
+}
+
 function cleanData(data) {
   const payload = {};
   for (const [key, value] of Object.entries(data)) {
@@ -154,7 +173,7 @@ exports.sendUserNotificationPush = onDocumentCreated(
 
     if (prefs.enabled === false || prefs[categoryKey] === false) return;
 
-    const tokens = tokenList(user);
+    const tokens = await userTokenList(userId, user);
     if (tokens.length === 0) return;
 
     const push = notification.push || {};
@@ -211,16 +230,41 @@ exports.sendUserNotificationPush = onDocumentCreated(
     });
 
     if (invalidTokens.length > 0) {
-      await admin.firestore().collection("users").doc(userId).set(
-        {
-          fcmTokens: admin.firestore.FieldValue.arrayRemove(...invalidTokens),
-          push: {
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      const userRef = admin.firestore().collection("users").doc(userId);
+      const writes = [
+        userRef.set(
+          {
+            fcmTokens: admin.firestore.FieldValue.arrayRemove(...invalidTokens),
+            push: {
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
           },
-        },
-        { merge: true },
-      );
+          { merge: true },
+        ),
+      ];
+      invalidTokens.forEach((token) => {
+        writes.push(userRef.collection("deviceTokens").doc(token).set(
+          {
+            active: false,
+            invalidatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        ));
+      });
+      await Promise.all(writes);
     }
+
+    await event.data.ref.set(
+      {
+        push: {
+          sent: response.successCount > 0,
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+          successCount: response.successCount,
+          failureCount: response.failureCount,
+        },
+      },
+      { merge: true },
+    );
   },
 );
 

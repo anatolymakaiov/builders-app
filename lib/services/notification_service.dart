@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:async';
 import 'dart:convert';
 
 import '../screens/notifications_screen.dart';
@@ -15,6 +16,8 @@ class NotificationService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _local =
       FlutterLocalNotificationsPlugin();
+  static StreamSubscription<String>? _tokenRefreshSubscription;
+  static String? _activeChatId;
 
   static const defaultPreferences = <String, bool>{
     "enabled": true,
@@ -73,6 +76,7 @@ class NotificationService {
       final notification = message.notification;
 
       if (notification == null) return;
+      if (_isOpenChatMessage(message.data)) return;
       final userId = message.data["userId"]?.toString();
       final preferences = await notificationPreferences(userId);
       if (!_shouldDisplayPush(message.data, preferences)) return;
@@ -120,9 +124,11 @@ class NotificationService {
 
     try {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
-        final apns = await _fcm.getAPNSToken();
+        final apns = await _waitForApnsToken();
         if (apns == null) {
-          debugPrint("iOS APNS token is not ready yet");
+          debugPrint("iOS APNS token is not ready yet; retrying token save");
+          _scheduleTokenRetry(userId);
+          return;
         }
       }
 
@@ -136,43 +142,8 @@ class NotificationService {
 
       debugPrint("FCM token received");
 
-      /// 🔥 Сохраняем
-      await _db.collection("users").doc(userId).set({
-        "fcmToken": token,
-        "fcmTokens": FieldValue.arrayUnion([token]),
-        "push.updatedAt": FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      await _db
-          .collection("users")
-          .doc(userId)
-          .collection("deviceTokens")
-          .doc(token)
-          .set({
-        "token": token,
-        "platform": defaultTargetPlatform.name,
-        "updatedAt": FieldValue.serverTimestamp(),
-        "active": true,
-      }, SetOptions(merge: true));
-
-      _fcm.onTokenRefresh.listen((newToken) async {
-        await _db.collection("users").doc(userId).set({
-          "fcmToken": newToken,
-          "fcmTokens": FieldValue.arrayUnion([newToken]),
-          "push.updatedAt": FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-        await _db
-            .collection("users")
-            .doc(userId)
-            .collection("deviceTokens")
-            .doc(newToken)
-            .set({
-          "token": newToken,
-          "platform": defaultTargetPlatform.name,
-          "updatedAt": FieldValue.serverTimestamp(),
-          "active": true,
-        }, SetOptions(merge: true));
-      });
+      await _storeToken(userId, token);
+      _attachTokenRefreshListener(userId);
 
       debugPrint("FCM token saved");
     } catch (e) {
@@ -184,6 +155,64 @@ class NotificationService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     await saveToken(user.uid);
+  }
+
+  static void setActiveChat(String? chatId) {
+    _activeChatId = chatId?.trim().isEmpty == true ? null : chatId;
+  }
+
+  bool _isOpenChatMessage(Map<String, dynamic> data) {
+    final chatId = data["chatId"]?.toString() ?? data["targetId"]?.toString();
+    final category = data["category"]?.toString();
+    final type = data["type"]?.toString();
+    return _activeChatId != null &&
+        chatId == _activeChatId &&
+        (category == "chat" || type == "message");
+  }
+
+  Future<String?> _waitForApnsToken() async {
+    for (var attempt = 0; attempt < 10; attempt += 1) {
+      final apns = await _fcm.getAPNSToken();
+      if (apns != null && apns.isNotEmpty) return apns;
+      await Future<void>.delayed(const Duration(milliseconds: 750));
+    }
+    return null;
+  }
+
+  void _scheduleTokenRetry(String userId) {
+    Future<void>.delayed(const Duration(seconds: 5), () async {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser?.uid != userId) return;
+      await saveToken(userId);
+    });
+  }
+
+  Future<void> _storeToken(String userId, String token) async {
+    final userRef = _db.collection("users").doc(userId);
+    final tokenRef = userRef.collection("deviceTokens").doc(token);
+    await userRef.set({
+      "fcmToken": token,
+      "fcmTokens": FieldValue.arrayUnion([token]),
+      "push.enabled": true,
+      "push.updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await tokenRef.set({
+      "token": token,
+      "platform": defaultTargetPlatform.name,
+      "active": true,
+      "updatedAt": FieldValue.serverTimestamp(),
+      "createdAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  void _attachTokenRefreshListener(String userId) {
+    _tokenRefreshSubscription?.cancel();
+    _tokenRefreshSubscription = _fcm.onTokenRefresh.listen((newToken) async {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser?.uid != userId) return;
+      await _storeToken(userId, newToken);
+    });
   }
 
   /// 🔔 Локальная запись уведомления (Firestore)

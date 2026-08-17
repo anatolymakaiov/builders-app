@@ -17,6 +17,7 @@ import '../services/chat_profile_navigation_service.dart';
 import '../services/report_service.dart';
 import '../services/chat_service.dart';
 import '../services/moderation_hold_service.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/app_cached_image.dart';
@@ -52,12 +53,14 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    NotificationService.setActiveChat(widget.chatId);
     initChat();
   }
 
   @override
   void dispose() {
     dismissKeyboard();
+    NotificationService.setActiveChat(null);
     typingTimer?.cancel();
     updateTyping(false);
     audioRecorder.dispose();
