@@ -1966,7 +1966,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await Future.delayed(const Duration(milliseconds: 100));
     if (scrollController.hasClients) {
       scrollController.animateTo(
-        scrollController.position.maxScrollExtent + 100,
+        scrollController.position.minScrollExtent,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
@@ -2547,7 +2547,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   .collection("chats")
                                   .doc(widget.chatId)
                                   .collection("messages")
-                                  .orderBy("createdAt")
+                                  .orderBy("createdAt", descending: true)
                                   .snapshots(),
                               builder: (context, snapshot) {
                                 if (!snapshot.hasData) {
@@ -2568,6 +2568,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
                                 return ListView.builder(
                                   controller: scrollController,
+                                  reverse: true,
                                   padding: const EdgeInsets.all(10),
                                   itemCount: messages.length,
                                   itemBuilder: (context, index) {
@@ -2590,10 +2591,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                     final date = ts?.toDate();
                                     final time = formatTime(ts);
 
-                                    bool showDate = index == 0;
+                                    bool showDate =
+                                        index == messages.length - 1;
 
-                                    if (!showDate && index > 0) {
-                                      final prev = messages[index - 1].data()
+                                    if (!showDate &&
+                                        index < messages.length - 1) {
+                                      final prev = messages[index + 1].data()
                                           as Map<String, dynamic>;
                                       final prevDate =
                                           (prev["createdAt"] as Timestamp?)
