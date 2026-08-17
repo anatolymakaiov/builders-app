@@ -18,7 +18,7 @@
       "ios": {
         "default": {
           "projectId": "builder-jobs-app",
-          "appId": "1:69161896679:ios:c802dffd9dcdc6e6037042",
+          "appId": "1:69161896679:ios:71e12a2a3451f648037042",
           "uploadDebugSymbols": false,
           "fileOutput": "ios/Runner/GoogleService-Info.plist"
         }
@@ -36,7 +36,7 @@
           "projectId": "builder-jobs-app",
           "configurations": {
             "android": "1:69161896679:android:0450e20edf96fcc2037042",
-            "ios": "1:69161896679:ios:c802dffd9dcdc6e6037042",
+            "ios": "1:69161896679:ios:71e12a2a3451f648037042",
             "macos": "1:69161896679:ios:c802dffd9dcdc6e6037042",
             "web": "1:69161896679:web:a87aa40ac8561718037042",
             "windows": "1:69161896679:web:2587581cf5cfd8c9037042"
