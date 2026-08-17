@@ -17,6 +17,7 @@ import '../services/moderation_hold_service.dart';
 import '../services/registration_validation_service.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/legal_documents.dart';
+import '../widgets/uk_postal_address_form.dart';
 
 class ProfileScreen extends StatefulWidget {
   final FutureOr<void> Function()? onProfileSaved;
@@ -51,6 +52,13 @@ class _ProfileScreenState extends State<ProfileScreen>
   final previousWorkController = TextEditingController();
   final rateController = TextEditingController();
   final locationController = TextEditingController();
+  final locationAddressLine2Controller = TextEditingController();
+  final locationAddressLine3Controller = TextEditingController();
+  final locationTownCityController = TextEditingController();
+  final locationCountyController = TextEditingController();
+  final locationPostcodeController = TextEditingController();
+  final locationCountryController =
+      TextEditingController(text: "United Kingdom");
 
   /// 🔥 NEW
   final websiteController = TextEditingController();
@@ -59,7 +67,21 @@ class _ProfileScreenState extends State<ProfileScreen>
   final invoiceTradingNameController = TextEditingController();
   final invoiceCompanyNumberController = TextEditingController();
   final invoiceRegisteredOfficeController = TextEditingController();
+  final invoiceRegisteredOfficeLine2Controller = TextEditingController();
+  final invoiceRegisteredOfficeLine3Controller = TextEditingController();
+  final invoiceRegisteredOfficeTownCityController = TextEditingController();
+  final invoiceRegisteredOfficeCountyController = TextEditingController();
+  final invoiceRegisteredOfficePostcodeController = TextEditingController();
+  final invoiceRegisteredOfficeCountryController =
+      TextEditingController(text: "United Kingdom");
   final invoiceBillingAddressController = TextEditingController();
+  final invoiceBillingAddressLine2Controller = TextEditingController();
+  final invoiceBillingAddressLine3Controller = TextEditingController();
+  final invoiceBillingAddressTownCityController = TextEditingController();
+  final invoiceBillingAddressCountyController = TextEditingController();
+  final invoiceBillingAddressPostcodeController = TextEditingController();
+  final invoiceBillingAddressCountryController =
+      TextEditingController(text: "United Kingdom");
   final invoiceBillingContactNameController = TextEditingController();
   final invoiceVatNumberController = TextEditingController();
   final invoicePurchaseOrderController = TextEditingController();
@@ -120,6 +142,65 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   String currentNormalizedProfileEmail() {
     return normalizeEmailValue(currentProfileEmail());
+  }
+
+  UkPostalAddressControllers profileAddressControllers() {
+    return UkPostalAddressControllers(
+      postcode: locationPostcodeController,
+      addressLine1: locationController,
+      addressLine2: locationAddressLine2Controller,
+      addressLine3: locationAddressLine3Controller,
+      townCity: locationTownCityController,
+      county: locationCountyController,
+      country: locationCountryController,
+    );
+  }
+
+  UkPostalAddressControllers registeredOfficeAddressControllers() {
+    return UkPostalAddressControllers(
+      postcode: invoiceRegisteredOfficePostcodeController,
+      addressLine1: invoiceRegisteredOfficeController,
+      addressLine2: invoiceRegisteredOfficeLine2Controller,
+      addressLine3: invoiceRegisteredOfficeLine3Controller,
+      townCity: invoiceRegisteredOfficeTownCityController,
+      county: invoiceRegisteredOfficeCountyController,
+      country: invoiceRegisteredOfficeCountryController,
+    );
+  }
+
+  UkPostalAddressControllers billingPostalAddressControllers() {
+    return UkPostalAddressControllers(
+      postcode: invoiceBillingAddressPostcodeController,
+      addressLine1: invoiceBillingAddressController,
+      addressLine2: invoiceBillingAddressLine2Controller,
+      addressLine3: invoiceBillingAddressLine3Controller,
+      townCity: invoiceBillingAddressTownCityController,
+      county: invoiceBillingAddressCountyController,
+      country: invoiceBillingAddressCountryController,
+    );
+  }
+
+  void setAddressControllerValues(
+    UkPostalAddressControllers controllers,
+    Map<String, dynamic> data, {
+    required String line1Key,
+    required String line2Key,
+    required String line3Key,
+    required String townCityKey,
+    required String countyKey,
+    required String postcodeKey,
+    required String countryKey,
+    String fallbackLine1 = "",
+  }) {
+    controllers.addressLine1.text =
+        (data[line1Key] ?? fallbackLine1).toString();
+    controllers.addressLine2.text = (data[line2Key] ?? "").toString();
+    controllers.addressLine3.text = (data[line3Key] ?? "").toString();
+    controllers.townCity.text = (data[townCityKey] ?? "").toString();
+    controllers.county.text = (data[countyKey] ?? "").toString();
+    controllers.postcode.text = (data[postcodeKey] ?? "").toString();
+    controllers.country.text =
+        (data[countryKey] ?? "United Kingdom").toString();
   }
 
   void handleRegistrationEmailChanged(String _) {
@@ -333,13 +414,31 @@ class _ProfileScreenState extends State<ProfileScreen>
     previousWorkController.dispose();
     rateController.dispose();
     locationController.dispose();
+    locationAddressLine2Controller.dispose();
+    locationAddressLine3Controller.dispose();
+    locationTownCityController.dispose();
+    locationCountyController.dispose();
+    locationPostcodeController.dispose();
+    locationCountryController.dispose();
     websiteController.dispose();
     billingEmailController.dispose();
     invoiceLegalCompanyNameController.dispose();
     invoiceTradingNameController.dispose();
     invoiceCompanyNumberController.dispose();
     invoiceRegisteredOfficeController.dispose();
+    invoiceRegisteredOfficeLine2Controller.dispose();
+    invoiceRegisteredOfficeLine3Controller.dispose();
+    invoiceRegisteredOfficeTownCityController.dispose();
+    invoiceRegisteredOfficeCountyController.dispose();
+    invoiceRegisteredOfficePostcodeController.dispose();
+    invoiceRegisteredOfficeCountryController.dispose();
     invoiceBillingAddressController.dispose();
+    invoiceBillingAddressLine2Controller.dispose();
+    invoiceBillingAddressLine3Controller.dispose();
+    invoiceBillingAddressTownCityController.dispose();
+    invoiceBillingAddressCountyController.dispose();
+    invoiceBillingAddressPostcodeController.dispose();
+    invoiceBillingAddressCountryController.dispose();
     invoiceBillingContactNameController.dispose();
     invoiceVatNumberController.dispose();
     invoicePurchaseOrderController.dispose();
@@ -438,7 +537,18 @@ class _ProfileScreenState extends State<ProfileScreen>
       educationController.text = data["education"] ?? "";
       previousWorkController.text = data["previousWork"] ?? "";
       rateController.text = "";
-      locationController.text = data["location"] ?? "";
+      setAddressControllerValues(
+        profileAddressControllers(),
+        data,
+        line1Key: "addressLine1",
+        line2Key: "addressLine2",
+        line3Key: "addressLine3",
+        townCityKey: "townCity",
+        countyKey: "county",
+        postcodeKey: "postcode",
+        countryKey: "country",
+        fallbackLine1: data["location"]?.toString() ?? "",
+      );
 
       websiteController.text = data["website"] ?? "";
       final billing = data["billing"] is Map
@@ -487,12 +597,33 @@ class _ProfileScreenState extends State<ProfileScreen>
           invoiceDetails["tradingName"]?.toString() ?? "";
       invoiceCompanyNumberController.text =
           invoiceDetails["companyRegistrationNumber"]?.toString() ?? "";
-      invoiceRegisteredOfficeController.text =
-          invoiceDetails["registeredOfficeAddress"]?.toString() ?? "";
-      invoiceBillingAddressController.text =
-          invoiceDetails["billingAddress"]?.toString() ??
-              data["location"]?.toString() ??
-              "";
+      setAddressControllerValues(
+        registeredOfficeAddressControllers(),
+        invoiceDetails,
+        line1Key: "registeredOfficeAddressLine1",
+        line2Key: "registeredOfficeAddressLine2",
+        line3Key: "registeredOfficeAddressLine3",
+        townCityKey: "registeredOfficeTownCity",
+        countyKey: "registeredOfficeCounty",
+        postcodeKey: "registeredOfficePostcode",
+        countryKey: "registeredOfficeCountry",
+        fallbackLine1:
+            invoiceDetails["registeredOfficeAddress"]?.toString() ?? "",
+      );
+      setAddressControllerValues(
+        billingPostalAddressControllers(),
+        invoiceDetails,
+        line1Key: "billingAddressLine1",
+        line2Key: "billingAddressLine2",
+        line3Key: "billingAddressLine3",
+        townCityKey: "billingTownCity",
+        countyKey: "billingCounty",
+        postcodeKey: "billingPostcode",
+        countryKey: "billingCountry",
+        fallbackLine1: invoiceDetails["billingAddress"]?.toString() ??
+            data["location"]?.toString() ??
+            "",
+      );
       invoiceBillingContactNameController.text =
           invoiceDetails["billingContactName"]?.toString().trim().isNotEmpty ==
                   true
@@ -1463,6 +1594,10 @@ class _ProfileScreenState extends State<ProfileScreen>
           .map((phone) => phone.trim())
           .where((phone) => phone.isNotEmpty)
           .toList();
+      final profileAddress = profileAddressControllers().value();
+      final profileLocation = profileAddress.singleLine.isNotEmpty
+          ? profileAddress.singleLine
+          : locationController.text.trim();
 
       final profileData = <String, dynamic>{
         "role": role,
@@ -1472,8 +1607,15 @@ class _ProfileScreenState extends State<ProfileScreen>
         "normalizedPhone": normalizedPhone,
         "bio": bioController.text.trim(),
         "description": bioController.text.trim(),
-        "location": locationController.text.trim(),
-        "address": locationController.text.trim(),
+        "location": profileLocation,
+        "address": profileLocation,
+        "addressLine1": profileAddress.addressLine1,
+        "addressLine2": profileAddress.addressLine2,
+        "addressLine3": profileAddress.addressLine3,
+        "townCity": profileAddress.townCity,
+        "county": profileAddress.county,
+        "postcode": profileAddress.postcode,
+        "country": profileAddress.country,
         "updatedAt": FieldValue.serverTimestamp(),
       };
       if (!emailChanged && emailIsVerified) {
@@ -1546,14 +1688,30 @@ class _ProfileScreenState extends State<ProfileScreen>
                         ? verifiedNormalizedEmail
                         : verifiedEmail));
         savedBillingEmailVerified = nextBillingEmailVerified;
+        final registeredOfficeAddress =
+            registeredOfficeAddressControllers().value();
+        final billingPostalAddress = billingPostalAddressControllers().value();
         final invoiceDetails = {
           "legalCompanyName": invoiceLegalCompanyNameController.text.trim(),
           "tradingName": invoiceTradingNameController.text.trim(),
           "companyRegistrationNumber":
               invoiceCompanyNumberController.text.trim(),
-          "registeredOfficeAddress":
-              invoiceRegisteredOfficeController.text.trim(),
-          "billingAddress": invoiceBillingAddressController.text.trim(),
+          "registeredOfficeAddress": registeredOfficeAddress.singleLine,
+          "registeredOfficeAddressLine1": registeredOfficeAddress.addressLine1,
+          "registeredOfficeAddressLine2": registeredOfficeAddress.addressLine2,
+          "registeredOfficeAddressLine3": registeredOfficeAddress.addressLine3,
+          "registeredOfficeTownCity": registeredOfficeAddress.townCity,
+          "registeredOfficeCounty": registeredOfficeAddress.county,
+          "registeredOfficePostcode": registeredOfficeAddress.postcode,
+          "registeredOfficeCountry": registeredOfficeAddress.country,
+          "billingAddress": billingPostalAddress.singleLine,
+          "billingAddressLine1": billingPostalAddress.addressLine1,
+          "billingAddressLine2": billingPostalAddress.addressLine2,
+          "billingAddressLine3": billingPostalAddress.addressLine3,
+          "billingTownCity": billingPostalAddress.townCity,
+          "billingCounty": billingPostalAddress.county,
+          "billingPostcode": billingPostalAddress.postcode,
+          "billingCountry": billingPostalAddress.country,
           "billingContactName": invoiceBillingContactNameController.text.trim(),
           "billingEmail": billingEmail,
           "vatNumber": invoiceVatNumberController.text.trim(),
@@ -2169,18 +2327,16 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
         ),
         const SizedBox(height: 12),
-        TextField(
-          controller: invoiceRegisteredOfficeController,
-          maxLines: 2,
-          decoration: const InputDecoration(
-            labelText: "Registered office address",
-          ),
+        UkPostalAddressForm(
+          controllers: registeredOfficeAddressControllers(),
+          postcodeLabel: "Registered office postcode",
+          addressLine1Label: "Registered Office Address Line 1",
         ),
         const SizedBox(height: 12),
-        TextField(
-          controller: invoiceBillingAddressController,
-          maxLines: 2,
-          decoration: const InputDecoration(labelText: "Billing address"),
+        UkPostalAddressForm(
+          controllers: billingPostalAddressControllers(),
+          postcodeLabel: "Billing postcode",
+          addressLine1Label: "Billing Address Line 1",
         ),
         const SizedBox(height: 12),
         TextField(
@@ -2530,10 +2686,10 @@ class _ProfileScreenState extends State<ProfileScreen>
             child: const Text("Add phone"),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: locationController,
-            maxLines: 2,
-            decoration: const InputDecoration(labelText: "Location / address"),
+          UkPostalAddressForm(
+            controllers: profileAddressControllers(),
+            postcodeLabel: "Company postcode",
+            addressLine1Label: "Company Address Line 1",
           ),
           const SizedBox(height: 12),
           TextField(
@@ -2578,9 +2734,10 @@ class _ProfileScreenState extends State<ProfileScreen>
 
         if (role == "worker") ...[
           const SizedBox(height: 12),
-          TextField(
-            controller: locationController,
-            decoration: const InputDecoration(labelText: "Location"),
+          UkPostalAddressForm(
+            controllers: profileAddressControllers(),
+            postcodeLabel: "Postcode",
+            addressLine1Label: "Address Line 1",
           ),
           const SizedBox(height: 12),
           TextField(

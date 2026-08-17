@@ -319,28 +319,48 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
 
   String composePhysicalAddress({
     required String street,
+    String line2 = "",
+    String line3 = "",
     required String city,
+    String county = "",
     required String postcode,
+    String country = "",
   }) {
     return [
       street.trim(),
+      line2.trim(),
+      line3.trim(),
       city.trim(),
+      county.trim(),
       postcode.trim(),
+      country.trim(),
     ].where((part) => part.isNotEmpty).join(", ");
   }
 
   Map<String, String> physicalAddressFieldsFrom(Map<String, dynamic> source) {
     final street =
         (source["siteStreet"] ?? source["street"] ?? "").toString().trim();
+    final line2 = (source["siteAddressLine2"] ?? source["addressLine2"] ?? "")
+        .toString()
+        .trim();
+    final line3 = (source["siteAddressLine3"] ?? source["addressLine3"] ?? "")
+        .toString()
+        .trim();
     final city = (source["siteCity"] ?? source["city"] ?? "").toString().trim();
     final postcode =
         (source["sitePostcode"] ?? source["postcode"] ?? "").toString().trim();
     final county =
         (source["siteCounty"] ?? source["county"] ?? "").toString().trim();
+    final country =
+        (source["siteCountry"] ?? source["country"] ?? "").toString().trim();
     final composedAddress = composePhysicalAddress(
       street: street,
+      line2: line2,
+      line3: line3,
       city: city,
+      county: county,
       postcode: postcode,
+      country: country,
     );
     final projectNames = {
       source["jobSite"]?.toString().trim().toLowerCase(),
@@ -362,9 +382,12 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
 
     return {
       "siteStreet": street,
+      "siteAddressLine2": line2,
+      "siteAddressLine3": line3,
       "siteCity": city,
       "sitePostcode": postcode,
       "siteCounty": county,
+      "siteCountry": country,
       "siteAddress": storedAddress.isNotEmpty ? storedAddress : composedAddress,
       "fullAddress": storedAddress.isNotEmpty ? storedAddress : composedAddress,
     };
@@ -420,10 +443,14 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
         if (result["startDateTimestamp"] is DateTime)
           "startDateTimestamp":
               Timestamp.fromDate(result["startDateTimestamp"] as DateTime),
-        "siteStreet": physicalAddressFields["siteStreet"],
-        "siteCity": physicalAddressFields["siteCity"],
-        "sitePostcode": physicalAddressFields["sitePostcode"],
-        "siteCounty": physicalAddressFields["siteCounty"],
+        "siteStreet": result["siteStreet"],
+        "siteAddressLine1": result["siteAddressLine1"],
+        "siteAddressLine2": result["siteAddressLine2"],
+        "siteAddressLine3": result["siteAddressLine3"],
+        "siteCity": result["siteCity"],
+        "sitePostcode": result["sitePostcode"],
+        "siteCounty": result["siteCounty"],
+        "siteCountry": result["siteCountry"],
         "siteAddress": result["siteAddress"],
         "fullAddress": result["siteAddress"],
         "firstDayRequirements": result["firstDayRequirements"],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'stroyka_date_time_field.dart';
+import 'uk_postal_address_form.dart';
 
 class MakeOfferDialog extends StatefulWidget {
   final Map<String, String> physicalAddressFields;
@@ -22,6 +23,12 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
   late final TextEditingController weeklyHoursController;
   late final TextEditingController scheduleController;
   late final TextEditingController siteAddressController;
+  late final TextEditingController siteAddressLine2Controller;
+  late final TextEditingController siteAddressLine3Controller;
+  late final TextEditingController siteCityController;
+  late final TextEditingController siteCountyController;
+  late final TextEditingController sitePostcodeController;
+  late final TextEditingController siteCountryController;
   late final TextEditingController firstDayRequirementsController;
   late final TextEditingController descriptionController;
   StroykaDateTimeValue startDateTime = const StroykaDateTimeValue();
@@ -35,7 +42,27 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
     weeklyHoursController = TextEditingController();
     scheduleController = TextEditingController();
     siteAddressController = TextEditingController(
-      text: widget.physicalAddressFields["siteAddress"] ?? "",
+      text: widget.physicalAddressFields["siteStreet"] ??
+          widget.physicalAddressFields["siteAddress"] ??
+          "",
+    );
+    siteAddressLine2Controller = TextEditingController(
+      text: widget.physicalAddressFields["siteAddressLine2"] ?? "",
+    );
+    siteAddressLine3Controller = TextEditingController(
+      text: widget.physicalAddressFields["siteAddressLine3"] ?? "",
+    );
+    siteCityController = TextEditingController(
+      text: widget.physicalAddressFields["siteCity"] ?? "",
+    );
+    siteCountyController = TextEditingController(
+      text: widget.physicalAddressFields["siteCounty"] ?? "",
+    );
+    sitePostcodeController = TextEditingController(
+      text: widget.physicalAddressFields["sitePostcode"] ?? "",
+    );
+    siteCountryController = TextEditingController(
+      text: widget.physicalAddressFields["siteCountry"] ?? "United Kingdom",
     );
     firstDayRequirementsController = TextEditingController();
     descriptionController = TextEditingController();
@@ -48,6 +75,12 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
     weeklyHoursController.dispose();
     scheduleController.dispose();
     siteAddressController.dispose();
+    siteAddressLine2Controller.dispose();
+    siteAddressLine3Controller.dispose();
+    siteCityController.dispose();
+    siteCountyController.dispose();
+    sitePostcodeController.dispose();
+    siteCountryController.dispose();
     firstDayRequirementsController.dispose();
     descriptionController.dispose();
     super.dispose();
@@ -75,9 +108,20 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
   void submit() {
     if (startDateTime.dateTime == null ||
         startDateTime.time == null ||
-        siteAddressController.text.trim().isEmpty) {
+        siteAddressController.text.trim().isEmpty ||
+        siteCityController.text.trim().isEmpty ||
+        siteCountryController.text.trim().isEmpty) {
       return;
     }
+    final siteAddress = UkPostalAddressControllers(
+      postcode: sitePostcodeController,
+      addressLine1: siteAddressController,
+      addressLine2: siteAddressLine2Controller,
+      addressLine3: siteAddressLine3Controller,
+      townCity: siteCityController,
+      county: siteCountyController,
+      country: siteCountryController,
+    ).value();
 
     Navigator.of(context).pop({
       "jobType": jobType,
@@ -87,7 +131,15 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
       "schedule": scheduleController.text.trim(),
       "startDateTime": startDateTime.displayText,
       "startDateTimestamp": startDateTime.dateTime,
-      "siteAddress": siteAddressController.text.trim(),
+      "siteStreet": siteAddress.addressLine1,
+      "siteAddressLine1": siteAddress.addressLine1,
+      "siteAddressLine2": siteAddress.addressLine2,
+      "siteAddressLine3": siteAddress.addressLine3,
+      "siteCity": siteAddress.townCity,
+      "sitePostcode": siteAddress.postcode,
+      "siteCounty": siteAddress.county,
+      "siteCountry": siteAddress.country,
+      "siteAddress": siteAddress.singleLine,
       "firstDayRequirements": firstDayRequirementsController.text.trim(),
       "description": descriptionController.text.trim(),
       "validUntil": validUntil.displayText,
@@ -168,10 +220,18 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
                 onChanged: (value) => setState(() => startDateTime = value),
               ),
               const SizedBox(height: 12),
-              offerTextField(
-                controller: siteAddressController,
-                label: "Site address",
-                hint: "Full construction site address",
+              UkPostalAddressForm(
+                controllers: UkPostalAddressControllers(
+                  postcode: sitePostcodeController,
+                  addressLine1: siteAddressController,
+                  addressLine2: siteAddressLine2Controller,
+                  addressLine3: siteAddressLine3Controller,
+                  townCity: siteCityController,
+                  county: siteCountyController,
+                  country: siteCountryController,
+                ),
+                postcodeLabel: "Site postcode",
+                addressLine1Label: "Site Address Line 1",
               ),
               const SizedBox(height: 12),
               offerTextField(

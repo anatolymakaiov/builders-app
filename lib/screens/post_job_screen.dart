@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
 
 import '../models/job.dart';
+import '../services/address_lookup_service.dart';
 import '../services/billing_service.dart';
 import '../services/job_taxonomy_service.dart';
 import '../services/moderation_hold_service.dart';
 import '../services/vacancy_import_service.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/smart_job_search.dart';
+import '../widgets/uk_postal_address_form.dart';
 import 'employer_profile_screen.dart';
 import 'vacancy_import_preview_screen.dart';
 
@@ -39,8 +39,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
   final durationController = TextEditingController();
   final weeklyHoursController = TextEditingController();
   final streetController = TextEditingController();
+  final addressLine2Controller = TextEditingController();
+  final addressLine3Controller = TextEditingController();
   final cityController = TextEditingController();
+  final countyController = TextEditingController();
   final postcodeController = TextEditingController();
+  final countryController = TextEditingController(text: "United Kingdom");
   final rateController = TextEditingController();
   final descriptionController = TextEditingController();
   final responsibilitiesController = TextEditingController();
@@ -52,7 +56,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
   bool loading = false;
   bool pickingPhotos = false;
   bool importingVacancy = false;
-  String postcodeStatus = "";
+  double? postcodeLatitude;
+  double? postcodeLongitude;
 
   String jobType = "hourly";
   String selectedTrade = JobTaxonomyService.canonicalRoles.first;
@@ -75,8 +80,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
       durationController.text = job.duration;
       weeklyHoursController.text = job.weeklyHours;
       streetController.text = job.street;
+      addressLine2Controller.text = "";
+      addressLine3Controller.text = "";
       cityController.text = job.city;
+      countyController.text = job.county;
       postcodeController.text = job.postcode;
+      countryController.text = "United Kingdom";
       rateController.text = job.rate.toString();
 
       descriptionController.text = job.description;
@@ -100,8 +109,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
     durationController.dispose();
     weeklyHoursController.dispose();
     streetController.dispose();
+    addressLine2Controller.dispose();
+    addressLine3Controller.dispose();
     cityController.dispose();
+    countyController.dispose();
     postcodeController.dispose();
+    countryController.dispose();
     rateController.dispose();
     descriptionController.dispose();
     responsibilitiesController.dispose();
@@ -212,66 +225,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
     }
   }
 
-  /// POSTCODE
-
-  String normalizeUKPostcode(String postcode) {
-    final clean =
-        postcode.replaceAll(RegExp(r'[^A-Za-z0-9]'), "").trim().toUpperCase();
-
-    if (clean.length <= 3) return clean;
-
-    return "${clean.substring(0, clean.length - 3)} "
-        "${clean.substring(clean.length - 3)}";
-  }
-
-  bool isValidUKPostcode(String postcode) {
-    final normalized = normalizeUKPostcode(postcode);
-    final regex = RegExp(
-      r'^[A-Z]{1,2}[0-9][0-9A-Z]?\s?[0-9][A-Z]{2}$',
-      caseSensitive: false,
-    );
-    return regex.hasMatch(normalized);
-  }
-
-  Future<Map<String, dynamic>?> lookupPostcode(String postcode) async {
-    try {
-      final clean = postcode.replaceAll(" ", "").toUpperCase();
-      final res = await http
-          .get(Uri.parse("https://api.postcodes.io/postcodes/$clean"));
-
-      if (res.statusCode != 200) return null;
-
-      final data = json.decode(res.body);
-      return data["status"] == 200 ? data["result"] : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  void checkPostcode() async {
-    final postcode = normalizeUKPostcode(postcodeController.text);
-
-    if (!isValidUKPostcode(postcode)) {
-      setState(() => postcodeStatus = "Invalid postcode");
-      return;
-    }
-
-    setState(() => postcodeStatus = "Checking...");
-
-    final result = await lookupPostcode(postcode);
-
-    if (!mounted) return;
-
-    if (result == null) {
-      setState(() => postcodeStatus = "Not found");
-      return;
-    }
-
-    setState(() {
-      cityController.text = result["admin_district"] ?? "";
-      postcodeStatus = "OK";
-    });
-  }
+  final AddressLookupService addressLookupService =
+      const PostcodesIoAddressLookupService();
 
   /// 🔥 CREATE / UPDATE JOB
 
@@ -345,7 +300,9 @@ class _PostJobScreenState extends State<PostJobScreen> {
     final taxonomyRole = JobTaxonomyService.bestRoleFor(selectedTrade);
     final title = JobTaxonomyService.bestCanonicalFor(selectedTrade);
     final canonicalRoleId = JobTaxonomyService.roleIdFor(title);
-    final postcode = normalizeUKPostcode(postcodeController.text);
+    final postcode = addressLookupService.normalizePostcode(
+      postcodeController.text,
+    );
 
     if (title.isEmpty) {
       showValidationMessage("Choose a trade.");
@@ -357,7 +314,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
       return;
     }
 
-    if (!isValidUKPostcode(postcode)) {
+    if (!addressLookupService.isValidPostcode(postcode)) {
       showValidationMessage(
         "Enter a full UK postcode, for example SW1A 1AA.",
       );
@@ -365,27 +322,48 @@ class _PostJobScreenState extends State<PostJobScreen> {
     }
 
     postcodeController.text = postcode;
+    if (streetController.text.trim().isEmpty) {
+      showValidationMessage("Enter Address Line 1.");
+      return;
+    }
+    if (cityController.text.trim().isEmpty) {
+      showValidationMessage("Enter Town / City.");
+      return;
+    }
+    if (countryController.text.trim().isEmpty) {
+      showValidationMessage("Enter Country.");
+      return;
+    }
 
     setState(() => loading = true);
 
     final companyName = await loadCompanyName(user);
-    final result = await lookupPostcode(postcode);
-
-    double lat = 0;
-    double lng = 0;
-
-    if (result != null) {
-      lat = (result["latitude"] as num?)?.toDouble() ?? 0;
-      lng = (result["longitude"] as num?)?.toDouble() ?? 0;
+    final postcodeResult = await addressLookupService.lookupPostcode(postcode);
+    if (postcodeResult != null) {
+      postcodeLatitude = postcodeResult.latitude;
+      postcodeLongitude = postcodeResult.longitude;
+      if (countyController.text.trim().isEmpty) {
+        countyController.text = postcodeResult.county;
+      }
+      if (countryController.text.trim().isEmpty) {
+        countryController.text = postcodeResult.country;
+      }
     }
 
     final siteStreet = streetController.text.trim();
+    final siteAddressLine2 = addressLine2Controller.text.trim();
+    final siteAddressLine3 = addressLine3Controller.text.trim();
     final siteCity = cityController.text.trim();
-    final siteCounty = (result?["admin_county"] ?? "").toString().trim();
+    final siteCounty = countyController.text.trim();
+    final siteCountry = countryController.text.trim();
     final siteAddress = [
       siteStreet,
+      siteAddressLine2,
+      siteAddressLine3,
       siteCity,
+      siteCounty,
       postcode,
+      siteCountry,
     ].where((part) => part.isNotEmpty).join(", ");
 
     if (widget.existingJob == null) {
@@ -426,13 +404,22 @@ class _PostJobScreenState extends State<PostJobScreen> {
       "positions": int.tryParse(positionsController.text) ?? 1,
       "filledPositions": widget.existingJob?.filledPositions ?? 0,
       "street": siteStreet,
+      "addressLine1": siteStreet,
+      "addressLine2": siteAddressLine2,
+      "addressLine3": siteAddressLine3,
       "city": siteCity,
       "postcode": postcode,
+      "county": siteCounty,
+      "country": siteCountry,
       "location": siteAddress,
       "siteStreet": siteStreet,
+      "siteAddressLine1": siteStreet,
+      "siteAddressLine2": siteAddressLine2,
+      "siteAddressLine3": siteAddressLine3,
       "siteCity": siteCity,
       "sitePostcode": postcode,
       "siteCounty": siteCounty,
+      "siteCountry": siteCountry,
       "siteAddress": siteAddress,
       "fullAddress": siteAddress,
       "rate": jobType == "negotiable"
@@ -446,8 +433,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
       "requiredDocuments": requiredDocumentsController.text.trim(),
       "additionalInformation": additionalInformationController.text.trim(),
       "photos": photoUrls,
-      "lat": lat,
-      "lng": lng,
+      "lat": postcodeLatitude ?? widget.existingJob?.lat ?? 0,
+      "lng": postcodeLongitude ?? widget.existingJob?.lng ?? 0,
       if (widget.existingJob == null) "status": "active",
       if (widget.existingJob == null) "visibility": "public",
       if (widget.existingJob == null) "moderationStatus": "pending_review",
@@ -582,22 +569,22 @@ class _PostJobScreenState extends State<PostJobScreen> {
                     decoration: const InputDecoration(labelText: "Rate (£)"),
                   ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: postcodeController,
-                  decoration: const InputDecoration(labelText: "Postcode"),
-                  onChanged: (_) => checkPostcode(),
-                ),
-                const SizedBox(height: 6),
-                Text(postcodeStatus),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: streetController,
-                  decoration: const InputDecoration(labelText: "Street"),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: cityController,
-                  decoration: const InputDecoration(labelText: "City"),
+                UkPostalAddressForm(
+                  controllers: UkPostalAddressControllers(
+                    postcode: postcodeController,
+                    addressLine1: streetController,
+                    addressLine2: addressLine2Controller,
+                    addressLine3: addressLine3Controller,
+                    townCity: cityController,
+                    county: countyController,
+                    country: countryController,
+                  ),
+                  lookupService: addressLookupService,
+                  addressLine1Label: "Address Line 1",
+                  onLookupResult: (address) {
+                    postcodeLatitude = address.latitude;
+                    postcodeLongitude = address.longitude;
+                  },
                 ),
                 const SizedBox(height: 12),
                 TextField(
