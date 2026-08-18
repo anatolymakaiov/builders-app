@@ -227,7 +227,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
   }
 
   final AddressLookupService addressLookupService =
-      const PostcodesIoAddressLookupService();
+      IdealPostcodesAddressLookupService();
 
   /// 🔥 CREATE / UPDATE JOB
 
@@ -339,17 +339,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
     setState(() => loading = true);
 
     final companyName = await loadCompanyName(user);
-    final postcodeResult = await addressLookupService.lookupPostcode(postcode);
-    if (postcodeResult != null) {
-      postcodeLatitude = postcodeResult.latitude;
-      postcodeLongitude = postcodeResult.longitude;
-      if (countyController.text.trim().isEmpty) {
-        countyController.text = postcodeResult.county;
-      }
-      if (countryController.text.trim().isEmpty) {
-        countryController.text = postcodeResult.country;
-      }
-    }
 
     final siteStreet = streetController.text.trim();
     final siteAddressLine2 = addressLine2Controller.text.trim();

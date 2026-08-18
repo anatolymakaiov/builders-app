@@ -1,7 +1,11 @@
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { HttpsError, onCall } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
+
+const idealPostcodesApiKey = defineSecret("IDEAL_POSTCODES_API_KEY");
 
 const DEFAULT_NOTIFICATION_PREFERENCES = {
   enabled: true,
@@ -16,6 +20,140 @@ const DEFAULT_NOTIFICATION_PREFERENCES = {
   sound: true,
   badges: true,
 };
+
+function normalizeUkPostcode(value) {
+  const clean = String(value || "")
+    .replace(/[^A-Za-z0-9]/g, "")
+    .toUpperCase();
+  if (clean.length <= 3) return clean;
+  return `${clean.slice(0, -3)} ${clean.slice(-3)}`;
+}
+
+function isValidUkPostcode(value) {
+  return /^[A-Z]{1,2}[0-9][0-9A-Z]?\s?[0-9][A-Z]{2}$/i.test(
+    normalizeUkPostcode(value),
+  );
+}
+
+function cleanText(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function safeNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function mapIdealAddress(address) {
+  return {
+    line1: cleanText(address.line_1),
+    line2: cleanText(address.line_2),
+    line3: cleanText(address.line_3),
+    town: cleanText(address.post_town),
+    county: cleanText(address.county),
+    postcode: normalizeUkPostcode(address.postcode),
+    country: cleanText(address.country) || "United Kingdom",
+    latitude: safeNumber(address.latitude),
+    longitude: safeNumber(address.longitude),
+    uprn: cleanText(address.uprn),
+  };
+}
+
+exports.lookupIdealPostcodeAddresses = onCall(
+  {
+    secrets: [idealPostcodesApiKey],
+    timeoutSeconds: 12,
+    memory: "256MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Please sign in to search for an address.",
+      );
+    }
+
+    const postcode = normalizeUkPostcode(request.data && request.data.postcode);
+    if (!postcode || !isValidUkPostcode(postcode)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Enter a valid UK postcode.",
+      );
+    }
+
+    const apiKey = idealPostcodesApiKey.value();
+    if (!apiKey) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Address lookup is not configured.",
+      );
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const url = new URL(
+        `https://api.ideal-postcodes.co.uk/v1/postcodes/${encodeURIComponent(postcode)}`,
+      );
+      url.searchParams.set("api_key", apiKey);
+
+      const response = await fetch(url, {
+        method: "GET",
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      if (response.status === 404) {
+        throw new HttpsError("not-found", "No addresses found.");
+      }
+
+      if (response.status === 402 || response.status === 429) {
+        throw new HttpsError(
+          "resource-exhausted",
+          "Address lookup is temporarily unavailable.",
+        );
+      }
+
+      if (!response.ok) {
+        throw new HttpsError(
+          "unavailable",
+          "Address lookup is temporarily unavailable.",
+        );
+      }
+
+      const body = await response.json();
+      const result = Array.isArray(body.result) ? body.result : [];
+      const addresses = result.map(mapIdealAddress).filter((address) => {
+        return address.line1 || address.town || address.postcode;
+      });
+
+      if (addresses.length === 0) {
+        throw new HttpsError("not-found", "No addresses found.");
+      }
+
+      return {
+        postcode,
+        addresses,
+      };
+    } catch (error) {
+      if (error instanceof HttpsError) throw error;
+      if (error && error.name === "AbortError") {
+        throw new HttpsError(
+          "deadline-exceeded",
+          "Address lookup timed out.",
+        );
+      }
+      throw new HttpsError(
+        "unavailable",
+        "Address lookup is temporarily unavailable.",
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+);
 
 function notificationPreferences(user) {
   const settings = user.settings || {};

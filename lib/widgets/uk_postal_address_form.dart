@@ -36,7 +36,7 @@ class UkPostalAddressControllers {
 
 class UkPostalAddressForm extends StatefulWidget {
   final UkPostalAddressControllers controllers;
-  final AddressLookupService lookupService;
+  final AddressLookupService? lookupService;
   final String postcodeLabel;
   final String addressLine1Label;
   final ValueChanged<PostalAddress>? onLookupResult;
@@ -44,7 +44,7 @@ class UkPostalAddressForm extends StatefulWidget {
   const UkPostalAddressForm({
     super.key,
     required this.controllers,
-    this.lookupService = const _DefaultAddressLookupService(),
+    this.lookupService,
     this.postcodeLabel = "Postcode",
     this.addressLine1Label = "Address Line 1",
     this.onLookupResult,
@@ -55,18 +55,91 @@ class UkPostalAddressForm extends StatefulWidget {
 }
 
 class _UkPostalAddressFormState extends State<UkPostalAddressForm> {
+  late final AddressLookupService lookupService;
   bool lookingUp = false;
   String statusText = "";
+
+  @override
+  void initState() {
+    super.initState();
+    lookupService =
+        widget.lookupService ?? IdealPostcodesAddressLookupService();
+  }
+
+  void populateAddress(PostalAddress address) {
+    widget.controllers.postcode.text = address.postcode;
+    widget.controllers.addressLine1.text = address.addressLine1;
+    widget.controllers.addressLine2.text = address.addressLine2;
+    widget.controllers.addressLine3.text = address.addressLine3;
+    widget.controllers.townCity.text = address.townCity;
+    widget.controllers.county.text = address.county;
+    widget.controllers.country.text =
+        address.country.isNotEmpty ? address.country : "United Kingdom";
+    widget.onLookupResult?.call(address);
+  }
+
+  Future<PostalAddress?> chooseAddress(List<PostalAddress> addresses) {
+    return showModalBottomSheet<PostalAddress>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(sheetContext).size.height * 0.72,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    "Select address",
+                    style: Theme.of(sheetContext).textTheme.titleMedium,
+                  ),
+                ),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: addresses.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final address = addresses[index];
+                      return ListTile(
+                        title: Text(address.addressLine1.isNotEmpty
+                            ? address.addressLine1
+                            : address.selectionLabel),
+                        subtitle: Text(address.selectionLabel),
+                        onTap: () => Navigator.pop(sheetContext, address),
+                      );
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                TextButton.icon(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  icon: const Icon(Icons.edit_location_alt_outlined),
+                  label: const Text("Enter address manually"),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   Future<void> lookupPostcode() async {
     if (lookingUp) return;
     FocusManager.instance.primaryFocus?.unfocus();
 
-    final normalized = widget.lookupService
-        .normalizePostcode(widget.controllers.postcode.text);
+    final normalized = lookupService.normalizePostcode(
+      widget.controllers.postcode.text,
+    );
     widget.controllers.postcode.text = normalized;
 
-    if (!widget.lookupService.isValidPostcode(normalized)) {
+    if (!lookupService.isValidPostcode(normalized)) {
       setState(() => statusText = "Invalid postcode. Enter address manually.");
       return;
     }
@@ -76,32 +149,37 @@ class _UkPostalAddressFormState extends State<UkPostalAddressForm> {
       statusText = "";
     });
 
-    final result = await widget.lookupService.lookupPostcode(normalized);
+    List<PostalAddress> addresses;
+    try {
+      addresses = await lookupService.lookupAddresses(normalized);
+    } catch (_) {
+      addresses = const [];
+    }
     if (!mounted) return;
 
-    if (result == null) {
+    if (addresses.isEmpty) {
       setState(() {
         lookingUp = false;
-        statusText = "Postcode not found. Enter address manually.";
+        statusText = "No address found. Enter address manually.";
+      });
+      return;
+    }
+
+    setState(() => lookingUp = false);
+    final selected = await chooseAddress(addresses);
+    if (!mounted) return;
+
+    if (selected == null) {
+      setState(() {
+        statusText = "Enter address manually.";
       });
       return;
     }
 
     setState(() {
-      widget.controllers.postcode.text = result.postcode;
-      if (result.townCity.isNotEmpty) {
-        widget.controllers.townCity.text = result.townCity;
-      }
-      if (result.county.isNotEmpty) {
-        widget.controllers.county.text = result.county;
-      }
-      if (result.country.isNotEmpty) {
-        widget.controllers.country.text = result.country;
-      }
-      lookingUp = false;
-      statusText = "Postcode found. Complete address manually if needed.";
+      populateAddress(selected);
+      statusText = "Address selected.";
     });
-    widget.onLookupResult?.call(result);
   }
 
   @override
@@ -134,9 +212,23 @@ class _UkPostalAddressFormState extends State<UkPostalAddressForm> {
         ),
         if (statusText.isNotEmpty) ...[
           const SizedBox(height: 6),
-          Text(
-            statusText,
-            style: Theme.of(context).textTheme.bodySmall,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                statusText,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              TextButton.icon(
+                onPressed: lookingUp
+                    ? null
+                    : () => setState(() {
+                          statusText = "Enter address manually.";
+                        }),
+                icon: const Icon(Icons.edit_location_alt_outlined),
+                label: const Text("Enter address manually"),
+              ),
+            ],
           ),
         ],
         const SizedBox(height: 12),
@@ -172,8 +264,4 @@ class _UkPostalAddressFormState extends State<UkPostalAddressForm> {
       ],
     );
   }
-}
-
-class _DefaultAddressLookupService extends PostcodesIoAddressLookupService {
-  const _DefaultAddressLookupService();
 }

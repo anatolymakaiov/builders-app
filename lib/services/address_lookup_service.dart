@@ -1,6 +1,4 @@
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
+import 'package:cloud_functions/cloud_functions.dart';
 
 class PostalAddress {
   final String postcode;
@@ -12,6 +10,7 @@ class PostalAddress {
   final String country;
   final double? latitude;
   final double? longitude;
+  final String uprn;
 
   const PostalAddress({
     this.postcode = "",
@@ -23,6 +22,7 @@ class PostalAddress {
     this.country = "",
     this.latitude,
     this.longitude,
+    this.uprn = "",
   });
 
   String get singleLine {
@@ -39,16 +39,36 @@ class PostalAddress {
     if (countryPart.isNotEmpty) addressParts.add(countryPart);
     return addressParts.join(", ");
   }
+
+  String get selectionLabel {
+    final parts = [
+      addressLine1.trim(),
+      addressLine2.trim(),
+      addressLine3.trim(),
+      townCity.trim(),
+      postcode.trim(),
+    ].where((part) => part.isNotEmpty).toList();
+    return parts.isEmpty ? "Address" : parts.join(", ");
+  }
 }
 
 abstract class AddressLookupService {
   String normalizePostcode(String postcode);
   bool isValidPostcode(String postcode);
-  Future<PostalAddress?> lookupPostcode(String postcode);
+  Future<List<PostalAddress>> lookupAddresses(String postcode);
+
+  Future<PostalAddress?> lookupPostcode(String postcode) async {
+    final addresses = await lookupAddresses(postcode);
+    return addresses.isEmpty ? null : addresses.first;
+  }
 }
 
-class PostcodesIoAddressLookupService implements AddressLookupService {
-  const PostcodesIoAddressLookupService();
+class IdealPostcodesAddressLookupService implements AddressLookupService {
+  IdealPostcodesAddressLookupService({
+    FirebaseFunctions? functions,
+  }) : _functions = functions ?? FirebaseFunctions.instance;
+
+  final FirebaseFunctions _functions;
 
   @override
   String normalizePostcode(String postcode) {
@@ -69,38 +89,48 @@ class PostcodesIoAddressLookupService implements AddressLookupService {
     return regex.hasMatch(normalized);
   }
 
+  String _stringValue(dynamic value) => value?.toString().trim() ?? "";
+
+  @override
+  Future<List<PostalAddress>> lookupAddresses(String postcode) async {
+    final normalized = normalizePostcode(postcode);
+    if (!isValidPostcode(normalized)) return const [];
+
+    final callable = _functions.httpsCallable("lookupIdealPostcodeAddresses");
+    final result = await callable.call<Map<String, dynamic>>({
+      "postcode": normalized,
+    });
+    final data = result.data;
+    final rawAddresses = data["addresses"];
+    if (rawAddresses is! List) return const [];
+
+    return rawAddresses
+        .whereType<Map>()
+        .map((raw) => Map<String, dynamic>.from(raw))
+        .map((raw) {
+      final country = _stringValue(raw["country"]);
+      return PostalAddress(
+        postcode: normalizePostcode(
+          _stringValue(raw["postcode"]).isNotEmpty
+              ? _stringValue(raw["postcode"])
+              : normalized,
+        ),
+        addressLine1: _stringValue(raw["line1"]),
+        addressLine2: _stringValue(raw["line2"]),
+        addressLine3: _stringValue(raw["line3"]),
+        townCity: _stringValue(raw["town"]),
+        county: _stringValue(raw["county"]),
+        country: country.isNotEmpty ? country : "United Kingdom",
+        latitude: (raw["latitude"] as num?)?.toDouble(),
+        longitude: (raw["longitude"] as num?)?.toDouble(),
+        uprn: _stringValue(raw["uprn"]),
+      );
+    }).toList();
+  }
+
   @override
   Future<PostalAddress?> lookupPostcode(String postcode) async {
-    final normalized = normalizePostcode(postcode);
-    if (!isValidPostcode(normalized)) return null;
-
-    try {
-      final clean = normalized.replaceAll(" ", "");
-      final response = await http.get(
-        Uri.parse("https://api.postcodes.io/postcodes/$clean"),
-      );
-      if (response.statusCode != 200) return null;
-
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) return null;
-      if (decoded["status"] != 200 || decoded["result"] is! Map) return null;
-
-      final result = Map<String, dynamic>.from(decoded["result"] as Map);
-      final district = result["admin_district"]?.toString().trim() ?? "";
-      final parish = result["parish"]?.toString().trim() ?? "";
-      final county = result["admin_county"]?.toString().trim() ?? "";
-      final country = result["country"]?.toString().trim() ?? "";
-
-      return PostalAddress(
-        postcode: normalized,
-        townCity: district.isNotEmpty ? district : parish,
-        county: county,
-        country: country.isNotEmpty ? country : "United Kingdom",
-        latitude: (result["latitude"] as num?)?.toDouble(),
-        longitude: (result["longitude"] as num?)?.toDouble(),
-      );
-    } catch (_) {
-      return null;
-    }
+    final addresses = await lookupAddresses(postcode);
+    return addresses.isEmpty ? null : addresses.first;
   }
 }
