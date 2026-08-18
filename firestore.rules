@@ -139,6 +139,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/teams/$(teamId);
     }
 
+    function isActiveTeamMemberStatus(status) {
+      return !(status in ["removed", "deleted", "inactive", "left", "rejected"]);
+    }
+
     function isTeamMember(teamId) {
       return signedIn()
         && teamId is string
@@ -146,9 +150,24 @@ service cloud.firestore {
         && (
           get(teamPath(teamId)).data.ownerId == uid()
           || get(teamPath(teamId)).data.createdBy == uid()
+          || get(teamPath(teamId)).data.leaderId == uid()
+          || (
+            get(teamPath(teamId)).data.memberIds is list
+            && uid() in get(teamPath(teamId)).data.memberIds
+          )
           || (
             get(teamPath(teamId)).data.members is list
             && uid() in get(teamPath(teamId)).data.members
+          )
+          || (
+            get(teamPath(teamId)).data.memberStatuses is map
+            && uid() in get(teamPath(teamId)).data.memberStatuses
+            && isActiveTeamMemberStatus(get(teamPath(teamId)).data.memberStatuses[uid()])
+          )
+          || (
+            get(teamPath(teamId)).data.membersStatus is map
+            && uid() in get(teamPath(teamId)).data.membersStatus
+            && isActiveTeamMemberStatus(get(teamPath(teamId)).data.membersStatus[uid()])
           )
         );
     }

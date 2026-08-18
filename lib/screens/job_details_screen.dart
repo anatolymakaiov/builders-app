@@ -300,8 +300,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           data["status"] != "suspended" &&
           data["status"] != "on_hold";
       if (!active) return false;
-      return teamMemberIds(data["members"]).contains(uid) ||
-          data["ownerId"] == uid;
+      return teamApplicationMemberIds(data).contains(uid);
     }).toList();
   }
 
@@ -311,13 +310,56 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return value
         .map((item) {
           if (item is String) return item;
-          if (item is Map) return item["userId"]?.toString();
+          if (item is Map) {
+            return (item["userId"] ??
+                    item["uid"] ??
+                    item["workerId"] ??
+                    item["id"])
+                ?.toString();
+          }
           return null;
         })
         .whereType<String>()
         .where((id) => id.isNotEmpty)
         .toSet()
         .toList();
+  }
+
+  void addTeamStatusMemberIds(Set<String> ids, dynamic value) {
+    if (value is! Map) return;
+
+    value.forEach((key, status) {
+      final id = key?.toString().trim() ?? "";
+      if (id.isEmpty) return;
+
+      final normalizedStatus = status?.toString().toLowerCase().trim() ?? "";
+      if (normalizedStatus == "removed" ||
+          normalizedStatus == "deleted" ||
+          normalizedStatus == "inactive" ||
+          normalizedStatus == "left" ||
+          normalizedStatus == "rejected") {
+        return;
+      }
+
+      ids.add(id);
+    });
+  }
+
+  List<String> teamApplicationMemberIds(Map<String, dynamic> data) {
+    final ids = <String>{
+      ...teamMemberIds(data["members"]),
+      ...teamMemberIds(data["memberIds"]),
+    };
+
+    for (final key in const ["ownerId", "createdBy", "leaderId"]) {
+      final id = data[key]?.toString().trim() ?? "";
+      if (id.isNotEmpty) ids.add(id);
+    }
+
+    addTeamStatusMemberIds(ids, data["memberStatuses"]);
+    addTeamStatusMemberIds(ids, data["membersStatus"]);
+
+    return ids.toList();
   }
 
   String teamApplicationDocumentId(String teamId) {
@@ -338,7 +380,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           padding: const EdgeInsets.all(16),
           children: teams.map((doc) {
             final data = doc.data() as Map<String, dynamic>;
-            final members = teamMemberIds(data["members"]);
+            final members = teamApplicationMemberIds(data);
             final avatarUrl = data["avatarUrl"] ?? data["photo"];
 
             return ListTile(
