@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { HttpsError, onCall, onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
@@ -7,9 +8,11 @@ admin.initializeApp();
 
 const idealPostcodesApiKey = defineSecret("IDEAL_POSTCODES_API_KEY");
 const goCardlessAccessToken = defineSecret("GOCARDLESS_ACCESS_TOKEN");
+const goCardlessWebhookSecret = defineSecret("GOCARDLESS_WEBHOOK_SECRET");
 const GOCARDLESS_SANDBOX_API_BASE = "https://api-sandbox.gocardless.com";
 const GOCARDLESS_API_VERSION = "2015-07-06";
 const DEFAULT_FUNCTION_REGION = "us-central1";
+const STROYKA_SANDBOX_MONTHLY_AMOUNT_MINOR = 4900;
 
 const DEFAULT_NOTIFICATION_PREFERENCES = {
   enabled: true,
@@ -259,6 +262,355 @@ async function goCardlessPost(path, payload, accessToken, idempotencyKey) {
   return body;
 }
 
+async function goCardlessGet(path, accessToken) {
+  const response = await fetch(`${GOCARDLESS_SANDBOX_API_BASE}${path}`, {
+    method: "GET",
+    headers: gocardlessHeaders(accessToken),
+  });
+
+  const text = await response.text();
+  let body = {};
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch (error) {
+      body = { raw: text };
+    }
+  }
+
+  if (!response.ok) {
+    console.error(
+      "GOCARDLESS SANDBOX API ERROR",
+      JSON.stringify({
+        path,
+        status: response.status,
+        errorCode: body.error && body.error.code,
+        errorType: body.error && body.error.type,
+      }),
+    );
+    throw new HttpsError(
+      "unavailable",
+      "Could not refresh Direct Debit status.",
+    );
+  }
+
+  return body;
+}
+
+function minorAmountFromBilling(billing) {
+  const value = billing.monthlyPrice || billing.price || billing.amount;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.round(value * 100);
+  }
+  const parsed = Number.parseFloat(
+    String(value || "").replace(/[^0-9.]/g, ""),
+  );
+  if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed * 100);
+  return STROYKA_SANDBOX_MONTHLY_AMOUNT_MINOR;
+}
+
+function safeBillingStatus(data) {
+  const billing = data.billing && typeof data.billing === "object"
+    ? data.billing
+    : {};
+  return {
+    provider: billing.provider || "",
+    environment: billing.environment || "",
+    billingStatus: billing.billingStatus || billing.subscriptionStatus || "",
+    subscriptionStatus: billing.subscriptionStatus || "",
+    paymentStatus: billing.paymentStatus || "",
+    trialStartedAt: billing.trialStartedAt || billing.trialStartDate || null,
+    trialEndsAt: billing.trialEndsAt || billing.trialEndDate || null,
+    goCardlessBillingRequestId: billing.goCardlessBillingRequestId || "",
+    goCardlessBillingRequestFlowId: billing.goCardlessBillingRequestFlowId || "",
+    goCardlessMandateId: billing.goCardlessMandateId || "",
+    goCardlessSubscriptionId: billing.goCardlessSubscriptionId || "",
+    currentPeriodStart: billing.currentPeriodStart || null,
+    currentPeriodEnd: billing.currentPeriodEnd || null,
+    nextChargeDate: billing.nextChargeDate || billing.nextBillingDate || null,
+    lastPaymentStatus: billing.lastPaymentStatus || "",
+    lastPaymentAt: billing.lastPaymentAt || null,
+    updatedAt: billing.updatedAt || null,
+  };
+}
+
+function verifyGoCardlessWebhookSignature(rawBody, signature, secret) {
+  if (!rawBody || !signature || !secret) return false;
+  const computed = crypto
+    .createHmac("sha256", secret)
+    .update(rawBody)
+    .digest("hex");
+  const received = Buffer.from(String(signature), "utf8");
+  const expected = Buffer.from(computed, "utf8");
+  return received.length === expected.length &&
+    crypto.timingSafeEqual(received, expected);
+}
+
+async function employerRefByBillingField(field, value) {
+  const clean = cleanText(value);
+  if (!clean) return null;
+  const snapshot = await admin
+    .firestore()
+    .collection("users")
+    .where(`billing.${field}`, "==", clean)
+    .limit(1)
+    .get();
+  if (snapshot.empty) return null;
+  return snapshot.docs[0].ref;
+}
+
+async function updateEmployerBilling(employerRef, updates) {
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  await employerRef.set(
+    {
+      billing: {
+        ...updates,
+        provider: "gocardless",
+        environment: "sandbox",
+        updatedAt: now,
+      },
+      directDebit: {
+        ...updates,
+        provider: "gocardless",
+        environment: "sandbox",
+        updatedAt: now,
+      },
+    },
+    { merge: true },
+  );
+  await employerRef
+    .collection("billing")
+    .doc("gocardlessSandboxDirectDebit")
+    .set(
+      {
+        ...updates,
+        provider: "gocardless",
+        environment: "sandbox",
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+}
+
+async function ensureGoCardlessSubscription(employerRef, mandateId, accessToken) {
+  const employerSnap = await employerRef.get();
+  const employer = employerSnap.data() || {};
+  const billing = employer.billing || {};
+  const existingSubscriptionId = cleanText(billing.goCardlessSubscriptionId);
+  if (existingSubscriptionId) return existingSubscriptionId;
+
+  const amount = minorAmountFromBilling(billing);
+  const currency = cleanText(billing.currency) || "GBP";
+  const planName = cleanText(
+    billing.activePlanName ||
+      billing.planName ||
+      billing.activePlanId ||
+      billing.planId,
+  ) || "STROYKA company subscription";
+
+  const response = await goCardlessPost(
+    "/subscriptions",
+    {
+      subscriptions: {
+        amount,
+        currency,
+        name: planName,
+        interval_unit: "monthly",
+        interval: 1,
+        metadata: {
+          employer_id: employerRef.id,
+          environment: "sandbox",
+        },
+        links: {
+          mandate: mandateId,
+        },
+      },
+    },
+    accessToken,
+    `stroyka-subscription-${employerRef.id}-${mandateId}`,
+  );
+  const subscription = response.subscriptions || response.subscription || {};
+  const subscriptionId = cleanText(subscription.id);
+  if (!subscriptionId) {
+    throw new HttpsError(
+      "unavailable",
+      "GoCardless did not return a subscription.",
+    );
+  }
+
+  await updateEmployerBilling(employerRef, {
+    billingStatus: "active",
+    subscriptionStatus: "active",
+    paymentStatus: "pending",
+    directDebitEnabled: true,
+    mandateStatus: "active",
+    directDebitMandateId: mandateId,
+    goCardlessMandateId: mandateId,
+    goCardlessSubscriptionId: subscriptionId,
+    subscriptionStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+    currentPeriodStart: admin.firestore.FieldValue.serverTimestamp(),
+    nextChargeDate: subscription.upcoming_payments &&
+        subscription.upcoming_payments[0] &&
+        subscription.upcoming_payments[0].charge_date ||
+      null,
+    monthlyPrice: amount / 100,
+    currency,
+  });
+
+  return subscriptionId;
+}
+
+async function reconcileBillingRequest(employerRef, billingRequestId, accessToken) {
+  const response = await goCardlessGet(
+    `/billing_requests/${encodeURIComponent(billingRequestId)}`,
+    accessToken,
+  );
+  const billingRequest = response.billing_requests || response.billing_request || {};
+  const links = billingRequest.links || {};
+  const mandateId = cleanText(
+    links.mandate ||
+      (billingRequest.mandate_request &&
+        billingRequest.mandate_request.links &&
+        billingRequest.mandate_request.links.mandate),
+  );
+  const customerId = cleanText(
+    links.customer ||
+      (billingRequest.resources && billingRequest.resources.customer),
+  );
+  const status = cleanText(billingRequest.status);
+
+  const updates = {
+    billingStatus: status === "fulfilled" ? "mandate_pending" : "setup_pending",
+    goCardlessBillingRequestId: billingRequestId,
+    goCardlessBillingRequestStatus: status,
+  };
+  if (customerId) updates.goCardlessCustomerId = customerId;
+  if (mandateId) {
+    updates.goCardlessMandateId = mandateId;
+    updates.directDebitMandateId = mandateId;
+    updates.mandateStatus = "pending";
+  }
+  await updateEmployerBilling(employerRef, updates);
+
+  if (status === "fulfilled" && mandateId) {
+    const mandateResponse = await goCardlessGet(
+      `/mandates/${encodeURIComponent(mandateId)}`,
+      accessToken,
+    );
+    const mandate = mandateResponse.mandates || mandateResponse.mandate || {};
+    const mandateStatus = cleanText(mandate.status);
+    if (mandateStatus === "active") {
+      await ensureGoCardlessSubscription(employerRef, mandateId, accessToken);
+    }
+  }
+}
+
+async function processGoCardlessEvent(event, accessToken) {
+  const resourceType = cleanText(event.resource_type);
+  const action = cleanText(event.action);
+  const links = event.links || {};
+
+  if (resourceType === "billing_requests") {
+    const billingRequestId = cleanText(links.billing_request);
+    const employerRef = await employerRefByBillingField(
+      "goCardlessBillingRequestId",
+      billingRequestId,
+    );
+    if (!employerRef) return "billing_request_unmatched";
+    if (action === "fulfilled") {
+      await reconcileBillingRequest(employerRef, billingRequestId, accessToken);
+      return "billing_request_fulfilled";
+    }
+    if (["cancelled", "failed"].includes(action)) {
+      await updateEmployerBilling(employerRef, {
+        billingStatus: "failed",
+        subscriptionStatus: "setup_required",
+        paymentStatus: "failed",
+      });
+      return "billing_request_failed";
+    }
+  }
+
+  if (resourceType === "mandates") {
+    const mandateId = cleanText(links.mandate);
+    const employerRef = await employerRefByBillingField(
+      "goCardlessMandateId",
+      mandateId,
+    );
+    if (!employerRef) return "mandate_unmatched";
+    if (["created", "submitted"].includes(action)) {
+      await updateEmployerBilling(employerRef, {
+        billingStatus: "mandate_pending",
+        mandateStatus: action,
+        goCardlessMandateId: mandateId,
+        directDebitMandateId: mandateId,
+      });
+      return "mandate_pending";
+    }
+    if (["active", "reinstated"].includes(action)) {
+      await ensureGoCardlessSubscription(employerRef, mandateId, accessToken);
+      return "mandate_active_subscription_ensured";
+    }
+    if (["cancelled", "failed", "expired", "blocked"].includes(action)) {
+      await updateEmployerBilling(employerRef, {
+        billingStatus: action === "cancelled" ? "cancelled" : "failed",
+        subscriptionStatus: action === "cancelled" ? "cancelled" : "suspended",
+        mandateStatus: action,
+        paymentStatus: action === "cancelled" ? "cancelled" : "failed",
+      });
+      return "mandate_inactive";
+    }
+  }
+
+  if (resourceType === "subscriptions") {
+    const subscriptionId = cleanText(links.subscription);
+    const employerRef = await employerRefByBillingField(
+      "goCardlessSubscriptionId",
+      subscriptionId,
+    );
+    if (!employerRef) return "subscription_unmatched";
+    if (["created", "customer_approval_granted"].includes(action)) {
+      await updateEmployerBilling(employerRef, {
+        billingStatus: "active",
+        subscriptionStatus: "active",
+        goCardlessSubscriptionId: subscriptionId,
+      });
+      return "subscription_active";
+    }
+    if (["cancelled", "finished"].includes(action)) {
+      await updateEmployerBilling(employerRef, {
+        billingStatus: "cancelled",
+        subscriptionStatus: "cancelled",
+        paymentStatus: "cancelled",
+      });
+      return "subscription_cancelled";
+    }
+  }
+
+  if (resourceType === "payments") {
+    const paymentId = cleanText(links.payment);
+    const subscriptionId = cleanText(links.subscription);
+    const employerRef = await employerRefByBillingField(
+      "goCardlessSubscriptionId",
+      subscriptionId,
+    );
+    if (!employerRef) return "payment_unmatched";
+    const status = ["failed", "cancelled"].includes(action)
+      ? "past_due"
+      : "active";
+    await updateEmployerBilling(employerRef, {
+      billingStatus: status,
+      subscriptionStatus: status,
+      lastPaymentStatus: action,
+      lastPaymentId: paymentId,
+      lastPaymentAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return "payment_recorded";
+  }
+
+  return "ignored";
+}
+
 function isEmployerBillingManager(user, uid) {
   const role = String(user.role || "").trim().toLowerCase();
   return role === "employer" &&
@@ -392,8 +744,14 @@ exports.createGoCardlessDirectDebitSetup = onCall(
       provider: "gocardless",
       environment: "sandbox",
       billingStatus: "setup_pending",
+      subscriptionStatus: "setup_required",
+      paymentStatus: "pending",
+      paymentMethod: "direct_debit",
+      currentPaymentMethod: "direct_debit",
       goCardlessBillingRequestId: billingRequestId,
       goCardlessBillingRequestFlowId: billingRequestFlowId,
+      directDebitEnabled: false,
+      mandateStatus: "setup_pending",
       updatedAt: now,
     };
 
@@ -423,6 +781,107 @@ exports.createGoCardlessDirectDebitSetup = onCall(
   },
 );
 
+exports.getCompanyBillingStatus = onCall(
+  {
+    secrets: [goCardlessAccessToken],
+    timeoutSeconds: 15,
+    memory: "256MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Please sign in to view billing status.",
+      );
+    }
+
+    const uid = request.auth.uid;
+    const userRef = admin.firestore().collection("users").doc(uid);
+    const userSnap = await userRef.get();
+    const user = userSnap.data() || {};
+    if (!userSnap.exists || !isEmployerBillingManager(user, uid)) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only the company account owner can view billing status.",
+      );
+    }
+
+    const billing = user.billing || {};
+    const billingRequestId = cleanText(billing.goCardlessBillingRequestId);
+    const pending = [
+      "setup_pending",
+      "mandate_pending",
+      "setup_required",
+    ].includes(cleanText(billing.billingStatus || billing.subscriptionStatus));
+
+    if (pending && billingRequestId) {
+      const accessToken = goCardlessAccessToken.value();
+      if (accessToken) {
+        await reconcileBillingRequest(userRef, billingRequestId, accessToken);
+      }
+    }
+
+    const refreshed = await userRef.get();
+    return safeBillingStatus(refreshed.data() || {});
+  },
+);
+
+exports.cancelGoCardlessSubscription = onCall(
+  {
+    secrets: [goCardlessAccessToken],
+    timeoutSeconds: 15,
+    memory: "256MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Please sign in to cancel Direct Debit.",
+      );
+    }
+
+    const uid = request.auth.uid;
+    const userRef = admin.firestore().collection("users").doc(uid);
+    const userSnap = await userRef.get();
+    const user = userSnap.data() || {};
+    if (!userSnap.exists || !isEmployerBillingManager(user, uid)) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only the company account owner can cancel Direct Debit.",
+      );
+    }
+
+    const billing = user.billing || {};
+    const subscriptionId = cleanText(billing.goCardlessSubscriptionId);
+    if (subscriptionId) {
+      const accessToken = goCardlessAccessToken.value();
+      if (!accessToken) {
+        throw new HttpsError(
+          "failed-precondition",
+          "GoCardless Sandbox is not configured.",
+        );
+      }
+      await goCardlessPost(
+        `/subscriptions/${encodeURIComponent(subscriptionId)}/actions/cancel`,
+        {},
+        accessToken,
+        `stroyka-cancel-subscription-${uid}-${subscriptionId}`,
+      );
+    }
+
+    await updateEmployerBilling(userRef, {
+      billingStatus: "cancelled",
+      subscriptionStatus: "cancelled",
+      paymentStatus: "cancelled",
+      directDebitEnabled: false,
+      cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const refreshed = await userRef.get();
+    return safeBillingStatus(refreshed.data() || {});
+  },
+);
+
 exports.goCardlessReturn = onRequest((request, response) => {
   response
     .status(200)
@@ -447,32 +906,96 @@ exports.goCardlessExit = onRequest((request, response) => {
     );
 });
 
-exports.goCardlessWebhook = onRequest((request, response) => {
+exports.goCardlessWebhook = onRequest(
+  {
+    secrets: [goCardlessWebhookSecret, goCardlessAccessToken],
+    timeoutSeconds: 30,
+    memory: "256MiB",
+  },
+  async (request, response) => {
   if (request.method !== "POST") {
     response.set("Allow", "POST").status(405).send("Method Not Allowed");
     return;
   }
 
-  const rawBodyBytes = request.rawBody ? request.rawBody.length : 0;
-  const body = request.body || {};
+  const rawBody = request.rawBody || Buffer.from("");
+  const signature = request.get("Webhook-Signature") || "";
+  const webhookSecret = goCardlessWebhookSecret.value();
+  const validSignature = verifyGoCardlessWebhookSignature(
+    rawBody,
+    signature,
+    webhookSecret,
+  );
+  if (!validSignature) {
+    console.warn(
+      "GOCARDLESS WEBHOOK INVALID SIGNATURE",
+      JSON.stringify({ rawBodyBytes: rawBody.length }),
+    );
+    response.status(498).send("Invalid webhook signature");
+    return;
+  }
+
+  let body = {};
+  try {
+    body = JSON.parse(rawBody.toString("utf8"));
+  } catch (error) {
+    response.status(400).send("Invalid JSON");
+    return;
+  }
   const events = Array.isArray(body.events) ? body.events : [];
 
   console.log(
     "GOCARDLESS WEBHOOK RECEIVED",
     JSON.stringify({
-      rawBodyBytes,
+      rawBodyBytes: rawBody.length,
       eventCount: events.length,
-      hasSignatureHeader: Boolean(request.get("Webhook-Signature")),
+      hasSignatureHeader: true,
     }),
   );
 
-  // TODO: Verify Webhook-Signature with GOCARDLESS_WEBHOOK_SECRET before
-  // treating GoCardless webhook events as authoritative.
+  const accessToken = goCardlessAccessToken.value();
+  const processed = [];
+  const skipped = [];
+  for (const event of events) {
+    const eventId = cleanText(event.id);
+    if (!eventId) continue;
+    const eventRef = admin
+      .firestore()
+      .collection("gocardless_processed_events")
+      .doc(eventId);
+    try {
+      await eventRef.create({
+        provider: "gocardless",
+        environment: "sandbox",
+        resourceType: cleanText(event.resource_type),
+        action: cleanText(event.action),
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        status: "processing",
+      });
+    } catch (error) {
+      skipped.push(eventId);
+      continue;
+    }
+
+    const result = await processGoCardlessEvent(event, accessToken);
+    await eventRef.set(
+      {
+        status: "processed",
+        result,
+        processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    processed.push(eventId);
+  }
+
   response.status(200).json({
     received: true,
-    authoritativeProcessing: false,
+    processed,
+    skipped,
   });
-});
+  },
+);
 
 function activeMemberStatus(status) {
   const normalized = String(status || "").trim().toLowerCase();

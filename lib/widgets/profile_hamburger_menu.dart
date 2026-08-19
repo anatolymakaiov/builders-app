@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
@@ -517,6 +518,11 @@ class MyAccountScreen extends StatelessWidget {
                           ),
                         ),
                         if (email.isNotEmpty) _InfoRow("Email", email),
+                        const SizedBox(height: 12),
+                        _GoCardlessBillingPanel(
+                          billing: billing,
+                          userData: data,
+                        ),
                       ],
                       const SizedBox(height: 16),
                       SizedBox(
@@ -572,6 +578,275 @@ class MyAccountScreen extends StatelessWidget {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _GoCardlessBillingPanel extends StatefulWidget {
+  final Map<String, dynamic> billing;
+  final Map<String, dynamic> userData;
+
+  const _GoCardlessBillingPanel({
+    required this.billing,
+    required this.userData,
+  });
+
+  @override
+  State<_GoCardlessBillingPanel> createState() =>
+      _GoCardlessBillingPanelState();
+}
+
+class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
+    with WidgetsBindingObserver {
+  bool settingUp = false;
+  bool refreshing = false;
+  bool cancelling = false;
+  Map<String, dynamic>? overrideBilling;
+
+  Map<String, dynamic> get billing => overrideBilling ?? widget.billing;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      refreshStatus(silent: true);
+    }
+  }
+
+  String currentStatus() {
+    final directDebitStatus =
+        (billing["billingStatus"] ?? billing["subscriptionStatus"] ?? "")
+            .toString()
+            .trim()
+            .toLowerCase();
+    final trialStatus = billing["trialStatus"]?.toString().toLowerCase() ?? "";
+    final trialActive = billing["trialActive"] == true ||
+        trialStatus == "active" ||
+        directDebitStatus == "trial";
+    if (directDebitStatus.isNotEmpty) return directDebitStatus;
+    if (trialActive) return "trial";
+    return "setup_required";
+  }
+
+  String statusTitle(String status) {
+    switch (status) {
+      case "trial":
+        return "Trial active";
+      case "setup_pending":
+      case "mandate_pending":
+        return "Direct Debit setup pending";
+      case "active":
+        return "Direct Debit active";
+      case "past_due":
+      case "suspended":
+      case "failed":
+        return "Payment needs attention";
+      case "cancelled":
+        return "Subscription cancelled";
+      default:
+        return "Direct Debit setup required";
+    }
+  }
+
+  String statusBody(String status) {
+    final trialEnd = BillingService.formatDate(
+      billing["trialEndsAt"] ?? billing["trialEndDate"],
+    );
+    final nextCharge = BillingService.formatDate(
+      billing["nextChargeDate"] ?? billing["nextBillingDate"],
+    );
+    switch (status) {
+      case "trial":
+        return trialEnd.isEmpty
+            ? "Set up Direct Debit before the trial ends."
+            : "Trial ends $trialEnd. Set up Direct Debit before then.";
+      case "setup_pending":
+      case "mandate_pending":
+        return "Waiting for GoCardless Sandbox confirmation. Refresh after completing the hosted flow.";
+      case "active":
+        return nextCharge.isEmpty
+            ? "Subscription active."
+            : "Subscription active. Next charge: $nextCharge.";
+      case "past_due":
+      case "suspended":
+      case "failed":
+        return "Please refresh or manage Direct Debit to keep company billing active.";
+      case "cancelled":
+        return "The subscription is cancelled. You can set up Direct Debit again.";
+      default:
+        return "Set up Direct Debit to activate company subscription billing.";
+    }
+  }
+
+  Future<void> startSetup() async {
+    if (settingUp) return;
+    setState(() => settingUp = true);
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable("createGoCardlessDirectDebitSetup")
+          .call();
+      final data = result.data;
+      final url = data is Map ? data["authorisationUrl"]?.toString() : null;
+      if (url == null || url.trim().isEmpty) {
+        throw Exception("missing_authorisation_url");
+      }
+      final launched = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) throw Exception("launch_failed");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Direct Debit setup opened. Return here to refresh."),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not start Direct Debit setup")),
+      );
+    } finally {
+      if (mounted) setState(() => settingUp = false);
+    }
+  }
+
+  Future<void> refreshStatus({bool silent = false}) async {
+    if (refreshing) return;
+    setState(() => refreshing = true);
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable("getCompanyBillingStatus")
+          .call();
+      final data = result.data;
+      if (data is Map) {
+        overrideBilling = Map<String, dynamic>.from(data);
+      }
+      if (!mounted || silent) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Billing status refreshed")),
+      );
+    } catch (_) {
+      if (!mounted || silent) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not refresh billing status")),
+      );
+    } finally {
+      if (mounted) setState(() => refreshing = false);
+    }
+  }
+
+  Future<void> cancelSubscription() async {
+    if (cancelling) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Cancel subscription?"),
+        content: const Text(
+          "This cancels the GoCardless Sandbox subscription. Billing history is preserved.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Yes"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => cancelling = true);
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable("cancelGoCardlessSubscription")
+          .call();
+      final data = result.data;
+      if (data is Map) {
+        overrideBilling = Map<String, dynamic>.from(data);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Subscription cancellation requested")),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not cancel subscription")),
+      );
+    } finally {
+      if (mounted) setState(() => cancelling = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = currentStatus();
+    final active = status == "active";
+    final pending = status == "setup_pending" || status == "mandate_pending";
+    final busy = settingUp || refreshing || cancelling;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            statusTitle(status),
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(statusBody(status)),
+          if (busy) ...[
+            const SizedBox(height: 10),
+            const LinearProgressIndicator(minHeight: 2),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (!active)
+                FilledButton.icon(
+                  onPressed: busy ? null : startSetup,
+                  icon: const Icon(Icons.account_balance),
+                  label: Text(pending ? "Retry setup" : "Set up Direct Debit"),
+                ),
+              OutlinedButton.icon(
+                onPressed: busy ? null : () => refreshStatus(),
+                icon: const Icon(Icons.refresh),
+                label: const Text("Refresh status"),
+              ),
+              if (active)
+                OutlinedButton.icon(
+                  onPressed: busy ? null : cancelSubscription,
+                  icon: const Icon(Icons.cancel_outlined),
+                  label: const Text("Cancel subscription"),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
