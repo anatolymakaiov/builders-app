@@ -1,11 +1,15 @@
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-const { HttpsError, onCall } = require("firebase-functions/v2/https");
+const { HttpsError, onCall, onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
 
 const idealPostcodesApiKey = defineSecret("IDEAL_POSTCODES_API_KEY");
+const goCardlessAccessToken = defineSecret("GOCARDLESS_ACCESS_TOKEN");
+const GOCARDLESS_SANDBOX_API_BASE = "https://api-sandbox.gocardless.com";
+const GOCARDLESS_API_VERSION = "2015-07-06";
+const DEFAULT_FUNCTION_REGION = "us-central1";
 
 const DEFAULT_NOTIFICATION_PREFERENCES = {
   enabled: true,
@@ -154,6 +158,321 @@ exports.lookupIdealPostcodeAddresses = onCall(
     }
   },
 );
+
+function functionBaseUrl(functionName) {
+  const projectId =
+    process.env.GCLOUD_PROJECT ||
+    process.env.GCP_PROJECT ||
+    "builder-jobs-app";
+  const region = process.env.FUNCTION_REGION || DEFAULT_FUNCTION_REGION;
+  return `https://${region}-${projectId}.cloudfunctions.net/${functionName}`;
+}
+
+function htmlResponse(title, message) {
+  const safeTitle = String(title || "STROYKA").replace(/[<>&"]/g, "");
+  const safeMessage = String(message || "").replace(/[<>&"]/g, "");
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${safeTitle}</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #111827;
+        color: #f9fafb;
+      }
+      main {
+        max-width: 520px;
+        padding: 32px;
+        text-align: center;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 28px;
+      }
+      p {
+        margin: 0;
+        color: #d1d5db;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>${safeTitle}</h1>
+      <p>${safeMessage}</p>
+    </main>
+  </body>
+</html>`;
+}
+
+function gocardlessHeaders(accessToken, idempotencyKey) {
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "GoCardless-Version": GOCARDLESS_API_VERSION,
+  };
+  if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+  return headers;
+}
+
+async function goCardlessPost(path, payload, accessToken, idempotencyKey) {
+  const response = await fetch(`${GOCARDLESS_SANDBOX_API_BASE}${path}`, {
+    method: "POST",
+    headers: gocardlessHeaders(accessToken, idempotencyKey),
+    body: JSON.stringify(payload),
+  });
+
+  const text = await response.text();
+  let body = {};
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch (error) {
+      body = { raw: text };
+    }
+  }
+
+  if (!response.ok) {
+    console.error(
+      "GOCARDLESS SANDBOX API ERROR",
+      JSON.stringify({
+        path,
+        status: response.status,
+        errorCode: body.error && body.error.code,
+        errorType: body.error && body.error.type,
+      }),
+    );
+    throw new HttpsError(
+      "unavailable",
+      "Direct Debit setup is temporarily unavailable.",
+    );
+  }
+
+  return body;
+}
+
+function isEmployerBillingManager(user, uid) {
+  const role = String(user.role || "").trim().toLowerCase();
+  return role === "employer" &&
+    isActiveUserDocument(user) &&
+    (
+      !user.ownerId ||
+      String(user.ownerId) === uid
+    );
+}
+
+function goCardlessPrefilledCustomer(user) {
+  const customer = {
+    email: cleanText(user.billingEmail || user.email),
+    country_code: "GB",
+    postal_code: cleanText(
+      user.billingPostcode ||
+        (user.billing && user.billing.billingPostcode) ||
+        user.postcode,
+    ),
+  };
+  const companyName = cleanText(user.companyName || user.name);
+  if (companyName) customer.company_name = companyName;
+
+  return Object.fromEntries(
+    Object.entries(customer).filter(([, value]) => {
+      return value !== undefined && value !== null && String(value).trim();
+    }),
+  );
+}
+
+exports.createGoCardlessDirectDebitSetup = onCall(
+  {
+    secrets: [goCardlessAccessToken],
+    timeoutSeconds: 20,
+    memory: "256MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Please sign in to set up Direct Debit.",
+      );
+    }
+
+    const uid = request.auth.uid;
+    const userRef = admin.firestore().collection("users").doc(uid);
+    const userSnap = await userRef.get();
+    const user = userSnap.data() || {};
+
+    if (!userSnap.exists || !isEmployerBillingManager(user, uid)) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only the company account owner can set up Direct Debit.",
+      );
+    }
+
+    const accessToken = goCardlessAccessToken.value();
+    if (!accessToken) {
+      throw new HttpsError(
+        "failed-precondition",
+        "GoCardless Sandbox is not configured.",
+      );
+    }
+
+    const billingRequestResponse = await goCardlessPost(
+      "/billing_requests",
+      {
+        billing_requests: {
+          mandate_request: {
+            scheme: "bacs",
+            currency: "GBP",
+          },
+          metadata: {
+            employer_id: uid,
+            environment: "sandbox",
+          },
+        },
+      },
+      accessToken,
+      `stroyka-dd-request-${uid}-${Date.now()}`,
+    );
+
+    const billingRequest =
+      billingRequestResponse.billing_requests ||
+      billingRequestResponse.billing_request ||
+      {};
+    const billingRequestId = cleanText(billingRequest.id);
+
+    if (!billingRequestId) {
+      throw new HttpsError(
+        "unavailable",
+        "GoCardless did not return a billing request.",
+      );
+    }
+
+    const returnUri = functionBaseUrl("goCardlessReturn");
+    const exitUri = functionBaseUrl("goCardlessExit");
+    const billingFlowResponse = await goCardlessPost(
+      "/billing_request_flows",
+      {
+        billing_request_flows: {
+          redirect_uri: returnUri,
+          exit_uri: exitUri,
+          show_success_redirect_button: true,
+          prefilled_customer: goCardlessPrefilledCustomer(user),
+          links: {
+            billing_request: billingRequestId,
+          },
+        },
+      },
+      accessToken,
+      `stroyka-dd-flow-${uid}-${billingRequestId}`,
+    );
+
+    const billingFlow =
+      billingFlowResponse.billing_request_flows ||
+      billingFlowResponse.billing_request_flow ||
+      {};
+    const billingRequestFlowId = cleanText(billingFlow.id);
+    const authorisationUrl = cleanText(billingFlow.authorisation_url);
+
+    if (!billingRequestFlowId || !authorisationUrl) {
+      throw new HttpsError(
+        "unavailable",
+        "GoCardless did not return an authorisation URL.",
+      );
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const setupPayload = {
+      provider: "gocardless",
+      environment: "sandbox",
+      billingStatus: "setup_pending",
+      goCardlessBillingRequestId: billingRequestId,
+      goCardlessBillingRequestFlowId: billingRequestFlowId,
+      updatedAt: now,
+    };
+
+    await userRef.set(
+      {
+        billing: setupPayload,
+        directDebit: setupPayload,
+      },
+      { merge: true },
+    );
+    await userRef
+      .collection("billing")
+      .doc("gocardlessSandboxDirectDebit")
+      .set(
+        {
+          ...setupPayload,
+          createdAt: now,
+        },
+        { merge: true },
+      );
+
+    return {
+      authorisationUrl,
+      billingRequestId,
+      billingRequestFlowId,
+    };
+  },
+);
+
+exports.goCardlessReturn = onRequest((request, response) => {
+  response
+    .status(200)
+    .set("Content-Type", "text/html; charset=utf-8")
+    .send(
+      htmlResponse(
+        "Direct Debit setup submitted",
+        "Your GoCardless Sandbox Direct Debit setup has been submitted. You may now return to STROYKA. We will confirm the final mandate status after GoCardless sends webhook events.",
+      ),
+    );
+});
+
+exports.goCardlessExit = onRequest((request, response) => {
+  response
+    .status(200)
+    .set("Content-Type", "text/html; charset=utf-8")
+    .send(
+      htmlResponse(
+        "Direct Debit setup not completed",
+        "The GoCardless Sandbox Direct Debit setup was not completed. You may return to STROYKA and try again when ready.",
+      ),
+    );
+});
+
+exports.goCardlessWebhook = onRequest((request, response) => {
+  if (request.method !== "POST") {
+    response.set("Allow", "POST").status(405).send("Method Not Allowed");
+    return;
+  }
+
+  const rawBodyBytes = request.rawBody ? request.rawBody.length : 0;
+  const body = request.body || {};
+  const events = Array.isArray(body.events) ? body.events : [];
+
+  console.log(
+    "GOCARDLESS WEBHOOK RECEIVED",
+    JSON.stringify({
+      rawBodyBytes,
+      eventCount: events.length,
+      hasSignatureHeader: Boolean(request.get("Webhook-Signature")),
+    }),
+  );
+
+  // TODO: Verify Webhook-Signature with GOCARDLESS_WEBHOOK_SECRET before
+  // treating GoCardless webhook events as authoritative.
+  response.status(200).json({
+    received: true,
+    authoritativeProcessing: false,
+  });
+});
 
 function activeMemberStatus(status) {
   const normalized = String(status || "").trim().toLowerCase();
