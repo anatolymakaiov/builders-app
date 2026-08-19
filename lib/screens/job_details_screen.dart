@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'employer_applications_screen.dart';
 import 'post_job_screen.dart';
@@ -544,8 +545,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             .toSet()
             .toList();
         final teamId = team["teamId"]?.toString() ?? "";
-        final teamName = team["teamName"]?.toString() ?? "Team";
-        final teamAvatarUrl = team["teamAvatarUrl"]?.toString() ?? "";
 
         if (teamId.isEmpty) {
           throw Exception("missing_team");
@@ -573,76 +572,43 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             .doc(teamApplicationDocumentId(teamId));
 
         debugPrint(
-          "APPLY WRITE START "
+          "APPLY FUNCTION START "
+          "name=submitTeamApplication "
           "path=applications/${applicationRef.id} "
           "type=team "
           "workerId=$uid "
           "teamId=$teamId "
           "jobId=${activeJob.id} "
           "authUid=$uid "
-          "payloadKeys=jobId,jobTitle,jobTrade,jobSite,type,teamId,teamName,workerId,applicantId,members,workersCount,membersStatus,employerId,ownerId,status,viewedByEmployer,createdAt,updatedAt,applicationActivityAt,unreadFor",
+          "payloadKeys=jobId,teamId",
         );
 
-        await FirebaseFirestore.instance.runTransaction((transaction) async {
-          final jobRef =
-              FirebaseFirestore.instance.collection("jobs").doc(activeJob.id);
-          final existingAppSnap = await transaction.get(applicationRef);
-          final jobSnap = await transaction.get(jobRef);
-
-          if (!jobSnap.exists) throw Exception("Job not found");
-          if (existingAppSnap.exists) {
-            final existingAppData = existingAppSnap.data() ?? {};
-            if (isActiveApplicationData(existingAppData)) {
-              throw Exception("duplicate_team_application");
-            }
-          }
-
-          final jobData = jobSnap.data() as Map<String, dynamic>;
-          final ownerId = jobOwnerId(jobData);
-          final counts = jobPositionCounts(jobData);
-          ensureValidPositionCounts(counts);
-          if (ownerId.isEmpty) throw Exception("missing_employer");
-          if (members.length > counts.remaining) {
-            throw Exception("not_enough_spots");
-          }
-
-          transaction.set(
-              applicationRef,
-              {
-                "jobId": activeJob.id,
-                "jobTitle": (jobData["title"] ??
-                        jobData["trade"] ??
-                        activeJob.displayTitle)
-                    .toString(),
-                "jobTrade": jobData["trade"] ?? activeJob.trade,
-                "jobSite": jobData["site"] ?? activeJob.site,
-                ...applicationPhysicalAddressFields(jobData),
-                ...applicationJobSnapshotFields(jobData),
-                "type": "team",
-                "teamId": teamId,
-                "teamName": teamName,
-                if (teamAvatarUrl.isNotEmpty) "teamAvatarUrl": teamAvatarUrl,
-                "workerId": uid,
-                "applicantId": uid,
-                "members": members,
-                "workersCount": members.length,
-                "membersStatus": {for (var id in members) id: "pending"},
-                "employerId": ownerId,
-                "ownerId": ownerId,
-                "status": "pending",
-                "viewedByEmployer": false,
-                "createdAt": FieldValue.serverTimestamp(),
-                "updatedAt": FieldValue.serverTimestamp(),
-                ...ApplicationActivityService.createdForEmployer(ownerId),
-              },
-              SetOptions(merge: true));
+        final callable =
+            FirebaseFunctions.instance.httpsCallable("submitTeamApplication");
+        final result = await callable.call(<String, dynamic>{
+          "jobId": activeJob.id,
+          "teamId": teamId,
         });
+        final responseData = result.data;
+        final applicationId = responseData is Map
+            ? responseData["applicationId"]?.toString()
+            : null;
+
+        debugPrint(
+          "APPLY FUNCTION SUCCESS "
+          "name=submitTeamApplication "
+          "path=applications/${applicationId ?? applicationRef.id} "
+          "type=team "
+          "workerId=$uid "
+          "teamId=$teamId "
+          "jobId=${activeJob.id}",
+        );
 
         if (mounted) {
           setState(() {
             isApplying = false;
             isApplied = true;
-            currentApplicationId = applicationRef.id;
+            currentApplicationId = applicationId ?? applicationRef.id;
           });
           StroykaActionFeedback.showSuccess(
             context,
@@ -1001,10 +967,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   String applicationErrorMessage(Object error, {String? applyType}) {
     final text = error.toString();
     if (text.contains("no_positions_left") ||
-        text.contains("not_enough_spots")) {
+        text.contains("not_enough_spots") ||
+        text.contains("Not enough positions")) {
       return "Not enough positions available";
     }
-    if (text.contains("duplicate_team_application")) {
+    if (text.contains("duplicate_team_application") ||
+        text.contains("already-exists")) {
       return "This team already applied for this job";
     }
     if (text.contains("team_has_no_members")) {

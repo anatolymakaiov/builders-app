@@ -155,6 +155,393 @@ exports.lookupIdealPostcodeAddresses = onCall(
   },
 );
 
+function activeMemberStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  return ![
+    "removed",
+    "deleted",
+    "inactive",
+    "left",
+    "rejected",
+  ].includes(normalized);
+}
+
+function isHeldDocument(data) {
+  const status = String(data.status || "").trim().toLowerCase();
+  return data.moderationHold === true ||
+    data.held === true ||
+    data.suspended === true ||
+    data.profileHeld === true ||
+    data.profileSuspended === true ||
+    status === "suspended" ||
+    status === "on_hold";
+}
+
+function isActiveUserDocument(data) {
+  return data &&
+    !isHeldDocument(data) &&
+    data.deleted !== true &&
+    data.accountDeleted !== true &&
+    data.anonymised !== true &&
+    data.active !== false;
+}
+
+function isActiveTeamDocument(data) {
+  return data &&
+    !isHeldDocument(data) &&
+    data.deleted !== true &&
+    data.accountDeleted !== true &&
+    data.active !== false;
+}
+
+function addMemberId(ids, value) {
+  const id = String(value || "").trim();
+  if (id) ids.add(id);
+}
+
+function addMemberIdsFromList(ids, value) {
+  if (!Array.isArray(value)) return;
+  for (const item of value) {
+    if (typeof item === "string") {
+      addMemberId(ids, item);
+    } else if (item && typeof item === "object") {
+      addMemberId(
+        ids,
+        item.userId || item.uid || item.workerId || item.id,
+      );
+    }
+  }
+}
+
+function addMemberIdsFromStatusMap(ids, value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  for (const [memberId, status] of Object.entries(value)) {
+    if (activeMemberStatus(status)) addMemberId(ids, memberId);
+  }
+}
+
+function teamApplicationMemberIds(team) {
+  const ids = new Set();
+  addMemberIdsFromList(ids, team.members);
+  addMemberIdsFromList(ids, team.memberIds);
+  addMemberId(ids, team.ownerId);
+  addMemberId(ids, team.createdBy);
+  addMemberId(ids, team.leaderId);
+  addMemberIdsFromStatusMap(ids, team.memberStatuses);
+  addMemberIdsFromStatusMap(ids, team.membersStatus);
+  return [...ids];
+}
+
+function activeApplicationStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  return ![
+    "withdrawn",
+    "cancelled",
+    "canceled",
+    "deleted",
+    "removed",
+    "inactive",
+  ].includes(normalized);
+}
+
+function isPublicApplicationJob(job) {
+  const moderationStatus = String(job.moderationStatus || "").trim();
+  const status = String(job.status || "").trim().toLowerCase();
+  const statusAllowed = !Object.prototype.hasOwnProperty.call(job, "status") ||
+    ["active", "published", "open"].includes(status);
+  return moderationStatus === "approved" &&
+    statusAllowed &&
+    !isHeldDocument(job) &&
+    job.deleted !== true &&
+    job.companyDeleted !== true &&
+    job.employerDeleted !== true;
+}
+
+function firstStringValue(data, keys) {
+  for (const key of keys) {
+    const value = data[key];
+    if (value !== undefined && value !== null) {
+      const text = String(value).trim();
+      if (text) return text;
+    }
+  }
+  return "";
+}
+
+function readIntValue(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  const parsed = Number.parseInt(String(value || ""), 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function jobPositionCounts(job) {
+  const positions = readIntValue(
+    job.positions ||
+      job.totalPositions ||
+      job.totalSlots ||
+      job.workersNeeded ||
+      job.requiredWorkers,
+  );
+  const filledPositions = readIntValue(
+    job.filledPositions || job.acceptedCount || job.hiredCount,
+  );
+  const remainingKeys = [
+    "remainingPositions",
+    "openSlots",
+    "availablePositions",
+    "availableSlots",
+    "remainingSlots",
+    "positionsAvailable",
+  ];
+  const hasStoredRemaining = remainingKeys.some((key) => {
+    return Object.prototype.hasOwnProperty.call(job, key) &&
+      job[key] !== null &&
+      job[key] !== undefined;
+  });
+  const remainingRaw = readIntValue(
+    job.remainingPositions ||
+      job.openSlots ||
+      job.availablePositions ||
+      job.availableSlots ||
+      job.remainingSlots ||
+      job.positionsAvailable,
+  );
+  const remaining = hasStoredRemaining
+    ? remainingRaw
+    : Math.max(positions - filledPositions, 0);
+
+  return { positions, filledPositions, remaining };
+}
+
+function applicationPhysicalAddressFields(job) {
+  return {
+    addressLine1: job.addressLine1 || job.siteAddressLine1 || "",
+    addressLine2: job.addressLine2 || job.siteAddressLine2 || "",
+    addressLine3: job.addressLine3 || job.siteAddressLine3 || "",
+    townCity: job.townCity || job.siteTownCity || job.city || "",
+    county: job.county || job.siteCounty || "",
+    postcode: job.postcode || job.sitePostcode || "",
+    country: job.country || job.siteCountry || "",
+    fullAddress: job.fullAddress || job.address || job.siteAddress || "",
+  };
+}
+
+function applicationJobSnapshotFields(job) {
+  return {
+    companyName: job.companyName || job.employerName || "",
+    companyLogoUrl: job.companyLogoUrl || job.employerAvatarUrl || "",
+    employerAvatarUrl: job.employerAvatarUrl || job.companyLogoUrl || "",
+    payType: job.payType || job.compensationType || "",
+    payAmount: job.payAmount || job.salary || job.rate || "",
+    payUnit: job.payUnit || job.rateUnit || "",
+    duration: job.duration || "",
+    jobType: job.jobType || job.type || "",
+    jobStatusAtApplication: job.status || "",
+  };
+}
+
+exports.submitTeamApplication = onCall(
+  {
+    timeoutSeconds: 15,
+    memory: "256MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Please sign in to apply as a team.",
+      );
+    }
+
+    const uid = request.auth.uid;
+    const jobId = cleanText(request.data && request.data.jobId);
+    const teamId = cleanText(request.data && request.data.teamId);
+
+    console.log(
+      "TEAM APPLY FUNCTION START",
+      JSON.stringify({ uid, jobId, teamId }),
+    );
+
+    if (!jobId || !teamId) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Team application data is missing.",
+      );
+    }
+
+    const db = admin.firestore();
+    const applicationId = `team_${jobId}_${teamId}`;
+    const userRef = db.collection("users").doc(uid);
+    const teamRef = db.collection("teams").doc(teamId);
+    const jobRef = db.collection("jobs").doc(jobId);
+    const applicationRef = db.collection("applications").doc(applicationId);
+
+    const result = await db.runTransaction(async (transaction) => {
+      console.log(
+        "TEAM APPLY TX READ START",
+        JSON.stringify({
+          userPath: userRef.path,
+          teamPath: teamRef.path,
+          jobPath: jobRef.path,
+          applicationPath: applicationRef.path,
+        }),
+      );
+
+      const userSnap = await transaction.get(userRef);
+      const teamSnap = await transaction.get(teamRef);
+      const jobSnap = await transaction.get(jobRef);
+      const applicationSnap = await transaction.get(applicationRef);
+
+      console.log(
+        "TEAM APPLY TX READ SUCCESS",
+        JSON.stringify({
+          userExists: userSnap.exists,
+          teamExists: teamSnap.exists,
+          jobExists: jobSnap.exists,
+          applicationExists: applicationSnap.exists,
+        }),
+      );
+
+      if (!userSnap.exists || !isActiveUserDocument(userSnap.data() || {})) {
+        throw new HttpsError(
+          "permission-denied",
+          "Only active workers can submit applications.",
+        );
+      }
+
+      const user = userSnap.data() || {};
+      if (String(user.role || "").trim().toLowerCase() !== "worker") {
+        throw new HttpsError(
+          "permission-denied",
+          "Only workers can submit applications.",
+        );
+      }
+
+      if (!teamSnap.exists) {
+        throw new HttpsError("not-found", "Team is no longer available.");
+      }
+
+      const team = teamSnap.data() || {};
+      if (!isActiveTeamDocument(team)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Team is no longer active.",
+        );
+      }
+
+      let members = teamApplicationMemberIds(team);
+      if (!members.includes(uid)) {
+        throw new HttpsError(
+          "permission-denied",
+          "Only team members can apply with this team.",
+        );
+      }
+      members = [...new Set(members)].sort();
+
+      if (!jobSnap.exists) {
+        throw new HttpsError("not-found", "Job is no longer available.");
+      }
+
+      const job = jobSnap.data() || {};
+      if (!isPublicApplicationJob(job)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "This job is not accepting applications.",
+        );
+      }
+
+      const counts = jobPositionCounts(job);
+      if (counts.positions <= 0) {
+        throw new HttpsError(
+          "failed-precondition",
+          "This job has invalid position data.",
+        );
+      }
+      if (members.length > counts.remaining) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Not enough positions available.",
+        );
+      }
+
+      if (applicationSnap.exists) {
+        const existing = applicationSnap.data() || {};
+        if (activeApplicationStatus(existing.status)) {
+          throw new HttpsError(
+            "already-exists",
+            "This team already applied for this job.",
+          );
+        }
+      }
+
+      const ownerId = firstStringValue(job, [
+        "ownerId",
+        "employerId",
+        "createdBy",
+        "userId",
+      ]);
+      if (!ownerId) {
+        throw new HttpsError(
+          "failed-precondition",
+          "This job is missing employer information.",
+        );
+      }
+
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const payload = {
+        jobId,
+        jobTitle: firstStringValue(job, ["title", "trade"]) || "Job",
+        jobTrade: job.trade || "",
+        jobSite: job.site || "",
+        ...applicationPhysicalAddressFields(job),
+        ...applicationJobSnapshotFields(job),
+        type: "team",
+        teamId,
+        teamName: firstStringValue(team, ["name", "teamName"]) || "Team",
+        teamAvatarUrl: team.avatarUrl || team.photo || "",
+        workerId: uid,
+        applicantId: uid,
+        members,
+        workersCount: members.length,
+        membersStatus: Object.fromEntries(members.map((id) => [id, "pending"])),
+        employerId: ownerId,
+        ownerId,
+        status: "pending",
+        viewedByEmployer: false,
+        createdAt: now,
+        updatedAt: now,
+        applicationActivityAt: now,
+        unreadFor: [ownerId],
+      };
+
+      console.log(
+        "TEAM APPLY TX WRITE START",
+        JSON.stringify({
+          path: applicationRef.path,
+          workersCount: members.length,
+          ownerId,
+        }),
+      );
+
+      transaction.set(applicationRef, payload, { merge: true });
+
+      return {
+        applicationId,
+        workersCount: members.length,
+      };
+    });
+
+    console.log(
+      "TEAM APPLY FUNCTION SUCCESS",
+      JSON.stringify({ uid, jobId, teamId, applicationId }),
+    );
+
+    return result;
+  },
+);
+
 function notificationPreferences(user) {
   const settings = user.settings || {};
   const stored = settings.notifications || user.notificationPreferences || {};
