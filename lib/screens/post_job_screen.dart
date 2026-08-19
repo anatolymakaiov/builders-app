@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:image_picker/image_picker.dart';
@@ -258,6 +259,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
     );
   }
 
+  Map<String, dynamic> callableJobData(Map<String, dynamic> data) {
+    final next = Map<String, dynamic>.from(data);
+    next.removeWhere((_, value) => value is FieldValue);
+    return next;
+  }
+
   Future<void> showBillingLimitMessage(
       String message, String employerId) async {
     if (!mounted) return;
@@ -434,20 +441,22 @@ class _PostJobScreenState extends State<PostJobScreen> {
     };
 
     try {
-      /// 🔥 EDIT
       if (widget.existingJob != null) {
-        await FirebaseFirestore.instance
-            .collection('jobs')
-            .doc(widget.existingJob!.id)
-            .update(data);
-      }
-
-      /// 🔥 CREATE
-      else {
-        final createdJobId = await BillingService().createJobWithBillingLimit(
-          employerId: user.uid,
-          jobData: data,
-        );
+        final result = await FirebaseFunctions.instance
+            .httpsCallable("submitVacancyEditReview")
+            .call({
+          "jobId": widget.existingJob!.id,
+          "proposedChanges": callableJobData(data),
+        });
+        final reviewId =
+            result.data is Map ? result.data["reviewId"]?.toString() : "";
+        debugPrint("VACANCY EDIT REVIEW CREATED id=$reviewId");
+      } else {
+        final result = await FirebaseFunctions.instance
+            .httpsCallable("createVacancyWithEntitlement")
+            .call({"jobData": callableJobData(data)});
+        final createdJobId =
+            result.data is Map ? result.data["jobId"]?.toString() : "";
         debugPrint("PENDING JOB CREATED id=$createdJobId");
       }
 
@@ -457,10 +466,23 @@ class _PostJobScreenState extends State<PostJobScreen> {
         StroykaActionFeedback.showSuccess(
           context,
           semanticLabel: widget.existingJob != null
-              ? "Vacancy saved"
-              : "Vacancy published",
+              ? "Vacancy edit sent for review"
+              : "Vacancy sent for approval",
         );
         Navigator.pop(context);
+      }
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint("Vacancy function error: ${e.code} ${e.message}");
+      if (mounted) {
+        setState(() => loading = false);
+        final message = e.message?.trim().isNotEmpty == true
+            ? e.message!
+            : "Could not save job";
+        StroykaActionFeedback.showError(
+          context,
+          message: message,
+          semanticLabel: message,
+        );
       }
     } on BillingLimitException catch (e) {
       debugPrint("Billing limit: ${e.message}");

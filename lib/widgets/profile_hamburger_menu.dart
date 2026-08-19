@@ -603,6 +603,7 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
   bool refreshing = false;
   bool cancelling = false;
   Map<String, dynamic>? overrideBilling;
+  String selectedPlanId = "starter";
 
   Map<String, dynamic> get billing => overrideBilling ?? widget.billing;
 
@@ -610,6 +611,7 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    selectedPlanId = initialPlanId();
   }
 
   @override
@@ -623,6 +625,56 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
     if (state == AppLifecycleState.resumed) {
       refreshStatus(silent: true);
     }
+  }
+
+  String initialPlanId() {
+    final planId =
+        (widget.billing["planId"] ?? widget.billing["currentPlan"] ?? "")
+            .toString()
+            .trim()
+            .toLowerCase();
+    return planId.isNotEmpty ? planId : "starter";
+  }
+
+  List<Map<String, dynamic>> availablePlans() {
+    final rawPlans = billing["plans"];
+    if (rawPlans is List) {
+      final plans = rawPlans
+          .whereType<Map>()
+          .map((plan) => Map<String, dynamic>.from(plan))
+          .where((plan) => (plan["id"] ?? "").toString().trim().isNotEmpty)
+          .toList();
+      if (plans.isNotEmpty) return plans;
+    }
+    return const [
+      {
+        "id": "starter",
+        "name": "Starter",
+        "amountPence": 4900,
+        "currency": "GBP",
+        "vacancySlotLimit": 3,
+      },
+      {
+        "id": "growth",
+        "name": "Growth",
+        "amountPence": 9900,
+        "currency": "GBP",
+        "vacancySlotLimit": 10,
+      },
+      {
+        "id": "pro",
+        "name": "Pro",
+        "amountPence": 19900,
+        "currency": "GBP",
+        "vacancySlotLimit": 25,
+      },
+    ];
+  }
+
+  String planPriceLabel(Map<String, dynamic> plan) {
+    final amount = BillingService.readInt(plan["amountPence"]);
+    final currency = (plan["currency"] ?? "GBP").toString();
+    return "$currency ${(amount / 100).toStringAsFixed(0)}/month";
   }
 
   String currentStatus() {
@@ -696,7 +748,7 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
     try {
       final result = await FirebaseFunctions.instance
           .httpsCallable("createGoCardlessDirectDebitSetup")
-          .call();
+          .call({"planId": selectedPlanId});
       final data = result.data;
       final url = data is Map ? data["authorisationUrl"]?.toString() : null;
       if (url == null || url.trim().isEmpty) {
@@ -800,6 +852,16 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
     final active = status == "active";
     final pending = status == "setup_pending" || status == "mandate_pending";
     final busy = settingUp || refreshing || cancelling;
+    final slotLimit = BillingService.readInt(
+      billing["vacancySlotLimit"] ?? billing["includedJobSlots"],
+    );
+    final occupiedSlots = BillingService.readInt(
+      billing["occupiedVacancySlots"] ?? billing["usedJobPosts"],
+    );
+    final availableSlots = BillingService.readInt(
+      billing["availableVacancySlots"] ??
+          (slotLimit > 0 ? slotLimit - occupiedSlots : 0),
+    );
 
     return Container(
       width: double.infinity,
@@ -818,6 +880,60 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
           ),
           const SizedBox(height: 6),
           Text(statusBody(status)),
+          if (slotLimit > 0) ...[
+            const SizedBox(height: 8),
+            Text(
+              "Vacancy slots: $occupiedSlots used / $slotLimit total, $availableSlots available",
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ],
+          if (!active) ...[
+            const SizedBox(height: 12),
+            ...availablePlans().map((plan) {
+              final id = (plan["id"] ?? "").toString();
+              final selected = id == selectedPlanId;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap:
+                      busy ? null : () => setState(() => selectedPlanId = id),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selected ? AppColors.greenDark : AppColors.muted,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          selected
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_unchecked,
+                          color:
+                              selected ? AppColors.greenDark : AppColors.muted,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            "${plan["name"] ?? id} - ${planPriceLabel(plan)}",
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        Text(
+                          "${BillingService.readInt(plan["vacancySlotLimit"])} slots",
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
           if (busy) ...[
             const SizedBox(height: 10),
             const LinearProgressIndicator(minHeight: 2),

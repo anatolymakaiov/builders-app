@@ -66,6 +66,49 @@ service cloud.firestore {
         && !isJobHeldData(data);
     }
 
+    function materialLiveJobKeysChanged() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return changed.hasAny([
+        "title",
+        "site",
+        "trade",
+        "duration",
+        "weeklyHours",
+        "positions",
+        "street",
+        "addressLine1",
+        "addressLine2",
+        "addressLine3",
+        "city",
+        "postcode",
+        "county",
+        "country",
+        "location",
+        "siteAddress",
+        "fullAddress",
+        "rate",
+        "jobType",
+        "description",
+        "responsibilities",
+        "candidateRequirements",
+        "requiredDocuments",
+        "additionalInformation",
+        "photos",
+        "lat",
+        "lng"
+      ]);
+    }
+
+    function protectedJobBillingKeysChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        "billingSuspended",
+        "billingSuspendedAt",
+        "preBillingSuspensionStatus",
+        "billingSlotCheckedAt",
+        "slotCountedAt"
+      ]);
+    }
+
     function isAdminMailParticipant(data) {
       return signedIn()
         && (
@@ -318,10 +361,20 @@ service cloud.firestore {
         "currentPeriodStart",
         "currentPeriodEnd",
         "nextChargeDate",
-        "lastPaymentStatus",
-        "lastPaymentAt",
-        "cancelledAt"
-      ];
+	        "lastPaymentStatus",
+	        "lastPaymentAt",
+	        "cancelledAt",
+	        "planAmountPence",
+	        "billingInterval",
+	        "vacancySlotLimit",
+	        "occupiedVacancySlots",
+	        "availableVacancySlots",
+	        "paymentActionRequired",
+	        "paymentFailureReason",
+	        "paymentGraceStartedAt",
+	        "paymentGraceEndsAt",
+	        "billingSuspendedAt"
+	      ];
       return changed.hasAny(["directDebit"])
         || (
           changed.hasAny(["billing"])
@@ -436,12 +489,14 @@ service cloud.firestore {
           || resource.data.userId == uid()
           || isPublicJob(resource.data)
         );
-      allow update: if isAdmin()
-        || (
-          isEmployer()
-          && !isUserHeld(uid())
-          && (
-            resource.data.ownerId == uid()
+	      allow update: if isAdmin()
+	        || (
+	          isEmployer()
+	          && !isUserHeld(uid())
+	          && !protectedJobBillingKeysChanged()
+	          && !(isPublicJob(resource.data) && materialLiveJobKeysChanged())
+	          && (
+	            resource.data.ownerId == uid()
             || resource.data.employerId == uid()
             || resource.data.createdBy == uid()
             || resource.data.userId == uid()
@@ -459,6 +514,23 @@ service cloud.firestore {
             || resource.data.userId == uid()
           )
         );
+	    }
+
+    match /billing_entitlement_locks/{employerId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /vacancy_edit_reviews/{reviewId} {
+      allow read: if isAdmin()
+        || (
+          signedIn()
+          && (
+            resource.data.submittedBy == uid()
+            || resource.data.companyId == uid()
+            || resource.data.employerId == uid()
+          )
+        );
+      allow create, update, delete: if isAdmin();
     }
 
     match /applications/{applicationId} {

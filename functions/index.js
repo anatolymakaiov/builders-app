@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { HttpsError, onCall, onRequest } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 
@@ -12,7 +13,33 @@ const goCardlessWebhookSecret = defineSecret("GOCARDLESS_WEBHOOK_SECRET");
 const GOCARDLESS_SANDBOX_API_BASE = "https://api-sandbox.gocardless.com";
 const GOCARDLESS_API_VERSION = "2015-07-06";
 const DEFAULT_FUNCTION_REGION = "us-central1";
-const STROYKA_SANDBOX_MONTHLY_AMOUNT_MINOR = 4900;
+const PAYMENT_GRACE_DAYS = 3;
+const STROYKA_COMMERCIAL_PLANS = {
+  starter: {
+    id: "starter",
+    name: "Starter",
+    amountPence: 4900,
+    currency: "GBP",
+    interval: "monthly",
+    vacancySlotLimit: 3,
+  },
+  growth: {
+    id: "growth",
+    name: "Growth",
+    amountPence: 9900,
+    currency: "GBP",
+    interval: "monthly",
+    vacancySlotLimit: 10,
+  },
+  pro: {
+    id: "pro",
+    name: "Pro",
+    amountPence: 19900,
+    currency: "GBP",
+    interval: "monthly",
+    vacancySlotLimit: 25,
+  },
+};
 
 const DEFAULT_NOTIFICATION_PREFERENCES = {
   enabled: true,
@@ -44,6 +71,15 @@ function isValidUkPostcode(value) {
 
 function cleanText(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function planForId(planId) {
+  const id = cleanText(planId).toLowerCase();
+  return STROYKA_COMMERCIAL_PLANS[id] || null;
+}
+
+function publicPlanList() {
+  return Object.values(STROYKA_COMMERCIAL_PLANS).map((plan) => ({ ...plan }));
 }
 
 function safeNumber(value) {
@@ -297,25 +333,84 @@ async function goCardlessGet(path, accessToken) {
   return body;
 }
 
-function minorAmountFromBilling(billing) {
-  const value = billing.monthlyPrice || billing.price || billing.amount;
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return Math.round(value * 100);
-  }
-  const parsed = Number.parseFloat(
-    String(value || "").replace(/[^0-9.]/g, ""),
-  );
-  if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed * 100);
-  return STROYKA_SANDBOX_MONTHLY_AMOUNT_MINOR;
+function isSlotOccupyingJob(job) {
+  const status = cleanText(job.status).toLowerCase();
+  const moderationStatus = cleanText(job.moderationStatus);
+  return moderationStatus === "approved" &&
+    ["active", "published", "open"].includes(status || "active") &&
+    job.deleted !== true &&
+    job.isDeleted !== true &&
+    job.active !== false &&
+    job.billingSuspended !== true &&
+    job.employerDeleted !== true &&
+    job.companyDeleted !== true;
 }
 
-function safeBillingStatus(data) {
+async function countOccupiedVacancySlots(employerId) {
+  const snapshot = await admin
+    .firestore()
+    .collection("jobs")
+    .where("ownerId", "==", employerId)
+    .where("moderationStatus", "==", "approved")
+    .get();
+  return snapshot.docs.filter((doc) => isSlotOccupyingJob(doc.data() || {}))
+    .length;
+}
+
+function activeTrialEntitlement(billing) {
+  const trialActive = billing.trialActive === true ||
+    cleanText(billing.trialStatus).toLowerCase() === "active" ||
+    cleanText(billing.subscriptionStatus).toLowerCase() === "trial";
+  const trialEndsAt = billing.trialEndsAt || billing.trialEndDate;
+  return trialActive &&
+    trialEndsAt &&
+    typeof trialEndsAt.toDate === "function" &&
+    trialEndsAt.toDate().getTime() > Date.now();
+}
+
+function activePaidEntitlement(billing) {
+  return cleanText(billing.billingStatus).toLowerCase() === "active" ||
+    cleanText(billing.subscriptionStatus).toLowerCase() === "active";
+}
+
+function billingBlocksNewVacancy(billing) {
+  return ["past_due", "suspended", "cancelled", "failed"].includes(
+    cleanText(billing.billingStatus || billing.subscriptionStatus)
+      .toLowerCase(),
+  );
+}
+
+function billingPlan(billing) {
+  return planForId(
+    billing.planId ||
+      billing.activePlanId ||
+      billing.currentPlan ||
+      billing.pendingPlan,
+  );
+}
+
+async function safeBillingStatus(data, employerId) {
   const billing = data.billing && typeof data.billing === "object"
     ? data.billing
     : {};
+  const plan = billingPlan(billing);
+  const occupiedVacancySlots = employerId
+    ? await countOccupiedVacancySlots(employerId)
+    : 0;
+  const vacancySlotLimit = plan ? plan.vacancySlotLimit : 0;
   return {
     provider: billing.provider || "",
     environment: billing.environment || "",
+    plans: publicPlanList(),
+    planId: plan ? plan.id : cleanText(billing.planId),
+    planName: plan ? plan.name : cleanText(billing.planName),
+    monthlyPrice: plan ? plan.amountPence / 100 : null,
+    planAmountPence: plan ? plan.amountPence : null,
+    currency: plan ? plan.currency : cleanText(billing.currency),
+    billingInterval: plan ? plan.interval : cleanText(billing.billingInterval),
+    vacancySlotLimit,
+    occupiedVacancySlots,
+    availableVacancySlots: Math.max(vacancySlotLimit - occupiedVacancySlots, 0),
     billingStatus: billing.billingStatus || billing.subscriptionStatus || "",
     subscriptionStatus: billing.subscriptionStatus || "",
     paymentStatus: billing.paymentStatus || "",
@@ -330,6 +425,9 @@ function safeBillingStatus(data) {
     nextChargeDate: billing.nextChargeDate || billing.nextBillingDate || null,
     lastPaymentStatus: billing.lastPaymentStatus || "",
     lastPaymentAt: billing.lastPaymentAt || null,
+    paymentActionRequired: billing.paymentActionRequired === true,
+    paymentGraceStartedAt: billing.paymentGraceStartedAt || null,
+    paymentGraceEndsAt: billing.paymentGraceEndsAt || null,
     updatedAt: billing.updatedAt || null,
   };
 }
@@ -392,6 +490,197 @@ async function updateEmployerBilling(employerRef, updates) {
     );
 }
 
+async function createBillingNotificationOnce(employerId, notificationId, payload) {
+  if (!employerId || !notificationId) return;
+  const ref = admin
+    .firestore()
+    .collection("users")
+    .doc(employerId)
+    .collection("notifications")
+    .doc(notificationId);
+  const snap = await ref.get();
+  if (snap.exists) return;
+  await ref.set({
+    notificationId,
+    userId: employerId,
+    type: "billing",
+    category: "billing",
+    read: false,
+    badgeEligible: true,
+    pushEligible: true,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    ...payload,
+  });
+}
+
+async function startPaymentGrace(employerRef, reason, eventId) {
+  const snap = await employerRef.get();
+  const data = snap.data() || {};
+  const billing = data.billing || {};
+  if (billing.paymentGraceStartedAt && billing.paymentGraceEndsAt) {
+    await updateEmployerBilling(employerRef, {
+      billingStatus: "past_due",
+      subscriptionStatus: "past_due",
+      paymentStatus: "failed",
+      paymentActionRequired: true,
+      paymentFailureReason: reason,
+    });
+    return;
+  }
+
+  const startedAt = new Date();
+  const endsAt = new Date(
+    startedAt.getTime() + PAYMENT_GRACE_DAYS * 24 * 60 * 60 * 1000,
+  );
+  await updateEmployerBilling(employerRef, {
+    billingStatus: "past_due",
+    subscriptionStatus: "past_due",
+    paymentStatus: "failed",
+    paymentActionRequired: true,
+    paymentFailureReason: reason,
+    paymentGraceStartedAt: admin.firestore.Timestamp.fromDate(startedAt),
+    paymentGraceEndsAt: admin.firestore.Timestamp.fromDate(endsAt),
+  });
+  await createBillingNotificationOnce(
+    employerRef.id,
+    `billing_grace_started_${eventId || startedAt.getTime()}`,
+    {
+      title: "Direct Debit payment needs attention",
+      message:
+        "Your Direct Debit payment could not be completed. Please update your Direct Debit within 3 days to keep your vacancies active.",
+      body:
+        "Your Direct Debit payment could not be completed. Please update your Direct Debit within 3 days to keep your vacancies active.",
+      targetType: "billing",
+      targetId: employerRef.id,
+    },
+  );
+}
+
+async function clearPaymentGrace(employerRef) {
+  await updateEmployerBilling(employerRef, {
+    billingStatus: "active",
+    subscriptionStatus: "active",
+    paymentStatus: "paid",
+    paymentActionRequired: false,
+    paymentFailureReason: "",
+    paymentGraceStartedAt: admin.firestore.FieldValue.delete(),
+    paymentGraceEndsAt: admin.firestore.FieldValue.delete(),
+  });
+  await restoreBillingSuspendedVacancies(employerRef);
+}
+
+async function restoreBillingSuspendedVacancies(employerRef) {
+  const employerSnap = await employerRef.get();
+  const employer = employerSnap.data() || {};
+  const plan = billingPlan(employer.billing || {});
+  if (!plan) return { restored: 0, skipped: 0 };
+
+  const occupied = await countOccupiedVacancySlots(employerRef.id);
+  let available = Math.max(plan.vacancySlotLimit - occupied, 0);
+  if (available <= 0) return { restored: 0, skipped: 0 };
+
+  const snapshot = await admin
+    .firestore()
+    .collection("jobs")
+    .where("ownerId", "==", employerRef.id)
+    .where("billingSuspended", "==", true)
+    .get();
+  const batch = admin.firestore().batch();
+  let restored = 0;
+  let skipped = 0;
+  for (const doc of snapshot.docs) {
+    const job = doc.data() || {};
+    if (available <= 0) {
+      skipped += 1;
+      continue;
+    }
+    if (job.deleted === true || job.companyDeleted === true || job.employerDeleted === true) {
+      skipped += 1;
+      continue;
+    }
+    batch.set(doc.ref, {
+      active: true,
+      status: cleanText(job.preBillingSuspensionStatus) || "active",
+      billingSuspended: false,
+      billingRestoredAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    restored += 1;
+    available -= 1;
+  }
+  if (restored > 0) await batch.commit();
+  return { restored, skipped };
+}
+
+function isActiveBillingEntitlement(billing) {
+  return activeTrialEntitlement(billing) || activePaidEntitlement(billing);
+}
+
+function safeJobPayload(data) {
+  const payload = data && typeof data === "object" && !Array.isArray(data)
+    ? { ...data }
+    : {};
+  delete payload.id;
+  delete payload.createdAt;
+  delete payload.updatedAt;
+  delete payload.moderatedAt;
+  delete payload.billingSuspended;
+  delete payload.billingSuspendedAt;
+  delete payload.preBillingSuspensionStatus;
+  delete payload.slotCountedAt;
+  delete payload.approvedAt;
+  return payload;
+}
+
+function materialJobEditFields(data) {
+  const payload = safeJobPayload(data);
+  const blocked = new Set([
+    "ownerId",
+    "employerId",
+    "createdBy",
+    "moderationStatus",
+    "status",
+    "visibility",
+    "filledPositions",
+    "remainingPositions",
+    "slotDecrementApplicationIds",
+  ]);
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key]) => !blocked.has(key)),
+  );
+}
+
+async function assertEmployerCanUseVacancySlot(employerId, transaction) {
+  const firestore = admin.firestore();
+  const userRef = firestore.collection("users").doc(employerId);
+  const userSnap = transaction
+    ? await transaction.get(userRef)
+    : await userRef.get();
+  const user = userSnap.data() || {};
+  if (!userSnap.exists || cleanText(user.role).toLowerCase() !== "employer") {
+    throw new HttpsError("permission-denied", "Only employers can publish vacancies.");
+  }
+  if (!isActiveUserDocument(user)) {
+    throw new HttpsError("permission-denied", "Your profile is temporarily suspended.");
+  }
+
+  const billing = user.billing || {};
+  const plan = billingPlan(billing);
+  if (!plan) {
+    throw new HttpsError("failed-precondition", "Choose a STROYKA billing plan before publishing vacancies.");
+  }
+  if (billingBlocksNewVacancy(billing) || !isActiveBillingEntitlement(billing)) {
+    throw new HttpsError("failed-precondition", "Billing must be active before publishing a new vacancy.");
+  }
+
+  const occupiedVacancySlots = await countOccupiedVacancySlots(employerId);
+  if (occupiedVacancySlots >= plan.vacancySlotLimit) {
+    throw new HttpsError("resource-exhausted", "You have reached your active vacancy slot limit.");
+  }
+
+  return { user, billing, plan, occupiedVacancySlots };
+}
+
 async function ensureGoCardlessSubscription(employerRef, mandateId, accessToken) {
   const employerSnap = await employerRef.get();
   const employer = employerSnap.data() || {};
@@ -399,26 +688,26 @@ async function ensureGoCardlessSubscription(employerRef, mandateId, accessToken)
   const existingSubscriptionId = cleanText(billing.goCardlessSubscriptionId);
   if (existingSubscriptionId) return existingSubscriptionId;
 
-  const amount = minorAmountFromBilling(billing);
-  const currency = cleanText(billing.currency) || "GBP";
-  const planName = cleanText(
-    billing.activePlanName ||
-      billing.planName ||
-      billing.activePlanId ||
-      billing.planId,
-  ) || "STROYKA company subscription";
+  const plan = billingPlan(billing);
+  if (!plan) {
+    throw new HttpsError(
+      "failed-precondition",
+      "A valid STROYKA billing plan is required before subscription creation.",
+    );
+  }
 
   const response = await goCardlessPost(
     "/subscriptions",
     {
       subscriptions: {
-        amount,
-        currency,
-        name: planName,
+        amount: plan.amountPence,
+        currency: plan.currency,
+        name: `${plan.name} STROYKA company subscription`,
         interval_unit: "monthly",
         interval: 1,
         metadata: {
           employer_id: employerRef.id,
+          plan_id: plan.id,
           environment: "sandbox",
         },
         links: {
@@ -453,8 +742,16 @@ async function ensureGoCardlessSubscription(employerRef, mandateId, accessToken)
         subscription.upcoming_payments[0] &&
         subscription.upcoming_payments[0].charge_date ||
       null,
-    monthlyPrice: amount / 100,
-    currency,
+    planId: plan.id,
+    planName: plan.name,
+    activePlanId: plan.id,
+    activePlanName: plan.name,
+    currentPlan: plan.id,
+    planAmountPence: plan.amountPence,
+    monthlyPrice: plan.amountPence / 100,
+    currency: plan.currency,
+    billingInterval: plan.interval,
+    vacancySlotLimit: plan.vacancySlotLimit,
   });
 
   return subscriptionId;
@@ -547,19 +844,15 @@ async function processGoCardlessEvent(event, accessToken) {
       });
       return "mandate_pending";
     }
-    if (["active", "reinstated"].includes(action)) {
-      await ensureGoCardlessSubscription(employerRef, mandateId, accessToken);
-      return "mandate_active_subscription_ensured";
-    }
-    if (["cancelled", "failed", "expired", "blocked"].includes(action)) {
-      await updateEmployerBilling(employerRef, {
-        billingStatus: action === "cancelled" ? "cancelled" : "failed",
-        subscriptionStatus: action === "cancelled" ? "cancelled" : "suspended",
-        mandateStatus: action,
-        paymentStatus: action === "cancelled" ? "cancelled" : "failed",
-      });
-      return "mandate_inactive";
-    }
+	    if (["active", "reinstated"].includes(action)) {
+	      await ensureGoCardlessSubscription(employerRef, mandateId, accessToken);
+	      await clearPaymentGrace(employerRef);
+	      return "mandate_active_subscription_ensured";
+	    }
+	    if (["cancelled", "failed", "expired", "blocked"].includes(action)) {
+	      await startPaymentGrace(employerRef, `mandate_${action}`, event.id);
+	      return "mandate_inactive";
+	    }
   }
 
   if (resourceType === "subscriptions") {
@@ -569,22 +862,19 @@ async function processGoCardlessEvent(event, accessToken) {
       subscriptionId,
     );
     if (!employerRef) return "subscription_unmatched";
-    if (["created", "customer_approval_granted"].includes(action)) {
-      await updateEmployerBilling(employerRef, {
-        billingStatus: "active",
-        subscriptionStatus: "active",
-        goCardlessSubscriptionId: subscriptionId,
-      });
-      return "subscription_active";
-    }
-    if (["cancelled", "finished"].includes(action)) {
-      await updateEmployerBilling(employerRef, {
-        billingStatus: "cancelled",
-        subscriptionStatus: "cancelled",
-        paymentStatus: "cancelled",
-      });
-      return "subscription_cancelled";
-    }
+	    if (["created", "customer_approval_granted"].includes(action)) {
+	      await updateEmployerBilling(employerRef, {
+	        billingStatus: "active",
+	        subscriptionStatus: "active",
+	        goCardlessSubscriptionId: subscriptionId,
+	      });
+	      await clearPaymentGrace(employerRef);
+	      return "subscription_active";
+	    }
+	    if (["cancelled", "finished"].includes(action)) {
+	      await startPaymentGrace(employerRef, `subscription_${action}`, event.id);
+	      return "subscription_cancelled";
+	    }
   }
 
   if (resourceType === "payments") {
@@ -595,18 +885,20 @@ async function processGoCardlessEvent(event, accessToken) {
       subscriptionId,
     );
     if (!employerRef) return "payment_unmatched";
-    const status = ["failed", "cancelled"].includes(action)
-      ? "past_due"
-      : "active";
-    await updateEmployerBilling(employerRef, {
-      billingStatus: status,
-      subscriptionStatus: status,
-      lastPaymentStatus: action,
-      lastPaymentId: paymentId,
-      lastPaymentAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    return "payment_recorded";
-  }
+	    if (["failed", "cancelled"].includes(action)) {
+	      await startPaymentGrace(employerRef, `payment_${action}`, event.id);
+	    } else {
+	      await updateEmployerBilling(employerRef, {
+	        billingStatus: "active",
+	        subscriptionStatus: "active",
+	        lastPaymentStatus: action,
+	        lastPaymentId: paymentId,
+	        lastPaymentAt: admin.firestore.FieldValue.serverTimestamp(),
+	      });
+	      await clearPaymentGrace(employerRef);
+	    }
+	    return "payment_recorded";
+	  }
 
   return "ignored";
 }
@@ -652,7 +944,178 @@ exports.createGoCardlessDirectDebitSetup = onCall(
       throw new HttpsError(
         "unauthenticated",
         "Please sign in to set up Direct Debit.",
-      );
+	);
+
+exports.createVacancyWithEntitlement = onCall(
+  {
+    timeoutSeconds: 20,
+    memory: "256MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Please sign in to post a vacancy.");
+    }
+    const uid = request.auth.uid;
+    const firestore = admin.firestore();
+    const jobData = safeJobPayload(request.data && request.data.jobData);
+    const lockRef = firestore.collection("billing_entitlement_locks").doc(uid);
+    const jobRef = firestore.collection("jobs").doc();
+
+    await firestore.runTransaction(async (transaction) => {
+      await transaction.get(lockRef);
+      await assertEmployerCanUseVacancySlot(uid, transaction);
+      transaction.set(lockRef, {
+        employerId: uid,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      transaction.set(jobRef, {
+        ...jobData,
+        ownerId: uid,
+        employerId: uid,
+        status: "active",
+        visibility: "public",
+        moderationStatus: "pending_review",
+        moderationReason: "",
+        viewedByAdmin: false,
+        billingSlotCheckedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    return { jobId: jobRef.id };
+  },
+);
+
+exports.submitVacancyEditReview = onCall(
+  {
+    timeoutSeconds: 20,
+    memory: "256MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Please sign in to edit a vacancy.");
+    }
+    const uid = request.auth.uid;
+    const jobId = cleanText(request.data && request.data.jobId);
+    const proposedChanges = materialJobEditFields(
+      request.data && request.data.proposedChanges,
+    );
+    if (!jobId) {
+      throw new HttpsError("invalid-argument", "Vacancy id is required.");
+    }
+    if (Object.keys(proposedChanges).length === 0) {
+      throw new HttpsError("invalid-argument", "No vacancy changes were provided.");
+    }
+
+    const firestore = admin.firestore();
+    const jobRef = firestore.collection("jobs").doc(jobId);
+    const reviewRef = firestore.collection("vacancy_edit_reviews").doc();
+    await firestore.runTransaction(async (transaction) => {
+      const jobSnap = await transaction.get(jobRef);
+      if (!jobSnap.exists) {
+        throw new HttpsError("not-found", "Vacancy is no longer available.");
+      }
+      const job = jobSnap.data() || {};
+      const isOwner = job.ownerId === uid ||
+        job.employerId === uid ||
+        job.createdBy === uid ||
+        job.userId === uid;
+      if (!isOwner) {
+        throw new HttpsError("permission-denied", "You cannot edit this vacancy.");
+      }
+
+      transaction.set(reviewRef, {
+        originalVacancyId: jobId,
+        companyId: job.ownerId || job.employerId || uid,
+        employerId: job.employerId || job.ownerId || uid,
+        submittedBy: uid,
+        currentSnapshot: job,
+        proposedChanges,
+        changedFields: Object.keys(proposedChanges),
+        reviewStatus: "pending",
+        adminDecision: "",
+        submittedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      transaction.set(jobRef, {
+        pendingEditReview: true,
+        latestEditReviewId: reviewRef.id,
+        editReviewStatus: "pending",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+
+    return { reviewId: reviewRef.id };
+  },
+);
+
+exports.reviewVacancyEdit = onCall(
+  {
+    timeoutSeconds: 20,
+    memory: "256MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Please sign in as admin.");
+    }
+    const uid = request.auth.uid;
+    const firestore = admin.firestore();
+    const adminSnap = await firestore.collection("users").doc(uid).get();
+    if (cleanText((adminSnap.data() || {}).role).toLowerCase() !== "admin") {
+      throw new HttpsError("permission-denied", "Only admins can review vacancy edits.");
+    }
+
+    const reviewId = cleanText(request.data && request.data.reviewId);
+    const decision = cleanText(request.data && request.data.decision).toLowerCase();
+    const note = cleanText(request.data && request.data.note);
+    if (!reviewId || !["approve", "reject", "treat_as_new"].includes(decision)) {
+      throw new HttpsError("invalid-argument", "Choose a valid review decision.");
+    }
+
+    const reviewRef = firestore.collection("vacancy_edit_reviews").doc(reviewId);
+    await firestore.runTransaction(async (transaction) => {
+      const reviewSnap = await transaction.get(reviewRef);
+      if (!reviewSnap.exists) {
+        throw new HttpsError("not-found", "Vacancy edit review was not found.");
+      }
+      const review = reviewSnap.data() || {};
+      if (review.reviewStatus !== "pending") {
+        throw new HttpsError("failed-precondition", "This vacancy edit has already been reviewed.");
+      }
+      const jobId = cleanText(review.originalVacancyId);
+      const jobRef = firestore.collection("jobs").doc(jobId);
+      const jobSnap = await transaction.get(jobRef);
+      if (!jobSnap.exists) {
+        throw new HttpsError("not-found", "Original vacancy was not found.");
+      }
+
+      const jobUpdate = {
+        pendingEditReview: false,
+        editReviewStatus: decision,
+        latestEditReviewId: reviewId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      if (decision === "approve") {
+        Object.assign(jobUpdate, materialJobEditFields(review.proposedChanges));
+        jobUpdate.editApprovedAt = admin.firestore.FieldValue.serverTimestamp();
+        jobUpdate.editApprovedBy = uid;
+      }
+
+      transaction.set(jobRef, jobUpdate, { merge: true });
+      transaction.set(reviewRef, {
+        reviewStatus: "reviewed",
+        adminDecision: decision,
+        adminNote: note,
+        reviewedBy: uid,
+        reviewedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+
+    return { reviewId, decision };
+  },
+);
     }
 
     const uid = request.auth.uid;
@@ -674,6 +1137,14 @@ exports.createGoCardlessDirectDebitSetup = onCall(
         "GoCardless Sandbox is not configured.",
       );
     }
+    const planId = cleanText(request.data && request.data.planId).toLowerCase();
+    const plan = planForId(planId);
+    if (!plan) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Choose a valid STROYKA subscription plan.",
+      );
+    }
 
     const billingRequestResponse = await goCardlessPost(
       "/billing_requests",
@@ -685,6 +1156,7 @@ exports.createGoCardlessDirectDebitSetup = onCall(
           },
           metadata: {
             employer_id: uid,
+            plan_id: plan.id,
             environment: "sandbox",
           },
         },
@@ -743,6 +1215,16 @@ exports.createGoCardlessDirectDebitSetup = onCall(
     const setupPayload = {
       provider: "gocardless",
       environment: "sandbox",
+      planId: plan.id,
+      planName: plan.name,
+      activePlanId: plan.id,
+      activePlanName: plan.name,
+      currentPlan: plan.id,
+      planAmountPence: plan.amountPence,
+      monthlyPrice: plan.amountPence / 100,
+      currency: plan.currency,
+      billingInterval: plan.interval,
+      vacancySlotLimit: plan.vacancySlotLimit,
       billingStatus: "setup_pending",
       subscriptionStatus: "setup_required",
       paymentStatus: "pending",
@@ -777,6 +1259,7 @@ exports.createGoCardlessDirectDebitSetup = onCall(
       authorisationUrl,
       billingRequestId,
       billingRequestFlowId,
+      planId: plan.id,
     };
   },
 );
@@ -821,8 +1304,8 @@ exports.getCompanyBillingStatus = onCall(
       }
     }
 
-    const refreshed = await userRef.get();
-    return safeBillingStatus(refreshed.data() || {});
+	    const refreshed = await userRef.get();
+	    return await safeBillingStatus(refreshed.data() || {}, uid);
   },
 );
 
@@ -877,8 +1360,83 @@ exports.cancelGoCardlessSubscription = onCall(
       cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    const refreshed = await userRef.get();
-    return safeBillingStatus(refreshed.data() || {});
+	    const refreshed = await userRef.get();
+	    return await safeBillingStatus(refreshed.data() || {}, uid);
+	  },
+	);
+
+exports.enforceBillingGraceExpiry = onSchedule(
+  {
+    schedule: "every 60 minutes",
+    timeoutSeconds: 120,
+    memory: "512MiB",
+  },
+  async () => {
+    const firestore = admin.firestore();
+    const now = admin.firestore.Timestamp.now();
+    const employers = await firestore
+      .collection("users")
+      .where("billing.billingStatus", "==", "past_due")
+      .get();
+
+    let suspendedEmployers = 0;
+    let suspendedVacancies = 0;
+    for (const employerDoc of employers.docs) {
+      const employer = employerDoc.data() || {};
+      const billing = employer.billing || {};
+      const graceEndsAt = billing.paymentGraceEndsAt;
+      if (!graceEndsAt || typeof graceEndsAt.toMillis !== "function") continue;
+      if (graceEndsAt.toMillis() > now.toMillis()) continue;
+
+      await updateEmployerBilling(employerDoc.ref, {
+        billingStatus: "suspended",
+        subscriptionStatus: "suspended",
+        paymentStatus: "failed",
+        paymentActionRequired: true,
+        billingSuspendedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      const jobs = await firestore
+        .collection("jobs")
+        .where("ownerId", "==", employerDoc.id)
+        .where("moderationStatus", "==", "approved")
+        .get();
+      const batch = firestore.batch();
+      for (const jobDoc of jobs.docs) {
+        const job = jobDoc.data() || {};
+        if (!isSlotOccupyingJob(job)) continue;
+        batch.set(jobDoc.ref, {
+          active: false,
+          status: "suspended",
+          billingSuspended: true,
+          suspensionReason: "billing_suspended",
+          preBillingSuspensionStatus: job.status || "active",
+          billingSuspendedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        suspendedVacancies += 1;
+      }
+      await batch.commit();
+      suspendedEmployers += 1;
+      await createBillingNotificationOnce(
+        employerDoc.id,
+        `billing_grace_expired_${graceEndsAt.toMillis()}`,
+        {
+          title: "Vacancies suspended",
+          message:
+            "Your Direct Debit issue was not resolved within 3 days. Live vacancies have been suspended until billing is restored.",
+          body:
+            "Your Direct Debit issue was not resolved within 3 days. Live vacancies have been suspended until billing is restored.",
+          targetType: "billing",
+          targetId: employerDoc.id,
+        },
+      );
+    }
+
+    console.log("BILLING GRACE EXPIRY COMPLETE", JSON.stringify({
+      suspendedEmployers,
+      suspendedVacancies,
+    }));
   },
 );
 

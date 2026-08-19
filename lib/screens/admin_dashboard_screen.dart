@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
@@ -5693,6 +5694,8 @@ class _JobModerationSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
+          const _VacancyEditReviewQueue(),
+          const SizedBox(height: 14),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection("jobs")
@@ -5733,6 +5736,129 @@ class _JobModerationSection extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _VacancyEditReviewQueue extends StatelessWidget {
+  const _VacancyEditReviewQueue();
+
+  Future<void> review(
+    BuildContext context,
+    String reviewId,
+    String decision,
+  ) async {
+    try {
+      await FirebaseFunctions.instance.httpsCallable("reviewVacancyEdit").call({
+        "reviewId": reviewId,
+        "decision": decision,
+      });
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text("Vacancy edit ${decision.replaceAll("_", " ")}")),
+      );
+    } on FirebaseFunctionsException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? "Could not review vacancy edit")),
+      );
+    }
+  }
+
+  String titleFor(Map<String, dynamic> data) {
+    final proposed = data["proposedChanges"];
+    if (proposed is Map && proposed["title"] != null) {
+      return proposed["title"].toString();
+    }
+    final snapshot = data["currentSnapshot"];
+    if (snapshot is Map && snapshot["title"] != null) {
+      return snapshot["title"].toString();
+    }
+    return "Vacancy edit";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection("vacancy_edit_reviews")
+          .where("reviewStatus", isEqualTo: "pending")
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Text("Could not load vacancy edit reviews");
+        }
+        if (!snapshot.hasData) {
+          return const LinearProgressIndicator();
+        }
+        final docs = snapshot.data!.docs;
+        if (docs.isEmpty) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Vacancy edit reviews",
+              style: TextStyle(
+                color: AppColors.ink,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...docs.map((doc) {
+              final data = doc.data();
+              final fields = (data["changedFields"] is List)
+                  ? (data["changedFields"] as List).join(", ")
+                  : "";
+              return Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.78),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.black12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      titleFor(data),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    if (fields.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text("Changed: $fields"),
+                    ],
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton(
+                          onPressed: () => review(context, doc.id, "approve"),
+                          child: const Text("Approve edit"),
+                        ),
+                        OutlinedButton(
+                          onPressed: () => review(context, doc.id, "reject"),
+                          child: const Text("Reject"),
+                        ),
+                        OutlinedButton(
+                          onPressed: () =>
+                              review(context, doc.id, "treat_as_new"),
+                          child: const Text("Treat as new"),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        );
+      },
     );
   }
 }

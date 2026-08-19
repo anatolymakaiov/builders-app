@@ -25,7 +25,7 @@ class BillingService {
       "Your billing plan request is under review. You can browse the app while waiting for approval.";
 
   static const postingLimitMessage =
-      "You have reached your job posting limit. Please open Billing and choose a plan with more job posts.";
+      "You have reached your active vacancy slot limit. Please open Billing and choose a plan with more vacancy slots.";
 
   static int readInt(dynamic value) {
     if (value is int) return value;
@@ -82,7 +82,16 @@ class BillingService {
       "nextBillingDate",
       "billingCycle",
       "monthlyPrice",
+      "planAmountPence",
       "currency",
+      "billingInterval",
+      "vacancySlotLimit",
+      "occupiedVacancySlots",
+      "availableVacancySlots",
+      "paymentActionRequired",
+      "paymentFailureReason",
+      "paymentGraceStartedAt",
+      "paymentGraceEndsAt",
       "status",
       "provider",
       "environment",
@@ -296,7 +305,8 @@ class BillingService {
   }) {
     final billing = billingFromUserData(userData);
     final totalSlots = readInt(
-      billing["includedJobSlots"] ??
+      billing["vacancySlotLimit"] ??
+          billing["includedJobSlots"] ??
           billing["availableJobPosts"] ??
           billing["activeSlots"],
     );
@@ -327,6 +337,9 @@ class BillingService {
       "activeSlots": totalSlots,
       "usedSlots": usedJobPosts,
       "availableSlots": availableSlots,
+      "vacancySlotLimit": totalSlots,
+      "occupiedVacancySlots": usedJobPosts,
+      "availableVacancySlots": availableSlots,
     };
   }
 
@@ -1389,8 +1402,18 @@ class BillingService {
     final planRequestStatus = billing["planRequestStatus"]?.toString() ?? "";
     final subscriptionStatus =
         billing["subscriptionStatus"]?.toString().trim().toLowerCase() ?? "";
-    final availableJobPosts = readInt(billing["availableJobPosts"]);
-    final usedJobPosts = readInt(billing["usedJobPosts"]);
+    final billingStatus =
+        billing["billingStatus"]?.toString().trim().toLowerCase() ?? "";
+    final availableJobPosts = readInt(
+      billing["vacancySlotLimit"] ??
+          billing["includedJobSlots"] ??
+          billing["availableJobPosts"],
+    );
+    final usedJobPosts = readInt(
+      billing["occupiedVacancySlots"] ??
+          billing["usedJobPosts"] ??
+          billing["usedSlots"],
+    );
 
     if (status == "pending" ||
         billingPlanStatus == "pending" ||
@@ -1398,10 +1421,19 @@ class BillingService {
       throw const BillingLimitException(pendingBillingMessage);
     }
 
+    if (billingStatus == "past_due") {
+      throw const BillingLimitException(
+        "Direct Debit payment needs attention. New vacancy publishing is paused during the 3 day grace period.",
+      );
+    }
+
     if (subscriptionStatus == "payment_required" ||
         subscriptionStatus == "billing_required" ||
         subscriptionStatus == "suspended" ||
-        subscriptionStatus == "cancelled") {
+        subscriptionStatus == "cancelled" ||
+        billingStatus == "suspended" ||
+        billingStatus == "cancelled" ||
+        billingStatus == "failed") {
       throw const BillingLimitException(
         "Your trial period has ended. Please configure a payment method or billing plan to continue publishing vacancies.",
       );
