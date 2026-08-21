@@ -28,6 +28,30 @@ class BillingService {
   static const postingLimitMessage =
       "You have reached your active vacancy slot limit. Please open Billing and choose a plan with more vacancy slots.";
 
+  static const List<Map<String, dynamic>> commercialPlans = [
+    {
+      "id": "starter",
+      "name": "Starter",
+      "amountPence": 4900,
+      "currency": "GBP",
+      "vacancySlotLimit": 3,
+    },
+    {
+      "id": "growth",
+      "name": "Growth",
+      "amountPence": 9900,
+      "currency": "GBP",
+      "vacancySlotLimit": 10,
+    },
+    {
+      "id": "pro",
+      "name": "Pro",
+      "amountPence": 19900,
+      "currency": "GBP",
+      "vacancySlotLimit": 25,
+    },
+  ];
+
   static int readInt(dynamic value) {
     if (value is int) return value;
     if (value is num) return value.toInt();
@@ -50,6 +74,57 @@ class BillingService {
           "${date.year}";
     }
     return value?.toString() ?? "";
+  }
+
+  static bool isDirectDebitConfigured(Map<String, dynamic> billing) {
+    return billing["directDebitConfigured"] == true ||
+        billing["directDebitStatus"]?.toString().trim().toLowerCase() ==
+            "active";
+  }
+
+  static String currentPlanId(Map<String, dynamic> billing) {
+    return (billing["planId"] ??
+            billing["currentPlanId"] ??
+            billing["currentPlan"] ??
+            billing["activePlanId"] ??
+            "")
+        .toString()
+        .trim()
+        .toLowerCase();
+  }
+
+  static List<Map<String, dynamic>> plansFromBilling(
+    Map<String, dynamic> billing,
+  ) {
+    final rawPlans = billing["plans"];
+    if (rawPlans is List) {
+      final plans = rawPlans
+          .whereType<Map>()
+          .map((plan) => Map<String, dynamic>.from(plan))
+          .where((plan) => (plan["id"] ?? "").toString().trim().isNotEmpty)
+          .toList();
+      if (plans.isNotEmpty) return plans;
+    }
+    return commercialPlans
+        .map((plan) => Map<String, dynamic>.from(plan))
+        .toList();
+  }
+
+  static String planDisplayName(Map<String, dynamic> plan) {
+    final name = plan["name"]?.toString().trim();
+    if (name != null && name.isNotEmpty) return name;
+    return plan["id"]?.toString() ?? "";
+  }
+
+  Future<Map<String, dynamic>> getAuthoritativeCompanyBillingStatus() async {
+    final result = await FirebaseFunctions.instance
+        .httpsCallable("getCompanyBillingStatus")
+        .call();
+    final data = result.data;
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    return {};
   }
 
   static Map<String, dynamic> billingFromUserData(Map<String, dynamic> data) {
@@ -511,16 +586,10 @@ class BillingService {
     final role = userData["role"]?.toString() ?? "";
     if (role == "employer" &&
         FirebaseAuth.instance.currentUser?.uid == employerId) {
-      final result = await FirebaseFunctions.instance
-          .httpsCallable("getCompanyBillingStatus")
-          .call();
-      final data = result.data;
-      if (data is Map) {
-        userData = {
-          ...userData,
-          "billing": Map<String, dynamic>.from(data),
-        };
-      }
+      userData = {
+        ...userData,
+        "billing": await getAuthoritativeCompanyBillingStatus(),
+      };
     } else {
       userData = await refreshSubscriptionLifecycle(
         employerId: employerId,
@@ -1448,10 +1517,7 @@ class BillingService {
         .toString()
         .trim()
         .isNotEmpty;
-    final directDebitConfigured = billing["directDebitConfigured"] == true ||
-        billing["directDebitEnabled"] == true ||
-        (billing["directDebitStatus"]?.toString().toLowerCase() == "active") ||
-        (billing["mandateStatus"]?.toString().toLowerCase() == "active");
+    final directDebitConfigured = isDirectDebitConfigured(billing);
     final trialActive = billing["trialActive"] == true ||
         billing["trialStatus"]?.toString().toLowerCase() == "active" ||
         subscriptionStatus == "trial";

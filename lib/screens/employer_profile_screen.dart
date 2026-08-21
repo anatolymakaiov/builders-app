@@ -756,6 +756,9 @@ class _BillingSectionState extends State<_BillingSection>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refreshBillingStatus(silent: true);
+    });
   }
 
   @override
@@ -775,13 +778,8 @@ class _BillingSectionState extends State<_BillingSection>
     if (refreshing) return;
     setState(() => refreshing = true);
     try {
-      final result = await FirebaseFunctions.instance
-          .httpsCallable("getCompanyBillingStatus")
-          .call();
-      final data = result.data;
-      if (data is Map) {
-        overrideBilling = Map<String, dynamic>.from(data);
-      }
+      overrideBilling =
+          await BillingService().getAuthoritativeCompanyBillingStatus();
       if (!mounted || silent) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Billing status refreshed")),
@@ -938,15 +936,9 @@ class _BillingSectionState extends State<_BillingSection>
         billing["subscriptionStatus"]?.toString() ?? "not_started";
     final billingStatus =
         billing["billingStatus"]?.toString() ?? subscriptionStatus;
-    final directDebitConfigured = billing["directDebitConfigured"] == true ||
-        billing["directDebitEnabled"] == true ||
-        billing["directDebitStatus"]?.toString().toLowerCase() == "active" ||
-        billing["mandateStatus"]?.toString().toLowerCase() == "active";
-    final currentPlanId = (billing["planId"] ??
-            billing["currentPlanId"] ??
-            billing["currentPlan"] ??
-            "")
-        .toString();
+    final directDebitConfigured =
+        BillingService.isDirectDebitConfigured(billing);
+    final currentPlanId = BillingService.currentPlanId(billing);
     final pendingPlanId = billing["pendingPlanId"]?.toString() ?? "";
     final billingEmail = billing["billingEmail"]?.toString() ?? "Not set";
     final billingEmailVerified = billing["billingEmailVerified"] == true;
@@ -959,8 +951,8 @@ class _BillingSectionState extends State<_BillingSection>
           billing["includedJobSlots"] ??
           billing["availableJobPosts"],
     );
-    final activeUntil = BillingService.formatDate(billing["activeUntil"]);
-    final trialDaysLeft = BillingService.daysRemaining(billing["activeUntil"]);
+    final trialEndsAt = billing["trialEndsAt"] ?? billing["trialEndDate"];
+    final trialDaysLeft = BillingService.daysRemaining(trialEndsAt);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
@@ -1035,10 +1027,6 @@ class _BillingSectionState extends State<_BillingSection>
                 value: billingEmailVerified ? "Verified" : "Provided",
               ),
               _BillingRow(
-                label: "Plan status",
-                value: BillingService.formatLabel(billingPlanStatus),
-              ),
-              _BillingRow(
                 label: "Billing status",
                 value: BillingService.formatLabel(billingStatus),
               ),
@@ -1056,7 +1044,7 @@ class _BillingSectionState extends State<_BillingSection>
               ),
               _BillingRow(
                 label: "Trial end date",
-                value: BillingService.formatDate(billing["trialEndsAt"]),
+                value: BillingService.formatDate(trialEndsAt),
               ),
               _BillingRow(
                 label: "Payment status",
@@ -1076,123 +1064,95 @@ class _BillingSectionState extends State<_BillingSection>
                   value:
                       "${BillingService.formatLabel(pendingPlanId)} from ${BillingService.formatDate(billing["pendingPlanEffectiveAt"])}",
                 ),
-              if ((billing["lastInvoicePdfUrl"]?.toString() ?? "").isNotEmpty)
-                const _BillingRow(
-                  label: "Latest invoice",
-                  value: "PDF available",
-                ),
               if (trialActive)
                 _BillingRow(
                   label: "Trial days left",
                   value: trialDaysLeft.toString(),
                 ),
-              if (activeUntil.isNotEmpty)
-                _BillingRow(label: "Active until", value: activeUntil),
             ],
           ),
         ),
-        StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance.collection("plans").snapshots(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const StroykaSurface(
-                padding: EdgeInsets.all(18),
-                child: LinearProgressIndicator(),
-              );
-            }
+        Column(
+          children: BillingService.plansFromBilling(billing).map((plan) {
+            final planId = plan["id"]?.toString() ?? "";
+            final amountPence = BillingService.readInt(plan["amountPence"]);
+            final price = amountPence > 0
+                ? (amountPence / 100).toStringAsFixed(0)
+                : plan["price"]?.toString() ?? "";
+            final currency = plan["currency"]?.toString() ?? "GBP";
+            final vacancySlots = BillingService.readInt(
+              plan["vacancySlotLimit"] ??
+                  plan["jobPosts"] ??
+                  plan["availableJobPosts"],
+            );
+            final isCurrentPlan = planId == currentPlanId;
+            final planBusy = settingUpPlanId == planId;
+            final changeBusy = changingPlanId == planId;
+            final anySetupBusy =
+                settingUpPlanId != null || changingPlanId != null || refreshing;
 
-            final plans = snapshot.data!.docs;
-            if (plans.isEmpty) {
-              return const StroykaSurface(
-                padding: EdgeInsets.all(18),
-                child: Text("No tariff plans yet"),
-              );
-            }
-
-            return Column(
-              children: plans.map((plan) {
-                final data = plan.data() as Map<String, dynamic>;
-                final amountPence = BillingService.readInt(data["amountPence"]);
-                final price = amountPence > 0
-                    ? (amountPence / 100).toStringAsFixed(0)
-                    : data["price"]?.toString() ?? "";
-                final currency = data["currency"]?.toString() ?? "GBP";
-                final vacancySlots = BillingService.readInt(
-                  data["vacancySlotLimit"] ??
-                      data["jobPosts"] ??
-                      data["availableJobPosts"],
-                );
-                final isCurrentPlan = plan.id == currentPlanId;
-                final planBusy = settingUpPlanId == plan.id;
-                final changeBusy = changingPlanId == plan.id;
-                final anySetupBusy = settingUpPlanId != null ||
-                    changingPlanId != null ||
-                    refreshing;
-
-                return StroykaSurface(
-                  padding: const EdgeInsets.all(16),
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            return StroykaSurface(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              BillingService.planName(plan),
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                          if (isCurrentPlan)
-                            const Icon(
-                              Icons.check_circle,
-                              color: AppColors.greenDark,
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        [
-                          if (price.isNotEmpty) "$currency $price",
-                          "$vacancySlots vacancy slots",
-                        ].join(" • "),
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: anySetupBusy ||
-                                  (directDebitConfigured && isCurrentPlan)
-                              ? null
-                              : directDebitConfigured
-                                  ? () => _changePlan(context, plan.id)
-                                  : () => _setUpDirectDebit(context, plan.id),
-                          child: Text(
-                            directDebitConfigured
-                                ? changeBusy
-                                    ? "Updating plan..."
-                                    : isCurrentPlan
-                                        ? "Current plan"
-                                        : "Change plan"
-                                : planBusy
-                                    ? "Opening Direct Debit..."
-                                    : "Set up Direct Debit",
+                      Expanded(
+                        child: Text(
+                          BillingService.planDisplayName(plan),
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                       ),
+                      if (isCurrentPlan)
+                        const Icon(
+                          Icons.check_circle,
+                          color: AppColors.greenDark,
+                        ),
                     ],
                   ),
-                );
-              }).toList(),
+                  const SizedBox(height: 8),
+                  Text(
+                    [
+                      if (price.isNotEmpty) "$currency $price",
+                      "$vacancySlots vacancy slots",
+                    ].join(" • "),
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: anySetupBusy ||
+                              (directDebitConfigured && isCurrentPlan)
+                          ? null
+                          : directDebitConfigured
+                              ? () => _changePlan(context, planId)
+                              : () => _setUpDirectDebit(context, planId),
+                      child: Text(
+                        directDebitConfigured
+                            ? changeBusy
+                                ? "Updating plan..."
+                                : isCurrentPlan
+                                    ? "Current plan"
+                                    : "Change plan"
+                            : planBusy
+                                ? "Opening Direct Debit..."
+                                : "Set up Direct Debit",
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             );
-          },
+          }).toList(),
         ),
         if (directDebitConfigured)
           StroykaSurface(

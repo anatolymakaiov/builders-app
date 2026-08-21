@@ -2330,81 +2330,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget buildInvoiceDetailsForm() {
-    if (role != "employer") return const SizedBox();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: 18),
-        const Text(
-          "Manual invoice company details",
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          "Used for UK-style invoices if you choose Manual Invoice billing.",
-          style: TextStyle(color: AppColors.muted),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: invoiceLegalCompanyNameController,
-          decoration: const InputDecoration(labelText: "Legal company name"),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: invoiceTradingNameController,
-          decoration: const InputDecoration(
-            labelText: "Trading name if different",
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: invoiceCompanyNumberController,
-          decoration: const InputDecoration(
-            labelText: "Company registration number if Ltd",
-          ),
-        ),
-        const SizedBox(height: 12),
-        UkPostalAddressForm(
-          controllers: registeredOfficeAddressControllers(),
-          postcodeLabel: "Registered office postcode",
-          addressLine1Label: "Registered Office Address Line 1",
-        ),
-        const SizedBox(height: 12),
-        UkPostalAddressForm(
-          controllers: billingPostalAddressControllers(),
-          postcodeLabel: "Billing postcode",
-          addressLine1Label: "Billing Address Line 1",
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: invoiceBillingContactNameController,
-          decoration: const InputDecoration(labelText: "Billing contact name"),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: invoiceVatNumberController,
-          decoration: const InputDecoration(
-            labelText: "VAT number if VAT registered",
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: invoicePurchaseOrderController,
-          decoration: const InputDecoration(
-            labelText: "Purchase order / reference if applicable",
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: invoicePaymentPhoneController,
-          keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(
-            labelText: "Payment contact phone",
-          ),
-        ),
-      ],
-    );
+    return const SizedBox.shrink();
   }
 
   Widget buildForm() {
@@ -2662,7 +2588,8 @@ class _ProfileScreenState extends State<ProfileScreen>
             onChanged: handleRegistrationEmailChanged,
             decoration: const InputDecoration(
               labelText: "Company billing email *",
-              helperText: "Invoices and billing notices will use this email.",
+              helperText:
+                  "Direct Debit and billing notices will use this email.",
             ),
           ),
           buildInlineVerificationStatus(

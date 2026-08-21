@@ -602,6 +602,7 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
   bool settingUp = false;
   bool refreshing = false;
   bool cancelling = false;
+  String? changingPlanId;
   Map<String, dynamic>? overrideBilling;
   String selectedPlanId = "starter";
 
@@ -612,6 +613,9 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     selectedPlanId = initialPlanId();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) refreshStatus(silent: true);
+    });
   }
 
   @override
@@ -629,46 +633,12 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
 
   String initialPlanId() {
     final planId =
-        (widget.billing["planId"] ?? widget.billing["currentPlan"] ?? "")
-            .toString()
-            .trim()
-            .toLowerCase();
+        BillingService.currentPlanId(widget.billing).trim().toLowerCase();
     return planId.isNotEmpty ? planId : "starter";
   }
 
   List<Map<String, dynamic>> availablePlans() {
-    final rawPlans = billing["plans"];
-    if (rawPlans is List) {
-      final plans = rawPlans
-          .whereType<Map>()
-          .map((plan) => Map<String, dynamic>.from(plan))
-          .where((plan) => (plan["id"] ?? "").toString().trim().isNotEmpty)
-          .toList();
-      if (plans.isNotEmpty) return plans;
-    }
-    return const [
-      {
-        "id": "starter",
-        "name": "Starter",
-        "amountPence": 4900,
-        "currency": "GBP",
-        "vacancySlotLimit": 3,
-      },
-      {
-        "id": "growth",
-        "name": "Growth",
-        "amountPence": 9900,
-        "currency": "GBP",
-        "vacancySlotLimit": 10,
-      },
-      {
-        "id": "pro",
-        "name": "Pro",
-        "amountPence": 19900,
-        "currency": "GBP",
-        "vacancySlotLimit": 25,
-      },
-    ];
+    return BillingService.plansFromBilling(billing);
   }
 
   String planPriceLabel(Map<String, dynamic> plan) {
@@ -678,10 +648,7 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
   }
 
   String currentStatus() {
-    final configured = billing["directDebitConfigured"] == true ||
-        billing["directDebitEnabled"] == true ||
-        billing["directDebitStatus"]?.toString().toLowerCase() == "active" ||
-        billing["mandateStatus"]?.toString().toLowerCase() == "active";
+    final configured = BillingService.isDirectDebitConfigured(billing);
     final directDebitStatus =
         (billing["billingStatus"] ?? billing["subscriptionStatus"] ?? "")
             .toString()
@@ -728,8 +695,8 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
     switch (status) {
       case "trial":
         return trialEnd.isEmpty
-            ? "Set up Direct Debit before the trial ends."
-            : "Trial ends $trialEnd. Set up Direct Debit before then.";
+            ? "Direct Debit is set up. First payment is scheduled after the trial."
+            : "Trial ends $trialEnd. First payment is scheduled after the trial.";
       case "setup_pending":
       case "mandate_pending":
         return "Waiting for GoCardless Sandbox confirmation. Refresh after completing the hosted flow.";
@@ -743,7 +710,7 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
       case "failed":
         return "Please refresh or manage Direct Debit to keep company billing active.";
       case "cancelled":
-        return "The subscription is cancelled. You can set up Direct Debit again.";
+        return "Direct Debit is cancelled. Set up Direct Debit again to restore billing.";
       default:
         return "Set up Direct Debit to activate company subscription billing.";
     }
@@ -786,13 +753,8 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
     if (refreshing) return;
     setState(() => refreshing = true);
     try {
-      final result = await FirebaseFunctions.instance
-          .httpsCallable("getCompanyBillingStatus")
-          .call();
-      final data = result.data;
-      if (data is Map) {
-        overrideBilling = Map<String, dynamic>.from(data);
-      }
+      overrideBilling =
+          await BillingService().getAuthoritativeCompanyBillingStatus();
       if (!mounted || silent) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Billing status refreshed")),
@@ -804,6 +766,31 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
       );
     } finally {
       if (mounted) setState(() => refreshing = false);
+    }
+  }
+
+  Future<void> changePlan(String planId) async {
+    if (changingPlanId != null) return;
+    setState(() => changingPlanId = planId);
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable("changeGoCardlessPlan")
+          .call({"planId": planId});
+      final data = result.data;
+      if (data is Map) {
+        overrideBilling = Map<String, dynamic>.from(data);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Billing plan updated")),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not change billing plan")),
+      );
+    } finally {
+      if (mounted) setState(() => changingPlanId = null);
     }
   }
 
@@ -856,12 +843,30 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
   @override
   Widget build(BuildContext context) {
     final status = currentStatus();
-    final configured = billing["directDebitConfigured"] == true ||
-        billing["directDebitEnabled"] == true ||
-        billing["directDebitStatus"]?.toString().toLowerCase() == "active" ||
-        billing["mandateStatus"]?.toString().toLowerCase() == "active";
-    final pending = status == "setup_pending" || status == "mandate_pending";
-    final busy = settingUp || refreshing || cancelling;
+    final configured = BillingService.isDirectDebitConfigured(billing);
+    final busy =
+        settingUp || refreshing || cancelling || changingPlanId != null;
+    final currentPlanId = BillingService.currentPlanId(billing);
+    final planName = (billing["planName"] ?? billing["activePlanName"] ?? "")
+        .toString()
+        .trim();
+    final amountPence = BillingService.readInt(billing["planAmountPence"]);
+    final monthlyPrice = amountPence > 0
+        ? "${billing["currency"] ?? "GBP"} ${(amountPence / 100).toStringAsFixed(0)}/month"
+        : "";
+    final trialEnd = BillingService.formatDate(
+      billing["trialEndsAt"] ?? billing["trialEndDate"],
+    );
+    final firstPayment = BillingService.formatDate(
+      billing["firstPaymentDate"] ??
+          billing["nextChargeDate"] ??
+          billing["nextBillingDate"],
+    );
+    final trialStatus = BillingService.formatLabel(
+      (billing["trialStatus"] ??
+              (billing["trialActive"] == true ? "active" : "not_started"))
+          .toString(),
+    );
     final slotLimit = BillingService.readInt(
       billing["vacancySlotLimit"] ?? billing["includedJobSlots"],
     );
@@ -897,53 +902,95 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ],
-          if (!configured) ...[
-            const SizedBox(height: 12),
-            ...availablePlans().map((plan) {
-              final id = (plan["id"] ?? "").toString();
-              final selected = id == selectedPlanId;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(8),
-                  onTap:
-                      busy ? null : () => setState(() => selectedPlanId = id),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
+          const SizedBox(height: 8),
+          Text(
+            "Current plan: ${planName.isEmpty ? "No plan selected" : planName}",
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          if (monthlyPrice.isNotEmpty)
+            Text(
+              "Monthly price: $monthlyPrice",
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          Text(
+            "Direct Debit: ${configured ? "Active" : "Set up required"}",
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          Text(
+            "Trial status: $trialStatus",
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          if (trialEnd.isNotEmpty)
+            Text(
+              "Trial end date: $trialEnd",
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          if (firstPayment.isNotEmpty)
+            Text(
+              "First payment date: $firstPayment",
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          const SizedBox(height: 12),
+          ...availablePlans().map((plan) {
+            final id = (plan["id"] ?? "").toString();
+            final selected =
+                configured ? id == currentPlanId : id == selectedPlanId;
+            final isCurrent = id == currentPlanId;
+            final planBusy = changingPlanId == id;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: busy || configured
+                    ? null
+                    : () => setState(() => selectedPlanId = id),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: selected ? AppColors.greenDark : AppColors.muted,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        selected
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
                         color: selected ? AppColors.greenDark : AppColors.muted,
                       ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          selected
-                              ? Icons.radio_button_checked
-                              : Icons.radio_button_unchecked,
-                          color:
-                              selected ? AppColors.greenDark : AppColors.muted,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          "${plan["name"] ?? id} - ${planPriceLabel(plan)}",
+                          style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
+                      ),
+                      if (configured)
+                        TextButton(
+                          onPressed:
+                              busy || isCurrent ? null : () => changePlan(id),
                           child: Text(
-                            "${plan["name"] ?? id} - ${planPriceLabel(plan)}",
-                            style: const TextStyle(fontWeight: FontWeight.w800),
+                            planBusy
+                                ? "Updating..."
+                                : isCurrent
+                                    ? "Current"
+                                    : "Change",
                           ),
-                        ),
+                        )
+                      else
                         Text(
                           "${BillingService.readInt(plan["vacancySlotLimit"])} slots",
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
-              );
-            }),
-          ],
+              ),
+            );
+          }),
           if (busy) ...[
             const SizedBox(height: 10),
             const LinearProgressIndicator(minHeight: 2),
@@ -957,7 +1004,7 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
                 FilledButton.icon(
                   onPressed: busy ? null : startSetup,
                   icon: const Icon(Icons.account_balance),
-                  label: Text(pending ? "Retry setup" : "Set up Direct Debit"),
+                  label: const Text("Set up Direct Debit"),
                 ),
               if (configured)
                 FilledButton.icon(
