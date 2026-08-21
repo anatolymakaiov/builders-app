@@ -744,6 +744,7 @@ class _BillingSection extends StatefulWidget {
 class _BillingSectionState extends State<_BillingSection>
     with WidgetsBindingObserver {
   String? settingUpPlanId;
+  String? changingPlanId;
   bool refreshing = false;
   Map<String, dynamic>? overrideBilling;
 
@@ -797,14 +798,14 @@ class _BillingSectionState extends State<_BillingSection>
 
   Future<void> _setUpDirectDebit(
     BuildContext context,
-    QueryDocumentSnapshot plan,
+    String planId,
   ) async {
     if (settingUpPlanId != null) return;
-    setState(() => settingUpPlanId = plan.id);
+    setState(() => settingUpPlanId = planId);
     try {
       final result = await FirebaseFunctions.instance
           .httpsCallable("createGoCardlessDirectDebitSetup")
-          .call({"planId": plan.id});
+          .call({"planId": planId});
       final data = result.data;
       final url = data is Map ? data["authorisationUrl"]?.toString() : null;
       final uri = Uri.tryParse(url ?? "");
@@ -848,6 +849,81 @@ class _BillingSectionState extends State<_BillingSection>
     }
   }
 
+  Future<void> _changePlan(BuildContext context, String planId) async {
+    if (changingPlanId != null) return;
+    setState(() => changingPlanId = planId);
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable("changeGoCardlessPlan")
+          .call({"planId": planId});
+      final data = result.data;
+      if (data is Map) {
+        overrideBilling = Map<String, dynamic>.from(data);
+      }
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Billing plan updated")),
+      );
+    } on FirebaseFunctionsException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? "Could not change billing plan")),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not change billing plan")),
+      );
+    } finally {
+      if (mounted) setState(() => changingPlanId = null);
+    }
+  }
+
+  Future<void> _cancelDirectDebit(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Cancel Direct Debit?"),
+        content: const Text(
+          "New vacancy publishing will pause while Direct Debit is restored. Existing live vacancies stay visible during the 3 day recovery window.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Yes"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => refreshing = true);
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable("cancelGoCardlessSubscription")
+          .call();
+      final data = result.data;
+      if (data is Map) {
+        overrideBilling = Map<String, dynamic>.from(data);
+      }
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Direct Debit cancellation requested")),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not cancel Direct Debit")),
+      );
+    } finally {
+      if (mounted) setState(() => refreshing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final planId = billing["planId"]?.toString() ?? "";
@@ -862,6 +938,16 @@ class _BillingSectionState extends State<_BillingSection>
         billing["subscriptionStatus"]?.toString() ?? "not_started";
     final billingStatus =
         billing["billingStatus"]?.toString() ?? subscriptionStatus;
+    final directDebitConfigured = billing["directDebitConfigured"] == true ||
+        billing["directDebitEnabled"] == true ||
+        billing["directDebitStatus"]?.toString().toLowerCase() == "active" ||
+        billing["mandateStatus"]?.toString().toLowerCase() == "active";
+    final currentPlanId = (billing["planId"] ??
+            billing["currentPlanId"] ??
+            billing["currentPlan"] ??
+            "")
+        .toString();
+    final pendingPlanId = billing["pendingPlanId"]?.toString() ?? "";
     final billingEmail = billing["billingEmail"]?.toString() ?? "Not set";
     final billingEmailVerified = billing["billingEmailVerified"] == true;
     final trialActive = billing["trialActive"] == true;
@@ -896,8 +982,10 @@ class _BillingSectionState extends State<_BillingSection>
               Row(
                 children: [
                   _BillingPill(
-                    label: BillingService.formatLabel(billingPlanStatus),
-                    active: billingPlanStatus == "approved",
+                    label: BillingService.formatLabel(
+                      directDebitConfigured ? billingStatus : billingPlanStatus,
+                    ),
+                    active: billingStatus == "active" || directDebitConfigured,
                   ),
                   if (trialActive) ...[
                     const SizedBox(width: 8),
@@ -959,6 +1047,10 @@ class _BillingSectionState extends State<_BillingSection>
                 value: BillingService.formatLabel(subscriptionStatus),
               ),
               _BillingRow(
+                label: "Direct Debit",
+                value: directDebitConfigured ? "Active" : "Set up required",
+              ),
+              _BillingRow(
                 label: "Trial status",
                 value: BillingService.formatLabel(trialStatus),
               ),
@@ -972,8 +1064,18 @@ class _BillingSectionState extends State<_BillingSection>
               ),
               _BillingRow(
                 label: "Next billing date",
-                value: BillingService.formatDate(billing["nextBillingDate"]),
+                value: BillingService.formatDate(
+                  billing["nextChargeDate"] ??
+                      billing["nextBillingDate"] ??
+                      billing["firstPaymentDate"],
+                ),
               ),
+              if (pendingPlanId.isNotEmpty)
+                _BillingRow(
+                  label: "Pending plan",
+                  value:
+                      "${BillingService.formatLabel(pendingPlanId)} from ${BillingService.formatDate(billing["pendingPlanEffectiveAt"])}",
+                ),
               if ((billing["lastInvoicePdfUrl"]?.toString() ?? "").isNotEmpty)
                 const _BillingRow(
                   label: "Latest invoice",
@@ -1020,9 +1122,12 @@ class _BillingSectionState extends State<_BillingSection>
                       data["jobPosts"] ??
                       data["availableJobPosts"],
                 );
-                final isCurrentPlan = plan.id == billing["planId"]?.toString();
+                final isCurrentPlan = plan.id == currentPlanId;
                 final planBusy = settingUpPlanId == plan.id;
-                final anySetupBusy = settingUpPlanId != null;
+                final changeBusy = changingPlanId == plan.id;
+                final anySetupBusy = settingUpPlanId != null ||
+                    changingPlanId != null ||
+                    refreshing;
 
                 return StroykaSurface(
                   padding: const EdgeInsets.all(16),
@@ -1063,13 +1168,22 @@ class _BillingSectionState extends State<_BillingSection>
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: anySetupBusy
+                          onPressed: anySetupBusy ||
+                                  (directDebitConfigured && isCurrentPlan)
                               ? null
-                              : () => _setUpDirectDebit(context, plan),
+                              : directDebitConfigured
+                                  ? () => _changePlan(context, plan.id)
+                                  : () => _setUpDirectDebit(context, plan.id),
                           child: Text(
-                            planBusy
-                                ? "Opening Direct Debit..."
-                                : "Set up Direct Debit",
+                            directDebitConfigured
+                                ? changeBusy
+                                    ? "Updating plan..."
+                                    : isCurrentPlan
+                                        ? "Current plan"
+                                        : "Change plan"
+                                : planBusy
+                                    ? "Opening Direct Debit..."
+                                    : "Set up Direct Debit",
                           ),
                         ),
                       ),
@@ -1080,6 +1194,35 @@ class _BillingSectionState extends State<_BillingSection>
             );
           },
         ),
+        if (directDebitConfigured)
+          StroykaSurface(
+            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.only(top: 2),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: refreshing ? null : () => _refreshBillingStatus(),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text("Refresh"),
+                ),
+                OutlinedButton.icon(
+                  onPressed: settingUpPlanId != null
+                      ? null
+                      : () => _setUpDirectDebit(context, currentPlanId),
+                  icon: const Icon(Icons.account_balance),
+                  label: const Text("Replace Direct Debit"),
+                ),
+                OutlinedButton.icon(
+                  onPressed:
+                      refreshing ? null : () => _cancelDirectDebit(context),
+                  icon: const Icon(Icons.cancel_outlined),
+                  label: const Text("Cancel Direct Debit"),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }

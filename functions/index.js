@@ -14,6 +14,7 @@ const GOCARDLESS_SANDBOX_API_BASE = "https://api-sandbox.gocardless.com";
 const GOCARDLESS_API_VERSION = "2015-07-06";
 const DEFAULT_FUNCTION_REGION = "us-central1";
 const PAYMENT_GRACE_DAYS = 3;
+const TRIAL_DAYS = 30;
 const STROYKA_COMMERCIAL_PLANS = {
   starter: {
     id: "starter",
@@ -374,7 +375,13 @@ function activePaidEntitlement(billing) {
 }
 
 function billingBlocksNewVacancy(billing) {
-  return ["past_due", "suspended", "cancelled", "failed"].includes(
+  return [
+    "past_due",
+    "payment_method_required",
+    "suspended",
+    "cancelled",
+    "failed",
+  ].includes(
     cleanText(billing.billingStatus || billing.subscriptionStatus)
       .toLowerCase(),
   );
@@ -383,10 +390,69 @@ function billingBlocksNewVacancy(billing) {
 function billingPlan(billing) {
   return planForId(
     billing.planId ||
+      billing.currentPlanId ||
       billing.activePlanId ||
       billing.currentPlan ||
       billing.pendingPlan,
   );
+}
+
+function timestampToDate(value) {
+  if (!value) return null;
+  if (typeof value.toDate === "function") return value.toDate();
+  if (value instanceof Date) return value;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dateOnly(value) {
+  return value.toISOString().slice(0, 10);
+}
+
+function trialWindowForBilling(billing) {
+  const existingStart = timestampToDate(
+    billing.trialStartedAt || billing.trialStartDate,
+  );
+  const existingEnd = timestampToDate(
+    billing.trialEndsAt || billing.trialEndDate,
+  );
+  const startedAt = existingStart || new Date();
+  const endsAt = existingEnd || new Date(
+    startedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000,
+  );
+  return {
+    startedAt,
+    endsAt,
+    startedTimestamp: admin.firestore.Timestamp.fromDate(startedAt),
+    endsTimestamp: admin.firestore.Timestamp.fromDate(endsAt),
+    isActive: endsAt.getTime() > Date.now(),
+    alreadyStarted: !!existingStart,
+  };
+}
+
+function directDebitConfigured(billing) {
+  const mandateStatus = cleanText(billing.mandateStatus).toLowerCase();
+  const explicit = billing.directDebitConfigured === true ||
+    cleanText(billing.directDebitStatus).toLowerCase() === "active";
+  return (explicit ||
+      !!cleanText(billing.goCardlessMandateId || billing.directDebitMandateId)) &&
+    ["active", "reinstated", "submitted"].includes(mandateStatus) &&
+    billing.directDebitEnabled === true;
+}
+
+function addMonths(date, months) {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + months);
+  return next;
+}
+
+function billingPeriodEnd(billing) {
+  return timestampToDate(
+    billing.currentPeriodEnd ||
+      billing.nextChargeDate ||
+      billing.nextBillingDate ||
+      billing.firstPaymentDate,
+  ) || addMonths(new Date(), 1);
 }
 
 async function safeBillingStatus(data, employerId) {
@@ -398,6 +464,8 @@ async function safeBillingStatus(data, employerId) {
     ? await countOccupiedVacancySlots(employerId)
     : 0;
   const vacancySlotLimit = plan ? plan.vacancySlotLimit : 0;
+  const trialWindow = trialWindowForBilling(billing);
+  const ddConfigured = directDebitConfigured(billing);
   return {
     provider: billing.provider || "",
     environment: billing.environment || "",
@@ -414,8 +482,16 @@ async function safeBillingStatus(data, employerId) {
     billingStatus: billing.billingStatus || billing.subscriptionStatus || "",
     subscriptionStatus: billing.subscriptionStatus || "",
     paymentStatus: billing.paymentStatus || "",
+    directDebitConfigured: ddConfigured,
+    directDebitStatus: billing.directDebitStatus || billing.mandateStatus || "",
+    trialActive: trialWindow.isActive &&
+      cleanText(billing.subscriptionStatus).toLowerCase() === "trial",
     trialStartedAt: billing.trialStartedAt || billing.trialStartDate || null,
     trialEndsAt: billing.trialEndsAt || billing.trialEndDate || null,
+    firstPaymentDate: billing.firstPaymentDate ||
+      billing.nextChargeDate ||
+      billing.nextBillingDate ||
+      null,
     goCardlessBillingRequestId: billing.goCardlessBillingRequestId || "",
     goCardlessBillingRequestFlowId: billing.goCardlessBillingRequestFlowId || "",
     goCardlessMandateId: billing.goCardlessMandateId || "",
@@ -428,6 +504,9 @@ async function safeBillingStatus(data, employerId) {
     paymentActionRequired: billing.paymentActionRequired === true,
     paymentGraceStartedAt: billing.paymentGraceStartedAt || null,
     paymentGraceEndsAt: billing.paymentGraceEndsAt || null,
+    currentPlanId: plan ? plan.id : cleanText(billing.currentPlan),
+    pendingPlanId: cleanText(billing.pendingPlanId || billing.pendingPlan),
+    pendingPlanEffectiveAt: billing.pendingPlanEffectiveAt || null,
     updatedAt: billing.updatedAt || null,
   };
 }
@@ -517,10 +596,13 @@ async function startPaymentGrace(employerRef, reason, eventId) {
   const snap = await employerRef.get();
   const data = snap.data() || {};
   const billing = data.billing || {};
+  const status = String(reason || "").includes("cancel")
+    ? "payment_method_required"
+    : "past_due";
   if (billing.paymentGraceStartedAt && billing.paymentGraceEndsAt) {
     await updateEmployerBilling(employerRef, {
-      billingStatus: "past_due",
-      subscriptionStatus: "past_due",
+      billingStatus: status,
+      subscriptionStatus: status,
       paymentStatus: "failed",
       paymentActionRequired: true,
       paymentFailureReason: reason,
@@ -533,8 +615,8 @@ async function startPaymentGrace(employerRef, reason, eventId) {
     startedAt.getTime() + PAYMENT_GRACE_DAYS * 24 * 60 * 60 * 1000,
   );
   await updateEmployerBilling(employerRef, {
-    billingStatus: "past_due",
-    subscriptionStatus: "past_due",
+    billingStatus: status,
+    subscriptionStatus: status,
     paymentStatus: "failed",
     paymentActionRequired: true,
     paymentFailureReason: reason,
@@ -557,10 +639,16 @@ async function startPaymentGrace(employerRef, reason, eventId) {
 }
 
 async function clearPaymentGrace(employerRef) {
+  const snap = await employerRef.get();
+  const billing = (snap.data() || {}).billing || {};
+  const trialWindow = trialWindowForBilling(billing);
+  const subscriptionStatus = trialWindow.isActive ? "trial" : "active";
   await updateEmployerBilling(employerRef, {
     billingStatus: "active",
-    subscriptionStatus: "active",
+    subscriptionStatus,
     paymentStatus: "paid",
+    trialActive: trialWindow.isActive,
+    trialStatus: trialWindow.isActive ? "active" : "expired",
     paymentActionRequired: false,
     paymentFailureReason: "",
     paymentGraceStartedAt: admin.firestore.FieldValue.delete(),
@@ -681,13 +769,72 @@ async function assertEmployerCanUseVacancySlot(employerId, transaction) {
   return { user, billing, plan, occupiedVacancySlots };
 }
 
+async function activateDirectDebitEntitlement(
+  employerRef,
+  mandateId,
+  subscriptionId,
+  plan,
+  subscription = {},
+) {
+  const snap = await employerRef.get();
+  const billing = (snap.data() || {}).billing || {};
+  const trialWindow = trialWindowForBilling(billing);
+  const subscriptionStatus = trialWindow.isActive ? "trial" : "active";
+  const firstPaymentDate =
+    subscription.start_date ||
+    (subscription.upcoming_payments &&
+      subscription.upcoming_payments[0] &&
+      subscription.upcoming_payments[0].charge_date) ||
+    dateOnly(trialWindow.endsAt);
+
+  await updateEmployerBilling(employerRef, {
+    billingStatus: "active",
+    subscriptionStatus,
+    paymentStatus: "pending",
+    directDebitEnabled: true,
+    directDebitConfigured: true,
+    mandateStatus: "active",
+    directDebitStatus: "active",
+    directDebitMandateId: mandateId,
+    goCardlessMandateId: mandateId,
+    goCardlessSubscriptionId: subscriptionId,
+    subscriptionStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+    currentPeriodStart: admin.firestore.FieldValue.serverTimestamp(),
+    nextChargeDate: firstPaymentDate,
+    firstPaymentDate,
+    planId: plan.id,
+    planName: plan.name,
+    activePlanId: plan.id,
+    activePlanName: plan.name,
+    currentPlan: plan.id,
+    currentPlanId: plan.id,
+    pendingPlan: "",
+    pendingPlanId: "",
+    pendingPlanEffectiveAt: admin.firestore.FieldValue.delete(),
+    planAmountPence: plan.amountPence,
+    monthlyPrice: plan.amountPence / 100,
+    currency: plan.currency,
+    billingInterval: plan.interval,
+    vacancySlotLimit: plan.vacancySlotLimit,
+    trialStartedAt: trialWindow.startedTimestamp,
+    trialStartDate: trialWindow.startedTimestamp,
+    trialEndsAt: trialWindow.endsTimestamp,
+    trialEndDate: trialWindow.endsTimestamp,
+    trialActive: trialWindow.isActive,
+    trialStatus: trialWindow.isActive ? "active" : "expired",
+    paymentActionRequired: false,
+    paymentFailureReason: "",
+    paymentGraceStartedAt: admin.firestore.FieldValue.delete(),
+    paymentGraceEndsAt: admin.firestore.FieldValue.delete(),
+  });
+  await restoreBillingSuspendedVacancies(employerRef);
+}
+
 async function ensureGoCardlessSubscription(employerRef, mandateId, accessToken) {
   const employerSnap = await employerRef.get();
   const employer = employerSnap.data() || {};
   const billing = employer.billing || {};
   const existingSubscriptionId = cleanText(billing.goCardlessSubscriptionId);
-  if (existingSubscriptionId) return existingSubscriptionId;
-
   const plan = billingPlan(billing);
   if (!plan) {
     throw new HttpsError(
@@ -695,6 +842,16 @@ async function ensureGoCardlessSubscription(employerRef, mandateId, accessToken)
       "A valid STROYKA billing plan is required before subscription creation.",
     );
   }
+  if (existingSubscriptionId) {
+    await activateDirectDebitEntitlement(
+      employerRef,
+      mandateId,
+      existingSubscriptionId,
+      plan,
+    );
+    return existingSubscriptionId;
+  }
+  const trialWindow = trialWindowForBilling(billing);
 
   const response = await goCardlessPost(
     "/subscriptions",
@@ -705,6 +862,7 @@ async function ensureGoCardlessSubscription(employerRef, mandateId, accessToken)
         name: `${plan.name} STROYKA company subscription`,
         interval_unit: "monthly",
         interval: 1,
+        start_date: dateOnly(trialWindow.endsAt),
         metadata: {
           employer_id: employerRef.id,
           plan_id: plan.id,
@@ -725,34 +883,15 @@ async function ensureGoCardlessSubscription(employerRef, mandateId, accessToken)
       "unavailable",
       "GoCardless did not return a subscription.",
     );
-  }
+	  }
 
-  await updateEmployerBilling(employerRef, {
-    billingStatus: "active",
-    subscriptionStatus: "active",
-    paymentStatus: "pending",
-    directDebitEnabled: true,
-    mandateStatus: "active",
-    directDebitMandateId: mandateId,
-    goCardlessMandateId: mandateId,
-    goCardlessSubscriptionId: subscriptionId,
-    subscriptionStartedAt: admin.firestore.FieldValue.serverTimestamp(),
-    currentPeriodStart: admin.firestore.FieldValue.serverTimestamp(),
-    nextChargeDate: subscription.upcoming_payments &&
-        subscription.upcoming_payments[0] &&
-        subscription.upcoming_payments[0].charge_date ||
-      null,
-    planId: plan.id,
-    planName: plan.name,
-    activePlanId: plan.id,
-    activePlanName: plan.name,
-    currentPlan: plan.id,
-    planAmountPence: plan.amountPence,
-    monthlyPrice: plan.amountPence / 100,
-    currency: plan.currency,
-    billingInterval: plan.interval,
-    vacancySlotLimit: plan.vacancySlotLimit,
-  });
+	  await activateDirectDebitEntitlement(
+	    employerRef,
+	    mandateId,
+	    subscriptionId,
+	    plan,
+	    subscription,
+	  );
 
   return subscriptionId;
 }
@@ -944,9 +1083,260 @@ exports.createGoCardlessDirectDebitSetup = onCall(
       throw new HttpsError(
         "unauthenticated",
         "Please sign in to set up Direct Debit.",
-	);
+      );
+    }
 
-exports.createVacancyWithEntitlement = onCall(
+    const uid = request.auth.uid;
+    const userRef = admin.firestore().collection("users").doc(uid);
+    const userSnap = await userRef.get();
+    const user = userSnap.data() || {};
+
+    if (!userSnap.exists || !isEmployerBillingManager(user, uid)) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only the company account owner can set up Direct Debit.",
+      );
+    }
+
+    const accessToken = goCardlessAccessToken.value();
+    if (!accessToken) {
+      throw new HttpsError(
+        "failed-precondition",
+        "GoCardless Sandbox is not configured.",
+      );
+    }
+    const planId = cleanText(request.data && request.data.planId).toLowerCase();
+    const plan = planForId(planId);
+    if (!plan) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Choose a valid STROYKA subscription plan.",
+      );
+    }
+
+    const billingRequestResponse = await goCardlessPost(
+      "/billing_requests",
+      {
+        billing_requests: {
+          mandate_request: {
+            scheme: "bacs",
+            currency: "GBP",
+          },
+          metadata: {
+            employer_id: uid,
+            plan_id: plan.id,
+            environment: "sandbox",
+          },
+        },
+      },
+      accessToken,
+      `stroyka-dd-request-${uid}-${Date.now()}`,
+    );
+
+    const billingRequest =
+      billingRequestResponse.billing_requests ||
+      billingRequestResponse.billing_request ||
+      {};
+    const billingRequestId = cleanText(billingRequest.id);
+
+    if (!billingRequestId) {
+      throw new HttpsError(
+        "unavailable",
+        "GoCardless did not return a billing request.",
+      );
+    }
+
+    const returnUri = functionBaseUrl("goCardlessReturn");
+    const exitUri = functionBaseUrl("goCardlessExit");
+    const billingFlowResponse = await goCardlessPost(
+      "/billing_request_flows",
+      {
+        billing_request_flows: {
+          redirect_uri: returnUri,
+          exit_uri: exitUri,
+          show_success_redirect_button: true,
+          prefilled_customer: goCardlessPrefilledCustomer(user),
+          links: {
+            billing_request: billingRequestId,
+          },
+        },
+      },
+      accessToken,
+      `stroyka-dd-flow-${uid}-${billingRequestId}`,
+    );
+
+    const billingFlow =
+      billingFlowResponse.billing_request_flows ||
+      billingFlowResponse.billing_request_flow ||
+      {};
+    const billingRequestFlowId = cleanText(billingFlow.id);
+    const authorisationUrl = cleanText(billingFlow.authorisation_url);
+
+    if (!billingRequestFlowId || !authorisationUrl) {
+      throw new HttpsError(
+        "unavailable",
+        "GoCardless did not return an authorisation URL.",
+      );
+    }
+
+	    const now = admin.firestore.FieldValue.serverTimestamp();
+	    const setupPayload = {
+      provider: "gocardless",
+      environment: "sandbox",
+      planId: plan.id,
+      planName: plan.name,
+      activePlanId: plan.id,
+	      activePlanName: plan.name,
+	      currentPlan: plan.id,
+	      currentPlanId: plan.id,
+	      planAmountPence: plan.amountPence,
+      monthlyPrice: plan.amountPence / 100,
+      currency: plan.currency,
+      billingInterval: plan.interval,
+      vacancySlotLimit: plan.vacancySlotLimit,
+      billingStatus: "setup_pending",
+      subscriptionStatus: "setup_required",
+      paymentStatus: "pending",
+      paymentMethod: "direct_debit",
+	      currentPaymentMethod: "direct_debit",
+	      goCardlessBillingRequestId: billingRequestId,
+	      goCardlessBillingRequestFlowId: billingRequestFlowId,
+	      directDebitEnabled: false,
+	      directDebitConfigured: false,
+	      directDebitStatus: "setup_pending",
+	      mandateStatus: "setup_pending",
+	      updatedAt: now,
+		    };
+
+	    await userRef.set(
+	      {
+        billing: setupPayload,
+        directDebit: setupPayload,
+      },
+      { merge: true },
+    );
+    await userRef
+      .collection("billing")
+      .doc("gocardlessSandboxDirectDebit")
+      .set(
+        {
+          ...setupPayload,
+          createdAt: now,
+        },
+        { merge: true },
+      );
+
+    return {
+      authorisationUrl,
+      billingRequestId,
+      billingRequestFlowId,
+      planId: plan.id,
+	    };
+	  },
+		);
+
+exports.changeGoCardlessPlan = onCall(
+  {
+    timeoutSeconds: 15,
+    memory: "256MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Please sign in to change your billing plan.",
+      );
+    }
+
+    const uid = request.auth.uid;
+    const userRef = admin.firestore().collection("users").doc(uid);
+    const userSnap = await userRef.get();
+    const user = userSnap.data() || {};
+    if (!userSnap.exists || !isEmployerBillingManager(user, uid)) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only the company account owner can change billing plan.",
+      );
+    }
+
+    const newPlan = planForId(cleanText(request.data && request.data.planId));
+    if (!newPlan) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Choose a valid STROYKA subscription plan.",
+      );
+    }
+
+    const billing = user.billing || {};
+    if (!directDebitConfigured(billing)) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Set up Direct Debit before changing plan.",
+      );
+    }
+
+    const currentPlan = billingPlan(billing);
+    if (currentPlan && currentPlan.id === newPlan.id) {
+      return await safeBillingStatus(user, uid);
+    }
+
+    const trialWindow = trialWindowForBilling(billing);
+    const trialActive = trialWindow.isActive &&
+      cleanText(billing.subscriptionStatus).toLowerCase() === "trial";
+    const currentAmount = currentPlan ? currentPlan.amountPence : 0;
+    const now = admin.firestore.FieldValue.serverTimestamp();
+
+    if (trialActive || newPlan.amountPence >= currentAmount) {
+      await updateEmployerBilling(userRef, {
+        billingStatus: "active",
+        subscriptionStatus: trialActive ? "trial" : "active",
+        paymentStatus: billing.paymentStatus || "pending",
+        planId: newPlan.id,
+        planName: newPlan.name,
+        activePlanId: newPlan.id,
+        activePlanName: newPlan.name,
+        currentPlan: newPlan.id,
+        currentPlanId: newPlan.id,
+        pendingPlan: "",
+        pendingPlanId: "",
+        pendingPlanEffectiveAt: admin.firestore.FieldValue.delete(),
+        planAmountPence: newPlan.amountPence,
+        monthlyPrice: newPlan.amountPence / 100,
+        currency: newPlan.currency,
+        billingInterval: newPlan.interval,
+        vacancySlotLimit: newPlan.vacancySlotLimit,
+        planChangedAt: now,
+        planChangeDirection: !currentPlan || newPlan.amountPence >= currentAmount
+          ? "upgrade"
+          : "trial_downgrade",
+        trialStartedAt: trialWindow.startedTimestamp,
+        trialStartDate: trialWindow.startedTimestamp,
+        trialEndsAt: trialWindow.endsTimestamp,
+        trialEndDate: trialWindow.endsTimestamp,
+        trialActive,
+        trialStatus: trialActive ? "active" : "expired",
+      });
+      await restoreBillingSuspendedVacancies(userRef);
+    } else {
+      const effectiveAt = billingPeriodEnd(billing);
+      await updateEmployerBilling(userRef, {
+        pendingPlan: newPlan.id,
+        pendingPlanId: newPlan.id,
+        pendingPlanName: newPlan.name,
+        pendingPlanAmountPence: newPlan.amountPence,
+        pendingPlanVacancySlotLimit: newPlan.vacancySlotLimit,
+        pendingPlanEffectiveAt: admin.firestore.Timestamp.fromDate(effectiveAt),
+        planChangeDirection: "downgrade",
+        planChangeRequestedAt: now,
+      });
+    }
+
+    const refreshed = await userRef.get();
+    return await safeBillingStatus(refreshed.data() || {}, uid);
+  },
+);
+
+	exports.createVacancyWithEntitlement = onCall(
   {
     timeoutSeconds: 20,
     memory: "256MiB",
@@ -1116,153 +1506,6 @@ exports.reviewVacancyEdit = onCall(
     return { reviewId, decision };
   },
 );
-    }
-
-    const uid = request.auth.uid;
-    const userRef = admin.firestore().collection("users").doc(uid);
-    const userSnap = await userRef.get();
-    const user = userSnap.data() || {};
-
-    if (!userSnap.exists || !isEmployerBillingManager(user, uid)) {
-      throw new HttpsError(
-        "permission-denied",
-        "Only the company account owner can set up Direct Debit.",
-      );
-    }
-
-    const accessToken = goCardlessAccessToken.value();
-    if (!accessToken) {
-      throw new HttpsError(
-        "failed-precondition",
-        "GoCardless Sandbox is not configured.",
-      );
-    }
-    const planId = cleanText(request.data && request.data.planId).toLowerCase();
-    const plan = planForId(planId);
-    if (!plan) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Choose a valid STROYKA subscription plan.",
-      );
-    }
-
-    const billingRequestResponse = await goCardlessPost(
-      "/billing_requests",
-      {
-        billing_requests: {
-          mandate_request: {
-            scheme: "bacs",
-            currency: "GBP",
-          },
-          metadata: {
-            employer_id: uid,
-            plan_id: plan.id,
-            environment: "sandbox",
-          },
-        },
-      },
-      accessToken,
-      `stroyka-dd-request-${uid}-${Date.now()}`,
-    );
-
-    const billingRequest =
-      billingRequestResponse.billing_requests ||
-      billingRequestResponse.billing_request ||
-      {};
-    const billingRequestId = cleanText(billingRequest.id);
-
-    if (!billingRequestId) {
-      throw new HttpsError(
-        "unavailable",
-        "GoCardless did not return a billing request.",
-      );
-    }
-
-    const returnUri = functionBaseUrl("goCardlessReturn");
-    const exitUri = functionBaseUrl("goCardlessExit");
-    const billingFlowResponse = await goCardlessPost(
-      "/billing_request_flows",
-      {
-        billing_request_flows: {
-          redirect_uri: returnUri,
-          exit_uri: exitUri,
-          show_success_redirect_button: true,
-          prefilled_customer: goCardlessPrefilledCustomer(user),
-          links: {
-            billing_request: billingRequestId,
-          },
-        },
-      },
-      accessToken,
-      `stroyka-dd-flow-${uid}-${billingRequestId}`,
-    );
-
-    const billingFlow =
-      billingFlowResponse.billing_request_flows ||
-      billingFlowResponse.billing_request_flow ||
-      {};
-    const billingRequestFlowId = cleanText(billingFlow.id);
-    const authorisationUrl = cleanText(billingFlow.authorisation_url);
-
-    if (!billingRequestFlowId || !authorisationUrl) {
-      throw new HttpsError(
-        "unavailable",
-        "GoCardless did not return an authorisation URL.",
-      );
-    }
-
-    const now = admin.firestore.FieldValue.serverTimestamp();
-    const setupPayload = {
-      provider: "gocardless",
-      environment: "sandbox",
-      planId: plan.id,
-      planName: plan.name,
-      activePlanId: plan.id,
-      activePlanName: plan.name,
-      currentPlan: plan.id,
-      planAmountPence: plan.amountPence,
-      monthlyPrice: plan.amountPence / 100,
-      currency: plan.currency,
-      billingInterval: plan.interval,
-      vacancySlotLimit: plan.vacancySlotLimit,
-      billingStatus: "setup_pending",
-      subscriptionStatus: "setup_required",
-      paymentStatus: "pending",
-      paymentMethod: "direct_debit",
-      currentPaymentMethod: "direct_debit",
-      goCardlessBillingRequestId: billingRequestId,
-      goCardlessBillingRequestFlowId: billingRequestFlowId,
-      directDebitEnabled: false,
-      mandateStatus: "setup_pending",
-      updatedAt: now,
-    };
-
-    await userRef.set(
-      {
-        billing: setupPayload,
-        directDebit: setupPayload,
-      },
-      { merge: true },
-    );
-    await userRef
-      .collection("billing")
-      .doc("gocardlessSandboxDirectDebit")
-      .set(
-        {
-          ...setupPayload,
-          createdAt: now,
-        },
-        { merge: true },
-      );
-
-    return {
-      authorisationUrl,
-      billingRequestId,
-      billingRequestFlowId,
-      planId: plan.id,
-    };
-  },
-);
 
 exports.getCompanyBillingStatus = onCall(
   {
@@ -1352,13 +1595,18 @@ exports.cancelGoCardlessSubscription = onCall(
       );
     }
 
-    await updateEmployerBilling(userRef, {
-      billingStatus: "cancelled",
-      subscriptionStatus: "cancelled",
-      paymentStatus: "cancelled",
-      directDebitEnabled: false,
-      cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+	    await updateEmployerBilling(userRef, {
+	      directDebitEnabled: false,
+	      directDebitConfigured: false,
+	      mandateStatus: "cancelled",
+	      directDebitStatus: "cancelled",
+	      cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+	    });
+	    await startPaymentGrace(
+	      userRef,
+	      "direct_debit_cancelled",
+	      `manual_cancel_${Date.now()}`,
+	    );
 
 	    const refreshed = await userRef.get();
 	    return await safeBillingStatus(refreshed.data() || {}, uid);
@@ -1374,14 +1622,22 @@ exports.enforceBillingGraceExpiry = onSchedule(
   async () => {
     const firestore = admin.firestore();
     const now = admin.firestore.Timestamp.now();
-    const employers = await firestore
-      .collection("users")
-      .where("billing.billingStatus", "==", "past_due")
-      .get();
+    const statusSnapshots = await Promise.all(
+      ["past_due", "payment_method_required"].map((status) => firestore
+        .collection("users")
+        .where("billing.billingStatus", "==", status)
+        .get()),
+    );
+    const employerDocs = new Map();
+    for (const snapshot of statusSnapshots) {
+      for (const doc of snapshot.docs) {
+        employerDocs.set(doc.id, doc);
+      }
+    }
 
     let suspendedEmployers = 0;
     let suspendedVacancies = 0;
-    for (const employerDoc of employers.docs) {
+    for (const employerDoc of employerDocs.values()) {
       const employer = employerDoc.data() || {};
       const billing = employer.billing || {};
       const graceEndsAt = billing.paymentGraceEndsAt;

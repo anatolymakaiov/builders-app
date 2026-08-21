@@ -19,7 +19,7 @@ class BillingApprovalException implements Exception {
 
 class BillingService {
   static const inactiveBillingMessage =
-      "Choose a billing plan before posting a job. After admin approval, you can publish vacancies.";
+      "Choose a billing plan and set up Direct Debit before posting a job.";
 
   static const pendingBillingMessage =
       "Your billing plan request is under review. You can browse the app while waiting for approval.";
@@ -73,6 +73,8 @@ class BillingService {
       "billingEmailVerified",
       "billingEmailVerifiedAt",
       "directDebitEnabled",
+      "directDebitConfigured",
+      "directDebitStatus",
       "directDebitMandateId",
       "mandateStatus",
       "availableJobPosts",
@@ -80,6 +82,7 @@ class BillingService {
       "usedJobPosts",
       "activeUntil",
       "nextBillingDate",
+      "firstPaymentDate",
       "billingCycle",
       "monthlyPrice",
       "planAmountPence",
@@ -96,9 +99,16 @@ class BillingService {
       "provider",
       "environment",
       "billingStatus",
+      "currentPlan",
+      "currentPlanId",
+      "pendingPlan",
+      "pendingPlanId",
+      "pendingPlanName",
+      "pendingPlanEffectiveAt",
       "trialActive",
       "trialStatus",
       "trialEndsAt",
+      "trialEndDate",
       "goCardlessBillingRequestId",
       "goCardlessBillingRequestFlowId",
       "goCardlessCustomerId",
@@ -1414,14 +1424,38 @@ class BillingService {
           billing["usedJobPosts"] ??
           billing["usedSlots"],
     );
+    final hasPlan = (billing["planId"] ??
+            billing["currentPlanId"] ??
+            billing["currentPlan"] ??
+            billing["activePlanId"] ??
+            "")
+        .toString()
+        .trim()
+        .isNotEmpty;
+    final directDebitConfigured = billing["directDebitConfigured"] == true ||
+        billing["directDebitEnabled"] == true ||
+        (billing["directDebitStatus"]?.toString().toLowerCase() == "active") ||
+        (billing["mandateStatus"]?.toString().toLowerCase() == "active");
+    final trialActive = billing["trialActive"] == true ||
+        billing["trialStatus"]?.toString().toLowerCase() == "active" ||
+        subscriptionStatus == "trial";
+    final modernEntitlement = hasPlan &&
+        availableJobPosts > 0 &&
+        directDebitConfigured &&
+        billingStatus == "active" &&
+        (subscriptionStatus == "active" ||
+            subscriptionStatus == "trial" ||
+            trialActive);
 
-    if (status == "pending" ||
-        billingPlanStatus == "pending" ||
-        planRequestStatus == "pending") {
+    if (!modernEntitlement &&
+        (status == "pending" ||
+            billingPlanStatus == "pending" ||
+            planRequestStatus == "pending")) {
       throw const BillingLimitException(pendingBillingMessage);
     }
 
-    if (billingStatus == "past_due") {
+    if (billingStatus == "past_due" ||
+        billingStatus == "payment_method_required") {
       throw const BillingLimitException(
         "Direct Debit payment needs attention. New vacancy publishing is paused during the 3 day grace period.",
       );
@@ -1439,7 +1473,9 @@ class BillingService {
       );
     }
 
-    if (status != "active" && billingPlanStatus != "approved") {
+    if (!modernEntitlement &&
+        status != "active" &&
+        billingPlanStatus != "approved") {
       throw const BillingLimitException(inactiveBillingMessage);
     }
 

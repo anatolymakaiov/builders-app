@@ -678,6 +678,10 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
   }
 
   String currentStatus() {
+    final configured = billing["directDebitConfigured"] == true ||
+        billing["directDebitEnabled"] == true ||
+        billing["directDebitStatus"]?.toString().toLowerCase() == "active" ||
+        billing["mandateStatus"]?.toString().toLowerCase() == "active";
     final directDebitStatus =
         (billing["billingStatus"] ?? billing["subscriptionStatus"] ?? "")
             .toString()
@@ -688,6 +692,7 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
         trialStatus == "active" ||
         directDebitStatus == "trial";
     if (directDebitStatus.isNotEmpty) return directDebitStatus;
+    if (configured) return "active";
     if (trialActive) return "trial";
     return "setup_required";
   }
@@ -702,6 +707,7 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
       case "active":
         return "Direct Debit active";
       case "past_due":
+      case "payment_method_required":
       case "suspended":
       case "failed":
         return "Payment needs attention";
@@ -732,6 +738,7 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
             ? "Subscription active."
             : "Subscription active. Next charge: $nextCharge.";
       case "past_due":
+      case "payment_method_required":
       case "suspended":
       case "failed":
         return "Please refresh or manage Direct Debit to keep company billing active.";
@@ -807,7 +814,7 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
       builder: (dialogContext) => AlertDialog(
         title: const Text("Cancel subscription?"),
         content: const Text(
-          "This cancels the GoCardless Sandbox subscription. Billing history is preserved.",
+          "New vacancy publishing will pause while Direct Debit is restored. Existing live vacancies stay visible during the 3 day recovery window.",
         ),
         actions: [
           TextButton(
@@ -849,7 +856,10 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
   @override
   Widget build(BuildContext context) {
     final status = currentStatus();
-    final active = status == "active";
+    final configured = billing["directDebitConfigured"] == true ||
+        billing["directDebitEnabled"] == true ||
+        billing["directDebitStatus"]?.toString().toLowerCase() == "active" ||
+        billing["mandateStatus"]?.toString().toLowerCase() == "active";
     final pending = status == "setup_pending" || status == "mandate_pending";
     final busy = settingUp || refreshing || cancelling;
     final slotLimit = BillingService.readInt(
@@ -887,7 +897,7 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ],
-          if (!active) ...[
+          if (!configured) ...[
             const SizedBox(height: 12),
             ...availablePlans().map((plan) {
               final id = (plan["id"] ?? "").toString();
@@ -943,22 +953,28 @@ class _GoCardlessBillingPanelState extends State<_GoCardlessBillingPanel>
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (!active)
+              if (!configured)
                 FilledButton.icon(
                   onPressed: busy ? null : startSetup,
                   icon: const Icon(Icons.account_balance),
                   label: Text(pending ? "Retry setup" : "Set up Direct Debit"),
+                ),
+              if (configured)
+                FilledButton.icon(
+                  onPressed: busy ? null : startSetup,
+                  icon: const Icon(Icons.account_balance),
+                  label: const Text("Replace Direct Debit"),
                 ),
               OutlinedButton.icon(
                 onPressed: busy ? null : () => refreshStatus(),
                 icon: const Icon(Icons.refresh),
                 label: const Text("Refresh status"),
               ),
-              if (active)
+              if (configured)
                 OutlinedButton.icon(
                   onPressed: busy ? null : cancelSubscription,
                   icon: const Icon(Icons.cancel_outlined),
-                  label: const Text("Cancel subscription"),
+                  label: const Text("Cancel Direct Debit"),
                 ),
             ],
           ),
