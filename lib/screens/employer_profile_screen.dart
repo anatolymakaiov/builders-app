@@ -2,8 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/job.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -724,7 +726,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   }
 }
 
-class _BillingSection extends StatelessWidget {
+class _BillingSection extends StatefulWidget {
   final String employerId;
   final Map<String, dynamic> billing;
   final bool closeAfterPlanRequest;
@@ -735,126 +737,114 @@ class _BillingSection extends StatelessWidget {
     this.closeAfterPlanRequest = false,
   });
 
-  static const paymentModes = [
-    "manual_invoice",
-    "direct_debit",
-    "card",
-  ];
+  @override
+  State<_BillingSection> createState() => _BillingSectionState();
+}
 
-  bool _hasManualInvoiceDetails(Map<String, dynamic> billing) {
-    final details = billing["invoiceDetails"] is Map
-        ? Map<String, dynamic>.from(billing["invoiceDetails"] as Map)
-        : <String, dynamic>{};
-    final legalName = details["legalCompanyName"]?.toString().trim() ?? "";
-    final billingAddress = details["billingAddress"]?.toString().trim() ?? "";
-    final contactName = details["billingContactName"]?.toString().trim() ?? "";
-    return legalName.isNotEmpty &&
-        billingAddress.isNotEmpty &&
-        contactName.isNotEmpty;
+class _BillingSectionState extends State<_BillingSection>
+    with WidgetsBindingObserver {
+  String? settingUpPlanId;
+  bool refreshing = false;
+  Map<String, dynamic>? overrideBilling;
+
+  String get employerId => widget.employerId;
+  bool get closeAfterPlanRequest => widget.closeAfterPlanRequest;
+  Map<String, dynamic> get billing => overrideBilling ?? widget.billing;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
   }
 
-  Future<void> _choosePlan(
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshBillingStatus(silent: true);
+    }
+  }
+
+  Future<void> _refreshBillingStatus({bool silent = false}) async {
+    if (refreshing) return;
+    setState(() => refreshing = true);
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable("getCompanyBillingStatus")
+          .call();
+      final data = result.data;
+      if (data is Map) {
+        overrideBilling = Map<String, dynamic>.from(data);
+      }
+      if (!mounted || silent) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Billing status refreshed")),
+      );
+    } catch (_) {
+      if (!mounted || silent) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not refresh billing status")),
+      );
+    } finally {
+      if (mounted) setState(() => refreshing = false);
+    }
+  }
+
+  Future<void> _setUpDirectDebit(
     BuildContext context,
     QueryDocumentSnapshot plan,
   ) async {
-    var paymentMode = billing["paymentMode"]?.toString() ?? paymentModes.first;
-    if (!paymentModes.contains(paymentMode)) {
-      paymentMode = paymentModes.first;
-    }
-    final billingEmail = (billing["billingEmail"] ?? "").toString().trim();
-    if (!BillingService.isValidEmail(billingEmail)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Add a valid company billing email before requesting a plan.",
-          ),
-        ),
+    if (settingUpPlanId != null) return;
+    setState(() => settingUpPlanId = plan.id);
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable("createGoCardlessDirectDebitSetup")
+          .call({"planId": plan.id});
+      final data = result.data;
+      final url = data is Map ? data["authorisationUrl"]?.toString() : null;
+      final uri = Uri.tryParse(url ?? "");
+      if (uri == null || uri.scheme != "https" || uri.host.isEmpty) {
+        throw Exception("missing_authorisation_url");
+      }
+
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
       );
-      return;
-    }
+      if (!launched) throw Exception("launch_failed");
 
-    final confirmedMode = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text("Choose plan"),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    BillingService.planName(plan),
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: paymentMode,
-                    decoration:
-                        const InputDecoration(labelText: "Payment mode"),
-                    items: paymentModes
-                        .map(
-                          (mode) => DropdownMenuItem(
-                            value: mode,
-                            child: Text(BillingService.formatLabel(mode)),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setDialogState(() => paymentMode = value);
-                    },
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context, paymentMode),
-                  child: const Text("Request plan"),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (confirmedMode == null) return;
-    if (confirmedMode == "manual_invoice" &&
-        !_hasManualInvoiceDetails(billing)) {
+      await _refreshBillingStatus(silent: true);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            "Add manual invoice company details in your company profile before requesting Manual Invoice billing.",
+            "Direct Debit setup opened. Return here to refresh status.",
           ),
         ),
       );
-      return;
-    }
 
-    await BillingService().createPaymentRequest(
-      employerId: employerId,
-      plan: plan,
-      paymentMode: confirmedMode,
-      currentBilling: billing,
-    );
-
-    if (!context.mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Plan request submitted. It is pending admin approval."),
-      ),
-    );
-
-    if (closeAfterPlanRequest && Navigator.canPop(context)) {
-      Navigator.pop(context);
+      if (closeAfterPlanRequest && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+    } on FirebaseFunctionsException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message ?? "Could not start Direct Debit setup"),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not start Direct Debit setup")),
+      );
+    } finally {
+      if (mounted) setState(() => settingUpPlanId = null);
     }
   }
 
@@ -864,31 +854,25 @@ class _BillingSection extends StatelessWidget {
     final planName = billing["planName"]?.toString().trim().isNotEmpty == true
         ? billing["planName"].toString()
         : planId;
-    final paymentMode = billing["paymentMode"]?.toString() ?? "Not set";
     final status = billing["status"]?.toString() ?? "Not set";
     final billingPlanStatus =
         billing["billingPlanStatus"]?.toString() ?? status;
     final paymentStatus = billing["paymentStatus"]?.toString() ?? "Not set";
-    final invoiceStatus = billing["invoiceStatus"]?.toString() ?? "Not set";
     final subscriptionStatus =
         billing["subscriptionStatus"]?.toString() ?? "not_started";
+    final billingStatus =
+        billing["billingStatus"]?.toString() ?? subscriptionStatus;
     final billingEmail = billing["billingEmail"]?.toString() ?? "Not set";
     final billingEmailVerified = billing["billingEmailVerified"] == true;
-    final planRequestStatus =
-        billing["planRequestStatus"]?.toString() ?? "not_requested";
     final trialActive = billing["trialActive"] == true;
     final trialStatus = billing["trialStatus"]?.toString() ??
         (trialActive ? "active" : "not_started");
-    final availableJobPosts =
-        BillingService.readInt(billing["availableJobPosts"]);
     final totalSlots = BillingService.readInt(
-      billing["activeSlots"] ??
+      billing["vacancySlotLimit"] ??
+          billing["activeSlots"] ??
           billing["includedJobSlots"] ??
           billing["availableJobPosts"],
     );
-    final pendingPlan = billing["pendingPlan"]?.toString() ?? "";
-    final pendingPaymentMethod =
-        billing["pendingPaymentMethod"]?.toString() ?? "";
     final activeUntil = BillingService.formatDate(billing["activeUntil"]);
     final trialDaysLeft = BillingService.daysRemaining(billing["activeUntil"]);
 
@@ -930,11 +914,7 @@ class _BillingSection extends StatelessWidget {
                 value: planName.isEmpty ? "No plan selected" : planName,
               ),
               _BillingRow(
-                label: "Available job posts",
-                value: availableJobPosts.toString(),
-              ),
-              _BillingRow(
-                label: "Total slots",
+                label: "Vacancy slot limit",
                 value: totalSlots.toString(),
               ),
               StreamBuilder<int>(
@@ -959,10 +939,6 @@ class _BillingSection extends StatelessWidget {
                 },
               ),
               _BillingRow(
-                label: "Payment mode",
-                value: BillingService.formatLabel(paymentMode),
-              ),
-              _BillingRow(
                 label: "Billing email",
                 value: billingEmail,
               ),
@@ -973,6 +949,10 @@ class _BillingSection extends StatelessWidget {
               _BillingRow(
                 label: "Plan status",
                 value: BillingService.formatLabel(billingPlanStatus),
+              ),
+              _BillingRow(
+                label: "Billing status",
+                value: BillingService.formatLabel(billingStatus),
               ),
               _BillingRow(
                 label: "Subscription status",
@@ -991,35 +971,9 @@ class _BillingSection extends StatelessWidget {
                 value: BillingService.formatLabel(paymentStatus),
               ),
               _BillingRow(
-                label: "Invoice status",
-                value: BillingService.formatLabel(invoiceStatus),
-              ),
-              _BillingRow(
-                label: "Plan request",
-                value: BillingService.formatLabel(planRequestStatus),
-              ),
-              if (pendingPlan.isNotEmpty)
-                _BillingRow(label: "Pending plan", value: pendingPlan),
-              if (pendingPaymentMethod.isNotEmpty)
-                _BillingRow(
-                  label: "Pending payment method",
-                  value: BillingService.formatLabel(pendingPaymentMethod),
-                ),
-              _BillingRow(
                 label: "Next billing date",
                 value: BillingService.formatDate(billing["nextBillingDate"]),
               ),
-              if (paymentMode == "direct_debit")
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    "Direct Debit integration will be activated once payment gateway implementation is completed.",
-                    style: TextStyle(
-                      color: AppColors.muted,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
               if ((billing["lastInvoicePdfUrl"]?.toString() ?? "").isNotEmpty)
                 const _BillingRow(
                   label: "Latest invoice",
@@ -1056,12 +1010,19 @@ class _BillingSection extends StatelessWidget {
             return Column(
               children: plans.map((plan) {
                 final data = plan.data() as Map<String, dynamic>;
-                final price = data["price"]?.toString() ?? "";
+                final amountPence = BillingService.readInt(data["amountPence"]);
+                final price = amountPence > 0
+                    ? (amountPence / 100).toStringAsFixed(0)
+                    : data["price"]?.toString() ?? "";
                 final currency = data["currency"]?.toString() ?? "GBP";
-                final jobPosts = BillingService.readInt(
-                  data["jobPosts"] ?? data["availableJobPosts"],
+                final vacancySlots = BillingService.readInt(
+                  data["vacancySlotLimit"] ??
+                      data["jobPosts"] ??
+                      data["availableJobPosts"],
                 );
                 final isCurrentPlan = plan.id == billing["planId"]?.toString();
+                final planBusy = settingUpPlanId == plan.id;
+                final anySetupBusy = settingUpPlanId != null;
 
                 return StroykaSurface(
                   padding: const EdgeInsets.all(16),
@@ -1091,7 +1052,7 @@ class _BillingSection extends StatelessWidget {
                       Text(
                         [
                           if (price.isNotEmpty) "$currency $price",
-                          "$jobPosts job posts",
+                          "$vacancySlots vacancy slots",
                         ].join(" • "),
                         style: const TextStyle(
                           color: AppColors.muted,
@@ -1102,11 +1063,13 @@ class _BillingSection extends StatelessWidget {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: () => _choosePlan(context, plan),
+                          onPressed: anySetupBusy
+                              ? null
+                              : () => _setUpDirectDebit(context, plan),
                           child: Text(
-                            isCurrentPlan
-                                ? "Change payment mode"
-                                : "Choose plan",
+                            planBusy
+                                ? "Opening Direct Debit..."
+                                : "Set up Direct Debit",
                           ),
                         ),
                       ),
