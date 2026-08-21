@@ -953,6 +953,16 @@ class _BillingSectionState extends State<_BillingSection>
     );
     final trialEndsAt = billing["trialEndsAt"] ?? billing["trialEndDate"];
     final trialDaysLeft = BillingService.daysRemaining(trialEndsAt);
+    final firstPaymentDate = BillingService.normalizeBackendDate(
+      billing["firstPaymentDate"] ??
+          billing["nextChargeDate"] ??
+          billing["nextBillingDate"],
+    );
+    final showTrialPaymentStatus = trialActive &&
+        (firstPaymentDate == null || firstPaymentDate.isAfter(DateTime.now()));
+    final paymentStatusLabel = showTrialPaymentStatus
+        ? "Not due yet"
+        : BillingService.formatLabel(paymentStatus);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
@@ -1048,7 +1058,7 @@ class _BillingSectionState extends State<_BillingSection>
               ),
               _BillingRow(
                 label: "Payment status",
-                value: BillingService.formatLabel(paymentStatus),
+                value: paymentStatusLabel,
               ),
               _BillingRow(
                 label: "Next billing date",

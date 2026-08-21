@@ -66,14 +66,47 @@ class BillingService {
         .join(" ");
   }
 
-  static String formatDate(dynamic value) {
-    if (value is Timestamp) {
-      final date = value.toDate();
-      return "${date.day.toString().padLeft(2, "0")}/"
-          "${date.month.toString().padLeft(2, "0")}/"
-          "${date.year}";
+  static DateTime? normalizeBackendDate(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is Timestamp) return value.toDate();
+    if (value is Map) {
+      final seconds = readInt(
+        value["_seconds"] ?? value["seconds"] ?? value["_Seconds"],
+      );
+      final nanoseconds = readInt(
+        value["_nanoseconds"] ?? value["nanoseconds"] ?? value["_Nanoseconds"],
+      );
+      if (seconds != 0) {
+        return DateTime.fromMillisecondsSinceEpoch(
+          seconds * 1000 + (nanoseconds / 1000000).floor(),
+          isUtc: true,
+        ).toLocal();
+      }
     }
-    return value?.toString() ?? "";
+    final text = value.toString().trim();
+    if (text.isEmpty) return null;
+    return DateTime.tryParse(text)?.toLocal();
+  }
+
+  static String formatDate(dynamic value) {
+    final date = normalizeBackendDate(value);
+    if (date == null) return "";
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    return "${date.day} ${months[date.month - 1]} ${date.year}";
   }
 
   static bool isDirectDebitConfigured(Map<String, dynamic> billing) {
@@ -122,9 +155,37 @@ class BillingService {
         .call();
     final data = result.data;
     if (data is Map) {
-      return Map<String, dynamic>.from(data);
+      return normalizeBillingDateFields(Map<String, dynamic>.from(data));
     }
     return {};
+  }
+
+  static Map<String, dynamic> normalizeBillingDateFields(
+    Map<String, dynamic> billing,
+  ) {
+    final next = Map<String, dynamic>.from(billing);
+    const dateFields = [
+      "trialStartedAt",
+      "trialStartDate",
+      "trialEndsAt",
+      "trialEndDate",
+      "firstPaymentDate",
+      "nextChargeDate",
+      "nextBillingDate",
+      "paymentGraceEndsAt",
+      "paymentGraceStartedAt",
+      "pendingPlanEffectiveAt",
+      "currentPeriodStart",
+      "currentPeriodEnd",
+      "lastPaymentAt",
+      "cancelledAt",
+      "updatedAt",
+    ];
+    for (final field in dateFields) {
+      final normalized = normalizeBackendDate(next[field]);
+      if (normalized != null) next[field] = normalized;
+    }
+    return next;
   }
 
   static Map<String, dynamic> billingFromUserData(Map<String, dynamic> data) {
@@ -230,13 +291,13 @@ class BillingService {
       }
     }
 
-    return billing;
+    return normalizeBillingDateFields(billing);
   }
 
   static int daysRemaining(dynamic value) {
-    if (value is! Timestamp) return 0;
-
-    final remaining = value.toDate().difference(DateTime.now());
+    final date = normalizeBackendDate(value);
+    if (date == null) return 0;
+    final remaining = date.difference(DateTime.now());
     if (remaining.isNegative) return 0;
 
     return (remaining.inHours / 24).ceil().clamp(0, 9999).toInt();
@@ -361,12 +422,7 @@ class BillingService {
     final billingPlanStatus =
         billing["billingPlanStatus"]?.toString().trim().toLowerCase() ?? "";
     final trialEndValue = billing["trialEndDate"] ?? billing["trialEndsAt"];
-    DateTime? trialEndDate;
-    if (trialEndValue is Timestamp) {
-      trialEndDate = trialEndValue.toDate();
-    } else if (trialEndValue is DateTime) {
-      trialEndDate = trialEndValue;
-    }
+    final trialEndDate = normalizeBackendDate(trialEndValue);
 
     final current = now ?? DateTime.now();
     final trialActive = billing["trialActive"] == true ||
@@ -586,10 +642,19 @@ class BillingService {
     final role = userData["role"]?.toString() ?? "";
     if (role == "employer" &&
         FirebaseAuth.instance.currentUser?.uid == employerId) {
-      userData = {
-        ...userData,
-        "billing": await getAuthoritativeCompanyBillingStatus(),
-      };
+      try {
+        userData = {
+          ...userData,
+          "billing": await getAuthoritativeCompanyBillingStatus(),
+        };
+      } catch (_) {
+        final fallbackData = _userDataWithUsedJobPosts(
+          userData,
+          usedJobPosts,
+        );
+        if (!_hasModernPostingEntitlement(fallbackData)) rethrow;
+        userData = fallbackData;
+      }
     } else {
       userData = await refreshSubscriptionLifecycle(
         employerId: employerId,
@@ -616,12 +681,7 @@ class BillingService {
     ));
 
     final trialEndValue = billing["trialEndDate"] ?? billing["trialEndsAt"];
-    DateTime? trialEndDate;
-    if (trialEndValue is Timestamp) {
-      trialEndDate = trialEndValue.toDate();
-    } else if (trialEndValue is DateTime) {
-      trialEndDate = trialEndValue;
-    }
+    final trialEndDate = normalizeBackendDate(trialEndValue);
 
     final trialExpired =
         trialEndDate != null && !trialEndDate.isAfter(DateTime.now());
@@ -1485,6 +1545,32 @@ class BillingService {
     }
   }
 
+  static bool _hasModernPostingEntitlement(Map<String, dynamic> userData) {
+    final billing = billingFromUserData(userData);
+    final subscriptionStatus =
+        billing["subscriptionStatus"]?.toString().trim().toLowerCase() ?? "";
+    final billingStatus =
+        billing["billingStatus"]?.toString().trim().toLowerCase() ?? "";
+    final availableJobPosts = readInt(
+      billing["vacancySlotLimit"] ??
+          billing["includedJobSlots"] ??
+          billing["availableJobPosts"],
+    );
+    final hasPlan = currentPlanId(billing).isNotEmpty;
+    final directDebitConfigured = isDirectDebitConfigured(billing);
+    final trialActive = billing["trialActive"] == true ||
+        billing["trialStatus"]?.toString().toLowerCase() == "active" ||
+        subscriptionStatus == "trial";
+
+    return hasPlan &&
+        availableJobPosts > 0 &&
+        directDebitConfigured &&
+        billingStatus == "active" &&
+        (subscriptionStatus == "active" ||
+            subscriptionStatus == "trial" ||
+            trialActive);
+  }
+
   Map<String, dynamic> _assertEmployerCanPostFromData(
     Map<String, dynamic> userData,
   ) {
@@ -1509,25 +1595,7 @@ class BillingService {
           billing["usedJobPosts"] ??
           billing["usedSlots"],
     );
-    final hasPlan = (billing["planId"] ??
-            billing["currentPlanId"] ??
-            billing["currentPlan"] ??
-            billing["activePlanId"] ??
-            "")
-        .toString()
-        .trim()
-        .isNotEmpty;
-    final directDebitConfigured = isDirectDebitConfigured(billing);
-    final trialActive = billing["trialActive"] == true ||
-        billing["trialStatus"]?.toString().toLowerCase() == "active" ||
-        subscriptionStatus == "trial";
-    final modernEntitlement = hasPlan &&
-        availableJobPosts > 0 &&
-        directDebitConfigured &&
-        billingStatus == "active" &&
-        (subscriptionStatus == "active" ||
-            subscriptionStatus == "trial" ||
-            trialActive);
+    final modernEntitlement = _hasModernPostingEntitlement(userData);
 
     if (!modernEntitlement &&
         (status == "pending" ||
