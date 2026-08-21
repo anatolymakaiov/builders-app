@@ -355,6 +355,7 @@ service cloud.firestore {
         "directDebitMandateId",
         "mandateStatus",
         "goCardlessBillingRequestId",
+        "goCardlessBillingRequestStatus",
         "goCardlessBillingRequestFlowId",
         "goCardlessCustomerId",
         "goCardlessMandateId",

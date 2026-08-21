@@ -15,6 +15,12 @@ const GOCARDLESS_API_VERSION = "2015-07-06";
 const DEFAULT_FUNCTION_REGION = "us-central1";
 const PAYMENT_GRACE_DAYS = 3;
 const TRIAL_DAYS = 30;
+const CONFIGURED_MANDATE_STATUSES = new Set([
+  "pending_submission",
+  "submitted",
+  "active",
+  "reinstated",
+]);
 const STROYKA_COMMERCIAL_PLANS = {
   starter: {
     id: "starter",
@@ -436,7 +442,7 @@ function directDebitConfigured(billing) {
     cleanText(billing.directDebitStatus).toLowerCase() === "active";
   return (explicit ||
       !!cleanText(billing.goCardlessMandateId || billing.directDebitMandateId)) &&
-    ["active", "reinstated", "submitted"].includes(mandateStatus) &&
+    CONFIGURED_MANDATE_STATUSES.has(mandateStatus) &&
     billing.directDebitEnabled === true;
 }
 
@@ -775,6 +781,7 @@ async function activateDirectDebitEntitlement(
   subscriptionId,
   plan,
   subscription = {},
+  mandateStatus = "active",
 ) {
   const snap = await employerRef.get();
   const billing = (snap.data() || {}).billing || {};
@@ -793,7 +800,7 @@ async function activateDirectDebitEntitlement(
     paymentStatus: "pending",
     directDebitEnabled: true,
     directDebitConfigured: true,
-    mandateStatus: "active",
+    mandateStatus,
     directDebitStatus: "active",
     directDebitMandateId: mandateId,
     goCardlessMandateId: mandateId,
@@ -826,11 +833,26 @@ async function activateDirectDebitEntitlement(
     paymentFailureReason: "",
     paymentGraceStartedAt: admin.firestore.FieldValue.delete(),
     paymentGraceEndsAt: admin.firestore.FieldValue.delete(),
-  });
+	  });
+  console.log("GOCARDLESS ENTITLEMENT ACTIVATED", JSON.stringify({
+    employerId: employerRef.id,
+    mandateId,
+    mandateStatus,
+    subscriptionId,
+    subscriptionStatus,
+    planId: plan.id,
+    trialActive: trialWindow.isActive,
+    firstPaymentDate,
+  }));
   await restoreBillingSuspendedVacancies(employerRef);
 }
 
-async function ensureGoCardlessSubscription(employerRef, mandateId, accessToken) {
+async function ensureGoCardlessSubscription(
+  employerRef,
+  mandateId,
+  accessToken,
+  mandateStatus = "active",
+) {
   const employerSnap = await employerRef.get();
   const employer = employerSnap.data() || {};
   const billing = employer.billing || {};
@@ -848,6 +870,8 @@ async function ensureGoCardlessSubscription(employerRef, mandateId, accessToken)
       mandateId,
       existingSubscriptionId,
       plan,
+      {},
+      mandateStatus,
     );
     return existingSubscriptionId;
   }
@@ -891,6 +915,7 @@ async function ensureGoCardlessSubscription(employerRef, mandateId, accessToken)
 	    subscriptionId,
 	    plan,
 	    subscription,
+	    mandateStatus,
 	  );
 
   return subscriptionId;
@@ -924,9 +949,9 @@ async function reconcileBillingRequest(employerRef, billingRequestId, accessToke
   if (mandateId) {
     updates.goCardlessMandateId = mandateId;
     updates.directDebitMandateId = mandateId;
-    updates.mandateStatus = "pending";
+    updates.mandateStatus = "pending_submission";
+    updates.directDebitStatus = "pending_submission";
   }
-  await updateEmployerBilling(employerRef, updates);
 
   if (status === "fulfilled" && mandateId) {
     const mandateResponse = await goCardlessGet(
@@ -935,10 +960,30 @@ async function reconcileBillingRequest(employerRef, billingRequestId, accessToke
     );
     const mandate = mandateResponse.mandates || mandateResponse.mandate || {};
     const mandateStatus = cleanText(mandate.status);
-    if (mandateStatus === "active") {
-      await ensureGoCardlessSubscription(employerRef, mandateId, accessToken);
+    if (mandateStatus) {
+      updates.mandateStatus = mandateStatus;
+      updates.directDebitStatus = mandateStatus;
     }
+    console.log("GOCARDLESS BILLING REQUEST RECONCILED", JSON.stringify({
+      employerId: employerRef.id,
+      billingRequestId,
+      billingRequestStatus: status,
+      mandateId,
+      mandateStatus,
+      configuredStatus: CONFIGURED_MANDATE_STATUSES.has(mandateStatus),
+    }));
+    await updateEmployerBilling(employerRef, updates);
+    if (CONFIGURED_MANDATE_STATUSES.has(mandateStatus)) {
+      await ensureGoCardlessSubscription(
+        employerRef,
+        mandateId,
+        accessToken,
+        mandateStatus,
+      );
+    }
+    return;
   }
+  await updateEmployerBilling(employerRef, updates);
 }
 
 async function processGoCardlessEvent(event, accessToken) {
@@ -952,6 +997,13 @@ async function processGoCardlessEvent(event, accessToken) {
       "goCardlessBillingRequestId",
       billingRequestId,
     );
+    console.log("GOCARDLESS EVENT CORRELATION", JSON.stringify({
+      eventId: cleanText(event.id),
+      resourceType,
+      action,
+      billingRequestId,
+      employerMatched: !!employerRef,
+    }));
     if (!employerRef) return "billing_request_unmatched";
     if (action === "fulfilled") {
       await reconcileBillingRequest(employerRef, billingRequestId, accessToken);
@@ -973,18 +1025,41 @@ async function processGoCardlessEvent(event, accessToken) {
       "goCardlessMandateId",
       mandateId,
     );
+    console.log("GOCARDLESS EVENT CORRELATION", JSON.stringify({
+      eventId: cleanText(event.id),
+      resourceType,
+      action,
+      mandateId,
+      employerMatched: !!employerRef,
+    }));
     if (!employerRef) return "mandate_unmatched";
     if (["created", "submitted"].includes(action)) {
       await updateEmployerBilling(employerRef, {
         billingStatus: "mandate_pending",
+        subscriptionStatus: "setup_required",
         mandateStatus: action,
+        directDebitStatus: action,
         goCardlessMandateId: mandateId,
         directDebitMandateId: mandateId,
       });
+      if (CONFIGURED_MANDATE_STATUSES.has(action)) {
+        await ensureGoCardlessSubscription(
+          employerRef,
+          mandateId,
+          accessToken,
+          action,
+        );
+        return "mandate_subscription_ensured";
+      }
       return "mandate_pending";
     }
 	    if (["active", "reinstated"].includes(action)) {
-	      await ensureGoCardlessSubscription(employerRef, mandateId, accessToken);
+	      await ensureGoCardlessSubscription(
+	        employerRef,
+	        mandateId,
+	        accessToken,
+	        action,
+	      );
 	      await clearPaymentGrace(employerRef);
 	      return "mandate_active_subscription_ensured";
 	    }
@@ -1000,6 +1075,13 @@ async function processGoCardlessEvent(event, accessToken) {
       "goCardlessSubscriptionId",
       subscriptionId,
     );
+    console.log("GOCARDLESS EVENT CORRELATION", JSON.stringify({
+      eventId: cleanText(event.id),
+      resourceType,
+      action,
+      subscriptionId,
+      employerMatched: !!employerRef,
+    }));
     if (!employerRef) return "subscription_unmatched";
 	    if (["created", "customer_approval_granted"].includes(action)) {
 	      await updateEmployerBilling(employerRef, {
@@ -1534,11 +1616,14 @@ exports.getCompanyBillingStatus = onCall(
 
     const billing = user.billing || {};
     const billingRequestId = cleanText(billing.goCardlessBillingRequestId);
+    const billingLifecycleState = cleanText(
+      billing.billingStatus || billing.subscriptionStatus,
+    ).toLowerCase();
     const pending = [
       "setup_pending",
       "mandate_pending",
       "setup_required",
-    ].includes(cleanText(billing.billingStatus || billing.subscriptionStatus));
+    ].includes(billingLifecycleState) || !directDebitConfigured(billing);
 
     if (pending && billingRequestId) {
       const accessToken = goCardlessAccessToken.value();

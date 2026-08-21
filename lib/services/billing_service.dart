@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -507,11 +508,26 @@ class BillingService {
         .get();
     var userData = userSnap.data() ?? {};
     final usedJobPosts = await countPublishedJobSlots(employerId);
-    userData = await refreshSubscriptionLifecycle(
-      employerId: employerId,
-      userData: _userDataWithUsedJobPosts(userData, usedJobPosts),
-      usedJobPosts: usedJobPosts,
-    );
+    final role = userData["role"]?.toString() ?? "";
+    if (role == "employer" &&
+        FirebaseAuth.instance.currentUser?.uid == employerId) {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable("getCompanyBillingStatus")
+          .call();
+      final data = result.data;
+      if (data is Map) {
+        userData = {
+          ...userData,
+          "billing": Map<String, dynamic>.from(data),
+        };
+      }
+    } else {
+      userData = await refreshSubscriptionLifecycle(
+        employerId: employerId,
+        userData: _userDataWithUsedJobPosts(userData, usedJobPosts),
+        usedJobPosts: usedJobPosts,
+      );
+    }
     _assertEmployerCanPostFromData(
       _userDataWithUsedJobPosts(userData, usedJobPosts),
     );
