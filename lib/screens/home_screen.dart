@@ -16,6 +16,7 @@ import 'post_job_screen.dart';
 import 'employer_profile_screen.dart';
 import 'admin_dashboard_screen.dart';
 import '../services/app_navigation.dart';
+import '../services/application_activity_service.dart';
 import '../services/billing_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
@@ -259,11 +260,62 @@ class _HomeScreenState extends State<HomeScreen> {
       return getUnviewedEmployerApplications(userId!);
     }
 
-    return FirebaseFirestore.instance
-        .collection("applications")
-        .where("unreadFor", arrayContains: userId)
+    return getUnreadWorkerApplications(userId!);
+  }
+
+  Stream<int> getUnreadWorkerApplications(String workerId) {
+    final controller = StreamController<int>();
+    final applicationsRef =
+        FirebaseFirestore.instance.collection("applications");
+
+    List<QueryDocumentSnapshot<Map<String, dynamic>>>? workerDocs;
+    List<QueryDocumentSnapshot<Map<String, dynamic>>>? memberDocs;
+    late final StreamSubscription workerSub;
+    late final StreamSubscription memberSub;
+
+    void emit() {
+      final byWorker = workerDocs;
+      final byMember = memberDocs;
+      if (byWorker == null || byMember == null || controller.isClosed) return;
+
+      final seen = <String>{};
+      var count = 0;
+      for (final doc in [...byWorker, ...byMember]) {
+        if (!seen.add(doc.id)) continue;
+        if (ApplicationActivityService.isUnreadFor(doc.data(), workerId)) {
+          count++;
+        }
+      }
+
+      controller.add(count);
+    }
+
+    workerSub = applicationsRef
+        .where("workerId", isEqualTo: workerId)
         .snapshots()
-        .map((snap) => snap.docs.length);
+        .listen((snapshot) {
+      workerDocs = snapshot.docs;
+      emit();
+    }, onError: controller.addError);
+
+    memberSub = applicationsRef
+        .where("members", arrayContains: workerId)
+        .snapshots()
+        .listen((snapshot) {
+      memberDocs = snapshot.docs;
+      emit();
+    }, onError: (error) {
+      debugPrint("WORKER APPLICATION BADGE MEMBER STREAM SKIPPED: $error");
+      memberDocs = const [];
+      emit();
+    });
+
+    controller.onCancel = () async {
+      await workerSub.cancel();
+      await memberSub.cancel();
+    };
+
+    return controller.stream;
   }
 
   Stream<int> getUnreadProfileNotices() {
