@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -19,6 +20,7 @@ import '../services/app_navigation.dart';
 import '../services/application_activity_service.dart';
 import '../services/billing_service.dart';
 import '../services/notification_service.dart';
+import '../services/web_home_badge_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/legal_documents.dart';
@@ -264,6 +266,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Stream<int> getUnreadWorkerApplications(String workerId) {
+    if (kIsWeb) {
+      return WebHomeBadgeService().unreadWorkerApplications(workerId);
+    }
+
     final controller = StreamController<int>();
     final applicationsRef =
         FirebaseFirestore.instance.collection("applications");
@@ -415,6 +421,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Stream<int> getUnreadProfileNotices() {
     if (userId == null || role == "admin") return const Stream.empty();
+    if (kIsWeb) {
+      return WebHomeBadgeService().unreadProfileNotices(
+        userId: userId!,
+        role: role,
+      );
+    }
+
     final controller = StreamController<int>();
     var adminInboxCount = 0;
     var policyNoticeCount = 0;
