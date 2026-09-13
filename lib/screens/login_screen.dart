@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_preferences_service.dart';
@@ -54,6 +55,23 @@ class _LoginScreenState extends State<LoginScreen> {
       hasValidSession &&
       widget.sessionMode == AuthPreferenceMethod.simpleEnter;
 
+  Future<void> enrollBiometricAfterPasswordLogin({
+    required User user,
+    required String email,
+    required String password,
+  }) async {
+    if (kIsWeb) return;
+    try {
+      await authPreferences.enrollBiometricLoginForPasswordSession(
+        user: user,
+        email: email,
+        password: password,
+      );
+    } catch (error) {
+      debugPrint("Biometric enrollment skipped after password login: $error");
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -94,7 +112,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
     final user = credential.user;
     if (user != null) {
-      await authPreferences.enrollBiometricLoginForPasswordSession(
+      await enrollBiometricAfterPasswordLogin(
         user: user,
         email: email,
         password: password,
@@ -905,6 +923,23 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
     super.dispose();
   }
 
+  Future<void> enrollBiometricAfterPasswordLogin({
+    required User user,
+    required String email,
+    required String password,
+  }) async {
+    if (kIsWeb) return;
+    try {
+      await authPreferences.enrollBiometricLoginForPasswordSession(
+        user: user,
+        email: email,
+        password: password,
+      );
+    } catch (error) {
+      debugPrint("Biometric enrollment skipped after password login: $error");
+    }
+  }
+
   Future<void> signIn() async {
     final email = authPreferences.normalizeEmail(emailController.text);
     final password = passwordController.text.trim();
@@ -923,7 +958,7 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
       );
       final user = credential.user;
       if (user != null) {
-        await authPreferences.enrollBiometricLoginForPasswordSession(
+        await enrollBiometricAfterPasswordLogin(
           user: user,
           email: email,
           password: password,
