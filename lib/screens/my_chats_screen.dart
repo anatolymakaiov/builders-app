@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:async';
 import 'chat_screen.dart';
 import '../services/chat_profile_navigation_service.dart';
 import '../services/chat_service.dart';
+import '../services/web_chat_data_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/app_cached_image.dart';
@@ -644,6 +646,227 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
     return fallback;
   }
 
+  Future<bool> hideChatForCurrentUserById(
+    BuildContext context,
+    String chatId,
+    String uid,
+  ) async {
+    final confirmed = await confirmDeleteItem(context);
+    if (!confirmed) return false;
+    await FirebaseFirestore.instance.collection("chats").doc(chatId).set({
+      "hiddenForUsers": FieldValue.arrayUnion([uid]),
+      "unreadFor": FieldValue.arrayRemove([uid]),
+      "deletedAtForUser.$uid": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    return true;
+  }
+
+  Widget buildWebChatList(String uid) {
+    return StreamBuilder<List<WebChatListItem>>(
+      stream: WebChatDataService().chatList(uid),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final chats = snapshot.data ?? const <WebChatListItem>[];
+        if (chats.isEmpty) {
+          return const Center(child: Text("No chats yet"));
+        }
+
+        return ListView.builder(
+          itemCount: chats.length,
+          itemBuilder: (context, index) {
+            final item = chats[index];
+            final chat = item.chat;
+            final data = item.chatData;
+            final displayData = item.displayData;
+            final jobData = item.jobData;
+
+            final workerId = data["workerId"];
+            final employerId = data["employerId"];
+            final isInternalTeamChat = data["type"] == "internal_team";
+            final isTeamChat = data["type"] == "team" || data["teamId"] != null;
+            final showTeamAvatar =
+                isInternalTeamChat || (isTeamChat && uid == employerId);
+            final isWorker = uid == workerId;
+            final unreadFor = List<String>.from(data["unreadFor"] ?? []);
+            final unread = unreadFor.contains(uid) ? 1 : 0;
+            final updatedAt = data["updatedAt"] as Timestamp?;
+            final typingWorker = data["typing_worker"] ?? false;
+            final typingEmployer = data["typing_employer"] ?? false;
+            final otherTyping = isWorker ? typingEmployer : typingWorker;
+            final lastMessage = data["lastMessage"] ?? "";
+            final lastMessageType = data["lastMessageType"] ?? "text";
+            final isOnline =
+                showTeamAvatar ? false : displayData?["isOnline"] ?? false;
+            final avatarUrl = avatarFrom(displayData);
+            final isTyping = otherTyping && isOnline;
+            final isGenericDirectChat = !isTeamChat &&
+                data["workerId"] == null &&
+                data["employerId"] == null;
+            final chatName = isGenericDirectChat
+                ? "${ChatService.firstText(
+                    displayData,
+                    ["companyName", "name", "displayName"],
+                    fallback: "User",
+                  )}_${ChatService.jobTitle(data, jobData)}"
+                : ChatService.chatDisplayName(
+                    chatData: data,
+                    participantData: displayData,
+                    jobData: jobData,
+                    currentUserIsWorker: isWorker,
+                    isInternalTeamChat: isInternalTeamChat,
+                    showTeamAvatar: showTeamAvatar,
+                  );
+
+            return Dismissible(
+              key: ValueKey("web-chat-${chat.id}"),
+              direction: DismissDirection.endToStart,
+              background: deleteBackground(),
+              confirmDismiss: (_) =>
+                  hideChatForCurrentUserById(context, chat.id, uid),
+              child: StroykaSurface(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: EdgeInsets.zero,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ChatScreen(chatId: chat.id),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => openChatProfile(
+                            context,
+                            data,
+                            uid,
+                            preferTeamTarget: showTeamAvatar,
+                          ),
+                          child: chatAvatar(
+                            avatarUrl: avatarUrl,
+                            isOnline: isOnline,
+                            fallbackIcon:
+                                showTeamAvatar ? Icons.group : Icons.person,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: () => openChatProfile(
+                                        context,
+                                        data,
+                                        uid,
+                                        preferTeamTarget: showTeamAvatar,
+                                      ),
+                                      child: Text(
+                                        chatName,
+                                        style: TextStyle(
+                                          fontWeight: unread > 0
+                                              ? FontWeight.bold
+                                              : FontWeight.w500,
+                                          fontSize: 16,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    formatTime(updatedAt),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  if (!isTyping && lastMessageType != "text")
+                                    const Padding(
+                                      padding: EdgeInsets.only(right: 4),
+                                      child: Icon(
+                                        Icons.attach_file,
+                                        size: 16,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  Expanded(
+                                    child: Text(
+                                      isTyping
+                                          ? "typing..."
+                                          : lastMessagePreview(
+                                              lastMessageType,
+                                              lastMessage,
+                                            ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: isTyping
+                                            ? Colors.green
+                                            : Colors.grey[700],
+                                        fontStyle: isTyping
+                                            ? FontStyle.italic
+                                            : FontStyle.normal,
+                                        fontWeight: unread > 0
+                                            ? FontWeight.w600
+                                            : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                  if (unread > 0)
+                                    Container(
+                                      margin: const EdgeInsets.only(left: 8),
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.green,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Text(
+                                        unread > 9 ? "9+" : unread.toString(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -671,331 +894,343 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
         child: Column(
           children: [
             if (searchOpen) Expanded(child: buildSearchPanel(uid)),
+            if (!searchOpen && kIsWeb) Expanded(child: buildWebChatList(uid)),
             if (!searchOpen)
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection("chats")
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
+              if (!kIsWeb)
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection("chats")
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return const Center(child: Text("No chats yet"));
-                    }
+                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                        return const Center(child: Text("No chats yet"));
+                      }
 
-                    final chats = snapshot.data!.docs.where((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      return chatBelongsToUser(data, uid);
-                    }).toList();
+                      final chats = snapshot.data!.docs.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return chatBelongsToUser(data, uid);
+                      }).toList();
 
-                    if (chats.isEmpty) {
-                      return const Center(child: Text("No chats yet"));
-                    }
+                      if (chats.isEmpty) {
+                        return const Center(child: Text("No chats yet"));
+                      }
 
-                    /// 🔥 SORT
-                    chats.sort((a, b) {
-                      final aData = a.data() as Map<String, dynamic>;
-                      final bData = b.data() as Map<String, dynamic>;
+                      /// 🔥 SORT
+                      chats.sort((a, b) {
+                        final aData = a.data() as Map<String, dynamic>;
+                        final bData = b.data() as Map<String, dynamic>;
 
-                      final aTime = aData["updatedAt"] as Timestamp?;
-                      final bTime = bData["updatedAt"] as Timestamp?;
+                        final aTime = aData["updatedAt"] as Timestamp?;
+                        final bTime = bData["updatedAt"] as Timestamp?;
 
-                      if (aTime == null && bTime == null) return 0;
-                      if (aTime == null) return 1;
-                      if (bTime == null) return -1;
+                        if (aTime == null && bTime == null) return 0;
+                        if (aTime == null) return 1;
+                        if (bTime == null) return -1;
 
-                      return bTime.compareTo(aTime);
-                    });
+                        return bTime.compareTo(aTime);
+                      });
 
-                    return ListView.builder(
-                      itemCount: chats.length,
-                      itemBuilder: (context, index) {
-                        final chat = chats[index];
-                        final data = chat.data() as Map<String, dynamic>;
+                      return ListView.builder(
+                        itemCount: chats.length,
+                        itemBuilder: (context, index) {
+                          final chat = chats[index];
+                          final data = chat.data() as Map<String, dynamic>;
 
-                        final workerId = data["workerId"];
-                        final employerId = data["employerId"];
-                        final isInternalTeamChat =
-                            data["type"] == "internal_team";
-                        final isTeamChat =
-                            data["type"] == "team" || data["teamId"] != null;
-                        final showTeamAvatar = isInternalTeamChat ||
-                            (isTeamChat && uid == employerId);
+                          final workerId = data["workerId"];
+                          final employerId = data["employerId"];
+                          final isInternalTeamChat =
+                              data["type"] == "internal_team";
+                          final isTeamChat =
+                              data["type"] == "team" || data["teamId"] != null;
+                          final showTeamAvatar = isInternalTeamChat ||
+                              (isTeamChat && uid == employerId);
 
-                        final isWorker = uid == workerId;
+                          final isWorker = uid == workerId;
 
-                        final unreadFor =
-                            List<String>.from(data["unreadFor"] ?? []);
-                        final unread = unreadFor.contains(uid) ? 1 : 0;
+                          final unreadFor =
+                              List<String>.from(data["unreadFor"] ?? []);
+                          final unread = unreadFor.contains(uid) ? 1 : 0;
 
-                        final otherUserId = isTeamChat
-                            ? employerId
-                            : (isWorker
-                                ? employerId
-                                : workerId ?? otherParticipantId(data, uid));
-                        final displayCollection =
-                            showTeamAvatar ? "teams" : "users";
-                        final displayId =
-                            showTeamAvatar ? data["teamId"] : otherUserId;
+                          final otherUserId = isTeamChat
+                              ? employerId
+                              : (isWorker
+                                  ? employerId
+                                  : workerId ?? otherParticipantId(data, uid));
+                          final displayCollection =
+                              showTeamAvatar ? "teams" : "users";
+                          final displayId =
+                              showTeamAvatar ? data["teamId"] : otherUserId;
 
-                        if (displayId == null) {
-                          return const SizedBox();
-                        }
+                          if (displayId == null) {
+                            return const SizedBox();
+                          }
 
-                        final updatedAt = data["updatedAt"] as Timestamp?;
-                        final jobId = data["jobId"]?.toString();
+                          final updatedAt = data["updatedAt"] as Timestamp?;
+                          final jobId = data["jobId"]?.toString();
 
-                        final typingWorker = data["typing_worker"] ?? false;
-                        final typingEmployer = data["typing_employer"] ?? false;
+                          final typingWorker = data["typing_worker"] ?? false;
+                          final typingEmployer =
+                              data["typing_employer"] ?? false;
 
-                        final otherTyping =
-                            isWorker ? typingEmployer : typingWorker;
+                          final otherTyping =
+                              isWorker ? typingEmployer : typingWorker;
 
-                        final lastMessage = data["lastMessage"] ?? "";
-                        final lastMessageType =
-                            data["lastMessageType"] ?? "text";
+                          final lastMessage = data["lastMessage"] ?? "";
+                          final lastMessageType =
+                              data["lastMessageType"] ?? "text";
 
-                        return StreamBuilder<DocumentSnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection(displayCollection)
-                              .doc(displayId)
-                              .snapshots(),
-                          builder: (context, displaySnap) {
-                            final displayData = displaySnap.data?.data()
-                                as Map<String, dynamic>?;
+                          return StreamBuilder<DocumentSnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection(displayCollection)
+                                .doc(displayId)
+                                .snapshots(),
+                            builder: (context, displaySnap) {
+                              final displayData = displaySnap.data?.data()
+                                  as Map<String, dynamic>?;
 
-                            final isOnline = showTeamAvatar
-                                ? false
-                                : displayData?["isOnline"] ?? false;
-                            final avatarUrl = avatarFrom(displayData);
-                            final isTyping = otherTyping && isOnline;
+                              final isOnline = showTeamAvatar
+                                  ? false
+                                  : displayData?["isOnline"] ?? false;
+                              final avatarUrl = avatarFrom(displayData);
+                              final isTyping = otherTyping && isOnline;
 
-                            return StreamBuilder<DocumentSnapshot>(
-                              stream: jobId == null || jobId.isEmpty
-                                  ? null
-                                  : FirebaseFirestore.instance
-                                      .collection("jobs")
-                                      .doc(jobId)
-                                      .snapshots(),
-                              builder: (context, jobSnap) {
-                                final jobData = jobSnap.data?.data()
-                                    as Map<String, dynamic>?;
-                                final isGenericDirectChat = !isTeamChat &&
-                                    data["workerId"] == null &&
-                                    data["employerId"] == null;
-                                final chatName = isGenericDirectChat
-                                    ? "${ChatService.firstText(
-                                        displayData,
-                                        ["companyName", "name", "displayName"],
-                                        fallback: "User",
-                                      )}_${ChatService.jobTitle(data, jobData)}"
-                                    : ChatService.chatDisplayName(
-                                        chatData: data,
-                                        participantData: displayData,
-                                        jobData: jobData,
-                                        currentUserIsWorker: isWorker,
-                                        isInternalTeamChat: isInternalTeamChat,
-                                        showTeamAvatar: showTeamAvatar,
-                                      );
-
-                                return Dismissible(
-                                  key: ValueKey("chat-${chat.id}"),
-                                  direction: DismissDirection.endToStart,
-                                  background: deleteBackground(),
-                                  confirmDismiss: (_) => hideChatForCurrentUser(
-                                    context,
-                                    chat,
-                                    uid,
-                                  ),
-                                  child: StroykaSurface(
-                                    margin: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 8),
-                                    padding: EdgeInsets.zero,
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(14),
-                                      onTap: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                ChatScreen(chatId: chat.id),
-                                          ),
+                              return StreamBuilder<DocumentSnapshot>(
+                                stream: jobId == null || jobId.isEmpty
+                                    ? null
+                                    : FirebaseFirestore.instance
+                                        .collection("jobs")
+                                        .doc(jobId)
+                                        .snapshots(),
+                                builder: (context, jobSnap) {
+                                  final jobData = jobSnap.data?.data()
+                                      as Map<String, dynamic>?;
+                                  final isGenericDirectChat = !isTeamChat &&
+                                      data["workerId"] == null &&
+                                      data["employerId"] == null;
+                                  final chatName = isGenericDirectChat
+                                      ? "${ChatService.firstText(
+                                          displayData,
+                                          [
+                                            "companyName",
+                                            "name",
+                                            "displayName"
+                                          ],
+                                          fallback: "User",
+                                        )}_${ChatService.jobTitle(data, jobData)}"
+                                      : ChatService.chatDisplayName(
+                                          chatData: data,
+                                          participantData: displayData,
+                                          jobData: jobData,
+                                          currentUserIsWorker: isWorker,
+                                          isInternalTeamChat:
+                                              isInternalTeamChat,
+                                          showTeamAvatar: showTeamAvatar,
                                         );
-                                      },
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 12, vertical: 12),
-                                        child: Row(
-                                          children: [
-                                            GestureDetector(
-                                              onTap: () => openChatProfile(
-                                                context,
-                                                data,
-                                                uid,
-                                                preferTeamTarget:
-                                                    showTeamAvatar,
-                                              ),
-                                              child: chatAvatar(
-                                                avatarUrl: avatarUrl,
-                                                isOnline: isOnline,
-                                                fallbackIcon: showTeamAvatar
-                                                    ? Icons.group
-                                                    : Icons.person,
-                                              ),
+
+                                  return Dismissible(
+                                    key: ValueKey("chat-${chat.id}"),
+                                    direction: DismissDirection.endToStart,
+                                    background: deleteBackground(),
+                                    confirmDismiss: (_) =>
+                                        hideChatForCurrentUser(
+                                      context,
+                                      chat,
+                                      uid,
+                                    ),
+                                    child: StroykaSurface(
+                                      margin: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8),
+                                      padding: EdgeInsets.zero,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(14),
+                                        onTap: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  ChatScreen(chatId: chat.id),
                                             ),
+                                          );
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 12, vertical: 12),
+                                          child: Row(
+                                            children: [
+                                              GestureDetector(
+                                                onTap: () => openChatProfile(
+                                                  context,
+                                                  data,
+                                                  uid,
+                                                  preferTeamTarget:
+                                                      showTeamAvatar,
+                                                ),
+                                                child: chatAvatar(
+                                                  avatarUrl: avatarUrl,
+                                                  isOnline: isOnline,
+                                                  fallbackIcon: showTeamAvatar
+                                                      ? Icons.group
+                                                      : Icons.person,
+                                                ),
+                                              ),
 
-                                            const SizedBox(width: 12),
+                                              const SizedBox(width: 12),
 
-                                            /// 💬 TEXT
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  /// NAME + TIME
-                                                  Row(
-                                                    mainAxisAlignment:
-                                                        MainAxisAlignment
-                                                            .spaceBetween,
-                                                    children: [
-                                                      Expanded(
-                                                        child: InkWell(
-                                                          onTap: () =>
-                                                              openChatProfile(
-                                                            context,
-                                                            data,
-                                                            uid,
-                                                            preferTeamTarget:
-                                                                showTeamAvatar,
-                                                          ),
-                                                          child: Text(
-                                                            chatName,
-                                                            style: TextStyle(
-                                                              fontWeight: unread >
-                                                                      0
-                                                                  ? FontWeight
-                                                                      .bold
-                                                                  : FontWeight
-                                                                      .w500,
-                                                              fontSize: 16,
+                                              /// 💬 TEXT
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    /// NAME + TIME
+                                                    Row(
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .spaceBetween,
+                                                      children: [
+                                                        Expanded(
+                                                          child: InkWell(
+                                                            onTap: () =>
+                                                                openChatProfile(
+                                                              context,
+                                                              data,
+                                                              uid,
+                                                              preferTeamTarget:
+                                                                  showTeamAvatar,
                                                             ),
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
+                                                            child: Text(
+                                                              chatName,
+                                                              style: TextStyle(
+                                                                fontWeight: unread >
+                                                                        0
+                                                                    ? FontWeight
+                                                                        .bold
+                                                                    : FontWeight
+                                                                        .w500,
+                                                                fontSize: 16,
+                                                              ),
+                                                              overflow:
+                                                                  TextOverflow
+                                                                      .ellipsis,
+                                                            ),
                                                           ),
                                                         ),
-                                                      ),
-                                                      Text(
-                                                        formatTime(updatedAt),
-                                                        style: const TextStyle(
-                                                          fontSize: 12,
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-
-                                                  const SizedBox(height: 4),
-
-                                                  /// MESSAGE
-                                                  Row(
-                                                    children: [
-                                                      if (!isTyping &&
-                                                          lastMessageType !=
-                                                              "text")
-                                                        const Padding(
-                                                          padding:
-                                                              EdgeInsets.only(
-                                                                  right: 4),
-                                                          child: Icon(
-                                                            Icons.attach_file,
-                                                            size: 16,
+                                                        Text(
+                                                          formatTime(updatedAt),
+                                                          style:
+                                                              const TextStyle(
+                                                            fontSize: 12,
                                                             color: Colors.grey,
                                                           ),
                                                         ),
-                                                      Expanded(
-                                                        child: Text(
-                                                          isTyping
-                                                              ? "typing..."
-                                                              : lastMessagePreview(
-                                                                  lastMessageType,
-                                                                  lastMessage,
-                                                                ),
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow
-                                                              .ellipsis,
-                                                          style: TextStyle(
-                                                            fontSize: 14,
-                                                            color: isTyping
-                                                                ? Colors.green
-                                                                : Colors
-                                                                    .grey[700],
-                                                            fontStyle: isTyping
-                                                                ? FontStyle
-                                                                    .italic
-                                                                : FontStyle
-                                                                    .normal,
-                                                            fontWeight:
-                                                                unread > 0
-                                                                    ? FontWeight
-                                                                        .w600
-                                                                    : FontWeight
-                                                                        .normal,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      if (unread > 0)
-                                                        Container(
-                                                          margin:
-                                                              const EdgeInsets
-                                                                  .only(
-                                                                  left: 8),
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .all(6),
-                                                          decoration:
-                                                              const BoxDecoration(
-                                                            color:
-                                                                AppColors.green,
-                                                            shape:
-                                                                BoxShape.circle,
-                                                          ),
-                                                          child: Text(
-                                                            unread > 9
-                                                                ? "9+"
-                                                                : unread
-                                                                    .toString(),
-                                                            style:
-                                                                const TextStyle(
+                                                      ],
+                                                    ),
+
+                                                    const SizedBox(height: 4),
+
+                                                    /// MESSAGE
+                                                    Row(
+                                                      children: [
+                                                        if (!isTyping &&
+                                                            lastMessageType !=
+                                                                "text")
+                                                          const Padding(
+                                                            padding:
+                                                                EdgeInsets.only(
+                                                                    right: 4),
+                                                            child: Icon(
+                                                              Icons.attach_file,
+                                                              size: 16,
                                                               color:
-                                                                  Colors.white,
-                                                              fontSize: 10,
+                                                                  Colors.grey,
+                                                            ),
+                                                          ),
+                                                        Expanded(
+                                                          child: Text(
+                                                            isTyping
+                                                                ? "typing..."
+                                                                : lastMessagePreview(
+                                                                    lastMessageType,
+                                                                    lastMessage,
+                                                                  ),
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                            style: TextStyle(
+                                                              fontSize: 14,
+                                                              color: isTyping
+                                                                  ? Colors.green
+                                                                  : Colors.grey[
+                                                                      700],
+                                                              fontStyle: isTyping
+                                                                  ? FontStyle
+                                                                      .italic
+                                                                  : FontStyle
+                                                                      .normal,
+                                                              fontWeight: unread >
+                                                                      0
+                                                                  ? FontWeight
+                                                                      .w600
+                                                                  : FontWeight
+                                                                      .normal,
                                                             ),
                                                           ),
                                                         ),
-                                                    ],
-                                                  ),
-                                                ],
+                                                        if (unread > 0)
+                                                          Container(
+                                                            margin:
+                                                                const EdgeInsets
+                                                                    .only(
+                                                                    left: 8),
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .all(6),
+                                                            decoration:
+                                                                const BoxDecoration(
+                                                              color: AppColors
+                                                                  .green,
+                                                              shape: BoxShape
+                                                                  .circle,
+                                                            ),
+                                                            child: Text(
+                                                              unread > 9
+                                                                  ? "9+"
+                                                                  : unread
+                                                                      .toString(),
+                                                              style:
+                                                                  const TextStyle(
+                                                                color: Colors
+                                                                    .white,
+                                                                fontSize: 10,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        );
-                      },
-                    );
-                  },
+                                  );
+                                },
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
           ],
         ),
       ),

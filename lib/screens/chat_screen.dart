@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -18,6 +19,7 @@ import '../services/report_service.dart';
 import '../services/chat_service.dart';
 import '../services/moderation_hold_service.dart';
 import '../services/notification_service.dart';
+import '../services/web_chat_data_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/app_cached_image.dart';
@@ -2394,6 +2396,458 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget buildWebChat(BuildContext context, String uid) {
+    return StreamBuilder<WebChatThreadData?>(
+      stream: WebChatDataService().chatThread(widget.chatId, uid),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final thread = snapshot.data;
+        if (thread == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text("Chat")),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      "Could not load this chat.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: () => setState(() {}),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text("Try again"),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        final chatData = thread.chatData;
+        final userData = thread.profileData;
+        final jobData = thread.jobData;
+        final inactive = isChatInactive(chatData);
+        final inactiveMessage = inactiveChatMessage(chatData);
+
+        final isInternalTeamChat = chatData["type"] == "internal_team";
+        final isTeamChat =
+            chatData["type"] == "team" || chatData["teamId"] != null;
+        final isWorker = uid == chatData["workerId"];
+        final showTeamHeader = isInternalTeamChat ||
+            (isTeamChat && uid == chatData["employerId"]?.toString());
+        final otherUserId = showTeamHeader
+            ? chatData["teamId"]
+            : (isWorker
+                ? chatData["employerId"]
+                : chatData["workerId"] ?? otherParticipantId(chatData, uid));
+        final isGenericDirectChat = !isTeamChat &&
+            chatData["workerId"] == null &&
+            chatData["employerId"] == null;
+        final isOnline =
+            showTeamHeader ? false : userData?["isOnline"] ?? false;
+        final lastSeenRaw = userData?["lastSeen"];
+        final Timestamp? lastSeen =
+            lastSeenRaw is Timestamp ? lastSeenRaw : null;
+        final typingWorker = chatData["typing_worker"] ?? false;
+        final typingEmployer = chatData["typing_employer"] ?? false;
+        final isTyping = !isInternalTeamChat &&
+            (isWorker ? typingEmployer : typingWorker) &&
+            isOnline;
+        final name = isGenericDirectChat
+            ? "${ChatService.firstText(
+                userData,
+                ["companyName", "name", "displayName"],
+                fallback: "User",
+              )}_${ChatService.jobTitle(chatData, jobData)}"
+            : ChatService.chatDisplayName(
+                chatData: chatData,
+                participantData: userData,
+                jobData: jobData,
+                currentUserIsWorker: isWorker,
+                isInternalTeamChat: isInternalTeamChat,
+                showTeamAvatar: showTeamHeader,
+              );
+        final messages = thread.messages;
+        preloadImages(messages);
+        markUnreadMessagesRead(messages, uid);
+
+        return StroykaBackground(
+          asset: AppAssets.backgroundWorkersCity,
+          child: Scaffold(
+            appBar: AppBar(
+              title: InkWell(
+                onTap: () => ChatProfileNavigationService.openFromChat(
+                  context,
+                  chatData: chatData,
+                  currentUserId: uid,
+                  preferTeamTarget: showTeamHeader,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name),
+                    Text(
+                      isTyping
+                          ? "typing..."
+                          : isOnline
+                              ? "Online"
+                              : formatLastSeen(lastSeen),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                if (!isInternalTeamChat)
+                  IconButton(
+                    tooltip: "Call",
+                    icon: const Icon(Icons.call),
+                    onPressed: () => showCallOptions(context, userData),
+                  ),
+                IconButton(
+                  tooltip: "Report chat",
+                  icon: const Icon(Icons.flag_outlined),
+                  onPressed: () => ReportService.showReportDialog(
+                    context,
+                    type: "chat",
+                    againstUserId:
+                        isInternalTeamChat ? null : otherUserId?.toString(),
+                    chatId: widget.chatId,
+                    jobId: chatData["jobId"]?.toString(),
+                  ),
+                ),
+              ],
+            ),
+            body: StroykaScreenBody(
+              child: Column(
+                children: [
+                  Expanded(
+                    child: messages.isEmpty
+                        ? const Center(child: Text("No messages yet."))
+                        : ListView.builder(
+                            controller: scrollController,
+                            reverse: true,
+                            padding: const EdgeInsets.all(10),
+                            itemCount: messages.length,
+                            itemBuilder: (context, index) {
+                              final doc = messages[index];
+                              final data = doc.data();
+
+                              final isMe = data["senderId"] == uid;
+                              final type = data["type"] ?? "text";
+                              final deletedForEveryone =
+                                  data["deletedForEveryone"] == true;
+                              final attachments = attachmentsFromMessage(data);
+                              final text = data["text"]?.toString() ?? "";
+                              final editedAt = data["editedAt"];
+                              final isEdited =
+                                  type == "text" && editedAt != null;
+
+                              final ts = data["createdAt"] as Timestamp?;
+                              final date = ts?.toDate();
+                              final time = formatTime(ts);
+
+                              bool showDate = index == messages.length - 1;
+
+                              if (!showDate && index < messages.length - 1) {
+                                final prev = messages[index + 1].data();
+                                final prevDate =
+                                    (prev["createdAt"] as Timestamp?)?.toDate();
+
+                                if (date != null && prevDate != null) {
+                                  showDate = date.day != prevDate.day ||
+                                      date.month != prevDate.month ||
+                                      date.year != prevDate.year;
+                                }
+                              }
+
+                              final readBy =
+                                  List<String>.from(data["readBy"] ?? []);
+                              final isRead = readBy.length > 1;
+
+                              return Column(
+                                children: [
+                                  if (showDate && date != null)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 10,
+                                      ),
+                                      child: Text(formatDateLabel(date)),
+                                    ),
+                                  Align(
+                                    alignment: isMe
+                                        ? Alignment.centerRight
+                                        : Alignment.centerLeft,
+                                    child: GestureDetector(
+                                      onLongPress: () => showMessageActions(
+                                        message: doc,
+                                        data: data,
+                                        uid: uid,
+                                      ),
+                                      child: Container(
+                                        margin: const EdgeInsets.symmetric(
+                                          vertical: 4,
+                                        ),
+                                        padding: const EdgeInsets.all(12),
+                                        constraints:
+                                            const BoxConstraints(maxWidth: 260),
+                                        decoration: BoxDecoration(
+                                          color: isMe
+                                              ? AppColors.surfaceAlt
+                                              : Colors.grey.shade200,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
+                                          children: [
+                                            if (!deletedForEveryone)
+                                              buildForwardedLabel(data),
+                                            if (!deletedForEveryone)
+                                              buildReplyQuote(data),
+                                            if (deletedForEveryone)
+                                              const Text(
+                                                "Message deleted",
+                                                style: TextStyle(
+                                                  fontStyle: FontStyle.italic,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                            if (!deletedForEveryone &&
+                                                text.trim().isNotEmpty &&
+                                                type != "audio")
+                                              _TextMessageContent(
+                                                text: text,
+                                                normalizeUrl: normalizeUrl,
+                                              ),
+                                            if (!deletedForEveryone &&
+                                                attachments.isNotEmpty)
+                                              Padding(
+                                                padding: EdgeInsets.only(
+                                                  top: text.trim().isNotEmpty
+                                                      ? 8
+                                                      : 0,
+                                                ),
+                                                child: buildMessageAttachments(
+                                                  attachments,
+                                                ),
+                                              ),
+                                            if (!deletedForEveryone &&
+                                                type == "audio" &&
+                                                (data["audioUrl"] != null ||
+                                                    data["mediaUrl"] != null))
+                                              AudioMessageBubble(
+                                                url: data["audioUrl"] ??
+                                                    data["mediaUrl"],
+                                              ),
+                                            if (!deletedForEveryone &&
+                                                type == "link" &&
+                                                (data["url"] != null ||
+                                                    data["text"] != null))
+                                              InkWell(
+                                                onTap: () async {
+                                                  final raw = data["url"] ??
+                                                      data["text"];
+                                                  final uri = normalizeUrl(
+                                                    raw.toString(),
+                                                  );
+                                                  if (uri == null) return;
+                                                  await launchUrl(
+                                                    uri,
+                                                    mode: LaunchMode
+                                                        .externalApplication,
+                                                  );
+                                                },
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(
+                                                      Icons.link,
+                                                      size: 18,
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    Flexible(
+                                                      child: Text(
+                                                        (data["url"] ??
+                                                                data["text"])
+                                                            .toString(),
+                                                        style: const TextStyle(
+                                                          decoration:
+                                                              TextDecoration
+                                                                  .underline,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            const SizedBox(height: 4),
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                if (isEdited) ...[
+                                                  const Text(
+                                                    "edited",
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: Colors.grey,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                ],
+                                                Text(
+                                                  time,
+                                                  style: const TextStyle(
+                                                    fontSize: 10,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                if (isMe)
+                                                  Icon(
+                                                    Icons.done_all,
+                                                    size: 16,
+                                                    color: isRead
+                                                        ? AppColors.greenDark
+                                                        : Colors.grey,
+                                                  ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                  ),
+                  if (isTyping)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 12, bottom: 6),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text("typing..."),
+                      ),
+                    ),
+                  if (inactive)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppColors.warning.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Text(
+                        inactiveMessage,
+                        style: const TextStyle(
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  SafeArea(
+                    child: Container(
+                      color: AppColors.navy,
+                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isUploadingMedia)
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 8),
+                              child: LinearProgressIndicator(),
+                            ),
+                          buildComposerReplyPreview(),
+                          buildPendingAttachments(),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              IconButton.filled(
+                                style: IconButton.styleFrom(
+                                  backgroundColor: AppColors.green,
+                                  foregroundColor: Colors.white,
+                                ),
+                                icon: const Icon(Icons.add),
+                                onPressed: isUploadingMedia || inactive
+                                    ? null
+                                    : showAttachmentMenu,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  controller: controller,
+                                  onChanged: handleTypingChanged,
+                                  keyboardType: TextInputType.multiline,
+                                  textInputAction: TextInputAction.newline,
+                                  minLines: 1,
+                                  maxLines: 6,
+                                  decoration: const InputDecoration(
+                                    hintText: "Type a message",
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  isRecording ? Icons.stop_circle : Icons.mic,
+                                  color:
+                                      isRecording ? Colors.red : Colors.white,
+                                ),
+                                onPressed: isUploadingMedia || inactive
+                                    ? null
+                                    : toggleRecording,
+                              ),
+                              IconButton.filled(
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.white70,
+                                  foregroundColor: AppColors.navy,
+                                ),
+                                icon: const Icon(Icons.send),
+                                onPressed: isUploadingMedia || inactive
+                                    ? null
+                                    : sendMessage,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -2402,6 +2856,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final uid = user.uid;
+
+    if (kIsWeb) {
+      return buildWebChat(context, uid);
+    }
 
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance

@@ -20,6 +20,7 @@ import '../services/app_navigation.dart';
 import '../services/application_activity_service.dart';
 import '../services/billing_service.dart';
 import '../services/notification_service.dart';
+import '../services/web_chat_data_service.dart';
 import '../services/web_home_badge_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -244,6 +245,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 💬 REAL UNREAD MESSAGES
   Stream<int> getUnreadChats() {
     if (userId == null) return const Stream.empty();
+
+    if (kIsWeb) {
+      return WebChatDataService().unreadChats(userId!);
+    }
 
     return FirebaseFirestore.instance
         .collection("chats")
