@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import 'web_chat_media_service.dart';
 import 'web_data_state.dart';
 
 class WebChatSummary {
@@ -25,12 +26,28 @@ class WebChatSummary {
     }
     return _firstText(
       displayData,
-      const ['companyName', 'name', 'displayName', 'firstName'],
+      const [
+        'companyName',
+        'name',
+        'displayName',
+        'firstName',
+        'workerName',
+      ],
       'User',
     );
   }
 
-  String get lastMessage => (data['lastMessage'] ?? '').toString();
+  String get lastMessage {
+    final text = (data['lastMessage'] ?? '').toString().trim();
+    if (text.isNotEmpty) return text;
+    final type = lastMessageType;
+    if (type == 'image') return 'Photo';
+    if (type == 'video') return 'Video';
+    if (type == 'audio') return 'Voice message';
+    if (type == 'attachments') return 'Attachments';
+    return '';
+  }
+
   String get lastMessageType => (data['lastMessageType'] ?? 'text').toString();
   Timestamp? get updatedAt => data['updatedAt'] is Timestamp
       ? data['updatedAt'] as Timestamp
@@ -41,7 +58,17 @@ class WebChatSummary {
   String avatarFor(String uid) {
     return _firstText(
       displayData,
-      const ['avatarUrl', 'photo', 'companyLogo', 'profilePhotoUrl'],
+      const [
+        'avatarUrl',
+        'profilePhotoUrl',
+        'photoUrl',
+        'photo',
+        'companyLogo',
+        'companyLogoUrl',
+        'companyAvatarUrl',
+        'teamLogo',
+        'logo',
+      ],
       '',
     );
   }
@@ -60,6 +87,12 @@ class WebMessageItem {
 
   final String id;
   final Map<String, dynamic> data;
+
+  bool get deletedForEveryone => data['deletedForEveryone'] == true;
+  bool get edited => data['editedAt'] != null;
+  String get type => (data['type'] ?? 'text').toString();
+  String get text => (data['text'] ?? '').toString();
+  List<WebChatAttachment> get attachments => normalizeWebChatAttachments(data);
 }
 
 class WebChatThread {
@@ -80,6 +113,9 @@ class WebChatsDataService {
 
   final FirebaseFirestore _firestore;
   final Duration pollInterval;
+  final _profileCache = <String, Map<String, dynamic>?>{};
+  final _teamCache = <String, Map<String, dynamic>?>{};
+  final _jobCache = <String, Map<String, dynamic>?>{};
 
   Stream<WebDataState<List<WebChatSummary>>> chats(String uid) {
     return _poll(
@@ -163,13 +199,15 @@ class WebChatsDataService {
     );
   }
 
-  Future<void> sendText({
+  Future<void> sendMessage({
     required String chatId,
+    String? messageId,
     required String uid,
     required String text,
+    List<WebChatAttachment> attachments = const [],
   }) async {
     final clean = text.trim();
-    if (clean.isEmpty) return;
+    if (clean.isEmpty && attachments.isEmpty) return;
 
     final chatRef = _firestore.collection('chats').doc(chatId);
     final chatDoc = await chatRef.get();
@@ -178,25 +216,43 @@ class WebChatsDataService {
       throw StateError('Chat is no longer available.');
     }
     final recipients =
-        _participantIds(chatData).where((id) => id != uid).toList();
+        _participantIds(chatData).where((id) => id != uid).toSet().toList();
     final isWorker = chatData['workerId']?.toString() == uid;
-    final messageRef = chatRef.collection('messages').doc();
+    final messageRef = messageId == null
+        ? chatRef.collection('messages').doc()
+        : chatRef.collection('messages').doc(messageId);
+    final firstAttachment = attachments.isNotEmpty ? attachments.first : null;
+    final messageType = attachments.isEmpty
+        ? 'text'
+        : attachments.length == 1 && firstAttachment?.type != 'file'
+            ? firstAttachment!.type
+            : 'attachments';
+    final preview = clean.isNotEmpty
+        ? clean
+        : attachments.isNotEmpty
+            ? webChatAttachmentPreview(attachments)
+            : '';
 
     final batch = _firestore.batch();
     batch.set(messageRef, {
       'messageId': messageRef.id,
       'chatId': chatId,
-      'type': 'text',
+      'type': messageType,
       'text': clean,
-      'attachments': const <Map<String, dynamic>>[],
+      'attachments': attachments.map((item) => item.toMap()).toList(),
+      if (firstAttachment != null) 'mediaUrl': firstAttachment.url,
+      if (firstAttachment?.type == 'image') 'imageUrl': firstAttachment!.url,
+      if (firstAttachment?.type == 'video') 'videoUrl': firstAttachment!.url,
+      if (firstAttachment?.type == 'audio') 'audioUrl': firstAttachment!.url,
+      if (firstAttachment != null) 'fileName': firstAttachment.fileName,
       'senderId': uid,
       'senderRole': isWorker ? 'worker' : 'employer',
       'createdAt': FieldValue.serverTimestamp(),
       'readBy': [uid],
     });
     batch.update(chatRef, {
-      'lastMessage': clean,
-      'lastMessageType': 'text',
+      'lastMessage': preview,
+      'lastMessageType': messageType,
       'updatedAt': FieldValue.serverTimestamp(),
       'unreadFor': FieldValue.arrayUnion(recipients),
       if (isWorker)
@@ -207,6 +263,23 @@ class WebChatsDataService {
       'typing_employer': false,
     });
     await batch.commit();
+  }
+
+  Future<void> sendText({
+    required String chatId,
+    required String uid,
+    required String text,
+  }) {
+    return sendMessage(chatId: chatId, uid: uid, text: text);
+  }
+
+  String newMessageId(String chatId) {
+    return _firestore
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages')
+        .doc()
+        .id;
   }
 
   Future<void> markRead(String chatId, String uid) async {
@@ -223,10 +296,11 @@ class WebChatsDataService {
     final displayTarget = _displayTarget(data, uid);
     final displayData = displayTarget == null
         ? null
-        : await _getData(displayTarget.collection, displayTarget.id);
+        : await _getCachedData(displayTarget.collection, displayTarget.id);
     final jobId = data['jobId']?.toString();
-    final jobData =
-        jobId == null || jobId.isEmpty ? null : await _getData('jobs', jobId);
+    final jobData = jobId == null || jobId.isEmpty
+        ? null
+        : await _getCachedData('jobs', jobId);
     return WebChatSummary(
       id: id,
       data: data,
@@ -240,8 +314,14 @@ class WebChatsDataService {
     final employerId = data['employerId']?.toString();
     final teamId = data['teamId']?.toString();
     final isTeam = data['type'] == 'team' || data['type'] == 'internal_team';
-    if (isTeam && teamId != null && teamId.isNotEmpty && uid == employerId) {
+    if (isTeam && teamId != null && teamId.isNotEmpty) {
       return _DisplayTarget('teams', teamId);
+    }
+    final targetProfileId = data['targetProfileId']?.toString();
+    if (targetProfileId != null &&
+        targetProfileId.isNotEmpty &&
+        targetProfileId != uid) {
+      return _DisplayTarget('users', targetProfileId);
     }
     final otherId = uid == workerId ? employerId : workerId;
     final fallback = otherId ??
@@ -253,9 +333,27 @@ class WebChatsDataService {
     return _DisplayTarget('users', fallback);
   }
 
-  Future<Map<String, dynamic>?> _getData(String collection, String id) async {
+  Future<Map<String, dynamic>?> _getCachedData(
+    String collection,
+    String id,
+  ) async {
     if (id.isEmpty) return null;
-    return (await _firestore.collection(collection).doc(id).get()).data();
+    final cache = switch (collection) {
+      'teams' => _teamCache,
+      'jobs' => _jobCache,
+      _ => _profileCache,
+    };
+    if (cache.containsKey(id)) return cache[id];
+    try {
+      final data =
+          (await _firestore.collection(collection).doc(id).get()).data();
+      cache[id] = data;
+      return data;
+    } catch (error) {
+      debugPrint('WEB CHAT ENRICH ERROR $collection/$id $error');
+      cache[id] = null;
+      return null;
+    }
   }
 
   bool _isHiddenFor(Map<String, dynamic> data, String uid) {
