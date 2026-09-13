@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/job.dart';
+import '../../services/web_data_state.dart';
 import '../../services/web_jobs_data_service.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../widgets/web_page_container.dart';
@@ -48,17 +49,18 @@ class _WebJobsPageState extends State<WebJobsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Job>>(
+    return StreamBuilder<WebDataState<List<Job>>>(
       stream: WebJobsDataService().jobs(
         userId: widget.userId,
         role: widget.role,
       ),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
+        final state = snapshot.data;
+        if (state == null || state.loading) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final jobs = filterJobs(snapshot.data ?? const <Job>[]);
+        final jobs = filterJobs(state.data ?? const <Job>[]);
         if (selectedJobId == null && jobs.isNotEmpty) {
           selectedJobId = jobs.first.id;
         }
@@ -71,54 +73,71 @@ class _WebJobsPageState extends State<WebJobsPage> {
         }
 
         return WebPageContainer(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final compact =
-                  constraints.maxWidth < WebBreakpoints.compactWidth;
-              if (compact) {
-                return Column(
-                  children: [
-                    SizedBox(
-                      height: 430,
-                      child: WebJobListPanel(
-                        jobs: jobs,
-                        selectedJobId: selectedJobId,
-                        searchController: searchController,
-                        onSearchChanged: (value) =>
-                            setState(() => search = value),
-                        onSelected: (job) =>
-                            setState(() => selectedJobId = job.id),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      height: 720,
-                      child: WebJobDetailsPanel(job: selectedJob),
-                    ),
-                  ],
-                );
-              }
-
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(
-                    width: 410,
-                    child: WebJobListPanel(
-                      jobs: jobs,
-                      selectedJobId: selectedJobId,
-                      searchController: searchController,
-                      onSearchChanged: (value) =>
-                          setState(() => search = value),
-                      onSelected: (job) =>
-                          setState(() => selectedJobId = job.id),
-                    ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (state.error != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3E0),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(width: 22),
-                  Expanded(child: WebJobDetailsPanel(job: selectedJob)),
-                ],
-              );
-            },
+                  child: Text('Could not refresh jobs: ${state.error}'),
+                ),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact =
+                        constraints.maxWidth < WebBreakpoints.compactWidth;
+                    if (compact) {
+                      return Column(
+                        children: [
+                          SizedBox(
+                            height: 430,
+                            child: WebJobListPanel(
+                              jobs: jobs,
+                              selectedJobId: selectedJobId,
+                              searchController: searchController,
+                              onSearchChanged: (value) =>
+                                  setState(() => search = value),
+                              onSelected: (job) =>
+                                  setState(() => selectedJobId = job.id),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            height: 720,
+                            child: WebJobDetailsPanel(job: selectedJob),
+                          ),
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          width: 410,
+                          child: WebJobListPanel(
+                            jobs: jobs,
+                            selectedJobId: selectedJobId,
+                            searchController: searchController,
+                            onSearchChanged: (value) =>
+                                setState(() => search = value),
+                            onSelected: (job) =>
+                                setState(() => selectedJobId = job.id),
+                          ),
+                        ),
+                        const SizedBox(width: 22),
+                        Expanded(child: WebJobDetailsPanel(job: selectedJob)),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         );
       },

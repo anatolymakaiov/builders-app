@@ -36,9 +36,18 @@ class _WebShellState extends State<WebShell> {
           userId: widget.user.uid,
           role: widget.role,
         ),
-      WebSection.map => const WebMapPage(),
-      WebSection.applications => const WebApplicationsPage(),
-      WebSection.chats => const WebChatsPage(),
+      WebSection.map => WebMapPage(
+          userId: widget.user.uid,
+          role: widget.role,
+        ),
+      WebSection.applications => WebApplicationsPage(
+          userId: widget.user.uid,
+          role: widget.role,
+        ),
+      WebSection.chats => WebChatsPage(
+          userId: widget.user.uid,
+          role: widget.role,
+        ),
     };
 
     return Scaffold(
