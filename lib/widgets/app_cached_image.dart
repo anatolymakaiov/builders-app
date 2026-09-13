@@ -1,12 +1,20 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import 'web_remote_image.dart';
 
 String appImageCacheKey(String url) => url.trim();
 
 ImageProvider appCachedImageProvider(String url) {
   final clean = url.trim();
+  if (kIsWeb) {
+    return NetworkImage(
+      clean,
+      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+    );
+  }
   return CachedNetworkImageProvider(
     clean,
     cacheKey: appImageCacheKey(clean),
@@ -44,6 +52,18 @@ class AppCachedImage extends StatelessWidget {
     final clean = imageUrl.trim();
     if (clean.isEmpty) {
       return errorWidget ?? const Icon(Icons.broken_image_outlined);
+    }
+
+    if (kIsWeb) {
+      return WebRemoteImage(
+        imageUrl: clean,
+        fit: fit,
+        width: width,
+        height: height,
+        alignment: alignment,
+        placeholder: placeholder,
+        errorWidget: errorWidget,
+      );
     }
 
     return CachedNetworkImage(

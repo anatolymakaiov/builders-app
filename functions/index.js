@@ -4,6 +4,7 @@ const { HttpsError, onCall, onRequest } = require("firebase-functions/v2/https")
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
+const sharp = require("sharp");
 
 admin.initializeApp();
 
@@ -78,6 +79,78 @@ function isValidUkPostcode(value) {
 
 function cleanText(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function storagePathFromImageUrl(rawUrl) {
+  const value = cleanText(rawUrl);
+  if (!value) return "";
+
+  if (value.startsWith("gs://")) {
+    const withoutScheme = value.slice("gs://".length);
+    const firstSlash = withoutScheme.indexOf("/");
+    return firstSlash >= 0 ? withoutScheme.slice(firstSlash + 1) : "";
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch (_) {
+    return "";
+  }
+
+  if (parsed.hostname.includes("firebasestorage.googleapis.com")) {
+    const marker = "/o/";
+    const markerIndex = parsed.pathname.indexOf(marker);
+    if (markerIndex < 0) return "";
+    return decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
+  }
+
+  if (parsed.hostname.includes("storage.googleapis.com")) {
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parts.length < 2) return "";
+    return decodeURIComponent(parts.slice(1).join("/"));
+  }
+
+  return "";
+}
+
+function extensionForStoragePath(path) {
+  const fileName = String(path || "").split("/").pop() || "";
+  const dot = fileName.lastIndexOf(".");
+  if (dot < 0 || dot === fileName.length - 1) return "";
+  return fileName.slice(dot + 1).toLowerCase();
+}
+
+function isHeicLike(path, contentType) {
+  const extension = extensionForStoragePath(path);
+  const type = cleanText(contentType).toLowerCase();
+  return extension === "heic" ||
+    extension === "heif" ||
+    type === "image/heic" ||
+    type === "image/heif";
+}
+
+function isWebConvertibleImagePath(path) {
+  const prefixes = [
+    "profile_photos/",
+    "profile_headers/",
+    "company_photos/",
+    "job_photos/",
+    "portfolio/",
+    "team_avatars/",
+    "team_portfolio/",
+    "chat_media/",
+    "chat_audio/",
+    "chat_video/",
+    "chat_voice/",
+    "chat_attachments/",
+  ];
+  return prefixes.some((prefix) => path.startsWith(prefix));
+}
+
+function firebaseDownloadUrl(bucketName, path, token) {
+  return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/` +
+    `${encodeURIComponent(path)}?alt=media&token=${encodeURIComponent(token)}`;
 }
 
 function planForId(planId) {
@@ -202,6 +275,99 @@ exports.lookupIdealPostcodeAddresses = onCall(
     } finally {
       clearTimeout(timeout);
     }
+  },
+);
+
+exports.getWebCompatibleImage = onCall(
+  {
+    timeoutSeconds: 30,
+    memory: "512MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Please sign in to load this image.",
+      );
+    }
+
+    const sourceUrl = cleanText(request.data && request.data.url);
+    const sourcePath = storagePathFromImageUrl(sourceUrl);
+    if (!sourcePath) {
+      throw new HttpsError("invalid-argument", "Invalid image URL.");
+    }
+    if (!isWebConvertibleImagePath(sourcePath)) {
+      throw new HttpsError(
+        "permission-denied",
+        "This image cannot be converted for web display.",
+      );
+    }
+
+    const bucket = admin.storage().bucket();
+    const sourceFile = bucket.file(sourcePath);
+    const [exists] = await sourceFile.exists();
+    if (!exists) {
+      throw new HttpsError("not-found", "Image was not found.");
+    }
+
+    const [sourceMetadata] = await sourceFile.getMetadata();
+    if (!isHeicLike(sourcePath, sourceMetadata.contentType)) {
+      return {
+        url: sourceUrl,
+        sourcePath,
+        converted: false,
+      };
+    }
+
+    const hash = crypto.createHash("sha256").update(sourcePath).digest("hex");
+    const derivativePath = `web_image_derivatives/${hash}.jpg`;
+    const derivativeFile = bucket.file(derivativePath);
+    const [derivativeExists] = await derivativeFile.exists();
+
+    if (derivativeExists) {
+      const [metadata] = await derivativeFile.getMetadata();
+      const tokens = cleanText(
+        metadata.metadata && metadata.metadata.firebaseStorageDownloadTokens,
+      );
+      const token = tokens.split(",").map((item) => item.trim()).find(Boolean);
+      if (token) {
+        return {
+          url: firebaseDownloadUrl(bucket.name, derivativePath, token),
+          sourcePath,
+          derivativePath,
+          converted: true,
+          cached: true,
+        };
+      }
+    }
+
+    const [sourceBuffer] = await sourceFile.download();
+    const jpegBuffer = await sharp(sourceBuffer)
+      .rotate()
+      .jpeg({ quality: 88, mozjpeg: true })
+      .toBuffer();
+    const token = crypto.randomUUID();
+
+    await derivativeFile.save(jpegBuffer, {
+      resumable: false,
+      metadata: {
+        contentType: "image/jpeg",
+        cacheControl: "public, max-age=31536000, immutable",
+        metadata: {
+          firebaseStorageDownloadTokens: token,
+          sourcePath,
+          generatedFor: "flutter-web",
+        },
+      },
+    });
+
+    return {
+      url: firebaseDownloadUrl(bucket.name, derivativePath, token),
+      sourcePath,
+      derivativePath,
+      converted: true,
+      cached: false,
+    };
   },
 );
 
