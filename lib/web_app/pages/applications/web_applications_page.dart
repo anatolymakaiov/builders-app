@@ -24,18 +24,50 @@ class WebApplicationsPage extends StatefulWidget {
 
 class _WebApplicationsPageState extends State<WebApplicationsPage> {
   final service = WebApplicationsDataService();
+  late Stream<WebDataState<List<WebApplicationSummary>>> applicationsStream;
   String? selectedApplicationId;
+  bool showTeamApplications = false;
+
+  bool get isWorker => widget.role == 'worker';
+
+  @override
+  void initState() {
+    super.initState();
+    applicationsStream = service.applications(
+      uid: widget.userId,
+      role: widget.role,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant WebApplicationsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userId != widget.userId || oldWidget.role != widget.role) {
+      applicationsStream = service.applications(
+        uid: widget.userId,
+        role: widget.role,
+      );
+      selectedApplicationId = null;
+      showTeamApplications = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<WebDataState<List<WebApplicationSummary>>>(
-      stream: service.applications(uid: widget.userId, role: widget.role),
+      stream: applicationsStream,
       builder: (context, snapshot) {
         final state = snapshot.data;
         if (state == null || state.loading) {
           return const Center(child: CircularProgressIndicator());
         }
-        final applications = state.data ?? const <WebApplicationSummary>[];
+        final loadedApplications =
+            state.data ?? const <WebApplicationSummary>[];
+        final applications = isWorker
+            ? loadedApplications
+                .where((item) => item.isTeam == showTeamApplications)
+                .toList()
+            : loadedApplications;
         if (selectedApplicationId == null && applications.isNotEmpty) {
           selectedApplicationId = applications.first.id;
         }
@@ -59,6 +91,22 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                 _ErrorBanner(
                   message: 'Could not refresh applications: ${state.error}',
                 ),
+              if (isWorker) ...[
+                _WorkerApplicationToggle(
+                  showTeamApplications: showTeamApplications,
+                  singleCount:
+                      loadedApplications.where((item) => !item.isTeam).length,
+                  teamCount:
+                      loadedApplications.where((item) => item.isTeam).length,
+                  onChanged: (value) {
+                    setState(() {
+                      showTeamApplications = value;
+                      selectedApplicationId = null;
+                    });
+                  },
+                ),
+                const SizedBox(height: 14),
+              ],
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -100,6 +148,43 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
           ),
         );
       },
+    );
+  }
+}
+
+class _WorkerApplicationToggle extends StatelessWidget {
+  const _WorkerApplicationToggle({
+    required this.showTeamApplications,
+    required this.singleCount,
+    required this.teamCount,
+    required this.onChanged,
+  });
+
+  final bool showTeamApplications;
+  final int singleCount;
+  final int teamCount;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SegmentedButton<bool>(
+        segments: [
+          ButtonSegment(
+            value: false,
+            label: Text('Single ($singleCount)'),
+            icon: const Icon(Icons.person_outline),
+          ),
+          ButtonSegment(
+            value: true,
+            label: Text('Team ($teamCount)'),
+            icon: const Icon(Icons.groups_2_outlined),
+          ),
+        ],
+        selected: {showTeamApplications},
+        onSelectionChanged: (value) => onChanged(value.first),
+      ),
     );
   }
 }

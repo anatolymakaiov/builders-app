@@ -102,33 +102,57 @@ class WebApplicationsDataService {
     required String role,
   }) async {
     final docsById = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
-    final queries = role == 'employer'
-        ? [
-            _firestore.collection('applications').where(
-                  'employerId',
-                  isEqualTo: uid,
-                ),
-            _firestore.collection('applications').where(
-                  'ownerId',
-                  isEqualTo: uid,
-                ),
-          ]
-        : [
-            _firestore.collection('applications').where(
-                  'workerId',
-                  isEqualTo: uid,
-                ),
-            _firestore.collection('applications').where(
-                  'members',
-                  arrayContains: uid,
-                ),
-          ];
+    final queryErrors = <Object>[];
 
-    for (final query in queries) {
-      final snapshot = await query.get();
-      for (final doc in snapshot.docs) {
-        docsById[doc.id] = doc;
+    if (role == 'employer') {
+      final primary = await _runApplicationQuery(
+        source: 'employer_primary',
+        query: _firestore
+            .collection('applications')
+            .where('employerId', isEqualTo: uid),
+      );
+      _mergeDocs(docsById, primary.docs);
+      if (primary.error != null) queryErrors.add(primary.error!);
+
+      final ownerFallback = await _runApplicationQuery(
+        source: 'employer_owner',
+        query: _firestore
+            .collection('applications')
+            .where('ownerId', isEqualTo: uid),
+      );
+      _mergeDocs(docsById, ownerFallback.docs);
+      if (ownerFallback.error != null) {
+        debugPrint('WEB APPLICATIONS ownerId fallback ignored after error');
+        if (primary.docs.isEmpty) queryErrors.add(ownerFallback.error!);
       }
+    } else {
+      final single = await _runApplicationQuery(
+        source: 'worker_single',
+        query: _firestore
+            .collection('applications')
+            .where('workerId', isEqualTo: uid),
+      );
+      _mergeDocs(docsById, single.docs);
+      if (single.error != null) queryErrors.add(single.error!);
+
+      final teams = await _loadWorkerTeams(uid);
+      for (final team in teams) {
+        final result = await _runApplicationQuery(
+          source: 'team:${team.id}',
+          query: _firestore
+              .collection('applications')
+              .where('teamId', isEqualTo: team.id),
+        );
+        final teamDocs = result.docs.where((doc) {
+          return _isRelevantTeamApplication(doc.data(), team.id);
+        }).toList();
+        _mergeDocs(docsById, teamDocs);
+        if (result.error != null) queryErrors.add(result.error!);
+      }
+    }
+
+    if (docsById.isEmpty && queryErrors.isNotEmpty) {
+      throw queryErrors.first;
     }
 
     final applications = <WebApplicationSummary>[];
@@ -144,6 +168,133 @@ class WebApplicationsDataService {
       return bTime.compareTo(aTime);
     });
     return applications;
+  }
+
+  Future<_QueryResult> _runApplicationQuery({
+    required String source,
+    required Query<Map<String, dynamic>> query,
+  }) async {
+    try {
+      final snapshot = await query.get();
+      debugPrint('WEB APPLICATIONS $source loaded=${snapshot.docs.length}');
+      return _QueryResult(docs: snapshot.docs);
+    } on FirebaseException catch (error) {
+      debugPrint(
+        'WEB APPLICATIONS QUERY ERROR source=$source code=${error.code}',
+      );
+      return _QueryResult(docs: const [], error: error);
+    } catch (error) {
+      debugPrint('WEB APPLICATIONS QUERY ERROR source=$source error=$error');
+      return _QueryResult(docs: const [], error: error);
+    }
+  }
+
+  Future<List<_WorkerTeam>> _loadWorkerTeams(String uid) async {
+    try {
+      final snapshot = await _firestore.collection('teams').get();
+      final teams = snapshot.docs
+          .where((doc) => _isUserTeam(doc.data(), uid))
+          .map((doc) => _WorkerTeam(id: doc.id, data: doc.data()))
+          .toList();
+      debugPrint(
+        'WEB APPLICATIONS WORKER TEAMS loaded=${teams.length} '
+        'raw=${snapshot.docs.length}',
+      );
+      return teams;
+    } on FirebaseException catch (error) {
+      debugPrint(
+        'WEB APPLICATIONS QUERY ERROR source=worker_teams code=${error.code}',
+      );
+      return const [];
+    } catch (error) {
+      debugPrint(
+          'WEB APPLICATIONS QUERY ERROR source=worker_teams error=$error');
+      return const [];
+    }
+  }
+
+  bool _isUserTeam(Map<String, dynamic> data, String uid) {
+    if (_isInactive(data)) return false;
+    for (final key in const ['ownerId', 'createdBy', 'leaderId']) {
+      if (data[key]?.toString() == uid) return true;
+    }
+    return _teamMemberIds(data).contains(uid);
+  }
+
+  bool _isRelevantTeamApplication(Map<String, dynamic> data, String teamId) {
+    final type = (data['applicationType'] ?? data['type'] ?? '').toString();
+    final status = data['status']?.toString().toLowerCase().trim();
+    final appTeamId = data['teamId']?.toString();
+    return type == 'team' &&
+        appTeamId == teamId &&
+        status != 'withdrawn' &&
+        status != 'cancelled' &&
+        status != 'deleted';
+  }
+
+  bool _isInactive(Map<String, dynamic> data) {
+    final status = data['status']?.toString().toLowerCase().trim();
+    return data['deleted'] == true ||
+        data['accountDeleted'] == true ||
+        data['active'] == false ||
+        status == 'deleted' ||
+        status == 'suspended' ||
+        status == 'on_hold';
+  }
+
+  List<String> _teamMemberIds(Map<String, dynamic> data) {
+    final ids = <String>{};
+    ids.addAll(_idsFromList(data['members']));
+    ids.addAll(_idsFromList(data['memberIds']));
+    _addStatusMemberIds(ids, data['membersStatus']);
+    _addStatusMemberIds(ids, data['memberStatuses']);
+    return ids.toList();
+  }
+
+  List<String> _idsFromList(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .map((item) {
+          if (item is String) return item;
+          if (item is Map) {
+            return (item['userId'] ??
+                    item['uid'] ??
+                    item['workerId'] ??
+                    item['id'])
+                ?.toString();
+          }
+          return null;
+        })
+        .whereType<String>()
+        .where((id) => id.trim().isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  void _addStatusMemberIds(Set<String> ids, dynamic value) {
+    if (value is! Map) return;
+    value.forEach((key, status) {
+      final id = key?.toString().trim() ?? '';
+      if (id.isEmpty) return;
+      final normalized = status?.toString().toLowerCase().trim() ?? '';
+      if (normalized == 'removed' ||
+          normalized == 'deleted' ||
+          normalized == 'inactive' ||
+          normalized == 'left' ||
+          normalized == 'rejected') {
+        return;
+      }
+      ids.add(id);
+    });
+  }
+
+  void _mergeDocs(
+    Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> target,
+    Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    for (final doc in docs) {
+      target[doc.id] = doc;
+    }
   }
 
   Future<WebApplicationSummary> _summary(
@@ -211,6 +362,26 @@ class WebApplicationsDataService {
     controller.onCancel = () => timer?.cancel();
     return controller.stream;
   }
+}
+
+class _QueryResult {
+  const _QueryResult({
+    required this.docs,
+    this.error,
+  });
+
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs;
+  final Object? error;
+}
+
+class _WorkerTeam {
+  const _WorkerTeam({
+    required this.id,
+    required this.data,
+  });
+
+  final String id;
+  final Map<String, dynamic> data;
 }
 
 String _firstText(
