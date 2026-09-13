@@ -3,14 +3,27 @@ import 'package:flutter/material.dart';
 import '../../../models/job.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_panel.dart';
+import '../../widgets/web_remote_image.dart';
 
 class WebJobDetailsPanel extends StatelessWidget {
   const WebJobDetailsPanel({
     super.key,
     required this.job,
+    this.isWorker = false,
+    this.isEmployerOwner = false,
+    this.isSaved = false,
+    this.applying = false,
+    this.onApply,
+    this.onToggleSaved,
   });
 
   final Job? job;
+  final bool isWorker;
+  final bool isEmployerOwner;
+  final bool isSaved;
+  final bool applying;
+  final VoidCallback? onApply;
+  final VoidCallback? onToggleSaved;
 
   @override
   Widget build(BuildContext context) {
@@ -37,21 +50,40 @@ class WebJobDetailsPanel extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      currentJob.displayTitle,
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                    if (currentJob.companyName.trim().isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        currentJob.companyName,
-                        style: const TextStyle(
-                          color: WebTheme.muted,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        WebCircleImage(
+                          url: currentJob.companyLogo,
+                          size: 58,
+                          fallbackIcon: Icons.business_outlined,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                currentJob.displayTitle,
+                                style:
+                                    Theme.of(context).textTheme.headlineMedium,
+                              ),
+                              if (currentJob.companyName.trim().isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  currentJob.companyName,
+                                  style: const TextStyle(
+                                    color: WebTheme.muted,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 18),
                     Wrap(
                       spacing: 10,
@@ -78,9 +110,64 @@ class WebJobDetailsPanel extends StatelessWidget {
                             icon: Icons.schedule_outlined,
                             label: currentJob.duration,
                           ),
+                        if (currentJob.weeklyHours.isNotEmpty)
+                          _DetailChip(
+                            icon: Icons.access_time_outlined,
+                            label: '${currentJob.weeklyHours} hours/week',
+                          ),
+                        if (currentJob.startDate != null)
+                          _DetailChip(
+                            icon: Icons.event_outlined,
+                            label:
+                                'Starts ${_formatDate(currentJob.startDate!)}',
+                          ),
+                        _DetailChip(
+                          icon: Icons.verified_outlined,
+                          label: isEmployerOwner
+                              ? currentJob.moderationLabel
+                              : 'Public vacancy',
+                        ),
                       ],
                     ),
+                    if (isWorker) ...[
+                      const SizedBox(height: 22),
+                      Row(
+                        children: [
+                          FilledButton.icon(
+                            onPressed: applying ? null : onApply,
+                            icon: applying
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.send_outlined),
+                            label: const Text('Apply'),
+                          ),
+                          const SizedBox(width: 10),
+                          OutlinedButton.icon(
+                            onPressed: onToggleSaved,
+                            icon: Icon(isSaved
+                                ? Icons.favorite
+                                : Icons.favorite_border),
+                            label: Text(isSaved ? 'Saved' : 'Save'),
+                          ),
+                          const SizedBox(width: 10),
+                          OutlinedButton.icon(
+                            onPressed: null,
+                            icon: const Icon(Icons.business_outlined),
+                            label: const Text('View company profile'),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 28),
+                    if (currentJob.photos.isNotEmpty) ...[
+                      _PhotoGrid(photos: currentJob.photos),
+                      const SizedBox(height: 28),
+                    ],
                     _Section(
                       title: 'Description',
                       body: currentJob.description,
@@ -91,11 +178,11 @@ class WebJobDetailsPanel extends StatelessWidget {
                       body: currentJob.responsibilities,
                     ),
                     _Section(
-                      title: 'Requirements',
+                      title: 'Candidate requirements',
                       body: currentJob.candidateRequirements,
                     ),
                     _Section(
-                      title: 'Documents',
+                      title: 'Required documents',
                       body: currentJob.requiredDocuments,
                     ),
                     _Section(
@@ -110,6 +197,11 @@ class WebJobDetailsPanel extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 }
 
@@ -128,11 +220,10 @@ class _Hero extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           if (photo.isNotEmpty)
-            Image.network(
-              photo,
+            WebRemoteImage(
+              url: photo,
               fit: BoxFit.cover,
-              webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              fallbackIcon: Icons.image_outlined,
             ),
           DecoratedBox(
             decoration: BoxDecoration(
@@ -162,6 +253,101 @@ class _Hero extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoGrid extends StatelessWidget {
+  const _PhotoGrid({required this.photos});
+
+  final List<String> photos;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: photos.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+      ),
+      itemBuilder: (context, index) {
+        return InkWell(
+          onTap: () => showDialog<void>(
+            context: context,
+            builder: (_) => _PhotoDialog(photos: photos, initialIndex: index),
+          ),
+          child: WebRemoteImage(
+            url: photos[index],
+            fit: BoxFit.cover,
+            borderRadius: 12,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PhotoDialog extends StatefulWidget {
+  const _PhotoDialog({
+    required this.photos,
+    required this.initialIndex,
+  });
+
+  final List<String> photos;
+  final int initialIndex;
+
+  @override
+  State<_PhotoDialog> createState() => _PhotoDialogState();
+}
+
+class _PhotoDialogState extends State<_PhotoDialog> {
+  late final PageController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog.fullscreen(
+      backgroundColor: Colors.black,
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: controller,
+            itemCount: widget.photos.length,
+            itemBuilder: (context, index) {
+              return Center(
+                child: InteractiveViewer(
+                  child: WebRemoteImage(
+                    url: widget.photos[index],
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              );
+            },
+          ),
+          Positioned(
+            right: 18,
+            top: 18,
+            child: IconButton.filled(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close),
             ),
           ),
         ],

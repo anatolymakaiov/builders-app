@@ -12,6 +12,8 @@ class WebJobListPanel extends StatelessWidget {
     required this.onSelected,
     required this.searchController,
     required this.onSearchChanged,
+    required this.title,
+    required this.savedJobIds,
   });
 
   final List<Job> jobs;
@@ -19,6 +21,8 @@ class WebJobListPanel extends StatelessWidget {
   final ValueChanged<Job> onSelected;
   final TextEditingController searchController;
   final ValueChanged<String> onSearchChanged;
+  final String title;
+  final Set<String> savedJobIds;
 
   @override
   Widget build(BuildContext context) {
@@ -27,14 +31,24 @@ class WebJobListPanel extends StatelessWidget {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(18),
-            child: TextField(
-              controller: searchController,
-              onChanged: onSearchChanged,
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Search jobs, trades, companies',
-              ),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: searchController,
+                  onChanged: onSearchChanged,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search),
+                    hintText: 'Search jobs, trades, companies',
+                  ),
+                ),
+              ],
             ),
           ),
           const Divider(height: 1, color: WebTheme.border),
@@ -50,6 +64,7 @@ class WebJobListPanel extends StatelessWidget {
                       return _WebJobCard(
                         job: job,
                         selected: job.id == selectedJobId,
+                        saved: savedJobIds.contains(job.id),
                         onTap: () => onSelected(job),
                       );
                     },
@@ -65,11 +80,13 @@ class _WebJobCard extends StatelessWidget {
   const _WebJobCard({
     required this.job,
     required this.selected,
+    required this.saved,
     required this.onTap,
   });
 
   final Job job;
   final bool selected;
+  final bool saved;
   final VoidCallback onTap;
 
   @override
@@ -91,15 +108,28 @@ class _WebJobCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              job.displayTitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: WebTheme.ink,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    job.displayTitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: WebTheme.ink,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                if (saved)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child:
+                        Icon(Icons.favorite, color: WebTheme.green, size: 18),
+                  ),
+              ],
             ),
             if (job.companyName.trim().isNotEmpty) ...[
               const SizedBox(height: 6),
@@ -142,7 +172,11 @@ class _WebJobCard extends StatelessWidget {
                   _Chip(
                     label: '${job.remainingPositions} of ${job.positions}',
                   ),
-                if (job.status.trim().isNotEmpty) _Chip(label: job.status),
+                if (job.status.trim().isNotEmpty)
+                  _Chip(
+                      label: job.moderationStatus == 'approved'
+                          ? job.status
+                          : job.moderationLabel),
               ],
             ),
           ],
