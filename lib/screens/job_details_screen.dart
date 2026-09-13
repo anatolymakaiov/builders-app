@@ -385,11 +385,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             final avatarUrl = data["avatarUrl"] ?? data["photo"];
 
             return ListTile(
-              leading: CircleAvatar(
-                backgroundImage: avatarUrl is String
-                    ? appCachedImageProvider(avatarUrl)
-                    : null,
-                child: avatarUrl is String ? null : const Icon(Icons.group),
+              leading: AppCachedCircleAvatar(
+                imageUrl: avatarUrl is String ? avatarUrl : null,
+                fallbackIcon: Icons.group,
               ),
               title: Text(data["name"] ?? "Team"),
               subtitle: Text("${members.length} members"),
@@ -1293,13 +1291,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           ),
           child: Row(
             children: [
-              CircleAvatar(
+              AppCachedCircleAvatar(
+                imageUrl: photo,
+                fallbackIcon: Icons.business,
                 radius: 28,
                 backgroundColor: Colors.grey.shade300,
-                backgroundImage:
-                    photo != null ? appCachedImageProvider(photo) : null,
-                child:
-                    photo == null ? const Icon(Icons.business, size: 28) : null,
+                iconSize: 28,
               ),
               const SizedBox(width: 14),
               Expanded(

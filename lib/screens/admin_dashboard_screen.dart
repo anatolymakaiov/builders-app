@@ -19,6 +19,7 @@ import 'employer_profile_screen.dart';
 import 'worker_profile_screen.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/app_cached_image.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -6178,18 +6179,11 @@ class _AdminModerationOverview extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
+                  AppCachedCircleAvatar(
+                    imageUrl: logo?.trim(),
+                    fallbackIcon: Icons.business_outlined,
                     radius: 30,
                     backgroundColor: const Color(0x297DB9D8),
-                    backgroundImage: logo != null && logo.trim().isNotEmpty
-                        ? NetworkImage(logo.trim())
-                        : null,
-                    child: logo == null || logo.trim().isEmpty
-                        ? const Icon(
-                            Icons.business_outlined,
-                            color: AppColors.greenDark,
-                          )
-                        : null,
                   ),
                   const SizedBox(width: 14),
                   Expanded(

@@ -103,3 +103,59 @@ class AppCachedImage extends StatelessWidget {
     );
   }
 }
+
+class AppCachedCircleAvatar extends StatelessWidget {
+  const AppCachedCircleAvatar({
+    super.key,
+    required this.imageUrl,
+    required this.fallbackIcon,
+    this.radius = 20,
+    this.backgroundColor = AppColors.surfaceAlt,
+    this.iconColor = AppColors.greenDark,
+    this.iconSize,
+  });
+
+  final String? imageUrl;
+  final IconData fallbackIcon;
+  final double radius;
+  final Color backgroundColor;
+  final Color iconColor;
+  final double? iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = imageUrl?.trim();
+    final hasImage = url != null && url.isNotEmpty;
+    final fallback = Icon(
+      fallbackIcon,
+      size: iconSize ?? radius * 0.9,
+      color: iconColor,
+    );
+
+    if (kIsWeb) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: backgroundColor,
+        child: hasImage
+            ? ClipOval(
+                child: AppCachedImage(
+                  imageUrl: url,
+                  width: radius * 2,
+                  height: radius * 2,
+                  fit: BoxFit.cover,
+                  placeholder: fallback,
+                  errorWidget: fallback,
+                ),
+              )
+            : fallback,
+      );
+    }
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: backgroundColor,
+      backgroundImage: hasImage ? appCachedImageProvider(url) : null,
+      child: hasImage ? null : fallback,
+    );
+  }
+}

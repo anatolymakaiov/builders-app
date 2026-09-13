@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import 'app_blueprint.dart';
 import 'app_cards.dart';
@@ -22,20 +23,12 @@ class StroykaAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = imageUrl?.trim();
-    final hasImage = url != null && url.isNotEmpty;
-
-    return CircleAvatar(
+    return AppCachedCircleAvatar(
+      imageUrl: imageUrl,
+      fallbackIcon: fallbackIcon,
       radius: size / 2,
       backgroundColor: backgroundColor,
-      backgroundImage: hasImage ? appCachedImageProvider(url) : null,
-      child: hasImage
-          ? null
-          : Icon(
-              fallbackIcon,
-              size: size * 0.44,
-              color: AppColors.greenDark,
-            ),
+      iconSize: size * 0.44,
     );
   }
 }
@@ -81,27 +74,39 @@ class StroykaProfileHeader extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: SizedBox(
           height: headerHeight,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              image: hasHeaderImage
-                  ? DecorationImage(
-                      image: appCachedImageProvider(headerImage),
-                      fit: BoxFit.cover,
-                    )
-                  : null,
-            ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.08),
-                    Colors.black.withValues(alpha: 0.16),
-                  ],
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (hasHeaderImage)
+                if (kIsWeb)
+                  AppCachedImage(
+                    imageUrl: headerImage,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: headerHeight,
+                  )
+                else
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      image: DecorationImage(
+                        image: appCachedImageProvider(headerImage),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.08),
+                      Colors.black.withValues(alpha: 0.16),
+                    ],
+                  ),
                 ),
               ),
-              child: Padding(
+              Padding(
                 padding: const EdgeInsets.all(12),
                 child: Container(
                   width: double.infinity,
@@ -180,7 +185,7 @@ class StroykaProfileHeader extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       ),

@@ -8,6 +8,7 @@ import 'hired_workers_screen.dart';
 import '../services/application_activity_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/app_cached_image.dart';
 
 class ApplicantsScreen extends StatelessWidget {
   final String jobId;
@@ -364,15 +365,11 @@ class ApplicantsScreen extends StatelessWidget {
                             /// 👤 USER INFO
                             Row(
                               children: [
-                                CircleAvatar(
+                                AppCachedCircleAvatar(
+                                  imageUrl: photo?.toString(),
+                                  fallbackIcon: Icons.person,
                                   radius: 24,
                                   backgroundColor: Colors.grey.shade300,
-                                  backgroundImage: photo != null
-                                      ? NetworkImage(photo)
-                                      : null,
-                                  child: photo == null
-                                      ? const Icon(Icons.person)
-                                      : null,
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(

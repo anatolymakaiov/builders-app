@@ -1039,15 +1039,12 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
             if (includeHeader) ...[
               applicationHeaderCard(
                 headerControls: headerControls,
-                avatar: CircleAvatar(
+                avatar: AppCachedCircleAvatar(
+                  imageUrl: avatar?.toString(),
+                  fallbackIcon: Icons.groups,
                   radius: 44,
                   backgroundColor: Colors.grey.shade300,
-                  backgroundImage: avatar == null
-                      ? null
-                      : appCachedImageProvider(avatar.toString()),
-                  child: avatar == null
-                      ? const Icon(Icons.groups, size: 38)
-                      : null,
+                  iconSize: 38,
                 ),
                 title: teamName.toString(),
                 subtitle: "${memberIds.length} members",
@@ -1149,12 +1146,10 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundImage: photo == null
-                              ? null
-                              : appCachedImageProvider(photo.toString()),
-                          child:
-                              photo == null ? const Icon(Icons.person) : null,
+                        leading: AppCachedCircleAvatar(
+                          imageUrl: photo?.toString(),
+                          fallbackIcon: Icons.person,
+                          backgroundColor: Colors.grey.shade300,
                         ),
                         title: Text(user["name"] ?? "Worker"),
                         subtitle: Text(user["trade"] ?? ""),

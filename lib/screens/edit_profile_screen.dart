@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -1924,6 +1925,10 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget buildHeaderBackgroundPicker() {
     final hasHeaderImage = headerImageFile != null ||
         (headerImageUrl != null && headerImageUrl!.isNotEmpty);
+    final webRemoteHeaderUrl =
+        kIsWeb && headerImageFile == null ? headerImageUrl?.trim() : null;
+    final showWebRemoteHeader =
+        webRemoteHeaderUrl != null && webRemoteHeaderUrl.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1940,7 +1945,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             height: 118,
             decoration: BoxDecoration(
               color: Colors.grey.shade200,
-              image: hasHeaderImage
+              image: hasHeaderImage && !showWebRemoteHeader
                   ? DecorationImage(
                       image: headerImageFile != null
                           ? FileImage(headerImageFile!) as ImageProvider
@@ -1949,15 +1954,29 @@ class _ProfileScreenState extends State<ProfileScreen>
                     )
                   : null,
             ),
-            child: Container(
-              alignment: Alignment.center,
-              color: Colors.black.withValues(alpha: hasHeaderImage ? 0.20 : 0),
-              child: OutlinedButton.icon(
-                onPressed: pickHeaderImage,
-                icon: const Icon(Icons.image_outlined),
-                label: Text(
-                    hasHeaderImage ? "Change background" : "Choose background"),
-              ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (showWebRemoteHeader)
+                  AppCachedImage(
+                    imageUrl: webRemoteHeaderUrl,
+                    fit: BoxFit.cover,
+                  ),
+                Container(
+                  alignment: Alignment.center,
+                  color:
+                      Colors.black.withValues(alpha: hasHeaderImage ? 0.20 : 0),
+                  child: OutlinedButton.icon(
+                    onPressed: pickHeaderImage,
+                    icon: const Icon(Icons.image_outlined),
+                    label: Text(
+                      hasHeaderImage
+                          ? "Change background"
+                          : "Choose background",
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1972,16 +1991,18 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget buildAvatar() {
     return GestureDetector(
       onTap: uploadingAvatar ? null : pickAndUploadAvatar,
-      child: CircleAvatar(
-        radius: 50,
-        backgroundColor: Colors.grey.shade300,
-        backgroundImage:
-            photoUrl != null ? appCachedImageProvider(photoUrl!) : null,
-        child: uploadingAvatar
-            ? const CircularProgressIndicator()
-            : photoUrl == null
-                ? const Icon(Icons.camera_alt, size: 30)
-                : null,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AppCachedCircleAvatar(
+            imageUrl: photoUrl,
+            fallbackIcon: Icons.camera_alt,
+            radius: 50,
+            backgroundColor: Colors.grey.shade300,
+            iconSize: 30,
+          ),
+          if (uploadingAvatar) const CircularProgressIndicator(),
+        ],
       ),
     );
   }
@@ -2012,6 +2033,10 @@ class _ProfileScreenState extends State<ProfileScreen>
             : "Worker account");
     final headerImage = profileHeaderImageProvider();
     final hasHeaderImage = headerImage != null;
+    final webRemoteHeaderUrl =
+        kIsWeb && headerImageFile == null ? headerImageUrl?.trim() : null;
+    final showWebRemoteHeader =
+        webRemoteHeaderUrl != null && webRemoteHeaderUrl.isNotEmpty;
 
     return AppCard(
       margin: const EdgeInsets.fromLTRB(0, 0, 0, 16),
@@ -2022,139 +2047,153 @@ class _ProfileScreenState extends State<ProfileScreen>
           height: 210,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              image: hasHeaderImage
+              image: hasHeaderImage && !showWebRemoteHeader
                   ? DecorationImage(
                       image: headerImage,
                       fit: BoxFit.cover,
                     )
                   : null,
             ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: hasHeaderImage ? 0.10 : 0),
-                    Colors.black.withValues(alpha: hasHeaderImage ? 0.20 : 0),
-                  ],
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: CustomPaint(
-                  painter: BlueprintDecorationPainter(
-                    fillColor: Colors.white.withValues(alpha: 0.82),
-                    lineColor: AppColors.blueprintLine.withValues(alpha: 0.55),
-                    gridColor: AppColors.blueprintLine.withValues(alpha: 0.20),
-                    radius: 12,
-                    subtle: true,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (showWebRemoteHeader)
+                  AppCachedImage(
+                    imageUrl: webRemoteHeaderUrl,
+                    fit: BoxFit.cover,
                   ),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              GestureDetector(
-                                onTap: uploadingAvatar
-                                    ? null
-                                    : pickAndUploadAvatar,
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  alignment: Alignment.center,
-                                  children: [
-                                    StroykaAvatar(
-                                      imageUrl: photoUrl,
-                                      fallbackIcon: role == "employer"
-                                          ? Icons.business
-                                          : Icons.person,
-                                      size: 88,
-                                    ),
-                                    Positioned(
-                                      right: -8,
-                                      bottom: -8,
-                                      child: Material(
-                                        color: AppColors.navy
-                                            .withValues(alpha: 0.90),
-                                        shape: const CircleBorder(),
-                                        child: SizedBox(
-                                          width: 34,
-                                          height: 34,
-                                          child: uploadingAvatar
-                                              ? const Padding(
-                                                  padding: EdgeInsets.all(8),
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                    color: Colors.white,
-                                                  ),
-                                                )
-                                              : const Icon(
-                                                  Icons.photo_camera_outlined,
-                                                  color: Colors.white,
-                                                  size: 18,
-                                                ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                title,
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: AppColors.ink,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                subtitle,
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: AppColors.muted,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: Tooltip(
-                            message: "Choose background",
-                            child: Material(
-                              color: AppColors.navy.withValues(alpha: 0.90),
-                              shape: const CircleBorder(),
-                              child: IconButton(
-                                onPressed: pickHeaderImage,
-                                icon: const Icon(
-                                  Icons.photo_camera_outlined,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black
+                            .withValues(alpha: hasHeaderImage ? 0.10 : 0),
+                        Colors.black
+                            .withValues(alpha: hasHeaderImage ? 0.20 : 0),
                       ],
                     ),
                   ),
                 ),
-              ),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: CustomPaint(
+                    painter: BlueprintDecorationPainter(
+                      fillColor: Colors.white.withValues(alpha: 0.82),
+                      lineColor:
+                          AppColors.blueprintLine.withValues(alpha: 0.55),
+                      gridColor:
+                          AppColors.blueprintLine.withValues(alpha: 0.20),
+                      radius: 12,
+                      subtle: true,
+                    ),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  onTap: uploadingAvatar
+                                      ? null
+                                      : pickAndUploadAvatar,
+                                  child: Stack(
+                                    clipBehavior: Clip.none,
+                                    alignment: Alignment.center,
+                                    children: [
+                                      StroykaAvatar(
+                                        imageUrl: photoUrl,
+                                        fallbackIcon: role == "employer"
+                                            ? Icons.business
+                                            : Icons.person,
+                                        size: 88,
+                                      ),
+                                      Positioned(
+                                        right: -8,
+                                        bottom: -8,
+                                        child: Material(
+                                          color: AppColors.navy
+                                              .withValues(alpha: 0.90),
+                                          shape: const CircleBorder(),
+                                          child: SizedBox(
+                                            width: 34,
+                                            height: 34,
+                                            child: uploadingAvatar
+                                                ? const Padding(
+                                                    padding: EdgeInsets.all(8),
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      color: Colors.white,
+                                                    ),
+                                                  )
+                                                : const Icon(
+                                                    Icons.photo_camera_outlined,
+                                                    color: Colors.white,
+                                                    size: 18,
+                                                  ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  title,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.ink,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  subtitle,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.muted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Tooltip(
+                              message: "Choose background",
+                              child: Material(
+                                color: AppColors.navy.withValues(alpha: 0.90),
+                                shape: const CircleBorder(),
+                                child: IconButton(
+                                  onPressed: pickHeaderImage,
+                                  icon: const Icon(
+                                    Icons.photo_camera_outlined,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

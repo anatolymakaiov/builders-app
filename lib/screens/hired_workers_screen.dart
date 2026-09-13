@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'worker_profile_screen.dart';
 import '../theme/stroyka_background.dart';
+import '../widgets/app_cached_image.dart';
 
 class HiredWorkersScreen extends StatelessWidget {
   final String jobId;
@@ -79,13 +80,10 @@ class HiredWorkersScreen extends StatelessWidget {
                         ),
                         child: Row(
                           children: [
-                            CircleAvatar(
+                            AppCachedCircleAvatar(
+                              imageUrl: photo?.toString(),
+                              fallbackIcon: Icons.person,
                               radius: 22,
-                              backgroundImage:
-                                  photo != null ? NetworkImage(photo) : null,
-                              child: photo == null
-                                  ? const Icon(Icons.person)
-                                  : null,
                             ),
                             const SizedBox(width: 10),
                             Expanded(
