@@ -13,10 +13,12 @@ class WebJobsPage extends StatefulWidget {
     super.key,
     required this.userId,
     required this.role,
+    this.onOpenProfile,
   });
 
   final String userId;
   final String role;
+  final void Function(String userId, String role)? onOpenProfile;
 
   @override
   State<WebJobsPage> createState() => _WebJobsPageState();
@@ -148,6 +150,13 @@ class _WebJobsPageState extends State<WebJobsPage> {
                       onToggleSaved: selectedJob == null
                           ? null
                           : () => _toggleSaved(selectedJob!),
+                      onViewCompanyProfile: selectedJob == null ||
+                              selectedJob.ownerId == 'unknown'
+                          ? null
+                          : () => widget.onOpenProfile?.call(
+                                selectedJob!.ownerId,
+                                'employer',
+                              ),
                     );
                     if (compact) {
                       return Column(

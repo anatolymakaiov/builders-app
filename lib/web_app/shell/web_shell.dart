@@ -28,27 +28,39 @@ class WebShell extends StatefulWidget {
 
 class _WebShellState extends State<WebShell> {
   WebSection selected = WebSection.jobs;
+  _WebProfileRoute? profileRoute;
 
   @override
   Widget build(BuildContext context) {
-    final page = switch (selected) {
-      WebSection.jobs => WebJobsPage(
-          userId: widget.user.uid,
-          role: widget.role,
-        ),
-      WebSection.map => WebMapPage(
-          userId: widget.user.uid,
-          role: widget.role,
-        ),
-      WebSection.applications => WebApplicationsPage(
-          userId: widget.user.uid,
-          role: widget.role,
-        ),
-      WebSection.chats => WebChatsPage(
-          userId: widget.user.uid,
-          role: widget.role,
-        ),
-    };
+    final page = profileRoute == null
+        ? switch (selected) {
+            WebSection.jobs => WebJobsPage(
+                userId: widget.user.uid,
+                role: widget.role,
+                onOpenProfile: _openProfile,
+              ),
+            WebSection.map => WebMapPage(
+                userId: widget.user.uid,
+                role: widget.role,
+              ),
+            WebSection.applications => WebApplicationsPage(
+                userId: widget.user.uid,
+                role: widget.role,
+                onOpenProfile: _openProfile,
+              ),
+            WebSection.chats => WebChatsPage(
+                userId: widget.user.uid,
+                role: widget.role,
+              ),
+          }
+        : WebProfilePage(
+            user: widget.user,
+            role: widget.role,
+            profile: widget.profile,
+            viewedUserId: profileRoute!.userId,
+            viewedRole: profileRoute!.role,
+            onClose: () => setState(() => profileRoute = null),
+          );
 
     return Scaffold(
       backgroundColor: WebTheme.page,
@@ -58,19 +70,12 @@ class _WebShellState extends State<WebShell> {
             selected: selected,
             role: widget.role,
             avatar: WebProfileAvatar(profile: widget.profile),
-            onSelected: (value) => setState(() => selected = value),
+            onSelected: (value) => setState(() {
+              selected = value;
+              profileRoute = null;
+            }),
             onPostJob: () {},
-            onProfile: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => WebProfilePage(
-                    user: widget.user,
-                    role: widget.role,
-                    profile: widget.profile,
-                  ),
-                ),
-              );
-            },
+            onProfile: () => _openProfile(widget.user.uid, widget.role),
             onSignOut: () => FirebaseAuth.instance.signOut(),
           ),
           Expanded(child: page),
@@ -78,4 +83,17 @@ class _WebShellState extends State<WebShell> {
       ),
     );
   }
+
+  void _openProfile(String userId, String role) {
+    setState(() {
+      profileRoute = _WebProfileRoute(userId: userId, role: role);
+    });
+  }
+}
+
+class _WebProfileRoute {
+  const _WebProfileRoute({required this.userId, required this.role});
+
+  final String userId;
+  final String role;
 }

@@ -13,10 +13,12 @@ class WebApplicationsPage extends StatefulWidget {
     super.key,
     required this.userId,
     required this.role,
+    this.onOpenProfile,
   });
 
   final String userId;
   final String role;
+  final void Function(String userId, String role)? onOpenProfile;
 
   @override
   State<WebApplicationsPage> createState() => _WebApplicationsPageState();
@@ -123,7 +125,11 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                       ),
                     );
                     final detail = WebPanel(
-                      child: _ApplicationDetail(application: selected),
+                      child: _ApplicationDetail(
+                        application: selected,
+                        role: widget.role,
+                        onOpenProfile: widget.onOpenProfile,
+                      ),
                     );
                     if (compact) {
                       return Column(
@@ -265,9 +271,15 @@ class _ApplicationList extends StatelessWidget {
 }
 
 class _ApplicationDetail extends StatelessWidget {
-  const _ApplicationDetail({required this.application});
+  const _ApplicationDetail({
+    required this.application,
+    required this.role,
+    this.onOpenProfile,
+  });
 
   final WebApplicationSummary? application;
+  final String role;
+  final void Function(String userId, String role)? onOpenProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -317,6 +329,26 @@ class _ApplicationDetail extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              if (role == 'employer' && item.workerId.isNotEmpty)
+                OutlinedButton.icon(
+                  onPressed: () => onOpenProfile?.call(item.workerId, 'worker'),
+                  icon: const Icon(Icons.person_outline),
+                  label: const Text('View worker profile'),
+                ),
+              if (role == 'worker' && item.employerId.isNotEmpty)
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      onOpenProfile?.call(item.employerId, 'employer'),
+                  icon: const Icon(Icons.business_outlined),
+                  label: const Text('View company profile'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
           for (final field in fields) ...[
             Text(
               field.key,

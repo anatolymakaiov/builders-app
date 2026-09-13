@@ -51,6 +51,12 @@ class WebApplicationSummary {
   String get status =>
       _firstText(data, const ['status', 'applicationStatus'], 'submitted');
 
+  String get workerId =>
+      (data['workerId'] ?? data['applicantId'])?.toString().trim() ?? '';
+
+  String get employerId =>
+      (data['employerId'] ?? data['ownerId'])?.toString().trim() ?? '';
+
   Timestamp? get activityAt {
     for (final key in const [
       'applicationActivityAt',

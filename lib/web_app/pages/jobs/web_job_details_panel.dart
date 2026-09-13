@@ -15,6 +15,7 @@ class WebJobDetailsPanel extends StatelessWidget {
     this.applying = false,
     this.onApply,
     this.onToggleSaved,
+    this.onViewCompanyProfile,
   });
 
   final Job? job;
@@ -24,6 +25,7 @@ class WebJobDetailsPanel extends StatelessWidget {
   final bool applying;
   final VoidCallback? onApply;
   final VoidCallback? onToggleSaved;
+  final VoidCallback? onViewCompanyProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -156,7 +158,7 @@ class WebJobDetailsPanel extends StatelessWidget {
                           ),
                           const SizedBox(width: 10),
                           OutlinedButton.icon(
-                            onPressed: null,
+                            onPressed: onViewCompanyProfile,
                             icon: const Icon(Icons.business_outlined),
                             label: const Text('View company profile'),
                           ),

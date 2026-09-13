@@ -107,6 +107,35 @@ class WebJobsDataService {
     return WebJobsResult(publicJobs: publicJobs, ownerJobs: ownerJobs);
   }
 
+  Future<List<Job>> loadCompanyJobs({
+    required String ownerId,
+    required bool ownProfile,
+  }) async {
+    final docsById = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    for (final field in const [
+      'ownerId',
+      'employerId',
+      'createdBy',
+      'userId',
+    ]) {
+      final snapshot = await _firestore
+          .collection('jobs')
+          .where(field, isEqualTo: ownerId)
+          .get();
+      for (final doc in snapshot.docs) {
+        docsById[doc.id] = doc;
+      }
+    }
+
+    final jobs = docsById.values
+        .map((doc) => Job.fromFirestore(doc.id, doc.data()))
+        .where((job) =>
+            ownProfile ? _isOwnerWebJob(job, ownerId) : _isPublicWebJob(job))
+        .toList();
+    _sortNewest(jobs);
+    return jobs;
+  }
+
   bool _isPublicWebJob(Job job) {
     final status = job.status.trim().toLowerCase();
     return job.isPubliclyVisible &&
