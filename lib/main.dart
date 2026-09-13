@@ -3,7 +3,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 
+import 'firebase_options.dart';
 import 'services/app_navigation.dart';
 import 'services/auth_preferences_service.dart';
 import 'services/notification_service.dart';
@@ -18,14 +20,20 @@ import 'widgets/legal_documents.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp();
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  if (!kIsWeb) {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
   await NotificationService().init();
 
   runApp(const JobApp());
