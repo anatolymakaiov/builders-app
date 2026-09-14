@@ -267,7 +267,7 @@ class _WebNavItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(WebRadii.button),
           border: Border(
             bottom: BorderSide(
-              color: selected ? WebTheme.green : Colors.transparent,
+              color: selected ? WebTheme.accent : Colors.transparent,
               width: 2,
             ),
           ),
@@ -281,7 +281,7 @@ class _WebNavItem extends StatelessWidget {
               child: Icon(
                 section.icon,
                 size: 20,
-                color: selected ? WebTheme.green : WebTheme.muted,
+                color: selected ? WebTheme.accent : WebTheme.muted,
               ),
             ),
             if (showLabel) ...[
@@ -289,7 +289,7 @@ class _WebNavItem extends StatelessWidget {
               Text(
                 section.label,
                 style: WebTypography.button.copyWith(
-                  color: selected ? WebTheme.green : WebTheme.ink,
+                  color: selected ? WebTheme.accent : WebTheme.ink,
                 ),
               ),
               if (badgeCount > 0) ...[

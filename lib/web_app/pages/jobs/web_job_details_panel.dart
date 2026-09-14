@@ -557,7 +557,7 @@ class _DetailChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 17, color: WebTheme.green),
+          Icon(icon, size: 17, color: WebTheme.accent),
           const SizedBox(width: 7),
           Flexible(
             child: Text(

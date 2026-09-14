@@ -158,7 +158,7 @@ class WebStatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final resolved = tone ?? webStatusTone(label);
     final colors = switch (resolved) {
-      WebStatusTone.success => (WebTheme.success, WebTheme.greenSoft),
+      WebStatusTone.success => (WebTheme.success, WebTheme.accentSoft),
       WebStatusTone.warning => (WebTheme.warning, WebTheme.warningSoft),
       WebStatusTone.danger => (WebTheme.danger, WebTheme.dangerSoft),
       WebStatusTone.info => (WebTheme.info, WebTheme.infoSoft),

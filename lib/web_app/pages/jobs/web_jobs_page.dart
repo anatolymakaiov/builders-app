@@ -23,6 +23,7 @@ class WebJobsPage extends StatefulWidget {
     required this.role,
     this.onOpenProfile,
     this.onPostJob,
+    this.onOpenSubscriptions,
     this.onViewApplications,
     this.initialJobId,
     this.initialOwnerMode,
@@ -32,6 +33,7 @@ class WebJobsPage extends StatefulWidget {
   final String role;
   final void Function(String userId, String role)? onOpenProfile;
   final VoidCallback? onPostJob;
+  final VoidCallback? onOpenSubscriptions;
   final void Function(String jobId, {String? statusFilter})? onViewApplications;
   final String? initialJobId;
   final bool? initialOwnerMode;
@@ -234,90 +236,88 @@ class _WebJobsPageState extends State<WebJobsPage> {
                 const SizedBox(height: 14),
               ],
               Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
+                spacing: WebSpacing.sm,
+                runSpacing: WebSpacing.sm,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 320,
+                    child: TextField(
+                      controller: searchController,
+                      onChanged: (value) => setState(() {
+                        search = value;
+                        page = 1;
+                      }),
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        hintText: 'Search jobs, trades, companies',
+                      ),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _openFilters,
+                    icon: const Icon(Icons.tune),
+                    label: const Text('Filters'),
+                  ),
+                  MenuAnchor(
+                    menuChildren: [
+                      for (final option in WebJobSort.values)
+                        MenuItemButton(
+                          leadingIcon: option == sort
+                              ? const Icon(Icons.check)
+                              : const SizedBox(width: 24),
+                          onPressed: () => _changeSort(option),
+                          child: Text(_sortLabel(option)),
+                        ),
+                    ],
+                    builder: (context, controller, child) =>
+                        OutlinedButton.icon(
+                      onPressed: controller.isOpen
+                          ? controller.close
+                          : controller.open,
+                      icon: const Icon(Icons.swap_vert),
+                      label: Text('Sort: ${_sortLabel(sort)}'),
+                    ),
+                  ),
+                  if (isWorker && widget.onOpenSubscriptions != null)
                     OutlinedButton.icon(
-                        onPressed: () async {
-                          final next = await showDialog<WebJobFilters>(
-                              context: context,
-                              builder: (_) =>
-                                  WebJobFiltersDialog(current: filters));
-                          if (mounted && next != null) {
-                            setState(() {
-                              filters = next;
-                              page = 1;
-                            });
-                          }
-                        },
-                        icon: const Icon(Icons.tune),
-                        label: const Text('Filters')),
-                    DropdownButton<WebJobSort>(
-                        value: sort,
-                        items: const [
-                          DropdownMenuItem(
-                              value: WebJobSort.newest, child: Text('Newest')),
-                          DropdownMenuItem(
-                              value: WebJobSort.highestPay,
-                              child: Text('Highest pay')),
-                          DropdownMenuItem(
-                              value: WebJobSort.nearest,
-                              child: Text('Nearest')),
-                        ],
-                        onChanged: (value) async {
-                          if (value == null) return;
-                          if (value == WebJobSort.nearest && location == null) {
-                            try {
-                              location = await Geolocator.getCurrentPosition();
-                            } catch (_) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text(
-                                          'Location unavailable. Allow location access and retry.')),
-                                );
-                              }
-                              return;
-                            }
-                          }
-                          if (mounted) {
-                            setState(() {
-                              sort = value;
-                              page = 1;
-                            });
-                          }
-                        }),
-                    if (isWorker)
-                      IconButton(
-                          tooltip:
-                              savedOnly ? 'Show all jobs' : 'Show saved jobs',
-                          icon: Icon(savedOnly
-                              ? Icons.favorite
-                              : Icons.favorite_border),
-                          onPressed: () async {
-                            await _loadSavedJobs();
-                            if (mounted) {
-                              setState(() {
-                                savedOnly = !savedOnly;
-                                page = 1;
-                              });
-                            }
-                          }),
+                      onPressed: widget.onOpenSubscriptions,
+                      icon: const Icon(Icons.work_history_outlined),
+                      label: const Text('Subscriptions'),
+                    ),
+                  if (isWorker)
                     IconButton(
-                        tooltip: 'Previous page',
-                        icon: const Icon(Icons.chevron_left),
-                        onPressed: currentPage > 1
-                            ? () => setState(() => page = currentPage - 1)
-                            : null),
-                    Text('$currentPage / ${pages == 0 ? 1 : pages}'),
-                    IconButton(
-                        tooltip: 'Next page',
-                        icon: const Icon(Icons.chevron_right),
-                        onPressed: currentPage < pages
-                            ? () => setState(() => page = currentPage + 1)
-                            : null),
-                  ]),
+                      tooltip: savedOnly ? 'Show all jobs' : 'Show saved jobs',
+                      icon: Icon(
+                        savedOnly ? Icons.favorite : Icons.favorite_border,
+                      ),
+                      onPressed: () async {
+                        await _loadSavedJobs();
+                        if (mounted) {
+                          setState(() {
+                            savedOnly = !savedOnly;
+                            page = 1;
+                          });
+                        }
+                      },
+                    ),
+                  IconButton(
+                    tooltip: 'Previous page',
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: currentPage > 1
+                        ? () => setState(() => page = currentPage - 1)
+                        : null,
+                  ),
+                  Text('$currentPage / ${pages == 0 ? 1 : pages}'),
+                  IconButton(
+                    tooltip: 'Next page',
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: currentPage < pages
+                        ? () => setState(() => page = currentPage + 1)
+                        : null,
+                  ),
+                ],
+              ),
               const SizedBox(height: 10),
               Expanded(
                 child: LayoutBuilder(
@@ -339,6 +339,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
                       }),
                       title: _listTitle(jobs.length),
                       savedJobIds: savedJobIds,
+                      showSearch: false,
                     );
                     final detail = targetUnavailable
                         ? const Center(
@@ -442,6 +443,48 @@ class _WebJobsPageState extends State<WebJobsPage> {
     }
     return count == 1 ? '1 market vacancy' : '$count market vacancies';
   }
+
+  Future<void> _openFilters() async {
+    final next = await showDialog<WebJobFilters>(
+      context: context,
+      builder: (_) => WebJobFiltersDialog(current: filters),
+    );
+    if (!mounted || next == null) return;
+    setState(() {
+      filters = next;
+      page = 1;
+    });
+  }
+
+  Future<void> _changeSort(WebJobSort value) async {
+    if (value == WebJobSort.nearest && location == null) {
+      try {
+        location = await Geolocator.getCurrentPosition();
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Location unavailable. Allow location access and retry.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      sort = value;
+      page = 1;
+    });
+  }
+
+  String _sortLabel(WebJobSort value) => switch (value) {
+        WebJobSort.newest => 'Newest',
+        WebJobSort.highestPay => 'Highest pay',
+        WebJobSort.nearest => 'Nearest',
+      };
 
   void _resetJobsStream() {
     jobsStream = service.jobs(userId: widget.userId, role: widget.role);

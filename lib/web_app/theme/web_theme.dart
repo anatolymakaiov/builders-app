@@ -5,9 +5,10 @@ class WebTheme {
   static const ink = Color(0xFF20343F);
   static const muted = Color(0xFF667781);
   static const subtleText = Color(0xFF87949C);
-  static const green = Color(0xFF21864A);
-  static const greenHover = Color(0xFF196F3C);
-  static const greenSoft = Color(0xFFE8F4EC);
+  static const accent = Color(0xFF2F78A8);
+  static const accentHover = Color(0xFF24678F);
+  static const accentSoft = Color(0xFFEAF5FC);
+  static const accentBorder = Color(0xFFAED5EC);
   static const blueprint = Color(0xFF4B82A1);
   static const border = Color(0xFFDDE4E8);
   static const borderStrong = Color(0xFFC3CDD3);
@@ -15,8 +16,8 @@ class WebTheme {
   static const surfaceAlt = Color(0xFFF6F8F9);
   static const elevatedSurface = Color(0xFFFBFCFC);
   static const page = Color(0xFFF0F3F5);
-  static const selected = Color(0xFFE9F3ED);
-  static const success = Color(0xFF21864A);
+  static const selected = Color(0xFFEDF7FC);
+  static const success = accent;
   static const warning = Color(0xFFB36B00);
   static const warningSoft = Color(0xFFFFF4DE);
   static const danger = Color(0xFFB42318);
@@ -26,9 +27,9 @@ class WebTheme {
 
   static ThemeData get light {
     const scheme = ColorScheme.light(
-      primary: green,
+      primary: accent,
       onPrimary: Colors.white,
-      primaryContainer: greenSoft,
+      primaryContainer: accentSoft,
       onPrimaryContainer: deep,
       secondary: blueprint,
       onSecondary: Colors.white,
@@ -84,7 +85,7 @@ class WebTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(WebRadii.input),
-          borderSide: const BorderSide(color: green, width: 1.5),
+          borderSide: const BorderSide(color: accent, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(WebRadii.input),
@@ -93,6 +94,9 @@ class WebTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
+          backgroundColor: accent,
+          foregroundColor: Colors.white,
+          overlayColor: accentHover,
           minimumSize: const Size(44, 44),
           padding: const EdgeInsets.symmetric(horizontal: WebSpacing.lg),
           shape: RoundedRectangleBorder(
@@ -103,10 +107,11 @@ class WebTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: ink,
+          foregroundColor: accent,
+          overlayColor: accentSoft,
           minimumSize: const Size(44, 44),
           padding: const EdgeInsets.symmetric(horizontal: WebSpacing.lg),
-          side: const BorderSide(color: borderStrong),
+          side: const BorderSide(color: accentBorder),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(WebRadii.button),
           ),
@@ -115,7 +120,7 @@ class WebTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: green,
+          foregroundColor: accent,
           minimumSize: const Size(40, 40),
           padding: const EdgeInsets.symmetric(horizontal: WebSpacing.md),
           shape: RoundedRectangleBorder(
@@ -157,7 +162,7 @@ class WebTheme {
                 states.contains(WidgetState.selected) ? selected : surface,
           ),
           foregroundColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.selected) ? green : ink,
+            (states) => states.contains(WidgetState.selected) ? accent : ink,
           ),
         ),
       ),
@@ -165,7 +170,7 @@ class WebTheme {
       listTileTheme: const ListTileThemeData(
         textColor: ink,
         iconColor: muted,
-        selectedColor: green,
+        selectedColor: accent,
         selectedTileColor: selected,
         contentPadding: EdgeInsets.symmetric(horizontal: WebSpacing.md),
         minVerticalPadding: WebSpacing.sm,
@@ -222,9 +227,9 @@ class WebTheme {
               states.contains(WidgetState.hovered) ? borderStrong : border,
         ),
       ),
-      focusColor: greenSoft,
-      hoverColor: deep.withValues(alpha: 0.045),
-      highlightColor: deep.withValues(alpha: 0.035),
+      focusColor: accentSoft,
+      hoverColor: accentSoft,
+      highlightColor: accent.withValues(alpha: 0.08),
     );
   }
 }

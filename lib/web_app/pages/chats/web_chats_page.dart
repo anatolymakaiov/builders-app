@@ -562,7 +562,7 @@ class _ChatList extends StatelessWidget {
               color: selected ? WebTheme.selected : WebTheme.surface,
               borderRadius: BorderRadius.circular(WebRadii.card),
               border: Border.all(
-                color: selected ? WebTheme.green : WebTheme.border,
+                color: selected ? WebTheme.accent : WebTheme.border,
               ),
             ),
             child: Row(
@@ -600,7 +600,7 @@ class _ChatList extends StatelessWidget {
                     width: 10,
                     height: 10,
                     decoration: const BoxDecoration(
-                      color: WebTheme.green,
+                      color: WebTheme.accent,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -851,7 +851,7 @@ class _MessageBubble extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: isMine ? WebTheme.green : const Color(0xFFF4F6F8),
+          color: isMine ? WebTheme.accent : const Color(0xFFF4F6F8),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(

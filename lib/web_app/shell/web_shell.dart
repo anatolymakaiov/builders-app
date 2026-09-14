@@ -69,75 +69,78 @@ class _WebShellState extends State<WebShell> {
 
   @override
   Widget build(BuildContext context) {
-    final page = secondaryRoute != null
-        ? _secondaryPage(secondaryRoute!)
-        : postingJob
-            ? WebPostJobPage(
-                userId: widget.user.uid,
-                onCancel: () => setState(() => postingJob = false),
-                onDone: (_) => setState(() {
-                  postingJob = false;
-                  selected = WebSection.jobs;
-                }),
-                onOpenBilling: () =>
-                    _openAccount(WebAccountDestination.billing),
-              )
-            : profileRoute == null
-                ? switch (selected) {
-                    WebSection.jobs => WebJobsPage(
-                        userId: widget.user.uid,
-                        role: widget.role,
-                        initialJobId: initialJobId,
-                        initialOwnerMode: initialJobOwnerMode,
-                        onOpenProfile: _openProfile,
-                        onPostJob:
-                            widget.role == 'employer' ? _openPostJob : null,
-                        onViewApplications: _openApplications,
-                      ),
-                    WebSection.map => WebMapPage(
-                        userId: widget.user.uid,
-                        role: widget.role,
-                        onOpenProfile: _openProfile,
-                      ),
-                    WebSection.applications => WebApplicationsPage(
-                        userId: widget.user.uid,
-                        role: widget.role,
-                        onOpenProfile: _openProfile,
-                        onOpenChat: _openChat,
-                        initialJobId: applicationsRoute?.jobId,
-                        initialApplicationId: applicationsRoute?.applicationId,
-                        initialStatusFilter: applicationsRoute?.statusFilter,
-                      ),
-                    WebSection.chats => WebChatsPage(
-                        userId: widget.user.uid,
-                        role: widget.role,
-                        initialChatId: initialChatId,
-                        onOpenProfile: _openProfile,
-                        onOpenJob: (jobId) => _openJob(jobId),
-                      ),
-                  }
-                : profileRoute!.role == 'team'
-                    ? WebTeamPage(
-                        teamId: profileRoute!.userId,
-                        role: widget.role,
-                        onBack: _closeProfile,
-                        onProfile: _openProfile,
-                        onChat: _openChat,
-                      )
-                    : WebProfilePage(
-                        user: widget.user,
-                        role: widget.role,
-                        profile: widget.profile,
-                        viewedUserId: profileRoute!.userId,
-                        viewedRole: profileRoute!.role,
-                        onClose: _closeProfile,
-                        onOpenChat: _openChat,
-                        onOpenProfile: _openProfile,
-                        onOpenJob: (jobId, ownerView) =>
-                            _openJob(jobId, ownerMode: ownerView),
-                        onAdminInbox: () =>
-                            _openAccount(WebAccountDestination.adminInbox),
-                      );
+    final primaryPage = postingJob
+        ? WebPostJobPage(
+            userId: widget.user.uid,
+            onCancel: () => setState(() => postingJob = false),
+            onDone: (_) => setState(() {
+              postingJob = false;
+              selected = WebSection.jobs;
+            }),
+            onOpenBilling: () => _openAccount(WebAccountDestination.billing),
+          )
+        : profileRoute == null
+            ? switch (selected) {
+                WebSection.jobs => WebJobsPage(
+                    userId: widget.user.uid,
+                    role: widget.role,
+                    initialJobId: initialJobId,
+                    initialOwnerMode: initialJobOwnerMode,
+                    onOpenProfile: _openProfile,
+                    onPostJob: widget.role == 'employer' ? _openPostJob : null,
+                    onOpenSubscriptions: widget.role == 'worker'
+                        ? () => _openAccount(
+                              WebAccountDestination.subscriptions,
+                            )
+                        : null,
+                    onViewApplications: _openApplications,
+                  ),
+                WebSection.map => WebMapPage(
+                    userId: widget.user.uid,
+                    role: widget.role,
+                    onOpenProfile: _openProfile,
+                  ),
+                WebSection.applications => WebApplicationsPage(
+                    userId: widget.user.uid,
+                    role: widget.role,
+                    onOpenProfile: _openProfile,
+                    onOpenChat: _openChat,
+                    initialJobId: applicationsRoute?.jobId,
+                    initialApplicationId: applicationsRoute?.applicationId,
+                    initialStatusFilter: applicationsRoute?.statusFilter,
+                  ),
+                WebSection.chats => WebChatsPage(
+                    userId: widget.user.uid,
+                    role: widget.role,
+                    initialChatId: initialChatId,
+                    onOpenProfile: _openProfile,
+                    onOpenJob: (jobId) => _openJob(jobId),
+                  ),
+              }
+            : profileRoute!.role == 'team'
+                ? WebTeamPage(
+                    teamId: profileRoute!.userId,
+                    role: widget.role,
+                    onBack: _closeProfile,
+                    onProfile: _openProfile,
+                    onChat: _openChat,
+                  )
+                : WebProfilePage(
+                    user: widget.user,
+                    role: widget.role,
+                    profile: widget.profile,
+                    viewedUserId: profileRoute!.userId,
+                    viewedRole: profileRoute!.role,
+                    onClose: _closeProfile,
+                    onOpenChat: _openChat,
+                    onOpenProfile: _openProfile,
+                    onOpenJob: (jobId, ownerView) =>
+                        _openJob(jobId, ownerMode: ownerView),
+                    onAdminInbox: () =>
+                        _openAccount(WebAccountDestination.adminInbox),
+                  );
+    final secondaryPage =
+        secondaryRoute == null ? null : _secondaryPage(secondaryRoute!);
 
     return Scaffold(
       backgroundColor: WebTheme.page,
@@ -167,7 +170,18 @@ class _WebShellState extends State<WebShell> {
               );
             },
           ),
-          Expanded(child: page),
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Offstage(
+                  offstage: secondaryPage != null,
+                  child: primaryPage,
+                ),
+                if (secondaryPage != null) secondaryPage,
+              ],
+            ),
+          ),
         ],
       ),
     );

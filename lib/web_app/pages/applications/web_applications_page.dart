@@ -445,7 +445,7 @@ class _ApplicationList extends StatelessWidget {
               color: selected ? WebTheme.selected : WebTheme.surface,
               borderRadius: BorderRadius.circular(WebRadii.card),
               border: Border.all(
-                color: selected ? WebTheme.green : WebTheme.border,
+                color: selected ? WebTheme.accent : WebTheme.border,
               ),
             ),
             child: Row(
@@ -503,7 +503,7 @@ class _ApplicationList extends StatelessWidget {
                     width: 9,
                     height: 9,
                     decoration: const BoxDecoration(
-                      color: WebTheme.green,
+                      color: WebTheme.accent,
                       shape: BoxShape.circle,
                     ),
                   ),

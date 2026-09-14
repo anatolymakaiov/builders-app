@@ -491,7 +491,7 @@ class _MapCanvas extends StatelessWidget {
               return Container(
                 alignment: Alignment.center,
                 decoration: const BoxDecoration(
-                  color: WebTheme.green,
+                  color: WebTheme.accent,
                   shape: BoxShape.circle,
                 ),
                 child: Text(
@@ -639,10 +639,10 @@ class _ResultCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: selected ? WebTheme.greenSoft : WebTheme.surfaceAlt,
+          color: selected ? WebTheme.accentSoft : WebTheme.surfaceAlt,
           borderRadius: BorderRadius.circular(WebRadii.card),
           border: Border.all(
-            color: selected ? WebTheme.green : WebTheme.border,
+            color: selected ? WebTheme.accent : WebTheme.border,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -717,7 +717,7 @@ class _JobMarker extends StatelessWidget {
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: selected ? WebTheme.deep : WebTheme.green,
+        color: selected ? WebTheme.deep : WebTheme.accent,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [

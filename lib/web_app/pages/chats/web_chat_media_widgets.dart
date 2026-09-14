@@ -309,7 +309,7 @@ class _OpenAttachmentRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, color: WebTheme.green),
+            Icon(icon, color: WebTheme.accent),
             const SizedBox(width: 10),
             Expanded(
               child: Column(

@@ -32,9 +32,9 @@ class WebProfileAvatar extends StatelessWidget {
 
     return CircleAvatar(
       radius: 20,
-      backgroundColor: WebTheme.greenSoft,
+      backgroundColor: WebTheme.accentSoft,
       child: photo == null || photo.isEmpty
-          ? const Icon(Icons.person_outline, color: WebTheme.green)
+          ? const Icon(Icons.person_outline, color: WebTheme.accent)
           : ClipOval(
               child: Image.network(
                 photo,
@@ -45,7 +45,7 @@ class WebProfileAvatar extends StatelessWidget {
                 errorBuilder: (_, __, ___) {
                   return const Icon(
                     Icons.person_outline,
-                    color: WebTheme.green,
+                    color: WebTheme.accent,
                   );
                 },
               ),

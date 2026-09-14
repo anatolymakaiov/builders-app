@@ -16,6 +16,7 @@ class WebJobListPanel extends StatelessWidget {
     required this.onSearchChanged,
     required this.title,
     required this.savedJobIds,
+    this.showSearch = true,
   });
 
   final List<Job> jobs;
@@ -25,6 +26,7 @@ class WebJobListPanel extends StatelessWidget {
   final ValueChanged<String> onSearchChanged;
   final String title;
   final Set<String> savedJobIds;
+  final bool showSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -41,15 +43,17 @@ class WebJobListPanel extends StatelessWidget {
                   title,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: searchController,
-                  onChanged: onSearchChanged,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
-                    hintText: 'Search jobs, trades, companies',
+                if (showSearch) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchController,
+                    onChanged: onSearchChanged,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Search jobs, trades, companies',
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -107,7 +111,7 @@ class _WebJobCard extends StatelessWidget {
           color: selected ? WebTheme.selected : WebTheme.surface,
           borderRadius: BorderRadius.circular(WebRadii.card),
           border: Border.all(
-            color: selected ? WebTheme.green : WebTheme.border,
+            color: selected ? WebTheme.accent : WebTheme.border,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -139,7 +143,7 @@ class _WebJobCard extends StatelessWidget {
                   const Padding(
                     padding: EdgeInsets.only(left: 8),
                     child:
-                        Icon(Icons.favorite, color: WebTheme.green, size: 18),
+                        Icon(Icons.favorite, color: WebTheme.accent, size: 18),
                   ),
               ],
             ),

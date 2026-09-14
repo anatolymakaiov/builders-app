@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/web_theme.dart';
+
 class WebRemoteImage extends StatelessWidget {
   const WebRemoteImage({
     super.key,
@@ -90,9 +92,9 @@ class _Fallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: const Color(0xFFEAF4EC),
+      color: WebTheme.accentSoft,
       child: Center(
-        child: Icon(icon, color: const Color(0xFF2E7D32)),
+        child: Icon(icon, color: WebTheme.accent),
       ),
     );
   }

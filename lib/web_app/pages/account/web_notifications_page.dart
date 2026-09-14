@@ -197,8 +197,8 @@ class _NotificationList extends StatelessWidget {
         final selected = item.id == selectedId;
         return ListTile(
           selected: selected,
-          selectedTileColor: WebTheme.greenSoft,
-          leading: Icon(_iconFor(item), color: WebTheme.green),
+          selectedTileColor: WebTheme.accentSoft,
+          leading: Icon(_iconFor(item), color: WebTheme.accent),
           title: Text(
             item.title,
             maxLines: 1,
@@ -214,7 +214,7 @@ class _NotificationList extends StatelessWidget {
           ),
           trailing: item.read
               ? null
-              : const Icon(Icons.circle, size: 10, color: WebTheme.green),
+              : const Icon(Icons.circle, size: 10, color: WebTheme.accent),
           onTap: () => onSelected(item),
         );
       },

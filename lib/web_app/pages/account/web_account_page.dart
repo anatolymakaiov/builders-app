@@ -1368,9 +1368,9 @@ class _IdentityTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: WebTheme.greenSoft,
+        backgroundColor: WebTheme.accentSoft,
         child: identity.avatarUrl.isEmpty
-            ? const Icon(Icons.person_outline, color: WebTheme.green)
+            ? const Icon(Icons.person_outline, color: WebTheme.accent)
             : ClipOval(
                 child: Image.network(
                   identity.avatarUrl,
@@ -1379,7 +1379,7 @@ class _IdentityTile extends StatelessWidget {
                   fit: BoxFit.cover,
                   webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
                   errorBuilder: (_, __, ___) =>
-                      const Icon(Icons.person_outline, color: WebTheme.green),
+                      const Icon(Icons.person_outline, color: WebTheme.accent),
                 ),
               ),
       ),
@@ -1487,8 +1487,8 @@ class _PlanCard extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(WebRadii.card),
           border:
-              Border.all(color: selected ? WebTheme.green : WebTheme.border),
-          color: selected ? WebTheme.greenSoft : WebTheme.surfaceAlt,
+              Border.all(color: selected ? WebTheme.accent : WebTheme.border),
+          color: selected ? WebTheme.accentSoft : WebTheme.surfaceAlt,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1533,14 +1533,14 @@ class _ThreadList extends StatelessWidget {
         final thread = threads[index];
         return ListTile(
           selected: thread.key == selectedKey,
-          selectedTileColor: WebTheme.greenSoft,
+          selectedTileColor: WebTheme.accentSoft,
           leading: Icon(
             thread.important
                 ? Icons.star
                 : thread.unread
                     ? Icons.mark_email_unread_outlined
                     : Icons.mark_email_read_outlined,
-            color: thread.important ? Colors.amber.shade700 : WebTheme.green,
+            color: thread.important ? Colors.amber.shade700 : WebTheme.accent,
           ),
           title: Text(thread.latest.subject),
           subtitle: Text(thread.latest.message,
@@ -1618,7 +1618,7 @@ class _AdminThreadDetail extends StatelessWidget {
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: message.data['senderId'] == 'admin'
-                        ? WebTheme.greenSoft
+                        ? WebTheme.accentSoft
                         : WebTheme.surfaceAlt,
                     borderRadius: BorderRadius.circular(14),
                   ),
