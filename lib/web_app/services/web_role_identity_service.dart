@@ -61,7 +61,7 @@ class WebRoleIdentityResolver {
       ),
       avatarUrl: _firstText(
         data,
-        const ['avatarUrl', 'profilePhotoUrl', 'photoUrl', 'photo'],
+        const ['photo', 'avatarUrl', 'profilePhotoUrl', 'photoUrl'],
         '',
       ),
       subtitle: _firstText(
@@ -85,6 +85,7 @@ class WebRoleIdentityResolver {
       avatarUrl: _firstText(
         data,
         const [
+          'photo',
           'companyLogoUrl',
           'companyLogo',
           'companyAvatarUrl',

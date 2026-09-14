@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'web_support_attachments.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -409,24 +410,10 @@ class WebAccountDataService {
     required Map<String, dynamic> userData,
     required String type,
     required String message,
+    List<Map<String, dynamic>> attachments = const [],
   }) async {
-    final requestTypes = role == 'worker'
-        ? const {
-            'technical_issue': 'Technical issue',
-            'employer_complaint': 'Complaint about employer/company',
-            'application_issue': 'Application issue',
-            'profile_account_issue': 'Profile/account issue',
-            'other': 'Other',
-          }
-        : const {
-            'billing': 'Billing',
-            'payment': 'Payment',
-            'direct_debit': 'Direct debit',
-            'job_posting_issue': 'Job posting issue',
-            'technical_issue': 'Technical issue',
-            'profile_company_account_issue': 'Profile/company account issue',
-            'other': 'Other',
-          };
+    final requestTypes =
+        role == 'worker' ? webWorkerSupportTypes : webEmployerSupportTypes;
     final label = requestTypes[type] ?? type;
     final supportRef = _firestore.collection('support_requests').doc();
     final threadRef = _firestore.collection('message_threads').doc();
@@ -434,7 +421,8 @@ class WebAccountDataService {
         ? (userData['companyName'] ?? userData['name'] ?? 'Company').toString()
         : (userData['name'] ?? userData['displayName'] ?? 'Worker').toString();
     final now = FieldValue.serverTimestamp();
-    await supportRef.set({
+    final batch = _firestore.batch();
+    batch.set(supportRef, {
       'userId': uid,
       'userRole': role,
       'role': role,
@@ -444,8 +432,8 @@ class WebAccountDataService {
       'requestTypeLabel': label,
       'subject': label,
       'message': message.trim(),
-      'attachments': const <Map<String, dynamic>>[],
-      'hasAttachments': false,
+      'attachments': attachments,
+      'hasAttachments': attachments.isNotEmpty,
       'status': 'open',
       'adminVisible': true,
       'readByAdmin': false,
@@ -456,7 +444,7 @@ class WebAccountDataService {
       'updatedAt': now,
     });
     final adminMessageRef = _firestore.collection('admin_messages').doc();
-    await adminMessageRef.set({
+    batch.set(adminMessageRef, {
       'threadId': threadRef.id,
       'direction': 'incoming',
       'senderId': uid,
@@ -483,11 +471,11 @@ class WebAccountDataService {
       'deletedByAdmin': false,
       'deletedByReceiver': false,
       'deletedBySender': false,
-      'attachments': const <Map<String, dynamic>>[],
-      'hasAttachments': false,
+      'attachments': attachments,
+      'hasAttachments': attachments.isNotEmpty,
       'createdAt': now,
     });
-    await threadRef.set({
+    batch.set(threadRef, {
       'subject': 'Support: $label',
       'participants': [uid, 'admin'],
       'createdBy': uid,
@@ -501,6 +489,7 @@ class WebAccountDataService {
       'relatedSupportRequestId': supportRef.id,
       'updatedAt': now,
     });
+    await batch.commit();
   }
 
   Stream<WebDataState<T>> poll<T>(

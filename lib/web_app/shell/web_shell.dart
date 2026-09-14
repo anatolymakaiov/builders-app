@@ -13,6 +13,7 @@ import '../../services/application_status_utils.dart';
 import '../services/web_account_data_service.dart';
 import '../services/web_data_state.dart';
 import '../pages/profile/web_profile_page.dart';
+import '../pages/profile/web_team_page.dart';
 import '../theme/web_theme.dart';
 import 'web_profile_menu.dart';
 import 'web_top_navigation.dart';
@@ -36,6 +37,7 @@ class WebShell extends StatefulWidget {
 class _WebShellState extends State<WebShell> {
   WebSection selected = WebSection.jobs;
   _WebProfileRoute? profileRoute;
+  final profileHistory = <_WebProfileRoute>[];
   String? initialChatId;
   _ApplicationsRoute? applicationsRoute;
   String? initialJobId;
@@ -91,6 +93,7 @@ class _WebShellState extends State<WebShell> {
                     WebSection.map => WebMapPage(
                         userId: widget.user.uid,
                         role: widget.role,
+                        onOpenProfile: _openProfile,
                       ),
                     WebSection.applications => WebApplicationsPage(
                         userId: widget.user.uid,
@@ -105,16 +108,30 @@ class _WebShellState extends State<WebShell> {
                         userId: widget.user.uid,
                         role: widget.role,
                         initialChatId: initialChatId,
+                        onOpenProfile: _openProfile,
+                        onOpenJob: _openJob,
                       ),
                   }
-                : WebProfilePage(
-                    user: widget.user,
-                    role: widget.role,
-                    profile: widget.profile,
-                    viewedUserId: profileRoute!.userId,
-                    viewedRole: profileRoute!.role,
-                    onClose: () => setState(() => profileRoute = null),
-                  );
+                : profileRoute!.role == 'team'
+                    ? WebTeamPage(
+                        teamId: profileRoute!.userId,
+                        role: widget.role,
+                        onBack: _closeProfile,
+                        onProfile: _openProfile,
+                        onChat: _openChat,
+                      )
+                    : WebProfilePage(
+                        user: widget.user,
+                        role: widget.role,
+                        profile: widget.profile,
+                        viewedUserId: profileRoute!.userId,
+                        viewedRole: profileRoute!.role,
+                        onClose: _closeProfile,
+                        onOpenChat: _openChat,
+                        onOpenProfile: _openProfile,
+                        onAdminInbox: () =>
+                            _openAccount(WebAccountDestination.adminInbox),
+                      );
 
     return Scaffold(
       backgroundColor: WebTheme.page,
@@ -152,19 +169,35 @@ class _WebShellState extends State<WebShell> {
 
   void _openProfile(String userId, String role) {
     setState(() {
+      if (profileRoute != null) profileHistory.add(profileRoute!);
       secondaryRoute = null;
       postingJob = false;
       profileRoute = _WebProfileRoute(userId: userId, role: role);
     });
   }
 
+  void _closeProfile() => setState(() => profileRoute =
+      profileHistory.isEmpty ? null : profileHistory.removeLast());
+
   void _openChat(String chatId) {
     setState(() {
+      profileHistory.clear();
       selected = WebSection.chats;
       profileRoute = null;
       secondaryRoute = null;
       postingJob = false;
       initialChatId = chatId;
+    });
+  }
+
+  void _openJob(String jobId) {
+    setState(() {
+      profileHistory.clear();
+      selected = WebSection.jobs;
+      initialJobId = jobId;
+      secondaryRoute = null;
+      profileRoute = null;
+      postingJob = false;
     });
   }
 
@@ -186,6 +219,7 @@ class _WebShellState extends State<WebShell> {
     String? statusFilter,
   }) {
     setState(() {
+      profileHistory.clear();
       selected = WebSection.applications;
       profileRoute = null;
       secondaryRoute = null;
@@ -202,6 +236,7 @@ class _WebShellState extends State<WebShell> {
 
   void _selectSection(WebSection value) {
     setState(() {
+      profileHistory.clear();
       selected = value;
       profileRoute = null;
       secondaryRoute = null;
@@ -243,6 +278,7 @@ class _WebShellState extends State<WebShell> {
 
   void _openNotifications() {
     setState(() {
+      profileHistory.clear();
       secondaryRoute = const _SecondaryRoute(_SecondaryKind.notifications);
       profileRoute = null;
       postingJob = false;
@@ -252,6 +288,7 @@ class _WebShellState extends State<WebShell> {
   void _openAccountValue(String value) {
     if (value == 'savedJobs') {
       setState(() {
+        profileHistory.clear();
         secondaryRoute = const _SecondaryRoute(_SecondaryKind.savedJobs);
         profileRoute = null;
         postingJob = false;
@@ -267,6 +304,7 @@ class _WebShellState extends State<WebShell> {
 
   void _openAccount(WebAccountDestination destination) {
     setState(() {
+      profileHistory.clear();
       secondaryRoute = _SecondaryRoute(
         _SecondaryKind.account,
         destination: destination,
@@ -334,7 +372,7 @@ class _WebShellState extends State<WebShell> {
       return 'support_request';
     }
     if (type == 'admin_message') return 'admin_message';
-    if (type.contains('offer') || type == 'work_start') return 'offer';
+    if (type.contains('offer') || type.startsWith('work_start')) return 'offer';
     if (type == 'application' || type == 'application_status') {
       return 'application';
     }

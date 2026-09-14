@@ -7,6 +7,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../models/job.dart';
+import '../jobs/web_job_details_panel.dart';
+import '../../services/web_job_filters.dart';
+import '../../widgets/web_job_filters_dialog.dart';
+import '../../widgets/web_apply_dialog.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_jobs_data_service.dart';
 import '../../theme/web_theme.dart';
@@ -18,10 +22,12 @@ class WebMapPage extends StatefulWidget {
     super.key,
     required this.userId,
     required this.role,
+    this.onOpenProfile,
   });
 
   final String userId;
   final String role;
+  final void Function(String userId, String role)? onOpenProfile;
 
   @override
   State<WebMapPage> createState() => _WebMapPageState();
@@ -41,13 +47,14 @@ class _WebMapPageState extends State<WebMapPage> {
   bool showSearchArea = false;
   bool loadingLocation = false;
   String? locationError;
+  WebJobFilters filters = const WebJobFilters();
 
   bool get isWorker => widget.role == 'worker';
 
   @override
   void initState() {
     super.initState();
-    jobsStream = service.jobs(userId: widget.userId, role: widget.role);
+    jobsStream = service.jobs(userId: widget.userId, role: 'worker');
     debugPrint('WEB MAP INIT tileSource=osm polling=jobs');
   }
 
@@ -88,6 +95,28 @@ class _WebMapPageState extends State<WebMapPage> {
               if (state.error != null)
                 _ErrorBanner(
                     message: 'Could not refresh map jobs: ${state.error}'),
+              Wrap(spacing: 10, children: [
+                OutlinedButton.icon(
+                    icon: const Icon(Icons.tune),
+                    label: const Text('Trade filters'),
+                    onPressed: () async {
+                      final next = await showDialog<WebJobFilters>(
+                          context: context,
+                          builder: (_) => WebJobFiltersDialog(
+                              current: filters, rolesOnly: true));
+                      if (mounted && next != null) {
+                        setState(() => filters = next);
+                      }
+                    }),
+                OutlinedButton.icon(
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('View selected vacancy'),
+                    onPressed: selectedJobId == null
+                        ? null
+                        : () => _openJob(mapJobs
+                            .firstWhere((job) => job.id == selectedJobId))),
+              ]),
+              const SizedBox(height: 10),
               Expanded(
                 child: Row(
                   children: [
@@ -212,17 +241,78 @@ class _WebMapPageState extends State<WebMapPage> {
   }
 
   List<Job> _filterJobs(List<Job> jobs) {
-    final query = search.trim().toLowerCase();
-    final withCoordinates = jobs.where((job) => job.lat != 0 && job.lng != 0);
-    if (query.isEmpty) return withCoordinates.toList();
-    return withCoordinates.where((job) {
-      return [
-        job.displayTitle,
-        job.trade,
-        job.companyName,
-        job.fullAddress,
-      ].join(' ').toLowerCase().contains(query);
-    }).toList();
+    return filters.apply(
+        jobs.where((job) => job.lat != 0 && job.lng != 0).toList(), search);
+  }
+
+  Future<void> _openJob(Job job) async {
+    Set<String> saved;
+    try {
+      saved = isWorker ? await service.savedJobIds(widget.userId) : <String>{};
+    } catch (_) {
+      saved = <String>{};
+    }
+    if (!mounted) return;
+    var busy = false;
+    await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => Dialog(
+              child: SizedBox(
+                width: 840,
+                height: MediaQuery.sizeOf(dialogContext).height * .9,
+                child: StatefulBuilder(
+                    builder: (context, update) => Column(children: [
+                          Align(
+                              alignment: Alignment.centerRight,
+                              child: IconButton(
+                                  tooltip: 'Close',
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () =>
+                                      Navigator.pop(dialogContext))),
+                          Expanded(
+                              child: WebJobDetailsPanel(
+                            job: job,
+                            isWorker: isWorker,
+                            isSaved: saved.contains(job.id),
+                            applying: busy,
+                            onApply: () async {
+                              update(() => busy = true);
+                              await showWebApplyDialog(context,
+                                  userId: widget.userId, job: job);
+                              if (context.mounted) update(() => busy = false);
+                            },
+                            onToggleSaved: () async {
+                              try {
+                                final wasSaved = saved.contains(job.id);
+                                await service.toggleSavedJob(
+                                    userId: widget.userId,
+                                    jobId: job.id,
+                                    isSaved: wasSaved);
+                                if (context.mounted) {
+                                  update(() {
+                                    wasSaved
+                                        ? saved.remove(job.id)
+                                        : saved.add(job.id);
+                                  });
+                                }
+                              } catch (error) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                          content: Text(
+                                              'Could not save job: $error')));
+                                }
+                              }
+                            },
+                            onViewCompanyProfile: () {
+                              Navigator.pop(dialogContext);
+                              widget.onOpenProfile
+                                  ?.call(job.ownerId, 'employer');
+                            },
+                          )),
+                        ])),
+              ),
+            ));
   }
 
   List<Job> _jobsInBounds(List<Job> jobs) {

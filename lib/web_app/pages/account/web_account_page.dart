@@ -1,3 +1,6 @@
+import '../../services/web_support_attachments.dart';
+import '../../services/web_chat_media_service.dart';
+import '../chats/web_chat_media_widgets.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -701,45 +704,38 @@ class _SubscriptionsViewState extends State<_SubscriptionsView> {
 
 class _SettingsView extends StatelessWidget {
   const _SettingsView({required this.userId, required this.profile});
-
   final String userId;
   final Map<String, dynamic> profile;
-
   @override
   Widget build(BuildContext context) {
-    final settings = profile['settings'] is Map
-        ? Map<String, dynamic>.from(profile['settings'] as Map)
-        : const <String, dynamic>{};
-    return ListView(
-      children: [
-        Text('Settings', style: Theme.of(context).textTheme.headlineMedium),
-        const SizedBox(height: 16),
+    final settings = profile['settings'];
+    final raw = settings is Map && settings['notifications'] is Map
+        ? settings['notifications']
+        : profile['notificationPreferences'];
+    final preferences =
+        raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    return ListView(children: [
+      Text('Settings', style: Theme.of(context).textTheme.headlineMedium),
+      for (final entry in const {
+        'enabled': 'All notifications',
+        'jobAlerts': 'Job alerts',
+        'applicationUpdates': 'Application updates',
+        'offers': 'Offers',
+        'messages': 'Messages and chats',
+        'adminMessages': 'Admin messages',
+        'billing': 'Billing notifications',
+        'supportReplies': 'Support replies',
+        'policyUpdates': 'Policy/document updates',
+        'sound': 'Sound',
+        'badges': 'Badge counts',
+      }.entries)
         _SwitchSetting(
-          userId: userId,
-          settings: settings,
-          field: 'pushMessages',
-          title: 'Message notifications',
-        ),
-        _SwitchSetting(
-          userId: userId,
-          settings: settings,
-          field: 'pushApplications',
-          title: 'Application notifications',
-        ),
-        _SwitchSetting(
-          userId: userId,
-          settings: settings,
-          field: 'pushAdmin',
-          title: 'Inbox from Admin and official notices',
-        ),
-        _SwitchSetting(
-          userId: userId,
-          settings: settings,
-          field: 'pushBilling',
-          title: 'Billing notifications',
-        ),
-      ],
-    );
+            key: ValueKey(entry.key),
+            userId: userId,
+            settings: preferences,
+            field: entry.key,
+            title: entry.value),
+    ]);
   }
 }
 
@@ -761,6 +757,8 @@ class _SupportView extends StatefulWidget {
 class _SupportViewState extends State<_SupportView> {
   final service = WebAccountDataService();
   final message = TextEditingController();
+  final media = WebChatMediaService();
+  final attachments = <WebPendingChatAttachment>[];
   String type = 'technical_issue';
   bool submitting = false;
 
@@ -773,22 +771,8 @@ class _SupportViewState extends State<_SupportView> {
   @override
   Widget build(BuildContext context) {
     final types = widget.role == 'worker'
-        ? const {
-            'technical_issue': 'Technical issue',
-            'employer_complaint': 'Complaint about employer/company',
-            'application_issue': 'Application issue',
-            'profile_account_issue': 'Profile/account issue',
-            'other': 'Other',
-          }
-        : const {
-            'billing': 'Billing',
-            'payment': 'Payment',
-            'direct_debit': 'Direct debit',
-            'job_posting_issue': 'Job posting issue',
-            'technical_issue': 'Technical issue',
-            'profile_company_account_issue': 'Profile/company account issue',
-            'other': 'Other',
-          };
+        ? webWorkerSupportTypes
+        : webEmployerSupportTypes;
     if (!types.containsKey(type)) type = types.keys.first;
     return ListView(
       children: [
@@ -810,6 +794,25 @@ class _SupportViewState extends State<_SupportView> {
           maxLines: 8,
           decoration: const InputDecoration(labelText: 'Message'),
         ),
+        Wrap(spacing: 8, children: [
+          OutlinedButton.icon(
+              onPressed: submitting ? null : () => _pick('photo'),
+              icon: const Icon(Icons.photo),
+              label: const Text('Photos')),
+          OutlinedButton.icon(
+              onPressed: submitting ? null : () => _pick('video'),
+              icon: const Icon(Icons.videocam_outlined),
+              label: const Text('Videos')),
+          OutlinedButton.icon(
+              onPressed: submitting ? null : () => _pick('file'),
+              icon: const Icon(Icons.attach_file),
+              label: const Text('Files')),
+        ]),
+        WebPendingAttachmentsPreview(
+            attachments: attachments,
+            onRemove: (index) {
+              if (!submitting) setState(() => attachments.removeAt(index));
+            }),
         const SizedBox(height: 14),
         FilledButton.icon(
           onPressed: submitting ? null : _submit,
@@ -820,23 +823,51 @@ class _SupportViewState extends State<_SupportView> {
     );
   }
 
+  Future<void> _pick(String kind) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    try {
+      final picked = switch (kind) {
+        'photo' => await media.pickImages(),
+        'video' => await media.pickVideos(),
+        _ => await media.pickFiles(),
+      };
+      if (mounted) setState(() => attachments.addAll(picked));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not select attachments: $error')));
+      }
+    }
+  }
+
   Future<void> _submit() async {
-    if (message.text.trim().isEmpty || submitting) return;
+    if ((message.text.trim().isEmpty && attachments.isEmpty) || submitting) {
+      return;
+    }
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => submitting = true);
     try {
+      final uploaded = await WebSupportAttachments()
+          .upload(widget.userId, List.of(attachments));
       await service.submitSupportRequest(
         uid: widget.userId,
         role: widget.role,
         userData: widget.userData,
         type: type,
         message: message.text,
+        attachments: uploaded,
       );
-      message.clear();
       if (!mounted) return;
+      message.clear();
+      attachments.clear();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Support request sent')),
       );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Could not submit support request: $error')));
+      }
     } finally {
       if (mounted) setState(() => submitting = false);
     }
@@ -1225,6 +1256,7 @@ class _AdminThreadDetail extends StatelessWidget {
 
 class _SwitchSetting extends StatefulWidget {
   const _SwitchSetting({
+    super.key,
     required this.userId,
     required this.settings,
     required this.field,
@@ -1254,7 +1286,11 @@ class _SwitchSettingState extends State<_SwitchSetting> {
             .collection('users')
             .doc(widget.userId)
             .set({
-          'settings': {widget.field: next},
+          'settings': {
+            'notifications': {widget.field: next},
+            'updatedAt': FieldValue.serverTimestamp()
+          },
+          'notificationPreferences': {widget.field: next},
         }, SetOptions(merge: true));
       },
     );

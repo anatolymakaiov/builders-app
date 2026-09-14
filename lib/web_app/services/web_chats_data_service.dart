@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 
 import 'web_chat_media_service.dart';
 import 'web_data_state.dart';
+import 'web_profile_data_service.dart';
+import 'web_profile_communication.dart';
 
 class WebChatSummary {
   const WebChatSummary({
@@ -23,6 +25,9 @@ class WebChatSummary {
     final isTeam = data['type'] == 'team' || data['type'] == 'internal_team';
     if (isTeam) {
       return _firstText(displayData, const ['name', 'teamName'], 'Team');
+    }
+    if (displayData != null) {
+      return WebProfileData(id: '', data: displayData!).displayName;
     }
     return _firstText(
       displayData,
@@ -56,6 +61,11 @@ class WebChatSummary {
           : null;
 
   String avatarFor(String uid) {
+    if (displayData != null &&
+        data['type'] != 'team' &&
+        data['type'] != 'internal_team') {
+      return WebProfileData(id: '', data: displayData!).avatarUrl;
+    }
     return _firstText(
       displayData,
       const [
@@ -116,6 +126,8 @@ class WebChatsDataService {
   final _profileCache = <String, Map<String, dynamic>?>{};
   final _teamCache = <String, Map<String, dynamic>?>{};
   final _jobCache = <String, Map<String, dynamic>?>{};
+  final _older = <String, Map<String, WebMessageItem>>{};
+  final _cacheDates = <String, DateTime>{};
 
   Stream<WebDataState<List<WebChatSummary>>> chats(String uid) {
     return _poll(
@@ -192,10 +204,24 @@ class WebChatsDataService {
     }).map((doc) {
       return WebMessageItem(id: doc.id, data: doc.data());
     }).toList();
+    final retained = _older[chatId];
+    if (retained != null) {
+      for (final message in messages) {
+        retained[message.id] = message;
+      }
+    }
 
     return WebChatThread(
       chat: await _summary(chatId, chatData, uid),
-      messages: messages,
+      messages: {
+        ...?_older[chatId],
+        for (final message in messages) message.id: message
+      }.values.toList()
+        ..sort((a, b) =>
+            ((b.data['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0)
+                .compareTo((a.data['createdAt'] as Timestamp?)
+                        ?.millisecondsSinceEpoch ??
+                    0)),
     );
   }
 
@@ -205,6 +231,7 @@ class WebChatsDataService {
     required String uid,
     required String text,
     List<WebChatAttachment> attachments = const [],
+    Map<String, dynamic> contextFields = const {},
   }) async {
     final clean = text.trim();
     if (clean.isEmpty && attachments.isEmpty) return;
@@ -214,6 +241,15 @@ class WebChatsDataService {
     final chatData = chatDoc.data();
     if (chatData == null) {
       throw StateError('Chat is no longer available.');
+    }
+    if (!_participantIds(chatData).contains(uid)) {
+      throw StateError('You are not a chat participant.');
+    }
+    final profile =
+        (await _firestore.collection('users').doc(uid).get()).data();
+    if (WebProfileCommunication.unavailable(profile)) {
+      throw StateError(
+          'Your profile is temporarily suspended. Please contact Administrator.');
     }
     final recipients =
         _participantIds(chatData).where((id) => id != uid).toSet().toList();
@@ -235,6 +271,7 @@ class WebChatsDataService {
 
     final batch = _firestore.batch();
     batch.set(messageRef, {
+      ...contextFields,
       'messageId': messageRef.id,
       'chatId': chatId,
       'type': messageType,
@@ -283,9 +320,132 @@ class WebChatsDataService {
   }
 
   Future<void> markRead(String chatId, String uid) async {
-    await _firestore.collection('chats').doc(chatId).set({
+    final ref = _firestore.collection('chats').doc(chatId);
+    final data = (await ref.get()).data();
+    if (data == null) return;
+    await ref.update({
       'unreadFor': FieldValue.arrayRemove([uid]),
-    }, SetOptions(merge: true));
+      if (data['workerId'] == uid) 'unreadCount_worker': 0,
+      if (data['employerId'] == uid) 'unreadCount_employer': 0,
+    });
+    final latest = await ref
+        .collection('messages')
+        .orderBy('createdAt', descending: true)
+        .limit(80)
+        .get();
+    final batch = _firestore.batch();
+    for (final doc in latest.docs) {
+      final read = doc.data()['readBy'];
+      if (read is! List || !read.contains(uid)) {
+        batch.update(doc.reference, {
+          'readBy': FieldValue.arrayUnion([uid])
+        });
+      }
+    }
+    await batch.commit();
+  }
+
+  ({String id, String role})? profileTarget(WebChatSummary chat, String uid) {
+    final target = _displayTarget(chat.data, uid);
+    if (target == null) return null;
+    return (
+      id: target.id,
+      role: target.collection == 'teams'
+          ? 'team'
+          : chat.displayData?['role']?.toString() ?? 'worker'
+    );
+  }
+
+  Future<int> loadOlder(String chatId, String beforeId, String uid) async {
+    final collection =
+        _firestore.collection('chats').doc(chatId).collection('messages');
+    final cursor = await collection.doc(beforeId).get();
+    if (!cursor.exists) return 0;
+    final page = await collection
+        .orderBy('createdAt', descending: true)
+        .startAfterDocument(cursor)
+        .limit(80)
+        .get();
+    final cache = _older.putIfAbsent(chatId, () => {});
+    for (final doc in page.docs) {
+      final hidden = doc.data()['hiddenFor'];
+      if (hidden is! List || !hidden.contains(uid)) {
+        cache[doc.id] = WebMessageItem(id: doc.id, data: doc.data());
+      }
+    }
+    return page.size;
+  }
+
+  Future<void> messageAction(
+      String chatId, WebMessageItem message, String uid, String action,
+      {String? text}) async {
+    final chat = _firestore.collection('chats').doc(chatId);
+    final ref = chat.collection('messages').doc(message.id);
+    if (action == 'hide') {
+      await ref.update({
+        'hiddenFor': FieldValue.arrayUnion([uid])
+      });
+      _older[chatId]?.remove(message.id);
+      return;
+    }
+    await _firestore.runTransaction((tx) async {
+      final data = (await tx.get(ref)).data();
+      if (data == null ||
+          data['senderId'] != uid ||
+          data['deletedForEveryone'] == true) {
+        throw StateError('Message cannot be changed.');
+      }
+      if (action == 'edit') {
+        if (data['type'] != 'text' || text == null || text.trim().isEmpty) {
+          throw StateError('Message cannot be empty.');
+        }
+        tx.update(ref,
+            {'text': text.trim(), 'editedAt': FieldValue.serverTimestamp()});
+      } else if (action == 'delete') {
+        tx.update(ref, {
+          'deletedForEveryone': true,
+          'deletedBy': uid,
+          'deletedAt': FieldValue.serverTimestamp(),
+          'editedAt': FieldValue.delete()
+        });
+      }
+    });
+    final updated = await ref.get();
+    final updatedData = updated.data();
+    if (updatedData != null && _older[chatId] != null) {
+      _older[chatId]![message.id] =
+          WebMessageItem(id: message.id, data: updatedData);
+    }
+    final recent = await chat
+        .collection('messages')
+        .orderBy('createdAt', descending: true)
+        .limit(20)
+        .get();
+    final visible =
+        recent.docs.where((doc) => doc.data()['deletedForEveryone'] != true);
+    final latest = visible.isEmpty ? null : visible.first.data();
+    await chat.update({
+      'lastMessage': latest == null
+          ? ''
+          : (latest['text']?.toString().trim().isNotEmpty == true
+              ? latest['text']
+              : webChatAttachmentPreview(normalizeWebChatAttachments(latest))),
+      'lastMessageType': latest?['type'] ?? 'text'
+    });
+  }
+
+  Future<void> hideChat(String chatId, String uid) =>
+      _firestore.collection('chats').doc(chatId).update({
+        'hiddenForUsers': FieldValue.arrayUnion([uid])
+      });
+
+  Future<void> setTyping(String chatId, String uid, bool typing) async {
+    final ref = _firestore.collection('chats').doc(chatId);
+    final data = (await ref.get()).data();
+    if (data?['workerId'] == null || data?['employerId'] == null) return;
+    await ref.update({
+      data!['workerId'] == uid ? 'typing_worker' : 'typing_employer': typing
+    });
   }
 
   Future<WebChatSummary> _summary(
@@ -343,7 +503,16 @@ class WebChatsDataService {
       'jobs' => _jobCache,
       _ => _profileCache,
     };
-    if (cache.containsKey(id)) return cache[id];
+    final cacheKey = '$collection/$id';
+    final loadedAt = _cacheDates[cacheKey];
+    if (cache.containsKey(id) &&
+        loadedAt != null &&
+        DateTime.now().difference(loadedAt) < const Duration(minutes: 1)) {
+      return cache[id];
+    }
+    if (cache.length > 300) cache.clear();
+    if (_cacheDates.length > 900) _cacheDates.clear();
+    _cacheDates[cacheKey] = DateTime.now();
     try {
       final data =
           (await _firestore.collection(collection).doc(id).get()).data();

@@ -1,16 +1,21 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../models/job.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_profile_data_service.dart';
 import '../../services/web_profile_edit_service.dart';
+import '../../services/web_profile_communication.dart';
+import '../../../services/moderation_hold_service.dart';
+import '../../widgets/web_report_dialog.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
 import 'web_profile_gallery.dart';
+import 'web_worker_reviews.dart';
 
 class WebProfilePage extends StatefulWidget {
   const WebProfilePage({
@@ -21,6 +26,9 @@ class WebProfilePage extends StatefulWidget {
     this.viewedUserId,
     this.viewedRole,
     this.onClose,
+    this.onOpenChat,
+    this.onOpenProfile,
+    this.onAdminInbox,
   });
 
   final User user;
@@ -29,6 +37,9 @@ class WebProfilePage extends StatefulWidget {
   final String? viewedUserId;
   final String? viewedRole;
   final VoidCallback? onClose;
+  final ValueChanged<String>? onOpenChat;
+  final void Function(String, String)? onOpenProfile;
+  final VoidCallback? onAdminInbox;
 
   @override
   State<WebProfilePage> createState() => _WebProfilePageState();
@@ -76,32 +87,38 @@ class _WebProfilePageState extends State<WebProfilePage> {
   }
 
   Future<void> _loadDetails() async {
+    final requestedUserId = viewedUserId;
+    final requestedRole = viewedRole;
+    final requestedOwnProfile = ownProfile;
     setState(() {
       loadingDetails = true;
       detailsError = null;
     });
     try {
-      if (isWorker) {
-        final loadedPortfolio = await service.loadWorkerPortfolio(viewedUserId);
-        final loadedTeams = await service.loadWorkerTeams(viewedUserId);
-        if (!mounted) return;
+      if (requestedRole == 'worker') {
+        final loadedPortfolio =
+            await service.loadWorkerPortfolio(requestedUserId);
+        final loadedTeams = await service.loadWorkerTeams(requestedUserId);
+        if (!mounted || requestedUserId != viewedUserId) return;
         setState(() {
           portfolio = loadedPortfolio;
           teams = loadedTeams;
         });
       } else {
         final jobs = await service.loadCompanyJobs(
-          ownerId: viewedUserId,
-          ownProfile: ownProfile,
+          ownerId: requestedUserId,
+          ownProfile: requestedOwnProfile,
         );
-        if (!mounted) return;
+        if (!mounted || requestedUserId != viewedUserId) return;
         setState(() => companyJobs = jobs);
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || requestedUserId != viewedUserId) return;
       setState(() => detailsError = error);
     } finally {
-      if (mounted) setState(() => loadingDetails = false);
+      if (mounted && requestedUserId == viewedUserId) {
+        setState(() => loadingDetails = false);
+      }
     }
   }
 
@@ -119,6 +136,16 @@ class _WebProfilePageState extends State<WebProfilePage> {
         if ((state == null || state.loading) && state?.data == null) {
           return const Center(child: CircularProgressIndicator());
         }
+        final held = ModerationHoldService.isProfileHeld(current.data);
+        if (!ownProfile &&
+            WebProfileCommunication.unavailable(
+                current.data.isEmpty ? null : current.data)) {
+          return Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('This profile is no longer available.'),
+            TextButton(onPressed: widget.onClose, child: const Text('Back')),
+          ]));
+        }
 
         return WebPageContainer(
           child: SingleChildScrollView(
@@ -130,10 +157,55 @@ class _WebProfilePageState extends State<WebProfilePage> {
                   role: viewedRole,
                   ownProfile: ownProfile,
                   onBack: widget.onClose,
-                  onEdit: ownProfile ? () => _openEditProfile(current) : null,
-                  onChangeAvatar: ownProfile ? _changeAvatar : null,
-                  onChangeHeader: ownProfile ? _changeHeader : null,
+                  onEdit: ownProfile && !held
+                      ? () => _openEditProfile(current)
+                      : null,
+                  onChangeAvatar: ownProfile && !held ? _changeAvatar : null,
+                  onChangeHeader: ownProfile && !held ? _changeHeader : null,
                 ),
+                if (ownProfile && held)
+                  MaterialBanner(
+                    content: const Text(
+                        'PROFILE TEMPORARILY SUSPENDED\nPlease contact Administrator.'),
+                    actions: [
+                      TextButton(
+                          onPressed: widget.onAdminInbox,
+                          child: const Text('View Administrator Message'))
+                    ],
+                  ),
+                if (!ownProfile)
+                  Wrap(spacing: 10, children: [
+                    OutlinedButton.icon(
+                        onPressed: () async {
+                          try {
+                            final id = await WebProfileCommunication()
+                                .message(viewedUserId);
+                            if (mounted) widget.onOpenChat?.call(id);
+                          } catch (error) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(error.toString())),
+                              );
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.chat_outlined),
+                        label: const Text('Message')),
+                    if (widget.role == 'employer' &&
+                        isWorker &&
+                        current.phone.isNotEmpty)
+                      IconButton(
+                          tooltip: 'Call',
+                          onPressed: () => launchUrl(
+                              Uri(scheme: 'tel', path: current.phone)),
+                          icon: const Icon(Icons.phone_outlined)),
+                    OutlinedButton.icon(
+                        onPressed: () => showWebReportDialog(context,
+                            type: isEmployer ? 'employer' : 'worker',
+                            againstUserId: viewedUserId),
+                        icon: const Icon(Icons.flag_outlined),
+                        label: const Text('Report')),
+                  ]),
                 if (state?.error != null)
                   _ErrorBanner(
                     message: 'Could not refresh profile: ${state!.error}',
@@ -143,6 +215,10 @@ class _WebProfilePageState extends State<WebProfilePage> {
                     message: 'Could not refresh profile details: $detailsError',
                   ),
                 const SizedBox(height: 22),
+                if (isWorker)
+                  WebWorkerReviews(
+                      workerId: viewedUserId,
+                      canReview: !ownProfile && widget.role == 'employer'),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final compact =
@@ -168,8 +244,10 @@ class _WebProfilePageState extends State<WebProfilePage> {
                             onAddPortfolio: ownProfile ? _addPortfolio : null,
                             onRemovePortfolio:
                                 ownProfile ? _removePortfolioPhoto : null,
-                            onCreateTeam: ownProfile ? _openCreateTeam : null,
+                            onCreateTeam:
+                                ownProfile && !held ? _openCreateTeam : null,
                             onEditTeam: ownProfile ? _openEditTeam : null,
+                            onOpenProfile: widget.onOpenProfile,
                           );
                     final contact = _ContactPanel(profile: current);
                     if (compact) {
@@ -453,6 +531,7 @@ class _WorkerProfileBody extends StatelessWidget {
     this.onRemovePortfolio,
     this.onCreateTeam,
     this.onEditTeam,
+    this.onOpenProfile,
   });
 
   final WebProfileData profile;
@@ -464,12 +543,19 @@ class _WorkerProfileBody extends StatelessWidget {
   final ValueChanged<String>? onRemovePortfolio;
   final VoidCallback? onCreateTeam;
   final ValueChanged<WebTeamData>? onEditTeam;
+  final void Function(String, String)? onOpenProfile;
 
   @override
   Widget build(BuildContext context) {
     final cvItems = <MapEntry<String, String>>[
       MapEntry('Trade / position', profile.trade),
       MapEntry('Experience', profile.experience),
+      for (final entry in const {
+        'permits': 'Permits / licences',
+        'education': 'Education',
+        'previousWork': 'Previous work'
+      }.entries)
+        MapEntry(entry.value, profile.listField([entry.key]).join(', ')),
       MapEntry(
         'Qualifications',
         profile.listField(const ['qualifications']).join(', '),
@@ -543,6 +629,7 @@ class _WorkerProfileBody extends StatelessWidget {
                   teams: teams,
                   ownProfile: ownProfile,
                   onEditTeam: onEditTeam,
+                  onOpenProfile: onOpenProfile,
                 ),
         ),
       ],
@@ -600,6 +687,19 @@ class _EmployerProfileBody extends StatelessWidget {
                     _FieldTile(label: 'Speciality', value: profile.trade),
                   if (profile.location.isNotEmpty)
                     _FieldTile(label: 'Location', value: profile.location),
+                  for (final entry in const {
+                    'companyGoals': 'Our goals and objectives',
+                    'companyAdvantages': 'Our advantages',
+                    'companyClients': 'Our clients',
+                    'companyWhoWeAre': 'Who we are',
+                    'companyHistory': 'Our history'
+                  }.entries)
+                    if ((profile.data[entry.key]?.toString().trim() ?? '')
+                        .isNotEmpty)
+                      _FieldTile(
+                          label: entry.value,
+                          value: profile.data[entry.key].toString(),
+                          fullWidth: true),
                 ],
               ),
             ],
@@ -653,6 +753,11 @@ class _ContactPanel extends StatelessWidget {
       MapEntry('Phone', profile.phone),
       MapEntry('Address', address.isNotEmpty ? address : profile.location),
       MapEntry('Postcode', profile.postcode),
+      MapEntry(
+          'Contact person', profile.data['contactPerson']?.toString() ?? ''),
+      MapEntry(
+          'Additional phones', profile.listField(const ['phones']).join(', ')),
+      MapEntry('Website', profile.website),
     ].where((item) => item.value.trim().isNotEmpty).toList();
 
     return WebPanel(
@@ -661,6 +766,32 @@ class _ContactPanel extends StatelessWidget {
         children: [
           Text('Contacts', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 14),
+          Wrap(spacing: 6, children: [
+            if (profile.email.isNotEmpty)
+              IconButton(
+                  tooltip: 'Email',
+                  icon: const Icon(Icons.email_outlined),
+                  onPressed: () =>
+                      launchUrl(Uri(scheme: 'mailto', path: profile.email))),
+            if (profile.phone.isNotEmpty)
+              IconButton(
+                  tooltip: 'Call',
+                  icon: const Icon(Icons.phone_outlined),
+                  onPressed: () =>
+                      launchUrl(Uri(scheme: 'tel', path: profile.phone))),
+            if (profile.website.isNotEmpty)
+              IconButton(
+                  tooltip: 'Website',
+                  icon: const Icon(Icons.language),
+                  onPressed: () {
+                    final uri = Uri.tryParse(profile.website.contains('://')
+                        ? profile.website
+                        : 'https://${profile.website}');
+                    if (uri != null && ['https', 'http'].contains(uri.scheme)) {
+                      launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  }),
+          ]),
           if (fields.isEmpty)
             const Text(
               'No contact details available.',
@@ -682,11 +813,13 @@ class _TeamsList extends StatelessWidget {
     required this.teams,
     required this.ownProfile,
     this.onEditTeam,
+    this.onOpenProfile,
   });
 
   final List<WebTeamData> teams;
   final bool ownProfile;
   final ValueChanged<WebTeamData>? onEditTeam;
+  final void Function(String, String)? onOpenProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -735,7 +868,16 @@ class _TeamsList extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (ownProfile && onEditTeam != null)
+                  IconButton(
+                      tooltip: 'Open team',
+                      onPressed: () => onOpenProfile?.call(team.id, 'team'),
+                      icon: const Icon(Icons.open_in_new)),
+                  if (ownProfile &&
+                      onEditTeam != null &&
+                      (team.data['ownerId'] ==
+                              FirebaseAuth.instance.currentUser?.uid ||
+                          team.data['createdBy'] ==
+                              FirebaseAuth.instance.currentUser?.uid))
                     IconButton(
                       tooltip: 'Edit team',
                       onPressed: () => onEditTeam!(team),
@@ -754,7 +896,9 @@ class _TeamsList extends StatelessWidget {
                   runSpacing: 8,
                   children: team.members
                       .map(
-                        (member) => Chip(
+                        (member) => ActionChip(
+                          onPressed: () =>
+                              onOpenProfile?.call(member.id, 'worker'),
                           avatar: WebCircleImage(
                             url: member.avatarUrl,
                             size: 24,

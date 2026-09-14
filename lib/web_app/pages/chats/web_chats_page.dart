@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../services/web_chat_media_service.dart';
 import '../../services/web_chats_data_service.dart';
 import '../../services/web_data_state.dart';
+import '../../services/web_voice_recorder.dart';
+import '../../widgets/web_report_dialog.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
@@ -18,11 +21,15 @@ class WebChatsPage extends StatefulWidget {
     required this.userId,
     required this.role,
     this.initialChatId,
+    this.onOpenProfile,
+    this.onOpenJob,
   });
 
   final String userId;
   final String role;
   final String? initialChatId;
+  final void Function(String, String)? onOpenProfile;
+  final ValueChanged<String>? onOpenJob;
 
   @override
   State<WebChatsPage> createState() => _WebChatsPageState();
@@ -42,6 +49,13 @@ class _WebChatsPageState extends State<WebChatsPage> {
   bool sending = false;
   bool uploading = false;
   final pendingAttachments = <WebPendingChatAttachment>[];
+  final recorder = WebVoiceRecorder();
+  WebMessageItem? reply;
+  bool recording = false;
+  bool recorderBusy = false;
+  Timer? recordingLimit;
+  Timer? typingTimer;
+  bool typing = false;
 
   @override
   void initState() {
@@ -71,6 +85,9 @@ class _WebChatsPageState extends State<WebChatsPage> {
 
   @override
   void dispose() {
+    recordingLimit?.cancel();
+    typingTimer?.cancel();
+    unawaited(recorder.dispose());
     messageController.dispose();
     messagesController.dispose();
     super.dispose();
@@ -122,6 +139,28 @@ class _WebChatsPageState extends State<WebChatsPage> {
                         onSend: _sendMessage,
                         onAttach: _openAttachmentMenu,
                         onRemoveAttachment: _removePendingAttachment,
+                        onMessageAction: _messageAction,
+                        onOpenProfile: () {
+                          final thread = lastThread;
+                          if (thread == null) return;
+                          final target =
+                              service.profileTarget(thread.chat, widget.userId);
+                          if (target != null) {
+                            widget.onOpenProfile?.call(target.id, target.role);
+                          }
+                        },
+                        onOpenJob: () {
+                          final id = lastThread?.chat.data['jobId']?.toString();
+                          if (id != null && id.isNotEmpty) {
+                            widget.onOpenJob?.call(id);
+                          }
+                        },
+                        reply: reply,
+                        onCancelReply: () => setState(() => reply = null),
+                        recording: recording,
+                        onRecord: recorderBusy ? null : _toggleRecording,
+                        onTyping: _typingChanged,
+                        onOlder: _loadOlder,
                       ),
                     );
                     if (compact) {
@@ -151,22 +190,40 @@ class _WebChatsPageState extends State<WebChatsPage> {
   }
 
   void _ensureSelectedChat(List<WebChatSummary> chats) {
+    String? nextId;
+    var shouldUpdate = false;
     if (selectedChatId == null && chats.isNotEmpty) {
-      _setSelectedChat(chats.first.id);
-      return;
+      nextId = chats.first.id;
+      shouldUpdate = true;
     }
     if (selectedChatId != null &&
         chats.every((chat) => chat.id != selectedChatId)) {
-      _setSelectedChat(chats.isEmpty ? null : chats.first.id);
+      nextId = chats.isEmpty ? null : chats.first.id;
+      shouldUpdate = true;
+    }
+    if (shouldUpdate && nextId != selectedChatId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || selectedChatId == nextId) return;
+        setState(() => _setSelectedChat(nextId));
+      });
     }
   }
 
   void _selectChat(String chatId) {
-    if (chatId == selectedChatId) return;
+    if (chatId == selectedChatId ||
+        sending ||
+        uploading ||
+        recording ||
+        recorderBusy) {
+      return;
+    }
     setState(() => _setSelectedChat(chatId));
   }
 
   void _setSelectedChat(String? chatId) {
+    reply = null;
+    pendingAttachments.clear();
+    messageController.clear();
     selectedChatId = chatId;
     lastThread = null;
     lastMessageCount = 0;
@@ -174,13 +231,14 @@ class _WebChatsPageState extends State<WebChatsPage> {
     threadStream =
         chatId == null ? null : service.chatThread(chatId, widget.userId);
     if (chatId != null) {
-      unawaited(service.markRead(chatId, widget.userId));
+      unawaited(service.markRead(chatId, widget.userId).catchError(
+          (Object error) => debugPrint('WEB CHAT READ ERROR $error')));
       lastMarkedReadKey = '$chatId:selected';
     }
   }
 
   void _onThreadUpdated(WebChatThread? thread) {
-    if (thread == null) return;
+    if (!mounted || thread == null || thread.chat.id != selectedChatId) return;
     final wasNearNewest =
         !messagesController.hasClients || messagesController.offset < 96;
     final grew = thread.messages.length > lastMessageCount;
@@ -189,7 +247,8 @@ class _WebChatsPageState extends State<WebChatsPage> {
     final updatedAtKey = thread.chat.updatedAt?.millisecondsSinceEpoch ?? 0;
     final readKey = '${thread.chat.id}:$updatedAtKey';
     if (thread.chat.unreadFor(widget.userId) && lastMarkedReadKey != readKey) {
-      unawaited(service.markRead(thread.chat.id, widget.userId));
+      unawaited(service.markRead(thread.chat.id, widget.userId).catchError(
+          (Object error) => debugPrint('WEB CHAT READ ERROR $error')));
       lastMarkedReadKey = readKey;
     }
     if (grew && wasNearNewest) _scrollToNewest();
@@ -198,26 +257,39 @@ class _WebChatsPageState extends State<WebChatsPage> {
   Future<void> _sendMessage() async {
     if (selectedChatId == null || sending || uploading) return;
     final text = messageController.text;
+    final chatId = selectedChatId!;
     if (text.trim().isEmpty && pendingAttachments.isEmpty) return;
     setState(() {
       sending = true;
       uploading = pendingAttachments.isNotEmpty;
     });
     try {
-      final messageId = service.newMessageId(selectedChatId!);
+      final messageId = service.newMessageId(chatId);
       final uploaded = await mediaService.uploadAttachments(
-        chatId: selectedChatId!,
+        chatId: chatId,
         messageId: messageId,
         senderId: widget.userId,
         attachments: List<WebPendingChatAttachment>.from(pendingAttachments),
       );
       await service.sendMessage(
-        chatId: selectedChatId!,
+        chatId: chatId,
         messageId: messageId,
         uid: widget.userId,
         text: text,
         attachments: uploaded,
+        contextFields: reply == null
+            ? const {}
+            : {
+                'replyToMessageId': reply!.id,
+                'replyToSenderId': reply!.data['senderId'],
+                'replyToSenderName': reply!.data['senderName'] ?? '',
+                'replyToTextPreview': reply!.text,
+                'replyToAttachmentPreview':
+                    webChatAttachmentPreview(reply!.attachments),
+              },
       );
+      if (!mounted || selectedChatId != chatId) return;
+      reply = null;
       messageController.clear();
       pendingAttachments.clear();
       _scrollToNewest();
@@ -232,6 +304,159 @@ class _WebChatsPageState extends State<WebChatsPage> {
           sending = false;
           uploading = false;
         });
+      }
+    }
+  }
+
+  Future<void> _loadOlder() async {
+    final thread = lastThread;
+    if (thread == null || thread.messages.isEmpty) return;
+    try {
+      final count = await service.loadOlder(
+          thread.chat.id, thread.messages.last.id, widget.userId);
+      if (mounted && count == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No older messages.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not load older messages: $error')));
+      }
+    }
+  }
+
+  void _typingChanged(String text) {
+    final id = selectedChatId;
+    if (id == null) return;
+    final next = text.trim().isNotEmpty;
+    if (next != typing) {
+      typing = next;
+      unawaited(service
+          .setTyping(id, widget.userId, next)
+          .catchError((Object e) => debugPrint('WEB TYPING ERROR $e')));
+    }
+    typingTimer?.cancel();
+    if (next) {
+      typingTimer = Timer(const Duration(seconds: 2), () {
+        typing = false;
+        unawaited(service
+            .setTyping(id, widget.userId, false)
+            .catchError((Object e) => debugPrint('WEB TYPING ERROR $e')));
+      });
+    }
+  }
+
+  Future<void> _toggleRecording() async {
+    if (recorderBusy || sending || selectedChatId == null) return;
+    setState(() => recorderBusy = true);
+    try {
+      if (recording) {
+        recordingLimit?.cancel();
+        final file = await recorder.stop();
+        if (mounted) {
+          setState(() {
+            recording = false;
+            if (file != null) pendingAttachments.add(file);
+          });
+        }
+      } else {
+        await recorder.start();
+        if (!mounted) {
+          await recorder.cancel();
+          return;
+        }
+        setState(() => recording = true);
+        recordingLimit = Timer(
+            const Duration(minutes: 3), () => unawaited(_toggleRecording()));
+      }
+    } catch (error) {
+      if (mounted) setState(() => recording = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not record: $error')));
+      }
+    } finally {
+      if (mounted) setState(() => recorderBusy = false);
+    }
+  }
+
+  Future<void> _messageAction(WebMessageItem message, String action) async {
+    final chatId = selectedChatId;
+    if (chatId == null) return;
+    try {
+      if (action == 'copy') {
+        await Clipboard.setData(ClipboardData(text: message.text));
+        return;
+      }
+      if (action == 'reply') {
+        setState(() => reply = message);
+        return;
+      }
+      if (action == 'edit') {
+        final text = await showDialog<String>(
+            context: context,
+            builder: (_) => WebTextDialog(
+                title: 'Edit message',
+                label: 'Message',
+                initial: message.text));
+        if (text != null) {
+          await service.messageAction(chatId, message, widget.userId, action,
+              text: text);
+        }
+        return;
+      }
+      if (action == 'forward') {
+        final chats = await service.loadChats(widget.userId);
+        if (!mounted) return;
+        final target = await showDialog<String>(
+            context: context,
+            builder: (context) =>
+                SimpleDialog(title: const Text('Forward to'), children: [
+                  for (final chat in chats)
+                    SimpleDialogOption(
+                        onPressed: () => Navigator.pop(context, chat.id),
+                        child: Text(chat.title)),
+                ]));
+        if (target != null) {
+          await service.sendMessage(
+              chatId: target,
+              uid: widget.userId,
+              text: message.text,
+              attachments: message.attachments,
+              contextFields: {
+                'forwarded': true,
+                'forwardedFromMessageId': message.id,
+                'forwardedFromChatId': chatId,
+                'forwardedFromSenderId': message.data['senderId'],
+                'forwardedFromSenderName': message.data['senderName'] ?? ''
+              });
+        }
+        return;
+      }
+      final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+                title: Text(action == 'delete'
+                    ? 'Delete for everyone?'
+                    : 'Delete for me?'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Delete'))
+                ],
+              ));
+      if (confirmed == true) {
+        await service.messageAction(chatId, message, widget.userId, action);
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not update message: $error')));
       }
     }
   }
@@ -376,6 +601,15 @@ class _ThreadStreamView extends StatelessWidget {
     required this.onSend,
     required this.onAttach,
     required this.onRemoveAttachment,
+    required this.onMessageAction,
+    required this.onOpenProfile,
+    required this.onOpenJob,
+    required this.reply,
+    required this.onCancelReply,
+    required this.recording,
+    required this.onRecord,
+    required this.onTyping,
+    required this.onOlder,
   });
 
   final Stream<WebDataState<WebChatThread?>>? stream;
@@ -389,6 +623,15 @@ class _ThreadStreamView extends StatelessWidget {
   final Future<void> Function() onSend;
   final VoidCallback onAttach;
   final ValueChanged<int> onRemoveAttachment;
+  final void Function(WebMessageItem, String) onMessageAction;
+  final VoidCallback onOpenProfile;
+  final VoidCallback onOpenJob;
+  final WebMessageItem? reply;
+  final VoidCallback onCancelReply;
+  final bool recording;
+  final VoidCallback? onRecord;
+  final ValueChanged<String> onTyping;
+  final VoidCallback onOlder;
 
   @override
   Widget build(BuildContext context) {
@@ -413,7 +656,18 @@ class _ThreadStreamView extends StatelessWidget {
         });
         return Column(
           children: [
-            _ThreadHeader(thread: thread, userId: userId),
+            _ThreadHeader(
+                thread: thread,
+                userId: userId,
+                onOpenProfile: onOpenProfile,
+                onOpenJob: onOpenJob),
+            if (thread.chat.data[thread.chat.data['workerId'] == userId
+                    ? 'typing_employer'
+                    : 'typing_worker'] ==
+                true)
+              const Text('Typing...'),
+            TextButton(
+                onPressed: onOlder, child: const Text('Load older messages')),
             if (state?.error != null)
               _ErrorBanner(
                   message: 'Could not refresh messages: ${state!.error}'),
@@ -425,7 +679,11 @@ class _ThreadStreamView extends StatelessWidget {
                 itemCount: thread.messages.length,
                 itemBuilder: (context, index) {
                   final message = thread.messages[index];
-                  return _MessageBubble(message: message, userId: userId);
+                  return _MessageBubble(
+                      key: ValueKey(message.id),
+                      message: message,
+                      userId: userId,
+                      onAction: (action) => onMessageAction(message, action));
                 },
               ),
             ),
@@ -433,11 +691,33 @@ class _ThreadStreamView extends StatelessWidget {
               attachments: pendingAttachments,
               onRemove: onRemoveAttachment,
             ),
+            if (reply != null)
+              ListTile(
+                  title: const Text('Reply'),
+                  subtitle: Text(
+                      reply!.text.isEmpty
+                          ? webChatAttachmentPreview(reply!.attachments)
+                          : reply!.text,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
+                  trailing: IconButton(
+                      onPressed: onCancelReply,
+                      tooltip: 'Cancel reply',
+                      icon: const Icon(Icons.close))),
+            Align(
+                alignment: Alignment.centerLeft,
+                child: IconButton(
+                    tooltip:
+                        recording ? 'Stop recording' : 'Record voice message',
+                    onPressed: onRecord,
+                    icon:
+                        Icon(recording ? Icons.stop_circle : Icons.mic_none))),
             _Composer(
               controller: messageController,
               sending: sending,
               onSend: onSend,
               onAttach: onAttach,
+              onTyping: onTyping,
             ),
           ],
         );
@@ -450,10 +730,14 @@ class _ThreadHeader extends StatelessWidget {
   const _ThreadHeader({
     required this.thread,
     required this.userId,
+    required this.onOpenProfile,
+    required this.onOpenJob,
   });
 
   final WebChatThread thread;
   final String userId;
+  final VoidCallback onOpenProfile;
+  final VoidCallback onOpenJob;
 
   @override
   Widget build(BuildContext context) {
@@ -464,6 +748,15 @@ class _ThreadHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
+          IconButton(
+              tooltip: 'Open profile',
+              onPressed: onOpenProfile,
+              icon: const Icon(Icons.person_outline)),
+          if ((thread.chat.data['jobId']?.toString() ?? '').isNotEmpty)
+            IconButton(
+                tooltip: 'View vacancy',
+                onPressed: onOpenJob,
+                icon: const Icon(Icons.work_outline)),
           WebCircleImage(
             url: thread.chat.avatarFor(userId),
             size: 58,
@@ -505,12 +798,15 @@ class _ThreadHeader extends StatelessWidget {
 
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
+    super.key,
     required this.message,
     required this.userId,
+    required this.onAction,
   });
 
   final WebMessageItem message;
   final String userId;
+  final ValueChanged<String> onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -531,6 +827,29 @@ class _MessageBubble extends StatelessWidget {
           crossAxisAlignment:
               isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
+            PopupMenuButton<String>(
+                tooltip: 'Message actions',
+                onSelected: onAction,
+                itemBuilder: (_) => [
+                      if (!deleted)
+                        const PopupMenuItem(
+                            value: 'reply', child: Text('Reply')),
+                      if (!deleted && message.text.isNotEmpty)
+                        const PopupMenuItem(value: 'copy', child: Text('Copy')),
+                      if (!deleted)
+                        const PopupMenuItem(
+                            value: 'forward', child: Text('Forward')),
+                      if (isMine && !deleted && message.type == 'text')
+                        const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                      const PopupMenuItem(
+                          value: 'hide', child: Text('Delete for me')),
+                      if (isMine && !deleted)
+                        const PopupMenuItem(
+                            value: 'delete',
+                            child: Text('Delete for everyone')),
+                    ]),
+            if (message.data['forwarded'] == true)
+              const Text('Forwarded', style: TextStyle(fontSize: 11)),
             if (_hasReply(message.data)) _ReplyPreview(data: message.data),
             if (deleted)
               Text(
@@ -607,12 +926,14 @@ class _Composer extends StatelessWidget {
     required this.sending,
     required this.onSend,
     required this.onAttach,
+    required this.onTyping,
   });
 
   final TextEditingController controller;
   final bool sending;
   final Future<void> Function() onSend;
   final VoidCallback onAttach;
+  final ValueChanged<String> onTyping;
 
   @override
   Widget build(BuildContext context) {
@@ -629,6 +950,7 @@ class _Composer extends StatelessWidget {
           Expanded(
             child: TextField(
               controller: controller,
+              onChanged: onTyping,
               minLines: 1,
               maxLines: 5,
               textInputAction: TextInputAction.newline,

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
@@ -7,16 +8,20 @@ class WebProfileEditService {
   WebProfileEditService({
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
+    FirebaseAuth? auth,
   })  : _firestore = firestore ?? FirebaseFirestore.instance,
-        _storage = storage ?? FirebaseStorage.instance;
+        _storage = storage ?? FirebaseStorage.instance,
+        _auth = auth ?? FirebaseAuth.instance;
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
+  final FirebaseAuth _auth;
 
   Future<void> saveUserProfile({
     required String uid,
     required Map<String, dynamic> updates,
   }) async {
+    await _ensureActiveOwner(uid);
     await _firestore.collection('users').doc(uid).set({
       ...updates,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -27,6 +32,7 @@ class WebProfileEditService {
     required String uid,
     required bool isEmployer,
   }) async {
+    await _ensureActiveOwner(uid);
     final picked = await _pickSingleImage();
     if (picked == null) return null;
     final url = await _uploadBytes(
@@ -38,6 +44,7 @@ class WebProfileEditService {
       uid: uid,
       updates: {
         'avatarUrl': url,
+        'photo': url,
         'photoUrl': url,
         'profilePhotoUrl': url,
         if (isEmployer) 'companyLogo': url,
@@ -49,6 +56,7 @@ class WebProfileEditService {
   }
 
   Future<String?> pickAndUploadHeaderImage(String uid) async {
+    await _ensureActiveOwner(uid);
     final picked = await _pickSingleImage();
     if (picked == null) return null;
     final url = await _uploadBytes(
@@ -70,6 +78,7 @@ class WebProfileEditService {
   }
 
   Future<List<String>> pickAndAddCompanyPhotos(String uid) async {
+    await _ensureActiveOwner(uid);
     final picked = await _pickImages();
     if (picked.isEmpty) return const [];
     final urls = <String>[];
@@ -88,6 +97,7 @@ class WebProfileEditService {
   }
 
   Future<List<String>> pickAndAddWorkerPortfolio(String uid) async {
+    await _ensureActiveOwner(uid);
     final picked = await _pickImages();
     if (picked.isEmpty) return const [];
     final urls = <String>[];
@@ -101,7 +111,11 @@ class WebProfileEditService {
       urls.add(url);
       final ref =
           _firestore.collection('users').doc(uid).collection('portfolio').doc();
-      batch.set(ref, {'url': url, 'createdAt': FieldValue.serverTimestamp()});
+      batch.set(ref, {
+        'imageUrl': url,
+        'url': url,
+        'createdAt': FieldValue.serverTimestamp()
+      });
     }
     batch.set(
       _firestore.collection('users').doc(uid),
@@ -140,14 +154,25 @@ class WebProfileEditService {
       },
       SetOptions(merge: true),
     );
-    final docs = await _firestore
-        .collection('users')
-        .doc(uid)
+    final nested =
+        _firestore.collection('users').doc(uid).collection('portfolio');
+    final seen = <String>{};
+    for (final field in const ['url', 'imageUrl', 'image', 'photoUrl']) {
+      final docs = await nested.where(field, isEqualTo: url).get();
+      for (final doc in docs.docs) {
+        if (seen.add(doc.id)) batch.delete(doc.reference);
+      }
+    }
+    final legacy = await _firestore
         .collection('portfolio')
-        .where('url', isEqualTo: url)
+        .where('userId', isEqualTo: uid)
         .get();
-    for (final doc in docs.docs) {
-      batch.delete(doc.reference);
+    for (final doc in legacy.docs) {
+      final data = doc.data();
+      if (const ['url', 'imageUrl', 'image', 'photoUrl']
+          .any((field) => data[field]?.toString() == url)) {
+        batch.delete(doc.reference);
+      }
     }
     await batch.commit();
   }
@@ -158,15 +183,33 @@ class WebProfileEditService {
     required String description,
     required String trade,
   }) async {
+    await _ensureActiveOwner(ownerId);
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) throw StateError('Enter team name.');
+    final existing = await _firestore
+        .collection('teams')
+        .where('ownerId', isEqualTo: ownerId)
+        .get();
+    final duplicate = existing.docs.any((doc) {
+      final data = doc.data();
+      final existingName = (data['nameLower'] ?? data['name'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      return existingName == cleanName.toLowerCase();
+    });
+    if (duplicate) throw StateError('Team already exists.');
     final doc = await _firestore.collection('teams').add({
-      'name': name.trim(),
-      'teamName': name.trim(),
+      'name': cleanName,
+      'nameLower': cleanName.toLowerCase(),
+      'teamName': cleanName,
       'description': description.trim(),
       if (trade.trim().isNotEmpty) 'trade': trade.trim(),
       'ownerId': ownerId,
       'createdBy': ownerId,
       'leaderId': ownerId,
       'members': [ownerId],
+      'memberKey': ownerId,
       'memberIds': [ownerId],
       'memberStatuses': {ownerId: 'active'},
       'membersStatus': {ownerId: 'active'},
@@ -180,17 +223,54 @@ class WebProfileEditService {
   Future<void> saveTeam({
     required String teamId,
     required Map<String, dynamic> updates,
-  }) {
-    return _firestore.collection('teams').doc(teamId).set({
+  }) async {
+    await _ensureTeamLeader(teamId);
+    await _firestore.collection('teams').doc(teamId).set({
       ...updates,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  Future<void> _ensureActiveOwner(String uid) async {
+    final data = (await _firestore.collection('users').doc(uid).get()).data();
+    final status = data?['status']?.toString().toLowerCase().trim() ?? '';
+    final unavailable = data == null ||
+        data['deleted'] == true ||
+        data['accountDeleted'] == true ||
+        data['active'] == false ||
+        data['moderationHold'] == true ||
+        data['profileSuspended'] == true ||
+        data['profileHold'] == true ||
+        data['accountOnHold'] == true ||
+        status == 'deleted' ||
+        status == 'suspended' ||
+        status == 'on_hold';
+    if (unavailable) {
+      throw StateError(
+        'Your profile is temporarily suspended. Please contact Administrator.',
+      );
+    }
+  }
+
+  Future<void> _ensureTeamLeader(String teamId) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw StateError('Sign in is required.');
+    await _ensureActiveOwner(uid);
+    final data =
+        (await _firestore.collection('teams').doc(teamId).get()).data();
+    if (data == null) throw StateError('Team is no longer available.');
+    final leaderId =
+        (data['ownerId'] ?? data['createdBy'] ?? data['leaderId'])?.toString();
+    if (leaderId != uid) {
+      throw StateError('Only the team leader can edit this team.');
+    }
   }
 
   Future<String?> pickAndUploadTeamImage({
     required String teamId,
     required bool header,
   }) async {
+    await _ensureTeamLeader(teamId);
     final picked = await _pickSingleImage();
     if (picked == null) return null;
     final path = header

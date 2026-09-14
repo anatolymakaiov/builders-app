@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../models/job.dart';
+import '../../services/moderation_hold_service.dart';
 import 'web_data_state.dart';
 
 class WebJobsDataService {
@@ -118,10 +120,14 @@ class WebJobsDataService {
       'createdBy',
       'userId',
     ]) {
-      final snapshot = await _firestore
-          .collection('jobs')
-          .where(field, isEqualTo: ownerId)
-          .get();
+      Query<Map<String, dynamic>> query =
+          _firestore.collection('jobs').where(field, isEqualTo: ownerId);
+      if (!ownProfile) {
+        query = query
+            .where('moderationStatus', isEqualTo: 'approved')
+            .where('status', whereIn: ['active', 'published', 'open']);
+      }
+      final snapshot = await query.get();
       for (final doc in snapshot.docs) {
         docsById[doc.id] = doc;
       }
@@ -215,6 +221,7 @@ class WebJobsDataService {
     required String userId,
     required Job job,
   }) async {
+    await ensureCanApply(userId, job);
     if (await hasSingleApplication(userId: userId, jobId: job.id)) {
       throw StateError('already_applied');
     }
@@ -260,6 +267,43 @@ class WebJobsDataService {
         'applicationActivityAt': FieldValue.serverTimestamp(),
         'unreadFor': [ownerId],
       });
+    });
+  }
+
+  Future<void> ensureCanApply(String uid, Job job) async {
+    final worker = (await _firestore.collection('users').doc(uid).get()).data();
+    if (worker == null ||
+        worker['role'] != 'worker' ||
+        worker['active'] == false ||
+        worker['deleted'] == true ||
+        worker['accountDeleted'] == true) {
+      throw StateError('This profile is no longer available.');
+    }
+    if (ModerationHoldService.isProfileHeld(worker)) {
+      throw StateError(ModerationHoldService.suspensionSnackBarMessage);
+    }
+    final employer =
+        (await _firestore.collection('users').doc(job.ownerId).get()).data();
+    if (employer == null ||
+        employer['active'] == false ||
+        employer['deleted'] == true ||
+        employer['accountDeleted'] == true ||
+        ModerationHoldService.isProfileHeld(employer)) {
+      throw StateError('This employer is unavailable.');
+    }
+  }
+
+  Future<void> applyAsTeam(
+      {required String userId,
+      required Job job,
+      required String teamId}) async {
+    await ensureCanApply(userId, job);
+    // Same authoritative validation, membership, capacity and duplicate handling as mobile.
+    await FirebaseFunctions.instance
+        .httpsCallable('submitTeamApplication')
+        .call({
+      'jobId': job.id,
+      'teamId': teamId,
     });
   }
 

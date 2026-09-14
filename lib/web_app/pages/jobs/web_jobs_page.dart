@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../../models/job.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_job_management_service.dart';
 import '../../services/web_jobs_data_service.dart';
+import '../../services/web_job_filters.dart';
+import '../../widgets/web_job_filters_dialog.dart';
+import '../../widgets/web_apply_dialog.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../widgets/web_page_container.dart';
 import 'web_job_details_panel.dart';
@@ -45,6 +49,11 @@ class _WebJobsPageState extends State<WebJobsPage> {
   bool managing = false;
   bool creatingJob = false;
   Job? editingJob;
+  WebJobFilters filters = const WebJobFilters();
+  WebJobSort sort = WebJobSort.newest;
+  Position? location;
+  bool savedOnly = false;
+  int page = 1;
 
   bool get isEmployer => widget.role == 'employer';
   bool get isWorker => widget.role == 'worker';
@@ -74,18 +83,24 @@ class _WebJobsPageState extends State<WebJobsPage> {
   }
 
   List<Job> filterJobs(List<Job> jobs) {
-    final query = search.trim().toLowerCase();
-    if (query.isEmpty) return jobs;
-    return jobs.where((job) {
-      return [
-        job.displayTitle,
-        job.trade,
-        job.companyName,
-        job.fullAddress,
-        job.description,
-      ].join(' ').toLowerCase().contains(query);
-    }).toList();
+    final result = filters.apply(
+        savedOnly
+            ? jobs.where((job) => savedJobIds.contains(job.id)).toList()
+            : jobs,
+        search);
+    result.sort((a, b) => switch (sort) {
+          WebJobSort.highestPay => b.rate.compareTo(a.rate),
+          WebJobSort.nearest => _distance(a).compareTo(_distance(b)),
+          WebJobSort.newest => (b.createdAt ?? DateTime(1970))
+              .compareTo(a.createdAt ?? DateTime(1970)),
+        });
+    return result;
   }
+
+  double _distance(Job job) => location == null
+      ? double.infinity
+      : Geolocator.distanceBetween(
+          location!.latitude, location!.longitude, job.lat, job.lng);
 
   @override
   Widget build(BuildContext context) {
@@ -132,6 +147,9 @@ class _WebJobsPageState extends State<WebJobsPage> {
         final result = state.data ??
             const WebJobsResult(publicJobs: <Job>[], ownerJobs: <Job>[]);
         final jobs = filterJobs(result.jobsForMode(mode, widget.role));
+        final pages = (jobs.length / 10).ceil();
+        final currentPage = page.clamp(1, pages == 0 ? 1 : pages);
+        final pageJobs = jobs.skip((currentPage - 1) * 10).take(10).toList();
         if (selectedJobId == null && jobs.isNotEmpty) {
           selectedJobId = jobs.first.id;
         }
@@ -173,17 +191,105 @@ class _WebJobsPageState extends State<WebJobsPage> {
                 ),
                 const SizedBox(height: 14),
               ],
+              Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    OutlinedButton.icon(
+                        onPressed: () async {
+                          final next = await showDialog<WebJobFilters>(
+                              context: context,
+                              builder: (_) =>
+                                  WebJobFiltersDialog(current: filters));
+                          if (mounted && next != null) {
+                            setState(() {
+                              filters = next;
+                              page = 1;
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.tune),
+                        label: const Text('Filters')),
+                    DropdownButton<WebJobSort>(
+                        value: sort,
+                        items: const [
+                          DropdownMenuItem(
+                              value: WebJobSort.newest, child: Text('Newest')),
+                          DropdownMenuItem(
+                              value: WebJobSort.highestPay,
+                              child: Text('Highest pay')),
+                          DropdownMenuItem(
+                              value: WebJobSort.nearest,
+                              child: Text('Nearest')),
+                        ],
+                        onChanged: (value) async {
+                          if (value == null) return;
+                          if (value == WebJobSort.nearest && location == null) {
+                            try {
+                              location = await Geolocator.getCurrentPosition();
+                            } catch (_) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text(
+                                          'Location unavailable. Allow location access and retry.')),
+                                );
+                              }
+                              return;
+                            }
+                          }
+                          if (mounted) {
+                            setState(() {
+                              sort = value;
+                              page = 1;
+                            });
+                          }
+                        }),
+                    if (isWorker)
+                      IconButton(
+                          tooltip:
+                              savedOnly ? 'Show all jobs' : 'Show saved jobs',
+                          icon: Icon(savedOnly
+                              ? Icons.favorite
+                              : Icons.favorite_border),
+                          onPressed: () async {
+                            await _loadSavedJobs();
+                            if (mounted) {
+                              setState(() {
+                                savedOnly = !savedOnly;
+                                page = 1;
+                              });
+                            }
+                          }),
+                    IconButton(
+                        tooltip: 'Previous page',
+                        icon: const Icon(Icons.chevron_left),
+                        onPressed: currentPage > 1
+                            ? () => setState(() => page = currentPage - 1)
+                            : null),
+                    Text('$currentPage / ${pages == 0 ? 1 : pages}'),
+                    IconButton(
+                        tooltip: 'Next page',
+                        icon: const Icon(Icons.chevron_right),
+                        onPressed: currentPage < pages
+                            ? () => setState(() => page = currentPage + 1)
+                            : null),
+                  ]),
+              const SizedBox(height: 10),
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final compact =
                         constraints.maxWidth < WebBreakpoints.compactWidth;
                     final list = WebJobListPanel(
-                      jobs: jobs,
+                      jobs: pageJobs,
                       selectedJobId: selectedJobId,
                       searchController: searchController,
-                      onSearchChanged: (value) =>
-                          setState(() => search = value),
+                      onSearchChanged: (value) => setState(() {
+                        search = value;
+                        page = 1;
+                      }),
                       onSelected: (job) =>
                           setState(() => selectedJobId = job.id),
                       title: _listTitle(jobs.length),
@@ -327,7 +433,9 @@ class _WebJobsPageState extends State<WebJobsPage> {
     if (applying) return;
     setState(() => applying = true);
     try {
-      await service.applyAsSingle(userId: widget.userId, job: job);
+      final applied =
+          await showWebApplyDialog(context, userId: widget.userId, job: job);
+      if (!applied) return;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Application sent')),

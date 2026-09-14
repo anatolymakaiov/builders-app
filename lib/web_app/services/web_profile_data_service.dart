@@ -17,6 +17,11 @@ class WebProfileData {
   final Map<String, dynamic> data;
 
   String get displayName {
+    if (role == 'employer' || role == 'company') {
+      return _firstText(data, const ['companyName', 'name'], 'Company');
+    }
+    final name = _firstText(data, const ['name', 'displayName'], '');
+    if (name.isNotEmpty) return name;
     final first = _firstText(data, const ['firstName'], '');
     final last = _firstText(data, const ['lastName'], '');
     final fullName =
@@ -30,6 +35,8 @@ class WebProfileData {
   }
 
   String get avatarUrl {
+    final photo = _firstText(data, const ['photo'], '');
+    if (photo.isNotEmpty) return photo;
     return _firstText(
       data,
       const [
@@ -228,8 +235,8 @@ class WebProfileDataService {
           .collection('portfolio')
           .get();
       for (final doc in snapshot.docs) {
-        final url =
-            _firstText(doc.data(), const ['url', 'imageUrl', 'photoUrl'], '');
+        final url = _firstText(
+            doc.data(), const ['imageUrl', 'image', 'url', 'photoUrl'], '');
         if (url.isNotEmpty) {
           itemsByUrl[url] =
               WebPortfolioItem(id: doc.id, url: url, data: doc.data());
@@ -238,11 +245,36 @@ class WebProfileDataService {
     } catch (error) {
       debugPrint('WEB PROFILE PORTFOLIO LOAD ERROR $error');
     }
+    final flat = await _firestore
+        .collection('portfolio')
+        .where('userId', isEqualTo: uid)
+        .get();
+    for (final doc in flat.docs) {
+      final url =
+          _firstText(doc.data(), const ['imageUrl', 'image', 'url'], '');
+      if (url.isNotEmpty) {
+        itemsByUrl[url] =
+            WebPortfolioItem(id: doc.id, url: url, data: doc.data());
+      }
+    }
     return itemsByUrl.values.toList();
   }
 
   Future<List<WebTeamData>> loadWorkerTeams(String uid) async {
-    final snapshot = await _firestore.collection('teams').get();
+    final snapshot = await _firestore
+        .collection('teams')
+        .where(Filter.or(
+          Filter('members', arrayContains: uid),
+          Filter('memberIds', arrayContains: uid),
+          Filter('ownerId', isEqualTo: uid),
+          Filter('createdBy', isEqualTo: uid),
+          Filter('leaderId', isEqualTo: uid),
+          Filter('memberStatuses.$uid',
+              whereIn: ['active', 'pending', 'accepted']),
+          Filter('membersStatus.$uid',
+              whereIn: ['active', 'pending', 'accepted']),
+        ))
+        .get();
     final teams = <WebTeamData>[];
     for (final doc in snapshot.docs) {
       final data = doc.data();
@@ -287,8 +319,11 @@ class WebProfileDataService {
           .collection('portfolio')
           .get();
       for (final doc in snapshot.docs) {
-        final url =
-            _firstText(doc.data(), const ['url', 'imageUrl', 'photoUrl'], '');
+        final url = _firstText(
+          doc.data(),
+          const ['url', 'imageUrl', 'image', 'photoUrl'],
+          '',
+        );
         if (url.isNotEmpty) portfolio.add(url);
       }
     } catch (error) {

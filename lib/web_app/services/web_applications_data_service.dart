@@ -302,14 +302,27 @@ class WebApplicationsDataService {
 
   Future<List<_WorkerTeam>> _loadWorkerTeams(String uid) async {
     try {
-      final snapshot = await _firestore.collection('teams').get();
+      final snapshot = await _firestore
+          .collection('teams')
+          .where(Filter.or(
+            Filter('members', arrayContains: uid),
+            Filter('memberIds', arrayContains: uid),
+            Filter('ownerId', isEqualTo: uid),
+            Filter('createdBy', isEqualTo: uid),
+            Filter('leaderId', isEqualTo: uid),
+            Filter('memberStatuses.$uid',
+                whereIn: ['active', 'pending', 'accepted']),
+            Filter('membersStatus.$uid',
+                whereIn: ['active', 'pending', 'accepted']),
+          ))
+          .get();
       final teams = snapshot.docs
           .where((doc) => _isUserTeam(doc.data(), uid))
           .map((doc) => _WorkerTeam(id: doc.id, data: doc.data()))
           .toList();
       debugPrint(
         'WEB APPLICATIONS WORKER TEAMS loaded=${teams.length} '
-        'raw=${snapshot.docs.length}',
+        'candidates=${snapshot.docs.length}',
       );
       return teams;
     } on FirebaseException catch (error) {
