@@ -31,16 +31,16 @@ functions, native configuration, or dependency files are changed by this work.
 | Offers | COMPLETE | COMPLETE | Existing shared offer acceptance service remains authoritative for slot decrement/idempotency. Web supports create, accept, reject, withdraw and selected team recipients without introducing a second offer model. |
 | Chat list/thread | COMPLETE | COMPLETE | Stable get-based polling avoids Web Firestore snapshot lifecycle failures; list/thread loading always terminates. Latest 80 messages plus explicit older-message pagination, unread updates, typing, profile/job header navigation. `web_chats_page.dart`, `web_chats_data_service.dart`. |
 | Chat message actions | COMPLETE | COMPLETE | Text, multi-attachment messages, preview/remove, image/video/audio/file display, voice recording, reply, copy, forward, edit, delete-for-me and delete-for-everyone use existing fields/storage contracts. |
-| Worker profile | PARTIAL | COMPLETE viewer | Profile/header, expanded work history, permits, qualifications, education, references data, portfolio grid/viewer, contacts, teams, reviews, report/message/call and held/unavailable handling. Owner can edit core fields/media. See missing list for fine-grained reference editor parity. |
-| Company profile | PARTIAL owner | COMPLETE viewer | Company identity, header/logo, overview fields, contacts, photos, jobs, message/report and held/unavailable handling. Owner edits core fields/media; company job cards remain summary-only in this profile surface. |
+| Worker profile | COMPLETE | COMPLETE viewer | Profile/header, expanded work history, permits, qualifications, education, portfolio grid/viewer, contacts, teams, reviews, report/message/call and held/unavailable handling. The owner editor supports the mobile `references` contract (`name`, `company`, `phone`, `email`), including dynamic add/remove and legacy string values. |
+| Company profile | COMPLETE owner | COMPLETE viewer | Company identity, header/logo, overview fields, contacts, photos, jobs, message/report and held/unavailable handling. The owner editor supports `contactPerson`/`contactName` and the dynamic `phones` list without changing existing structured `contacts`. Vacancy summaries open the permitted owner/public job details route. |
 | Teams | COMPLETE | COMPLETE viewer | Create with duplicate-name compatibility fields; separate avatar/header; description, photos, member list/profile navigation, leader add/message/remove, regular-member leave, leader delete, stable return navigation, contact action. Existing application/chat history is preserved. `web_team_page.dart`, `web_team_actions.dart`. |
 | Reviews | PARTIAL | COMPLETE create/view | Reviews are read from the existing worker review subcollection and average is derived; employers can create the same review record. Persisting the denormalized `users.rating/reviewsCount` aggregate is BLOCKED by current cross-user write rules, so Web does not attempt the mobile write that can be denied. |
 | Notifications/alerts | COMPLETE | COMPLETE | Existing Web polling, unread badge/read handling and target routing retained. Offer/application/job/profile/chat targets route within the Web shell. Native push registration is deliberately unchanged. |
-| Job subscriptions | PARTIAL | N/A | Existing subscriptions can be listed, created and deleted with the existing Firestore contract. Mobile push scheduling and background delivery are native/backend concerns, not duplicated in Web. |
+| Job subscriptions | COMPLETE | N/A | Existing subscriptions can be listed, created and deleted with the existing Firestore contract. Creation uses the mobile canonical trade list, work-format values, postcode lookup and 5–50 mile radius. Browser/background delivery remains platform-specific rather than a separate Web business model. |
 | Account | COMPLETE | COMPLETE | Account summary, role-aware destinations, logout and existing account deletion service are retained. Suspension still permits Admin Inbox access. |
 | Billing | N/A | COMPLETE | Uses shared `BillingService/getCompanyBillingStatus` state; plan, price, vacancy limit, trial/payment dates, setup/change/refresh/replace/cancel controls. No legacy card/manual-invoice product path is introduced. |
 | Support | COMPLETE | COMPLETE | Role-specific request types; text-only, attachment-only or combined submission; photo/video/file picker, preview/removal, targeted upload errors, atomic request/admin-message/thread creation and success cleanup. |
-| Admin Inbox | PARTIAL | PARTIAL | Existing thread list/read/reply path is available. Rich reply attachments, important/delete controls remain absent from the desktop Web panel. |
+| Admin Inbox | COMPLETE | COMPLETE | Thread list/read state, text or attachment-only replies, multi-file upload/preview, image/video/audio/file viewing, important/read-unread actions and current-side soft deletion use the existing `admin_mail`, `message_attachments`, `message_threads`, notification and unread-counter contracts. |
 | Settings/legal | PARTIAL | PARTIAL | Existing notification preference keys and legal documents are available. Native biometrics, OS permission controls and mobile notification sound behavior remain native-only. |
 | Reports/moderation UX | COMPLETE | COMPLETE | Profile reporting uses existing report/admin inbox schema; public held/deleted/inactive profiles are blocked and owners receive the generic suspension UX. Backend moderation actions are not duplicated in Web. |
 
@@ -64,24 +64,13 @@ functions, native configuration, or dependency files are changed by this work.
 
 ## MISSING AFTER THIS COMMIT
 
-1. **Worker references editor — PARTIAL.** Existing reference data is displayed,
-   but the desktop editor does not reproduce every mobile dynamic-row control.
-2. **Company contacts editor — PARTIAL.** Existing contacts/phones are displayed;
-   the complete mobile dynamic contacts editor is not reproduced.
-3. **Profile company-job deep link — PARTIAL.** Company profile shows vacancy
-   summaries; Jobs/Map and application surfaces provide full vacancy details.
-4. **Admin Inbox rich replies — PARTIAL.** Text replies work; attachment replies,
-   important toggles, and delete/hide controls are not exposed in the Web panel.
-5. **Job subscription edit/toggle — PARTIAL.** Create/list/delete works; the
-   current mobile flow itself does not provide a full edit form. Native/background
-   alert delivery remains outside browser UI.
-6. **Review aggregate fields — BLOCKED.** Updating another user's top-level
+1. **Review aggregate fields — BLOCKED.** Updating another user's top-level
    `rating/reviewsCount` requires a trusted backend or rules change. Review records
    and derived display work without weakening security.
-7. **Accepted-offer capacity rollback — BLOCKED.** Any reversal of an already
+2. **Accepted-offer capacity rollback — BLOCKED.** Any reversal of an already
    accepted offer must use the authoritative slot transaction/backend. Web does
    not introduce an unsafe client-side counter write.
-8. **Biometric login, native push permissions, OS calendar integration, and phone
+3. **Biometric login, native push permissions, OS calendar integration, and phone
    dialer behavior — DEFERRED native capabilities.** Browser-safe equivalents are
    used only where a reliable Web contract exists.
 

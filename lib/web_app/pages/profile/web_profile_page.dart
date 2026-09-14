@@ -28,6 +28,7 @@ class WebProfilePage extends StatefulWidget {
     this.onClose,
     this.onOpenChat,
     this.onOpenProfile,
+    this.onOpenJob,
     this.onAdminInbox,
   });
 
@@ -39,6 +40,7 @@ class WebProfilePage extends StatefulWidget {
   final VoidCallback? onClose;
   final ValueChanged<String>? onOpenChat;
   final void Function(String, String)? onOpenProfile;
+  final void Function(String jobId, bool ownerView)? onOpenJob;
   final VoidCallback? onAdminInbox;
 
   @override
@@ -233,6 +235,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
                                 ownProfile ? _addCompanyPhotos : null,
                             onRemoveCompanyPhoto:
                                 ownProfile ? _removeCompanyPhoto : null,
+                            onOpenJob: widget.onOpenJob,
                           )
                         : _WorkerProfileBody(
                             profile: current,
@@ -645,6 +648,7 @@ class _EmployerProfileBody extends StatelessWidget {
     required this.ownProfile,
     this.onAddCompanyPhotos,
     this.onRemoveCompanyPhoto,
+    this.onOpenJob,
   });
 
   final WebProfileData profile;
@@ -653,6 +657,7 @@ class _EmployerProfileBody extends StatelessWidget {
   final bool ownProfile;
   final VoidCallback? onAddCompanyPhotos;
   final ValueChanged<String>? onRemoveCompanyPhoto;
+  final void Function(String jobId, bool ownerView)? onOpenJob;
 
   @override
   Widget build(BuildContext context) {
@@ -725,7 +730,11 @@ class _EmployerProfileBody extends StatelessWidget {
           title: ownProfile ? 'Your vacancies' : 'Vacancies',
           child: loading
               ? const LinearProgressIndicator()
-              : _CompanyJobsList(jobs: jobs, ownProfile: ownProfile),
+              : _CompanyJobsList(
+                  jobs: jobs,
+                  ownProfile: ownProfile,
+                  onOpenJob: onOpenJob,
+                ),
         ),
       ],
     );
@@ -759,6 +768,11 @@ class _ContactPanel extends StatelessWidget {
           'Additional phones', profile.listField(const ['phones']).join(', ')),
       MapEntry('Website', profile.website),
     ].where((item) => item.value.trim().isNotEmpty).toList();
+    final structuredContacts = (profile.data['contacts'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        const <Map<String, dynamic>>[];
 
     return WebPanel(
       child: Column(
@@ -802,6 +816,17 @@ class _ContactPanel extends StatelessWidget {
               _FieldTile(label: field.key, value: field.value, fullWidth: true),
               const SizedBox(height: 12),
             ],
+          if (structuredContacts.isNotEmpty) ...[
+            const Divider(height: 24),
+            const Text('Team contacts',
+                style: TextStyle(fontWeight: FontWeight.w800)),
+            for (final contact in structuredContacts)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(contact['name']?.toString() ?? ''),
+                subtitle: Text(contact['phone']?.toString() ?? ''),
+              ),
+          ],
         ],
       ),
     );
@@ -926,10 +951,12 @@ class _CompanyJobsList extends StatelessWidget {
   const _CompanyJobsList({
     required this.jobs,
     required this.ownProfile,
+    this.onOpenJob,
   });
 
   final List<Job> jobs;
   final bool ownProfile;
+  final void Function(String jobId, bool ownerView)? onOpenJob;
 
   @override
   Widget build(BuildContext context) {
@@ -943,37 +970,42 @@ class _CompanyJobsList extends StatelessWidget {
     }
     return Column(
       children: jobs.map((job) {
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: WebTheme.surfaceAlt,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: WebTheme.border),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      job.displayTitle,
-                      style: const TextStyle(fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      job.fullAddress.isEmpty ? job.site : job.fullAddress,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: WebTheme.muted),
-                    ),
-                  ],
+        return InkWell(
+          onTap:
+              onOpenJob == null ? null : () => onOpenJob!(job.id, ownProfile),
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: WebTheme.surfaceAlt,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: WebTheme.border),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        job.displayTitle,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        job.fullAddress.isEmpty ? job.site : job.fullAddress,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: WebTheme.muted),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              _StatusBadge(
-                  label: ownProfile ? job.moderationLabel : job.status),
-            ],
+                _StatusBadge(
+                    label: ownProfile ? job.moderationLabel : job.status),
+              ],
+            ),
           ),
         );
       }).toList(),
@@ -1044,9 +1076,12 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
   late final TextEditingController postcode;
   late final TextEditingController country;
   late final TextEditingController website;
+  late final TextEditingController contactPerson;
   late final TextEditingController experience;
   late final TextEditingController qualifications;
   late final TextEditingController certifications;
+  final references = <_ReferenceEditors>[];
+  final extraPhones = <TextEditingController>[];
   bool saving = false;
 
   @override
@@ -1066,6 +1101,9 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
     postcode = TextEditingController(text: profile.postcode);
     country = TextEditingController(text: profile.country);
     website = TextEditingController(text: profile.website);
+    contactPerson = TextEditingController(
+      text: profile.data['contactPerson']?.toString() ?? '',
+    );
     experience = TextEditingController(text: profile.experience);
     qualifications = TextEditingController(
       text: profile.listField(const ['qualifications']).join(', '),
@@ -1074,6 +1112,23 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
       text: profile
           .listField(const ['certificationsText', 'certifications']).join(', '),
     );
+    if (widget.role == 'worker') {
+      final raw = profile.data['references'];
+      if (raw is List) {
+        for (final item in raw) {
+          references.add(_ReferenceEditors.fromValue(item));
+        }
+      } else if (raw is String && raw.trim().isNotEmpty) {
+        references.add(_ReferenceEditors.fromValue(raw));
+      }
+    } else {
+      final raw = profile.data['phones'];
+      if (raw is List) {
+        for (final value in raw) {
+          extraPhones.add(TextEditingController(text: value.toString()));
+        }
+      }
+    }
   }
 
   @override
@@ -1092,10 +1147,17 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
       postcode,
       country,
       website,
+      contactPerson,
       experience,
       qualifications,
       certifications,
     ]) {
+      controller.dispose();
+    }
+    for (final reference in references) {
+      reference.dispose();
+    }
+    for (final controller in extraPhones) {
       controller.dispose();
     }
     super.dispose();
@@ -1121,7 +1183,12 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
               if (!isEmployer) _input(experience, 'Experience'),
               if (!isEmployer) _input(qualifications, 'Qualifications'),
               if (!isEmployer) _input(certifications, 'Certifications'),
-              if (isEmployer) _input(website, 'Website'),
+              if (isEmployer) ...[
+                _input(website, 'Website'),
+                _input(contactPerson, 'Contact person'),
+                _additionalPhonesEditor(),
+              ],
+              if (!isEmployer) _referencesEditor(),
               _input(addressLine1, 'Address Line 1'),
               _input(addressLine2, 'Address Line 2'),
               _input(addressLine3, 'Address Line 3'),
@@ -1153,16 +1220,118 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
   }
 
   Widget _input(TextEditingController controller, String label,
-      {int lines = 1}) {
+      {int lines = 1, TextInputType? keyboardType}) {
     return SizedBox(
       width: lines > 1 ? 680 : 330,
       child: TextField(
         controller: controller,
         maxLines: lines,
+        keyboardType: keyboardType,
         decoration: InputDecoration(
           labelText: label,
           border: const OutlineInputBorder(),
         ),
+      ),
+    );
+  }
+
+  Widget _referencesEditor() {
+    return SizedBox(
+      width: 680,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('References (optional)',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 10),
+          for (var index = 0; index < references.length; index++)
+            Container(
+              key: ValueKey(references[index]),
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                border: Border.all(color: WebTheme.border),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [
+                    Expanded(child: Text('Reference ${index + 1}')),
+                    IconButton(
+                      tooltip: 'Remove reference',
+                      onPressed: saving
+                          ? null
+                          : () => setState(() {
+                                references.removeAt(index).dispose();
+                              }),
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ]),
+                  Wrap(spacing: 12, runSpacing: 12, children: [
+                    _input(references[index].name, 'Referee name'),
+                    _input(references[index].company, 'Company / role'),
+                    _input(references[index].phone, 'Phone',
+                        keyboardType: TextInputType.phone),
+                    _input(references[index].email, 'Email',
+                        keyboardType: TextInputType.emailAddress),
+                  ]),
+                ],
+              ),
+            ),
+          OutlinedButton.icon(
+            onPressed: saving
+                ? null
+                : () => setState(() {
+                      references.add(_ReferenceEditors.empty());
+                    }),
+            icon: const Icon(Icons.add),
+            label: const Text('Add reference'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _additionalPhonesEditor() {
+    return SizedBox(
+      width: 680,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Additional phones',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 10),
+          for (var index = 0; index < extraPhones.length; index++)
+            Padding(
+              key: ValueKey(extraPhones[index]),
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(children: [
+                Expanded(
+                  child: _input(extraPhones[index], 'Phone',
+                      keyboardType: TextInputType.phone),
+                ),
+                IconButton(
+                  tooltip: 'Remove phone',
+                  onPressed: saving
+                      ? null
+                      : () => setState(() {
+                            extraPhones.removeAt(index).dispose();
+                          }),
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ]),
+            ),
+          TextButton.icon(
+            onPressed: saving
+                ? null
+                : () => setState(() {
+                      extraPhones.add(TextEditingController());
+                    }),
+            icon: const Icon(Icons.add),
+            label: const Text('Add phone'),
+          ),
+        ],
       ),
     );
   }
@@ -1188,9 +1357,22 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
       'postcode': postcode.text.trim(),
       'country': country.text.trim(),
       if (isEmployer) 'website': website.text.trim(),
+      if (isEmployer) 'contactPerson': contactPerson.text.trim(),
+      if (isEmployer) 'contactName': contactPerson.text.trim(),
+      if (isEmployer)
+        'phones': extraPhones
+            .map((controller) => controller.text.trim())
+            .where((value) => value.isNotEmpty)
+            .toList(),
       if (!isEmployer) 'experience': experience.text.trim(),
       if (!isEmployer) 'qualifications': _splitList(qualifications.text),
       if (!isEmployer) 'certificationsText': certifications.text.trim(),
+      if (!isEmployer)
+        'references': references
+            .map((reference) => reference.value())
+            .where((reference) =>
+                reference.values.any((value) => value.isNotEmpty))
+            .toList(),
     };
     try {
       await widget.onSave(updates);
@@ -1198,6 +1380,48 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
     } finally {
       if (mounted) setState(() => saving = false);
     }
+  }
+}
+
+class _ReferenceEditors {
+  _ReferenceEditors({
+    required this.name,
+    required this.company,
+    required this.phone,
+    required this.email,
+  });
+
+  factory _ReferenceEditors.empty() => _ReferenceEditors.fromValue(null);
+
+  factory _ReferenceEditors.fromValue(dynamic value) {
+    final map = value is Map ? value : const <String, dynamic>{};
+    return _ReferenceEditors(
+      name: TextEditingController(
+        text: value is String ? value.trim() : map['name']?.toString() ?? '',
+      ),
+      company: TextEditingController(text: map['company']?.toString() ?? ''),
+      phone: TextEditingController(text: map['phone']?.toString() ?? ''),
+      email: TextEditingController(text: map['email']?.toString() ?? ''),
+    );
+  }
+
+  final TextEditingController name;
+  final TextEditingController company;
+  final TextEditingController phone;
+  final TextEditingController email;
+
+  Map<String, String> value() => {
+        'name': name.text.trim(),
+        'company': company.text.trim(),
+        'phone': phone.text.trim(),
+        'email': email.text.trim(),
+      };
+
+  void dispose() {
+    name.dispose();
+    company.dispose();
+    phone.dispose();
+    email.dispose();
   }
 }
 

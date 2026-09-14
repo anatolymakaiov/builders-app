@@ -68,6 +68,9 @@ class WebAdminMessageThread {
   final WebAdminMessage latest;
 
   bool get unread => messages.any((message) => !message.readByReceiver);
+  bool get important =>
+      messages.any((message) => message.data['importantForReceiver'] == true);
+  bool get canReply => latest.data['canReply'] != false;
 }
 
 class WebAdminMessage {
@@ -87,6 +90,12 @@ class WebAdminMessage {
   Timestamp? get createdAt =>
       data['createdAt'] is Timestamp ? data['createdAt'] as Timestamp : null;
   String get threadId => (data['threadId'] ?? id).toString();
+  List<Map<String, dynamic>> get attachments =>
+      (data['attachments'] as List?)
+          ?.whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList() ??
+      const [];
 }
 
 class WebJobAlertItem {
@@ -290,7 +299,7 @@ class WebAccountDataService {
     }).toList();
     final grouped = <String, List<WebAdminMessage>>{};
     for (final message in messages) {
-      final subject = message.subject.trim().toLowerCase();
+      final subject = _normalizeAdminSubject(message.subject);
       final participant = message.data['senderId'] == uid
           ? message.data['receiverId']?.toString() ?? 'admin'
           : message.data['senderId']?.toString() ?? 'admin';
@@ -309,7 +318,8 @@ class WebAccountDataService {
     return threads;
   }
 
-  Future<void> markAdminThreadRead(String uid, WebAdminMessageThread thread) {
+  Future<void> markAdminThreadRead(
+      String uid, WebAdminMessageThread thread) async {
     final batch = _firestore.batch();
     for (final message in thread.messages) {
       if (message.data['receiverId'] == uid && !message.readByReceiver) {
@@ -322,7 +332,58 @@ class WebAccountDataService {
             SetOptions(merge: true));
       }
     }
-    return batch.commit();
+    final notifications = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
+        .where('read', isEqualTo: false)
+        .where('threadId', isEqualTo: thread.latest.threadId)
+        .get();
+    for (final notification in notifications.docs) {
+      batch.set(
+        notification.reference,
+        {'read': true, 'readAt': FieldValue.serverTimestamp()},
+        SetOptions(merge: true),
+      );
+    }
+    await batch.commit();
+  }
+
+  Future<void> markAdminMessageUnread(WebAdminMessage message) {
+    return _firestore.collection('admin_messages').doc(message.id).set({
+      'readByReceiver': false,
+      'readAt': FieldValue.delete(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> toggleAdminMessageImportant(
+    WebAdminMessage message,
+    bool important,
+  ) {
+    return _firestore.collection('admin_messages').doc(message.id).set({
+      'importantForReceiver': !important,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> deleteAdminThread(
+    String uid,
+    WebAdminMessageThread thread,
+  ) async {
+    final batch = _firestore.batch();
+    for (final message in thread.messages) {
+      batch.set(
+        _firestore.collection('admin_messages').doc(message.id),
+        {
+          message.data['senderId'] == uid
+              ? 'deletedBySender'
+              : 'deletedByReceiver': true,
+          'deletedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    }
+    await batch.commit();
   }
 
   Future<void> replyToAdminThread({
@@ -331,34 +392,73 @@ class WebAccountDataService {
     required WebAdminMessageThread thread,
     required String message,
     required String senderName,
+    List<Map<String, dynamic>> attachments = const [],
   }) async {
     final clean = message.trim();
-    if (clean.isEmpty) return;
+    if (clean.isEmpty && attachments.isEmpty) return;
     final latest = thread.latest.data;
     final ref = _firestore.collection('admin_messages').doc();
     final threadId = latest['threadId']?.toString() ?? thread.latest.id;
-    await ref.set({
+    final now = FieldValue.serverTimestamp();
+    final batch = _firestore.batch();
+    batch.set(ref, {
       'threadId': threadId,
-      'direction': 'outgoing',
+      'direction': 'incoming',
       'senderId': uid,
       'senderName': senderName,
       'senderRole': role,
       'receiverId': 'admin',
       'receiverName': 'Admin',
       'receiverRole': 'admin',
-      'recipientId': 'admin',
-      'recipientRole': 'admin',
       'threadParticipants': [uid, 'admin'],
-      'subject': thread.latest.subject,
+      'subject': thread.latest.subject.toLowerCase().startsWith('re:')
+          ? thread.latest.subject
+          : 'RE: ${thread.latest.subject}',
       'message': clean,
-      'type': 'admin_reply',
+      'type': 'admin_message',
       'canReply': true,
       'readByAdmin': false,
       'readByReceiver': true,
+      'deletedByAdmin': false,
       'deletedByReceiver': false,
       'deletedBySender': false,
-      'createdAt': FieldValue.serverTimestamp(),
+      'attachments': attachments,
+      'hasAttachments': attachments.isNotEmpty,
+      for (final key in const [
+        'relatedTargetType',
+        'relatedTargetId',
+        'relatedSupportRequestId',
+        'relatedBillingRequestId',
+      ])
+        if (latest[key] != null) key: latest[key],
+      'createdAt': now,
     });
+    for (final attachment in attachments) {
+      batch.set(_firestore.collection('message_attachments').doc(), {
+        ...attachment,
+        'threadId': threadId,
+        'senderId': uid,
+        'senderRole': role,
+        'createdAt': now,
+      });
+    }
+    batch.set(
+      _firestore.collection('message_threads').doc(threadId),
+      {
+        'lastMessage': clean,
+        'lastMessageAt': now,
+        'lastSenderId': uid,
+        'unreadForAdmin': FieldValue.increment(1),
+        'updatedAt': now,
+      },
+      SetOptions(merge: true),
+    );
+    batch.set(
+      _firestore.collection('unread_counters').doc('admin'),
+      {'unreadInbox': FieldValue.increment(1), 'updatedAt': now},
+      SetOptions(merge: true),
+    );
+    await batch.commit();
   }
 
   Future<List<WebJobAlertItem>> loadJobAlerts(String uid) async {
@@ -542,6 +642,15 @@ class WebNotificationsDataService {
 int _compareAdminMessages(WebAdminMessage a, WebAdminMessage b) {
   return _timestampMs(a.data['createdAt'])
       .compareTo(_timestampMs(b.data['createdAt']));
+}
+
+String _normalizeAdminSubject(String value) {
+  var subject = value.trim();
+  final prefix = RegExp(r'^(re|fw|fwd)\s*:\s*', caseSensitive: false);
+  while (prefix.hasMatch(subject)) {
+    subject = subject.replaceFirst(prefix, '').trim();
+  }
+  return subject.isEmpty ? 'no subject' : subject.toLowerCase();
 }
 
 int _timestampMs(dynamic value) {

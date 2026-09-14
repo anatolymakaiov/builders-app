@@ -23,6 +23,7 @@ class WebJobsPage extends StatefulWidget {
     this.onPostJob,
     this.onViewApplications,
     this.initialJobId,
+    this.initialOwnerMode,
   });
 
   final String userId;
@@ -31,6 +32,7 @@ class WebJobsPage extends StatefulWidget {
   final VoidCallback? onPostJob;
   final void Function(String jobId, {String? statusFilter})? onViewApplications;
   final String? initialJobId;
+  final bool? initialOwnerMode;
 
   @override
   State<WebJobsPage> createState() => _WebJobsPageState();
@@ -54,6 +56,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
   Position? location;
   bool savedOnly = false;
   int page = 1;
+  String? targetJobId;
 
   bool get isEmployer => widget.role == 'employer';
   bool get isWorker => widget.role == 'worker';
@@ -61,8 +64,11 @@ class _WebJobsPageState extends State<WebJobsPage> {
   @override
   void initState() {
     super.initState();
-    mode = isEmployer ? WebJobsMode.owner : WebJobsMode.market;
+    mode = isEmployer && widget.initialOwnerMode != false
+        ? WebJobsMode.owner
+        : WebJobsMode.market;
     selectedJobId = widget.initialJobId;
+    targetJobId = widget.initialJobId;
     _resetJobsStream();
     _loadSavedJobs();
   }
@@ -70,9 +76,16 @@ class _WebJobsPageState extends State<WebJobsPage> {
   @override
   void didUpdateWidget(covariant WebJobsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialJobId != widget.initialJobId &&
-        widget.initialJobId != null) {
-      setState(() => selectedJobId = widget.initialJobId);
+    if (oldWidget.initialJobId != widget.initialJobId ||
+        oldWidget.initialOwnerMode != widget.initialOwnerMode) {
+      setState(() {
+        selectedJobId = widget.initialJobId;
+        targetJobId = widget.initialJobId;
+        if (isEmployer && widget.initialOwnerMode != null) {
+          mode =
+              widget.initialOwnerMode! ? WebJobsMode.owner : WebJobsMode.market;
+        }
+      });
     }
   }
 
@@ -146,19 +159,27 @@ class _WebJobsPageState extends State<WebJobsPage> {
 
         final result = state.data ??
             const WebJobsResult(publicJobs: <Job>[], ownerJobs: <Job>[]);
-        final jobs = filterJobs(result.jobsForMode(mode, widget.role));
+        final permittedJobs = result.jobsForMode(mode, widget.role);
+        final jobs = filterJobs(permittedJobs);
         final pages = (jobs.length / 10).ceil();
         final currentPage = page.clamp(1, pages == 0 ? 1 : pages);
         final pageJobs = jobs.skip((currentPage - 1) * 10).take(10).toList();
-        if (selectedJobId == null && jobs.isNotEmpty) {
+        final targetUnavailable = targetJobId != null &&
+            permittedJobs.every((job) => job.id != targetJobId);
+        if (targetJobId != null && !targetUnavailable) {
+          selectedJobId = targetJobId;
+        } else if (targetJobId == null &&
+            selectedJobId == null &&
+            jobs.isNotEmpty) {
           selectedJobId = jobs.first.id;
         }
-        if (selectedJobId != null &&
+        if (targetJobId == null &&
+            selectedJobId != null &&
             jobs.every((job) => job.id != selectedJobId)) {
           selectedJobId = jobs.isEmpty ? null : jobs.first.id;
         }
         Job? selectedJob;
-        for (final job in jobs) {
+        for (final job in permittedJobs) {
           if (job.id == selectedJobId) {
             selectedJob = job;
             break;
@@ -185,6 +206,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
                   onChanged: (value) {
                     setState(() {
                       mode = value;
+                      targetJobId = null;
                       selectedJobId = null;
                     });
                   },
@@ -290,67 +312,74 @@ class _WebJobsPageState extends State<WebJobsPage> {
                         search = value;
                         page = 1;
                       }),
-                      onSelected: (job) =>
-                          setState(() => selectedJobId = job.id),
+                      onSelected: (job) => setState(() {
+                        targetJobId = null;
+                        selectedJobId = job.id;
+                      }),
                       title: _listTitle(jobs.length),
                       savedJobIds: savedJobIds,
                     );
-                    final detail = WebJobDetailsPanel(
-                      job: selectedJob,
-                      isWorker: isWorker,
-                      isEmployerOwner: selectedJob != null &&
-                          selectedJob.ownerId == widget.userId,
-                      isSaved: selectedJob == null
-                          ? false
-                          : savedJobIds.contains(selectedJob.id),
-                      applying: applying,
-                      onApply: selectedJob == null
-                          ? null
-                          : () => _applyToJob(selectedJob!),
-                      onToggleSaved: selectedJob == null
-                          ? null
-                          : () => _toggleSaved(selectedJob!),
-                      onViewCompanyProfile: selectedJob == null ||
-                              selectedJob.ownerId == 'unknown'
-                          ? null
-                          : () => widget.onOpenProfile?.call(
-                                selectedJob!.ownerId,
-                                'employer',
-                              ),
-                      onEdit: selectedJob == null ||
-                              !isEmployer ||
-                              selectedJob.ownerId != widget.userId
-                          ? null
-                          : () => setState(() => editingJob = selectedJob),
-                      onToggleActive: selectedJob == null ||
-                              !isEmployer ||
-                              selectedJob.ownerId != widget.userId
-                          ? null
-                          : () => _setJobActive(
-                                selectedJob!,
-                                selectedJob.status.trim().toLowerCase() !=
-                                    'active',
-                              ),
-                      onDelete: selectedJob == null ||
-                              !isEmployer ||
-                              selectedJob.ownerId != widget.userId
-                          ? null
-                          : () => _deleteJob(selectedJob!),
-                      onViewApplications: selectedJob == null ||
-                              !isEmployer ||
-                              selectedJob.ownerId != widget.userId
-                          ? null
-                          : () =>
-                              widget.onViewApplications?.call(selectedJob!.id),
-                      statsLoader: selectedJob == null ||
-                              !isEmployer ||
-                              selectedJob.ownerId != widget.userId
-                          ? null
-                          : () => managementService.applicationStats(
-                                selectedJob!.id,
-                              ),
-                      managing: managing,
-                    );
+                    final detail = targetUnavailable
+                        ? const Center(
+                            child: Text('This vacancy is no longer available.'),
+                          )
+                        : WebJobDetailsPanel(
+                            job: selectedJob,
+                            isWorker: isWorker,
+                            isEmployerOwner: selectedJob != null &&
+                                selectedJob.ownerId == widget.userId,
+                            isSaved: selectedJob == null
+                                ? false
+                                : savedJobIds.contains(selectedJob.id),
+                            applying: applying,
+                            onApply: selectedJob == null
+                                ? null
+                                : () => _applyToJob(selectedJob!),
+                            onToggleSaved: selectedJob == null
+                                ? null
+                                : () => _toggleSaved(selectedJob!),
+                            onViewCompanyProfile: selectedJob == null ||
+                                    selectedJob.ownerId == 'unknown'
+                                ? null
+                                : () => widget.onOpenProfile?.call(
+                                      selectedJob!.ownerId,
+                                      'employer',
+                                    ),
+                            onEdit: selectedJob == null ||
+                                    !isEmployer ||
+                                    selectedJob.ownerId != widget.userId
+                                ? null
+                                : () =>
+                                    setState(() => editingJob = selectedJob),
+                            onToggleActive: selectedJob == null ||
+                                    !isEmployer ||
+                                    selectedJob.ownerId != widget.userId
+                                ? null
+                                : () => _setJobActive(
+                                      selectedJob!,
+                                      selectedJob.status.trim().toLowerCase() !=
+                                          'active',
+                                    ),
+                            onDelete: selectedJob == null ||
+                                    !isEmployer ||
+                                    selectedJob.ownerId != widget.userId
+                                ? null
+                                : () => _deleteJob(selectedJob!),
+                            onViewApplications: selectedJob == null ||
+                                    !isEmployer ||
+                                    selectedJob.ownerId != widget.userId
+                                ? null
+                                : () => widget.onViewApplications
+                                    ?.call(selectedJob!.id),
+                            statsLoader: selectedJob == null ||
+                                    !isEmployer ||
+                                    selectedJob.ownerId != widget.userId
+                                ? null
+                                : () => managementService.applicationStats(
+                                      selectedJob!.id,
+                                    ),
+                            managing: managing,
+                          );
                     if (compact) {
                       return Column(
                         children: [

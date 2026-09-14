@@ -1,5 +1,6 @@
 import '../../services/web_support_attachments.dart';
 import '../../services/web_chat_media_service.dart';
+import '../../services/web_admin_inbox_media_service.dart';
 import '../chats/web_chat_media_widgets.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -11,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../services/account_deletion_service.dart';
 import '../../../services/address_lookup_service.dart';
 import '../../../services/billing_service.dart';
+import '../../../services/job_taxonomy_service.dart';
 import '../../services/web_account_data_service.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_role_identity_service.dart';
@@ -453,10 +455,13 @@ class _AdminInboxView extends StatefulWidget {
 
 class _AdminInboxViewState extends State<_AdminInboxView> {
   final service = WebAccountDataService();
+  final mediaService = WebAdminInboxMediaService();
   final replyController = TextEditingController();
+  final pendingAttachments = <WebPendingChatAttachment>[];
   late Stream<WebDataState<List<WebAdminMessageThread>>> stream;
   WebAdminMessageThread? selected;
   bool sending = false;
+  bool actionBusy = false;
 
   @override
   void initState() {
@@ -477,7 +482,13 @@ class _AdminInboxViewState extends State<_AdminInboxView> {
       builder: (context, snapshot) {
         final state = snapshot.data;
         final threads = state?.data ?? const <WebAdminMessageThread>[];
-        selected ??= threads.isEmpty ? null : threads.first;
+        final selectedKey = selected?.key;
+        selected = selectedKey == null
+            ? null
+            : threads.cast<WebAdminMessageThread?>().firstWhere(
+                  (thread) => thread?.key == selectedKey,
+                  orElse: () => null,
+                );
         return Row(
           children: [
             SizedBox(
@@ -492,12 +503,24 @@ class _AdminInboxViewState extends State<_AdminInboxView> {
             const VerticalDivider(width: 28),
             Expanded(
               child: selected == null
-                  ? const Center(child: Text('No admin messages yet'))
+                  ? Center(
+                      child: Text(threads.isEmpty
+                          ? 'No admin messages yet'
+                          : 'Select a message'),
+                    )
                   : _AdminThreadDetail(
                       thread: selected!,
                       controller: replyController,
-                      sending: sending,
+                      sending: sending || actionBusy,
+                      pendingAttachments: pendingAttachments,
+                      onAttach: _pickAttachments,
+                      onRemoveAttachment: (index) => setState(
+                        () => pendingAttachments.removeAt(index),
+                      ),
                       onSend: _sendReply,
+                      onToggleImportant: _toggleImportant,
+                      onToggleRead: _toggleRead,
+                      onDelete: _deleteThread,
                     ),
             ),
           ],
@@ -515,26 +538,142 @@ class _AdminInboxViewState extends State<_AdminInboxView> {
   }
 
   Future<void> _selectThread(WebAdminMessageThread thread) async {
-    setState(() => selected = thread);
-    await service.markAdminThreadRead(widget.userId, thread);
+    setState(() {
+      selected = thread;
+      replyController.clear();
+      pendingAttachments.clear();
+    });
+    try {
+      await service.markAdminThreadRead(widget.userId, thread);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not mark message read: $error')),
+        );
+      }
+    }
   }
 
   Future<void> _sendReply() async {
     final thread = selected;
     if (thread == null || sending) return;
+    if (replyController.text.trim().isEmpty && pendingAttachments.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Write a message or attach a file.')),
+      );
+      return;
+    }
     setState(() => sending = true);
     try {
+      final attachments = await mediaService.upload(
+        uid: widget.userId,
+        attachments: List.of(pendingAttachments),
+      );
       await service.replyToAdminThread(
         uid: widget.userId,
         role: widget.role,
         thread: thread,
         message: replyController.text,
         senderName: widget.senderName,
+        attachments: attachments,
       );
+      if (!mounted) return;
       replyController.clear();
-      stream = _stream();
+      pendingAttachments.clear();
+      setState(() => stream = _stream());
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not send reply: $error')),
+        );
+      }
     } finally {
       if (mounted) setState(() => sending = false);
+    }
+  }
+
+  Future<void> _pickAttachments() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    try {
+      final picked = await mediaService.pickAttachments();
+      if (!mounted) return;
+      final existing = pendingAttachments
+          .map((item) => '${item.fileName}:${item.sizeBytes}')
+          .toSet();
+      setState(() => pendingAttachments.addAll(picked.where(
+            (item) => existing.add('${item.fileName}:${item.sizeBytes}'),
+          )));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not select attachments: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleImportant() async {
+    final thread = selected;
+    if (thread == null || actionBusy) return;
+    await _runAction(() => service.toggleAdminMessageImportant(
+          thread.latest,
+          thread.important,
+        ));
+  }
+
+  Future<void> _toggleRead() async {
+    final thread = selected;
+    if (thread == null || actionBusy) return;
+    await _runAction(() => thread.unread
+        ? service.markAdminThreadRead(widget.userId, thread)
+        : service.markAdminMessageUnread(thread.latest));
+  }
+
+  Future<void> _deleteThread() async {
+    final thread = selected;
+    if (thread == null || actionBusy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete'),
+        content: const Text('Are you sure you want to delete this item?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _runAction(() => service.deleteAdminThread(widget.userId, thread),
+        clearSelection: true);
+  }
+
+  Future<void> _runAction(
+    Future<void> Function() action, {
+    bool clearSelection = false,
+  }) async {
+    setState(() => actionBusy = true);
+    try {
+      await action();
+      if (!mounted) return;
+      setState(() {
+        if (clearSelection) selected = null;
+        stream = _stream();
+      });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update message: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => actionBusy = false);
     }
   }
 }
@@ -551,8 +690,8 @@ class _SubscriptionsView extends StatefulWidget {
 class _SubscriptionsViewState extends State<_SubscriptionsView> {
   final service = WebAccountDataService();
   final postcodeLookup = IdealPostcodesAddressLookupService();
-  final trade = TextEditingController(text: 'All');
   final postcode = TextEditingController();
+  String trade = 'All';
   String jobType = 'All';
   double distance = 50;
   late Stream<WebDataState<List<WebJobAlertItem>>> stream;
@@ -566,7 +705,6 @@ class _SubscriptionsViewState extends State<_SubscriptionsView> {
 
   @override
   void dispose() {
-    trade.dispose();
     postcode.dispose();
     super.dispose();
   }
@@ -587,10 +725,26 @@ class _SubscriptionsViewState extends State<_SubscriptionsView> {
               runSpacing: 12,
               children: [
                 SizedBox(
-                    width: 220,
-                    child: TextField(
-                        controller: trade,
-                        decoration: const InputDecoration(labelText: 'Trade'))),
+                  width: 220,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: trade,
+                    isExpanded: true,
+                    items: <String>{
+                      'All',
+                      ...JobTaxonomyService.canonicalRoles,
+                    }
+                        .map(
+                          (role) => DropdownMenuItem(
+                            value: role,
+                            child: Text(role, overflow: TextOverflow.ellipsis),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => trade = value ?? 'All'),
+                    decoration: const InputDecoration(labelText: 'Trade'),
+                  ),
+                ),
                 SizedBox(
                     width: 180,
                     child: TextField(
@@ -622,8 +776,8 @@ class _SubscriptionsViewState extends State<_SubscriptionsView> {
                       Slider(
                         value: distance,
                         min: 5,
-                        max: 100,
-                        divisions: 19,
+                        max: 50,
+                        divisions: 9,
                         onChanged: (value) => setState(() => distance = value),
                       ),
                     ],
@@ -681,24 +835,68 @@ class _SubscriptionsViewState extends State<_SubscriptionsView> {
       }
       await service.saveJobAlert(
         uid: widget.userId,
-        trade: trade.text.trim().isEmpty ? 'All' : trade.text.trim(),
+        trade: trade,
         jobType: jobType,
         distance: distance,
         postcode: normalized,
         lat: found!.latitude!,
         lng: found.longitude!,
       );
-      trade.text = 'All';
       postcode.clear();
-      stream = _stream();
+      if (mounted) {
+        setState(() {
+          trade = 'All';
+          jobType = 'All';
+          distance = 50;
+          stream = _stream();
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not create subscription: $error')),
+        );
+      }
     } finally {
       if (mounted) setState(() => saving = false);
     }
   }
 
   Future<void> _delete(String alertId) async {
-    await service.deleteJobAlert(widget.userId, alertId);
-    setState(() => stream = _stream());
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete subscription?'),
+        content: const Text(
+          'This job subscription will stop sending matching job alerts.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await service.deleteJobAlert(widget.userId, alertId);
+      if (!mounted) return;
+      setState(() => stream = _stream());
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Subscription deleted')),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not delete subscription: $error')),
+        );
+      }
+    }
   }
 }
 
@@ -1172,10 +1370,12 @@ class _ThreadList extends StatelessWidget {
           selected: thread.key == selectedKey,
           selectedTileColor: WebTheme.greenSoft,
           leading: Icon(
-            thread.unread
-                ? Icons.mark_email_unread_outlined
-                : Icons.mark_email_read_outlined,
-            color: WebTheme.green,
+            thread.important
+                ? Icons.star
+                : thread.unread
+                    ? Icons.mark_email_unread_outlined
+                    : Icons.mark_email_read_outlined,
+            color: thread.important ? Colors.amber.shade700 : WebTheme.green,
           ),
           title: Text(thread.latest.subject),
           subtitle: Text(thread.latest.message,
@@ -1192,21 +1392,57 @@ class _AdminThreadDetail extends StatelessWidget {
     required this.thread,
     required this.controller,
     required this.sending,
+    required this.pendingAttachments,
+    required this.onAttach,
+    required this.onRemoveAttachment,
     required this.onSend,
+    required this.onToggleImportant,
+    required this.onToggleRead,
+    required this.onDelete,
   });
 
   final WebAdminMessageThread thread;
   final TextEditingController controller;
   final bool sending;
+  final List<WebPendingChatAttachment> pendingAttachments;
+  final VoidCallback onAttach;
+  final ValueChanged<int> onRemoveAttachment;
   final VoidCallback onSend;
+  final VoidCallback onToggleImportant;
+  final VoidCallback onToggleRead;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(thread.latest.subject,
-            style: Theme.of(context).textTheme.headlineMedium),
+        Row(children: [
+          Expanded(
+            child: Text(thread.latest.subject,
+                style: Theme.of(context).textTheme.headlineMedium),
+          ),
+          IconButton(
+            tooltip: thread.important ? 'Remove important' : 'Mark important',
+            onPressed: sending ? null : onToggleImportant,
+            icon: Icon(thread.important ? Icons.star : Icons.star_border),
+            color: thread.important ? Colors.amber.shade700 : null,
+          ),
+          PopupMenuButton<String>(
+            enabled: !sending,
+            onSelected: (value) {
+              if (value == 'read') onToggleRead();
+              if (value == 'delete') onDelete();
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'read',
+                child: Text(thread.unread ? 'Mark as read' : 'Mark unread'),
+              ),
+              const PopupMenuItem(value: 'delete', child: Text('Delete')),
+            ],
+          ),
+        ]),
         const SizedBox(height: 14),
         Expanded(
           child: ListView(
@@ -1228,30 +1464,67 @@ class _AdminThreadDetail extends StatelessWidget {
                           style: const TextStyle(fontWeight: FontWeight.w800)),
                       const SizedBox(height: 6),
                       Text(message.message),
+                      WebChatAttachmentsView(
+                        attachments: _adminMessageAttachments(message),
+                        isMine: message.data['senderId'] != 'admin',
+                      ),
                     ],
                   ),
                 ),
             ],
           ),
         ),
-        TextField(
-          controller: controller,
-          minLines: 2,
-          maxLines: 4,
-          decoration: const InputDecoration(labelText: 'Reply to Admin'),
-        ),
-        const SizedBox(height: 10),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.icon(
-            onPressed: sending ? null : onSend,
-            icon: const Icon(Icons.send),
-            label: const Text('Send'),
+        if (thread.canReply) ...[
+          TextField(
+            controller: controller,
+            enabled: !sending,
+            minLines: 2,
+            maxLines: 4,
+            decoration: const InputDecoration(labelText: 'Reply to Admin'),
           ),
-        ),
+          WebPendingAttachmentsPreview(
+            attachments: pendingAttachments,
+            onRemove: onRemoveAttachment,
+          ),
+          const SizedBox(height: 10),
+          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            OutlinedButton.icon(
+              onPressed: sending ? null : onAttach,
+              icon: const Icon(Icons.attach_file),
+              label: const Text('Attach'),
+            ),
+            const SizedBox(width: 10),
+            FilledButton.icon(
+              onPressed: sending ? null : onSend,
+              icon: sending
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send),
+              label: Text(sending ? 'Sending...' : 'Send'),
+            ),
+          ]),
+        ] else
+          const Text('Informational message. Reply is not available.'),
       ],
     );
   }
+}
+
+List<WebChatAttachment> _adminMessageAttachments(WebAdminMessage message) {
+  final normalized = message.attachments.map((attachment) {
+    return {
+      ...attachment,
+      'url': (attachment['url'] ?? attachment['fileUrl'])?.toString() ?? '',
+      'fileName': (attachment['fileName'] ?? attachment['name'])?.toString() ??
+          'Attachment',
+      'mimeType': attachment['mimeType']?.toString(),
+      'sizeBytes': attachment['sizeBytes'] ?? attachment['size'],
+    };
+  }).toList();
+  return normalizeWebChatAttachments({'attachments': normalized});
 }
 
 class _SwitchSetting extends StatefulWidget {
