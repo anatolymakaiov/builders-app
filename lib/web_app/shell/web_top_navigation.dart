@@ -58,7 +58,8 @@ class WebTopNavigation extends StatelessWidget {
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final showLabels = WebBreakpoints.isDesktop(constraints.maxWidth);
+            final showLabels =
+                WebBreakpoints.isLargeDesktop(constraints.maxWidth);
             final small = WebBreakpoints.isSmall(constraints.maxWidth);
             final gutter = WebBreakpoints.gutter(constraints.maxWidth);
             return Center(

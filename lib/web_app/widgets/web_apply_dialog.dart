@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/job.dart';
 import '../services/web_jobs_data_service.dart';
 import '../services/web_profile_data_service.dart';
+import 'web_design_components.dart';
 
 Future<bool> showWebApplyDialog(BuildContext context,
     {required String userId, required Job job}) async {
@@ -30,10 +31,9 @@ class _ApplyDialogState extends State<_ApplyDialog> {
   @override
   Widget build(BuildContext context) => AlertDialog(
         title: Text('Apply: ${widget.job.displayTitle}'),
-        content: SizedBox(
-            width: 460,
-            child: SingleChildScrollView(
-                child: Column(
+        content: WebDialogScrollArea(
+            preferredWidth: 460,
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -95,7 +95,7 @@ class _ApplyDialogState extends State<_ApplyDialog> {
                           style: TextStyle(
                               color: Theme.of(context).colorScheme.error))),
               ],
-            ))),
+            )),
         actions: [
           TextButton(
               onPressed: busy ? null : () => Navigator.pop(context, false),

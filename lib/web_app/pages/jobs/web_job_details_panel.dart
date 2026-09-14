@@ -147,7 +147,9 @@ class WebJobDetailsPanel extends StatelessWidget {
                     ),
                     if (isWorker) ...[
                       const SizedBox(height: 22),
-                      Row(
+                      Wrap(
+                        spacing: WebSpacing.sm,
+                        runSpacing: WebSpacing.sm,
                         children: [
                           FilledButton.icon(
                             onPressed: applying ? null : onApply,
@@ -162,7 +164,6 @@ class WebJobDetailsPanel extends StatelessWidget {
                                 : const Icon(Icons.send_outlined),
                             label: const Text('Apply'),
                           ),
-                          const SizedBox(width: 10),
                           OutlinedButton.icon(
                             onPressed: onToggleSaved,
                             icon: Icon(isSaved
@@ -170,7 +171,6 @@ class WebJobDetailsPanel extends StatelessWidget {
                                 : Icons.favorite_border),
                             label: Text(isSaved ? 'Saved' : 'Save'),
                           ),
-                          const SizedBox(width: 10),
                           OutlinedButton.icon(
                             onPressed: onViewCompanyProfile,
                             icon: const Icon(Icons.business_outlined),

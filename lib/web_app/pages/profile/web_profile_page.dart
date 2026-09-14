@@ -1189,36 +1189,34 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
     final isEmployer = widget.role == 'employer';
     return AlertDialog(
       title: Text(isEmployer ? 'Edit company profile' : 'Edit worker profile'),
-      content: SizedBox(
-        width: 720,
-        child: SingleChildScrollView(
-          child: Wrap(
-            spacing: 14,
-            runSpacing: 14,
-            children: [
-              _input(name, isEmployer ? 'Company name' : 'Name'),
-              _input(email, 'Email'),
-              _input(phone, 'Phone'),
-              _input(trade, isEmployer ? 'Speciality' : 'Trade / position'),
-              _input(bio, isEmployer ? 'Company description' : 'Bio', lines: 3),
-              if (!isEmployer) _input(experience, 'Experience'),
-              if (!isEmployer) _input(qualifications, 'Qualifications'),
-              if (!isEmployer) _input(certifications, 'Certifications'),
-              if (isEmployer) ...[
-                _input(website, 'Website'),
-                _input(contactPerson, 'Contact person'),
-                _additionalPhonesEditor(),
-              ],
-              if (!isEmployer) _referencesEditor(),
-              _input(addressLine1, 'Address Line 1'),
-              _input(addressLine2, 'Address Line 2'),
-              _input(addressLine3, 'Address Line 3'),
-              _input(city, 'Town / City'),
-              _input(county, 'County'),
-              _input(postcode, 'Postcode'),
-              _input(country, 'Country'),
+      content: WebDialogScrollArea(
+        preferredWidth: 720,
+        child: Wrap(
+          spacing: 14,
+          runSpacing: 14,
+          children: [
+            _input(name, isEmployer ? 'Company name' : 'Name'),
+            _input(email, 'Email'),
+            _input(phone, 'Phone'),
+            _input(trade, isEmployer ? 'Speciality' : 'Trade / position'),
+            _input(bio, isEmployer ? 'Company description' : 'Bio', lines: 3),
+            if (!isEmployer) _input(experience, 'Experience'),
+            if (!isEmployer) _input(qualifications, 'Qualifications'),
+            if (!isEmployer) _input(certifications, 'Certifications'),
+            if (isEmployer) ...[
+              _input(website, 'Website'),
+              _input(contactPerson, 'Contact person'),
+              _additionalPhonesEditor(),
             ],
-          ),
+            if (!isEmployer) _referencesEditor(),
+            _input(addressLine1, 'Address Line 1'),
+            _input(addressLine2, 'Address Line 2'),
+            _input(addressLine3, 'Address Line 3'),
+            _input(city, 'Town / City'),
+            _input(county, 'County'),
+            _input(postcode, 'Postcode'),
+            _input(country, 'Country'),
+          ],
         ),
       ),
       actions: [
@@ -1243,7 +1241,7 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
   Widget _input(TextEditingController controller, String label,
       {int lines = 1, TextInputType? keyboardType}) {
     return SizedBox(
-      width: lines > 1 ? 680 : 330,
+      width: _dialogFieldWidth(lines > 1 ? 680 : 330),
       child: TextField(
         controller: controller,
         maxLines: lines,
@@ -1256,9 +1254,14 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
     );
   }
 
+  double _dialogFieldWidth(double preferred) =>
+      (MediaQuery.sizeOf(context).width - 112)
+          .clamp(240.0, preferred)
+          .toDouble();
+
   Widget _referencesEditor() {
     return SizedBox(
-      width: 680,
+      width: _dialogFieldWidth(680),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1316,7 +1319,7 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
 
   Widget _additionalPhonesEditor() {
     return SizedBox(
-      width: 680,
+      width: _dialogFieldWidth(680),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1491,8 +1494,8 @@ class _TeamDialogState extends State<_TeamDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(widget.title),
-      content: SizedBox(
-        width: 560,
+      content: WebDialogScrollArea(
+        preferredWidth: 560,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1522,14 +1525,15 @@ class _TeamDialogState extends State<_TeamDialog> {
             ),
             if (widget.team != null) ...[
               const SizedBox(height: 14),
-              Row(
+              Wrap(
+                spacing: WebSpacing.sm,
+                runSpacing: WebSpacing.xs,
                 children: [
                   OutlinedButton.icon(
                     onPressed: widget.onChangeAvatar,
                     icon: const Icon(Icons.photo_camera_outlined),
                     label: const Text('Avatar'),
                   ),
-                  const SizedBox(width: 10),
                   OutlinedButton.icon(
                     onPressed: widget.onChangeHeader,
                     icon: const Icon(Icons.image_outlined),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/job_taxonomy_service.dart';
 import '../services/web_job_filters.dart';
+import 'web_design_components.dart';
 
 class WebJobFiltersDialog extends StatefulWidget {
   const WebJobFiltersDialog(
@@ -30,10 +31,9 @@ class _WebJobFiltersDialogState extends State<WebJobFiltersDialog> {
   @override
   Widget build(BuildContext context) => AlertDialog(
         title: const Text('Filters'),
-        content: SizedBox(
-            width: 480,
-            child: SingleChildScrollView(
-                child: Column(
+        content: WebDialogScrollArea(
+            preferredWidth: 480,
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -100,7 +100,7 @@ class _WebJobFiltersDialogState extends State<WebJobFiltersDialog> {
                           .toList()),
                 ],
               ],
-            ))),
+            )),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, const WebJobFilters()),

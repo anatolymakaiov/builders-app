@@ -57,11 +57,13 @@ class _WebChatsPageState extends State<WebChatsPage> {
   Timer? recordingLimit;
   Timer? typingTimer;
   bool typing = false;
+  bool compactThreadVisible = false;
 
   @override
   void initState() {
     super.initState();
     selectedChatId = widget.initialChatId;
+    compactThreadVisible = widget.initialChatId != null;
     if (selectedChatId != null) {
       threadStream = service.chatThread(selectedChatId!, widget.userId);
     }
@@ -75,6 +77,7 @@ class _WebChatsPageState extends State<WebChatsPage> {
         oldWidget.initialChatId != widget.initialChatId) {
       chatsStream = service.chats(widget.userId);
       selectedChatId = widget.initialChatId;
+      compactThreadVisible = widget.initialChatId != null;
       threadStream = null;
       lastThread = null;
       lastMarkedReadKey = null;
@@ -169,12 +172,15 @@ class _WebChatsPageState extends State<WebChatsPage> {
                       ),
                     );
                     if (compact) {
-                      return ListView(
-                        children: [
-                          SizedBox(height: 320, child: list),
-                          const SizedBox(height: WebSpacing.lg),
-                          SizedBox(height: 700, child: thread),
-                        ],
+                      return WebCompactDetailView(
+                        showDetail:
+                            compactThreadVisible && selectedChatId != null,
+                        list: list,
+                        detail: thread,
+                        onBack: () => setState(
+                          () => compactThreadVisible = false,
+                        ),
+                        backLabel: 'Back to conversations',
                       );
                     }
                     return Row(
@@ -220,14 +226,17 @@ class _WebChatsPageState extends State<WebChatsPage> {
   }
 
   void _selectChat(String chatId) {
-    if (chatId == selectedChatId ||
-        sending ||
-        uploading ||
-        recording ||
-        recorderBusy) {
+    if (sending || uploading || recording || recorderBusy) {
       return;
     }
-    setState(() => _setSelectedChat(chatId));
+    if (chatId == selectedChatId) {
+      setState(() => compactThreadVisible = true);
+      return;
+    }
+    setState(() {
+      _setSelectedChat(chatId);
+      compactThreadVisible = true;
+    });
   }
 
   void _setSelectedChat(String? chatId) {

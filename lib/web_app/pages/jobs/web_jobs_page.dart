@@ -59,6 +59,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
   bool savedOnly = false;
   int page = 1;
   String? targetJobId;
+  bool compactDetailVisible = false;
 
   bool get isEmployer => widget.role == 'employer';
   bool get isWorker => widget.role == 'worker';
@@ -71,6 +72,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
         : WebJobsMode.market;
     selectedJobId = widget.initialJobId;
     targetJobId = widget.initialJobId;
+    compactDetailVisible = widget.initialJobId != null;
     _resetJobsStream();
     _loadSavedJobs();
   }
@@ -83,6 +85,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
       setState(() {
         selectedJobId = widget.initialJobId;
         targetJobId = widget.initialJobId;
+        compactDetailVisible = widget.initialJobId != null;
         if (isEmployer && widget.initialOwnerMode != null) {
           mode =
               widget.initialOwnerMode! ? WebJobsMode.owner : WebJobsMode.market;
@@ -224,6 +227,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
                       mode = value;
                       targetJobId = null;
                       selectedJobId = null;
+                      compactDetailVisible = false;
                     });
                   },
                 ),
@@ -331,6 +335,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
                       onSelected: (job) => setState(() {
                         targetJobId = null;
                         selectedJobId = job.id;
+                        compactDetailVisible = true;
                       }),
                       title: _listTitle(jobs.length),
                       savedJobIds: savedJobIds,
@@ -397,12 +402,14 @@ class _WebJobsPageState extends State<WebJobsPage> {
                             managing: managing,
                           );
                     if (compact) {
-                      return ListView(
-                        children: [
-                          SizedBox(height: 430, child: list),
-                          const SizedBox(height: WebSpacing.lg),
-                          SizedBox(height: 760, child: detail),
-                        ],
+                      return WebCompactDetailView(
+                        showDetail: compactDetailVisible && selectedJob != null,
+                        list: list,
+                        detail: detail,
+                        onBack: () => setState(
+                          () => compactDetailVisible = false,
+                        ),
+                        backLabel: 'Back to vacancies',
                       );
                     }
 

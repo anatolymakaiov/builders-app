@@ -45,6 +45,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
   String statusFilter = ApplicationStatusUtils.allFilter;
   String searchFilter = '';
   String? lastReadKey;
+  bool compactDetailVisible = false;
 
   bool get isWorker => widget.role == 'worker';
 
@@ -54,6 +55,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
     statusFilter =
         widget.initialStatusFilter ?? ApplicationStatusUtils.allFilter;
     selectedApplicationId = widget.initialApplicationId;
+    compactDetailVisible = widget.initialApplicationId != null;
     applicationsStream = service.applications(
       uid: widget.userId,
       role: widget.role,
@@ -75,6 +77,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
         role: widget.role,
       );
       selectedApplicationId = widget.initialApplicationId;
+      compactDetailVisible = widget.initialApplicationId != null;
       showTeamApplications = false;
     }
   }
@@ -136,6 +139,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                     setState(() {
                       showTeamApplications = value;
                       selectedApplicationId = null;
+                      compactDetailVisible = false;
                     });
                   },
                 ),
@@ -149,12 +153,14 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                   setState(() {
                     statusFilter = value;
                     selectedApplicationId = null;
+                    compactDetailVisible = false;
                   });
                 },
                 onSearchChanged: (value) {
                   setState(() {
                     searchFilter = value;
                     selectedApplicationId = null;
+                    compactDetailVisible = false;
                   });
                 },
               ),
@@ -172,7 +178,10 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                         userId: widget.userId,
                         role: widget.role,
                         onSelected: (id) {
-                          setState(() => selectedApplicationId = id);
+                          setState(() {
+                            selectedApplicationId = id;
+                            compactDetailVisible = true;
+                          });
                         },
                       ),
                     );
@@ -188,12 +197,14 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                       ),
                     );
                     if (compact) {
-                      return ListView(
-                        children: [
-                          SizedBox(height: 360, child: list),
-                          const SizedBox(height: WebSpacing.lg),
-                          SizedBox(height: 620, child: detail),
-                        ],
+                      return WebCompactDetailView(
+                        showDetail: compactDetailVisible && selected != null,
+                        list: list,
+                        detail: detail,
+                        onBack: () => setState(
+                          () => compactDetailVisible = false,
+                        ),
+                        backLabel: 'Back to applications',
                       );
                     }
                     return Row(
@@ -1004,8 +1015,8 @@ class _ApplicationActionsState extends State<_ApplicationActions> {
       context: context,
       builder: (_) => AlertDialog(
         title: Text(application.title),
-        content: SizedBox(
-          width: 520,
+        content: WebDialogScrollArea(
+          preferredWidth: 520,
           child: _MembersBlock(application: application),
         ),
         actions: [
@@ -1148,8 +1159,8 @@ class _TeamWorkerSelectionDialogState
     final ids = widget.application.memberIds;
     return AlertDialog(
       title: const Text('Select workers'),
-      content: SizedBox(
-        width: 520,
+      content: WebDialogScrollArea(
+        preferredWidth: 520,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1271,51 +1282,49 @@ class _WebMakeOfferDialogState extends State<_WebMakeOfferDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Make offer'),
-      content: SizedBox(
-        width: 760,
-        child: SingleChildScrollView(
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              SizedBox(
-                width: 350,
-                child: DropdownButtonFormField<String>(
-                  initialValue: jobType,
-                  decoration: const InputDecoration(
-                    labelText: 'Work format',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'hourly', child: Text('Daywork')),
-                    DropdownMenuItem(value: 'price', child: Text('Price')),
-                    DropdownMenuItem(
-                      value: 'negotiable',
-                      child: Text('Negotiable'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) setState(() => jobType = value);
-                  },
+      content: WebDialogScrollArea(
+        preferredWidth: 760,
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            SizedBox(
+              width: _fieldWidth(context, 350),
+              child: DropdownButtonFormField<String>(
+                initialValue: jobType,
+                decoration: const InputDecoration(
+                  labelText: 'Work format',
+                  border: OutlineInputBorder(),
                 ),
+                items: const [
+                  DropdownMenuItem(value: 'hourly', child: Text('Daywork')),
+                  DropdownMenuItem(value: 'price', child: Text('Price')),
+                  DropdownMenuItem(
+                    value: 'negotiable',
+                    child: Text('Negotiable'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => jobType = value);
+                },
               ),
-              _input(rate, jobType == 'price' ? 'Price (£)' : 'Rate (£)'),
-              _input(workPeriod, 'Work period'),
-              _input(weeklyHours, 'Hours per week'),
-              _input(schedule, 'Work schedule'),
-              _input(startDateTime, 'Start date and time'),
-              _input(siteAddress, 'Site Address Line 1'),
-              _input(siteLine2, 'Site Address Line 2'),
-              _input(siteLine3, 'Site Address Line 3'),
-              _input(siteCity, 'Town / City'),
-              _input(siteCounty, 'County'),
-              _input(sitePostcode, 'Postcode'),
-              _input(siteCountry, 'Country'),
-              _input(firstDayRequirements, 'Required on first day', width: 350),
-              _input(description, 'Offer description', width: 712, lines: 3),
-              _input(validUntil, 'Offer valid until'),
-            ],
-          ),
+            ),
+            _input(rate, jobType == 'price' ? 'Price (£)' : 'Rate (£)'),
+            _input(workPeriod, 'Work period'),
+            _input(weeklyHours, 'Hours per week'),
+            _input(schedule, 'Work schedule'),
+            _input(startDateTime, 'Start date and time'),
+            _input(siteAddress, 'Site Address Line 1'),
+            _input(siteLine2, 'Site Address Line 2'),
+            _input(siteLine3, 'Site Address Line 3'),
+            _input(siteCity, 'Town / City'),
+            _input(siteCounty, 'County'),
+            _input(sitePostcode, 'Postcode'),
+            _input(siteCountry, 'Country'),
+            _input(firstDayRequirements, 'Required on first day', width: 350),
+            _input(description, 'Offer description', width: 712, lines: 3),
+            _input(validUntil, 'Offer valid until'),
+          ],
         ),
       ),
       actions: [
@@ -1338,7 +1347,7 @@ class _WebMakeOfferDialogState extends State<_WebMakeOfferDialog> {
     int lines = 1,
   }) {
     return SizedBox(
-      width: width,
+      width: _fieldWidth(context, width),
       child: TextField(
         controller: controller,
         maxLines: lines,
@@ -1349,6 +1358,11 @@ class _WebMakeOfferDialogState extends State<_WebMakeOfferDialog> {
       ),
     );
   }
+
+  double _fieldWidth(BuildContext context, double preferred) =>
+      (MediaQuery.sizeOf(context).width - 112)
+          .clamp(240.0, preferred)
+          .toDouble();
 
   void _submit() {
     if (startDateTime.text.trim().isEmpty ||

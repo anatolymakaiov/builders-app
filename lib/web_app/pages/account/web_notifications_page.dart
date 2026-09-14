@@ -31,6 +31,7 @@ class _WebNotificationsPageState extends State<WebNotificationsPage> {
   late Stream<WebDataState<List<WebNotificationItem>>> stream;
   WebNotificationItem? selected;
   bool markingAll = false;
+  bool compactDetailVisible = false;
 
   @override
   void initState() {
@@ -102,12 +103,14 @@ class _WebNotificationsPageState extends State<WebNotificationsPage> {
                             ),
                     );
                     if (compact) {
-                      return ListView(
-                        children: [
-                          SizedBox(height: 360, child: list),
-                          const SizedBox(height: WebSpacing.lg),
-                          SizedBox(height: 480, child: detail),
-                        ],
+                      return WebCompactDetailView(
+                        showDetail: compactDetailVisible && selected != null,
+                        list: list,
+                        detail: detail,
+                        onBack: () => setState(
+                          () => compactDetailVisible = false,
+                        ),
+                        backLabel: 'Back to notifications',
                       );
                     }
                     return Row(
@@ -133,7 +136,10 @@ class _WebNotificationsPageState extends State<WebNotificationsPage> {
   }
 
   Future<void> _openNotification(WebNotificationItem item) async {
-    setState(() => selected = item);
+    setState(() {
+      selected = item;
+      compactDetailVisible = true;
+    });
     if (!item.read) {
       await service.markNotificationRead(widget.userId, item.id);
       if (mounted) setState(() {});

@@ -33,6 +33,7 @@ class _WebSavedJobsPageState extends State<WebSavedJobsPage> {
   late Stream<WebDataState<List<Job>>> stream;
   String search = '';
   String? selectedJobId;
+  bool compactDetailVisible = false;
 
   @override
   void initState() {
@@ -86,8 +87,10 @@ class _WebSavedJobsPageState extends State<WebSavedJobsPage> {
                               searchController: searchController,
                               onSearchChanged: (value) =>
                                   setState(() => search = value),
-                              onSelected: (job) =>
-                                  setState(() => selectedJobId = job.id),
+                              onSelected: (job) => setState(() {
+                                selectedJobId = job.id;
+                                compactDetailVisible = true;
+                              }),
                               title: jobs.isEmpty
                                   ? 'No saved jobs yet'
                                   : '${jobs.length} saved jobs',
@@ -110,12 +113,14 @@ class _WebSavedJobsPageState extends State<WebSavedJobsPage> {
                                   ),
                     );
                     if (compact) {
-                      return ListView(
-                        children: [
-                          SizedBox(height: 360, child: list),
-                          const SizedBox(height: WebSpacing.lg),
-                          SizedBox(height: 680, child: detail),
-                        ],
+                      return WebCompactDetailView(
+                        showDetail: compactDetailVisible && selected != null,
+                        list: list,
+                        detail: detail,
+                        onBack: () => setState(
+                          () => compactDetailVisible = false,
+                        ),
+                        backLabel: 'Back to saved jobs',
                       );
                     }
                     return Row(
@@ -165,6 +170,7 @@ class _WebSavedJobsPageState extends State<WebSavedJobsPage> {
     await service.unsaveJob(widget.userId, jobId);
     setState(() {
       selectedJobId = null;
+      compactDetailVisible = false;
       stream = _savedStream();
     });
   }

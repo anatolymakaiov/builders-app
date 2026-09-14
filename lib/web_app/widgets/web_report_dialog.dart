@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'web_design_components.dart';
+
 Future<void> showWebReportDialog(BuildContext context,
     {required String type,
     String? againstUserId,
@@ -72,8 +74,8 @@ class _WebTextDialogState extends State<WebTextDialog> {
   @override
   Widget build(BuildContext context) => AlertDialog(
         title: Text(widget.title),
-        content: SizedBox(
-            width: 420,
+        content: WebDialogScrollArea(
+            preferredWidth: 420,
             child: TextField(
                 controller: text,
                 minLines: 2,

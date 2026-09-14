@@ -50,6 +50,7 @@ class _WebMapPageState extends State<WebMapPage> {
   bool loadingLocation = false;
   String? locationError;
   WebJobFilters filters = const WebJobFilters();
+  bool compactMapVisible = true;
 
   bool get isWorker => widget.role == 'worker';
 
@@ -230,11 +231,31 @@ class _WebMapPageState extends State<WebMapPage> {
                       ),
                     );
                     if (compact) {
-                      return ListView(
+                      return Column(
                         children: [
-                          SizedBox(height: 360, child: results),
-                          const SizedBox(height: WebSpacing.lg),
-                          SizedBox(height: 560, child: map),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: SegmentedButton<bool>(
+                              segments: const [
+                                ButtonSegment(
+                                  value: false,
+                                  icon: Icon(Icons.view_list_outlined),
+                                  label: Text('Results'),
+                                ),
+                                ButtonSegment(
+                                  value: true,
+                                  icon: Icon(Icons.map_outlined),
+                                  label: Text('Map'),
+                                ),
+                              ],
+                              selected: {compactMapVisible},
+                              onSelectionChanged: (selection) => setState(
+                                () => compactMapVisible = selection.first,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: WebSpacing.sm),
+                          Expanded(child: compactMapVisible ? map : results),
                         ],
                       );
                     }
@@ -277,9 +298,12 @@ class _WebMapPageState extends State<WebMapPage> {
     await showDialog<void>(
         context: context,
         builder: (dialogContext) => Dialog(
+              insetPadding: const EdgeInsets.all(WebSpacing.lg),
               child: SizedBox(
-                width: 840,
-                height: MediaQuery.sizeOf(dialogContext).height * .9,
+                width: (MediaQuery.sizeOf(dialogContext).width - 48)
+                    .clamp(280.0, 840.0)
+                    .toDouble(),
+                height: MediaQuery.sizeOf(dialogContext).height * .88,
                 child: StatefulBuilder(
                     builder: (context, update) => Column(children: [
                           Align(

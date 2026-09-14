@@ -74,6 +74,72 @@ class WebPageHeader extends StatelessWidget {
   }
 }
 
+class WebCompactDetailView extends StatelessWidget {
+  const WebCompactDetailView({
+    super.key,
+    required this.showDetail,
+    required this.list,
+    required this.detail,
+    required this.onBack,
+    this.backLabel = 'Back to results',
+  });
+
+  final bool showDetail;
+  final Widget list;
+  final Widget detail;
+  final VoidCallback onBack;
+  final String backLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!showDetail) return list;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back),
+            label: Text(backLabel),
+          ),
+        ),
+        const SizedBox(height: WebSpacing.xs),
+        Expanded(child: detail),
+      ],
+    );
+  }
+}
+
+class WebDialogScrollArea extends StatelessWidget {
+  const WebDialogScrollArea({
+    super.key,
+    required this.child,
+    required this.preferredWidth,
+    this.maxHeightFactor = .72,
+  });
+
+  final Widget child;
+  final double preferredWidth;
+  final double maxHeightFactor;
+
+  @override
+  Widget build(BuildContext context) {
+    final viewport = MediaQuery.sizeOf(context);
+    final availableWidth =
+        (viewport.width - 80).clamp(280.0, preferredWidth).toDouble();
+    return SizedBox(
+      width: availableWidth,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: viewport.height * maxHeightFactor,
+        ),
+        child: SingleChildScrollView(child: child),
+      ),
+    );
+  }
+}
+
 enum WebStatusTone { success, warning, danger, info, neutral }
 
 class WebStatusChip extends StatelessWidget {

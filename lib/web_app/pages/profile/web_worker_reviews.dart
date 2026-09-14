@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../services/web_profile_communication.dart';
+import '../../widgets/web_design_components.dart';
 
 class WebWorkerReviews extends StatefulWidget {
   const WebWorkerReviews(
@@ -99,8 +100,8 @@ class _ReviewDialogState extends State<_ReviewDialog> {
   @override
   Widget build(BuildContext context) => AlertDialog(
           title: const Text('Leave review'),
-          content: SizedBox(
-              width: 420,
+          content: WebDialogScrollArea(
+              preferredWidth: 420,
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Row(
                     mainAxisAlignment: MainAxisAlignment.center,

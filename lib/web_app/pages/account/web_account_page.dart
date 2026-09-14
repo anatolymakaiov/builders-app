@@ -145,11 +145,57 @@ class _WebAccountPageState extends State<WebAccountPage> {
                 );
                 final content = WebPanel(child: _content());
                 if (compact) {
-                  return ListView(
+                  return Column(
                     children: [
-                      SizedBox(height: 430, child: navigation),
-                      const SizedBox(height: WebSpacing.lg),
-                      SizedBox(height: 760, child: content),
+                      Row(
+                        children: [
+                          Expanded(
+                            child:
+                                DropdownButtonFormField<WebAccountDestination>(
+                              key: ValueKey(selected),
+                              initialValue: selected,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Account section',
+                              ),
+                              items: _availableDestinations()
+                                  .map(
+                                    (destination) => DropdownMenuItem(
+                                      value: destination,
+                                      child: Text(
+                                        destination.label,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: destination ==
+                                                  WebAccountDestination
+                                                      .deleteAccount
+                                              ? WebTheme.danger
+                                              : null,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (destination) {
+                                if (destination != null) {
+                                  setState(() => selected = destination);
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: WebSpacing.sm),
+                          IconButton(
+                            tooltip: 'Logout',
+                            onPressed: _logout,
+                            icon: const Icon(
+                              Icons.logout,
+                              color: WebTheme.danger,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: WebSpacing.md),
+                      Expanded(child: content),
                     ],
                   );
                 }
@@ -181,6 +227,17 @@ class _WebAccountPageState extends State<WebAccountPage> {
       onTap: () => setState(() => selected = destination),
     );
   }
+
+  List<WebAccountDestination> _availableDestinations() => [
+        WebAccountDestination.account,
+        if (widget.role == 'employer') WebAccountDestination.billing,
+        if (widget.role == 'worker') WebAccountDestination.subscriptions,
+        WebAccountDestination.adminInbox,
+        WebAccountDestination.support,
+        WebAccountDestination.settings,
+        WebAccountDestination.about,
+        WebAccountDestination.deleteAccount,
+      ];
 
   Widget _content() {
     return switch (selected) {
@@ -496,6 +553,7 @@ class _AdminInboxViewState extends State<_AdminInboxView> {
   final pendingAttachments = <WebPendingChatAttachment>[];
   late Stream<WebDataState<List<WebAdminMessageThread>>> stream;
   WebAdminMessageThread? selected;
+  bool compactDetailVisible = false;
   bool sending = false;
   bool actionBusy = false;
 
@@ -556,12 +614,12 @@ class _AdminInboxViewState extends State<_AdminInboxView> {
                     onDelete: _deleteThread,
                   );
             if (compact) {
-              return Column(
-                children: [
-                  SizedBox(height: 260, child: list),
-                  const Divider(height: WebSpacing.lg),
-                  Expanded(child: detail),
-                ],
+              return WebCompactDetailView(
+                showDetail: compactDetailVisible && selected != null,
+                list: list,
+                detail: detail,
+                onBack: () => setState(() => compactDetailVisible = false),
+                backLabel: 'Back to Admin Inbox',
               );
             }
             return Row(
@@ -588,6 +646,7 @@ class _AdminInboxViewState extends State<_AdminInboxView> {
   Future<void> _selectThread(WebAdminMessageThread thread) async {
     setState(() {
       selected = thread;
+      compactDetailVisible = true;
       replyController.clear();
       pendingAttachments.clear();
     });
@@ -1143,37 +1202,71 @@ class _AboutLegalViewState extends State<_AboutLegalView> {
         .where((doc) => doc.assetPath == selectedAsset)
         .cast<_WebLegalDocument?>()
         .firstOrNull;
-    return Row(
+    final document = ListView(
       children: [
-        SizedBox(
-          width: 320,
-          child: ListView(
-            children: [
-              for (final doc in _legalDocuments)
-                ListTile(
-                  selected: doc.assetPath == selectedAsset,
-                  title: Text(doc.title),
-                  subtitle: Text('Version ${doc.version}'),
-                  onTap: () => setState(() {
-                    selectedAsset = doc.assetPath;
-                    _load();
-                  }),
-                ),
-            ],
-          ),
-        ),
-        const VerticalDivider(width: 28),
-        Expanded(
-          child: ListView(
-            children: [
-              Text(selected?.title ?? 'About STROYKA',
-                  style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 12),
-              Text(body.isEmpty ? 'Loading...' : body),
-            ],
-          ),
-        ),
+        Text(selected?.title ?? 'About STROYKA',
+            style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 12),
+        Text(body.isEmpty ? 'Loading...' : body),
       ],
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < WebBreakpoints.narrow) {
+          return Column(
+            children: [
+              DropdownButtonFormField<String>(
+                key: ValueKey(selectedAsset),
+                initialValue: selectedAsset,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Document'),
+                items: [
+                  for (final doc in _legalDocuments)
+                    DropdownMenuItem(
+                      value: doc.assetPath,
+                      child: Text(
+                        '${doc.title} · v${doc.version}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: (asset) {
+                  if (asset == null) return;
+                  setState(() {
+                    selectedAsset = asset;
+                    _load();
+                  });
+                },
+              ),
+              const SizedBox(height: WebSpacing.md),
+              Expanded(child: document),
+            ],
+          );
+        }
+        return Row(
+          children: [
+            SizedBox(
+              width: 320,
+              child: ListView(
+                children: [
+                  for (final doc in _legalDocuments)
+                    ListTile(
+                      selected: doc.assetPath == selectedAsset,
+                      title: Text(doc.title),
+                      subtitle: Text('Version ${doc.version}'),
+                      onTap: () => setState(() {
+                        selectedAsset = doc.assetPath;
+                        _load();
+                      }),
+                    ),
+                ],
+              ),
+            ),
+            const VerticalDivider(width: 28),
+            Expanded(child: document),
+          ],
+        );
+      },
     );
   }
 
