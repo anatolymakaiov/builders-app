@@ -6,16 +6,27 @@ class WebProfileAvatar extends StatelessWidget {
   const WebProfileAvatar({
     super.key,
     required this.profile,
+    this.role,
   });
 
   final Map<String, dynamic> profile;
+  final String? role;
 
   @override
   Widget build(BuildContext context) {
-    final photo = (profile['avatarUrl'] ??
-            profile['photo'] ??
-            profile['companyLogo'] ??
-            profile['profilePhotoUrl'])
+    final isEmployer = role == 'employer';
+    final photo = (isEmployer
+            ? profile['companyLogoUrl'] ??
+                profile['companyLogo'] ??
+                profile['companyAvatarUrl'] ??
+                profile['logo'] ??
+                profile['avatarUrl'] ??
+                profile['photoUrl'] ??
+                profile['photo']
+            : profile['avatarUrl'] ??
+                profile['profilePhotoUrl'] ??
+                profile['photoUrl'] ??
+                profile['photo'])
         ?.toString()
         .trim();
 

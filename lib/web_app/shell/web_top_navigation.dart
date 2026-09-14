@@ -22,8 +22,14 @@ class WebTopNavigation extends StatelessWidget {
     required this.role,
     required this.avatar,
     required this.onPostJob,
+    required this.onNotifications,
+    required this.onAccountDestination,
     required this.onProfile,
     required this.onSignOut,
+    this.notificationCount = 0,
+    this.chatCount = 0,
+    this.applicationCount = 0,
+    this.adminInboxCount = 0,
   });
 
   final WebSection selected;
@@ -31,8 +37,14 @@ class WebTopNavigation extends StatelessWidget {
   final String role;
   final Widget avatar;
   final VoidCallback onPostJob;
+  final VoidCallback onNotifications;
+  final ValueChanged<String> onAccountDestination;
   final VoidCallback onProfile;
   final VoidCallback onSignOut;
+  final int notificationCount;
+  final int chatCount;
+  final int applicationCount;
+  final int adminInboxCount;
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +75,11 @@ class WebTopNavigation extends StatelessWidget {
                   section: section,
                   selected: section == selected,
                   onTap: () => onSelected(section),
+                  badgeCount: switch (section) {
+                    WebSection.applications => applicationCount,
+                    WebSection.chats => chatCount,
+                    _ => 0,
+                  },
                 ),
                 const SizedBox(width: 6),
               ],
@@ -77,8 +94,12 @@ class WebTopNavigation extends StatelessWidget {
               ],
               IconButton(
                 tooltip: 'Notifications',
-                onPressed: () {},
-                icon: const Icon(Icons.notifications_none),
+                onPressed: onNotifications,
+                icon: Badge(
+                  isLabelVisible: notificationCount > 0,
+                  label: Text(_badgeLabel(notificationCount)),
+                  child: const Icon(Icons.notifications_none),
+                ),
               ),
               const SizedBox(width: 8),
               PopupMenuButton<String>(
@@ -86,15 +107,64 @@ class WebTopNavigation extends StatelessWidget {
                 onSelected: (value) {
                   if (value == 'profile') onProfile();
                   if (value == 'signOut') onSignOut();
+                  if (value.startsWith('account:')) {
+                    onAccountDestination(value.substring('account:'.length));
+                  }
                 },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
                     value: 'profile',
                     child: Text('Profile'),
                   ),
+                  const PopupMenuItem(
+                    value: 'account:account',
+                    child: Text('My Account'),
+                  ),
+                  if (role == 'employer')
+                    const PopupMenuItem(
+                      value: 'account:billing',
+                      child: Text('Billing / Subscription'),
+                    ),
                   PopupMenuItem(
+                    value: 'account:adminInbox',
+                    child: Row(
+                      children: [
+                        const Expanded(child: Text('Inbox from Admin')),
+                        if (adminInboxCount > 0)
+                          Badge(label: Text(_badgeLabel(adminInboxCount))),
+                      ],
+                    ),
+                  ),
+                  if (role == 'worker')
+                    const PopupMenuItem(
+                      value: 'account:savedJobs',
+                      child: Text('Saved Jobs'),
+                    ),
+                  if (role == 'worker')
+                    const PopupMenuItem(
+                      value: 'account:subscriptions',
+                      child: Text('Job Subscriptions'),
+                    ),
+                  const PopupMenuItem(
+                    value: 'account:settings',
+                    child: Text('Settings'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'account:support',
+                    child: Text('Support'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'account:about',
+                    child: Text('About / Legal'),
+                  ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
                     value: 'signOut',
                     child: Text('Sign out'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'account:deleteAccount',
+                    child: Text('Delete Account'),
                   ),
                 ],
                 child: avatar,
@@ -112,11 +182,13 @@ class _WebNavItem extends StatelessWidget {
     required this.section,
     required this.selected,
     required this.onTap,
+    required this.badgeCount,
   });
 
   final WebSection section;
   final bool selected;
   final VoidCallback onTap;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -146,9 +218,15 @@ class _WebNavItem extends StatelessWidget {
                 fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
               ),
             ),
+            if (badgeCount > 0) ...[
+              const SizedBox(width: 8),
+              Badge(label: Text(_badgeLabel(badgeCount))),
+            ],
           ],
         ),
       ),
     );
   }
 }
+
+String _badgeLabel(int count) => count > 9 ? '9+' : count.toString();

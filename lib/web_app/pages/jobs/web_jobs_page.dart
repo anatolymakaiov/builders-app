@@ -18,6 +18,7 @@ class WebJobsPage extends StatefulWidget {
     this.onOpenProfile,
     this.onPostJob,
     this.onViewApplications,
+    this.initialJobId,
   });
 
   final String userId;
@@ -25,6 +26,7 @@ class WebJobsPage extends StatefulWidget {
   final void Function(String userId, String role)? onOpenProfile;
   final VoidCallback? onPostJob;
   final void Function(String jobId, {String? statusFilter})? onViewApplications;
+  final String? initialJobId;
 
   @override
   State<WebJobsPage> createState() => _WebJobsPageState();
@@ -51,8 +53,18 @@ class _WebJobsPageState extends State<WebJobsPage> {
   void initState() {
     super.initState();
     mode = isEmployer ? WebJobsMode.owner : WebJobsMode.market;
+    selectedJobId = widget.initialJobId;
     _resetJobsStream();
     _loadSavedJobs();
+  }
+
+  @override
+  void didUpdateWidget(covariant WebJobsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialJobId != widget.initialJobId &&
+        widget.initialJobId != null) {
+      setState(() => selectedJobId = widget.initialJobId);
+    }
   }
 
   @override

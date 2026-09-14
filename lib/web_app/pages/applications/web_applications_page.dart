@@ -19,6 +19,7 @@ class WebApplicationsPage extends StatefulWidget {
     this.onOpenProfile,
     this.onOpenChat,
     this.initialJobId,
+    this.initialApplicationId,
     this.initialStatusFilter,
   });
 
@@ -27,6 +28,7 @@ class WebApplicationsPage extends StatefulWidget {
   final void Function(String userId, String role)? onOpenProfile;
   final ValueChanged<String>? onOpenChat;
   final String? initialJobId;
+  final String? initialApplicationId;
   final String? initialStatusFilter;
 
   @override
@@ -50,6 +52,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
     super.initState();
     statusFilter =
         widget.initialStatusFilter ?? ApplicationStatusUtils.allFilter;
+    selectedApplicationId = widget.initialApplicationId;
     applicationsStream = service.applications(
       uid: widget.userId,
       role: widget.role,
@@ -59,14 +62,18 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
   @override
   void didUpdateWidget(covariant WebApplicationsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.userId != widget.userId || oldWidget.role != widget.role) {
+    if (oldWidget.userId != widget.userId ||
+        oldWidget.role != widget.role ||
+        oldWidget.initialJobId != widget.initialJobId ||
+        oldWidget.initialApplicationId != widget.initialApplicationId ||
+        oldWidget.initialStatusFilter != widget.initialStatusFilter) {
       statusFilter =
           widget.initialStatusFilter ?? ApplicationStatusUtils.allFilter;
       applicationsStream = service.applications(
         uid: widget.userId,
         role: widget.role,
       );
-      selectedApplicationId = null;
+      selectedApplicationId = widget.initialApplicationId;
       showTeamApplications = false;
     }
   }

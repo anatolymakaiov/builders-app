@@ -1,0 +1,1301 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../services/account_deletion_service.dart';
+import '../../../services/address_lookup_service.dart';
+import '../../../services/billing_service.dart';
+import '../../services/web_account_data_service.dart';
+import '../../services/web_data_state.dart';
+import '../../services/web_role_identity_service.dart';
+import '../../theme/web_theme.dart';
+import '../../widgets/web_page_container.dart';
+import '../../widgets/web_panel.dart';
+
+enum WebAccountDestination {
+  account('My Account', Icons.account_circle_outlined),
+  billing('Billing / Subscription', Icons.receipt_long_outlined),
+  adminInbox('Inbox from Admin', Icons.mark_email_unread_outlined),
+  subscriptions('Job Subscriptions', Icons.work_history_outlined),
+  settings('Settings', Icons.settings_outlined),
+  support('Support', Icons.support_agent_outlined),
+  about('About / Legal', Icons.info_outline),
+  deleteAccount('Delete Account', Icons.delete_forever_outlined);
+
+  const WebAccountDestination(this.label, this.icon);
+
+  final String label;
+  final IconData icon;
+}
+
+class WebAccountPage extends StatefulWidget {
+  const WebAccountPage({
+    super.key,
+    required this.user,
+    required this.role,
+    required this.profile,
+    required this.initialDestination,
+    required this.onClose,
+    required this.onSignedOut,
+  });
+
+  final User user;
+  final String role;
+  final Map<String, dynamic> profile;
+  final WebAccountDestination initialDestination;
+  final VoidCallback onClose;
+  final VoidCallback onSignedOut;
+
+  @override
+  State<WebAccountPage> createState() => _WebAccountPageState();
+}
+
+class _WebAccountPageState extends State<WebAccountPage> {
+  final service = WebAccountDataService();
+  final identityResolver = WebRoleIdentityResolver();
+  late WebAccountDestination selected = widget.initialDestination;
+  WebRoleIdentity? identity;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadIdentity();
+  }
+
+  @override
+  void didUpdateWidget(covariant WebAccountPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialDestination != widget.initialDestination) {
+      selected = widget.initialDestination;
+    }
+    if (oldWidget.user.uid != widget.user.uid ||
+        oldWidget.role != widget.role) {
+      _loadIdentity();
+    }
+  }
+
+  Future<void> _loadIdentity() async {
+    final resolved = await identityResolver.resolve(
+      userId: widget.user.uid,
+      role: widget.role,
+      profile: widget.profile,
+    );
+    if (mounted) setState(() => identity = resolved);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final destinations = WebAccountDestination.values.where((item) {
+      if (item == WebAccountDestination.subscriptions) {
+        return widget.role == 'worker';
+      }
+      if (item == WebAccountDestination.billing) {
+        return widget.role == 'employer';
+      }
+      return true;
+    }).toList();
+
+    return WebPageContainer(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Header(title: selected.label, onClose: widget.onClose),
+          Expanded(
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 300,
+                  child: WebPanel(
+                    padding: EdgeInsets.zero,
+                    child: ListView(
+                      children: [
+                        if (identity != null)
+                          _IdentityTile(identity: identity!),
+                        const Divider(height: 1),
+                        for (final destination in destinations)
+                          ListTile(
+                            leading: Icon(destination.icon),
+                            selected: destination == selected,
+                            selectedTileColor: WebTheme.greenSoft,
+                            title: Text(destination.label),
+                            onTap: () => setState(() => selected = destination),
+                          ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.logout, color: Colors.red),
+                          title: const Text(
+                            'Logout',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                          onTap: _logout,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 22),
+                Expanded(
+                  child: WebPanel(
+                    child: _content(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _content() {
+    return switch (selected) {
+      WebAccountDestination.account => _MyAccountView(
+          user: widget.user,
+          role: widget.role,
+          identity: identity,
+          profile: widget.profile,
+        ),
+      WebAccountDestination.billing => _BillingView(profile: widget.profile),
+      WebAccountDestination.adminInbox => _AdminInboxView(
+          userId: widget.user.uid,
+          role: widget.role,
+          senderName: identity?.displayName ?? 'User',
+        ),
+      WebAccountDestination.subscriptions => _SubscriptionsView(
+          userId: widget.user.uid,
+        ),
+      WebAccountDestination.settings => _SettingsView(
+          userId: widget.user.uid,
+          profile: widget.profile,
+        ),
+      WebAccountDestination.support => _SupportView(
+          userId: widget.user.uid,
+          role: widget.role,
+          userData: widget.profile,
+        ),
+      WebAccountDestination.about => const _AboutLegalView(),
+      WebAccountDestination.deleteAccount => _DeleteAccountView(
+          onDeleted: widget.onSignedOut,
+        ),
+    };
+  }
+
+  Future<void> _logout() async {
+    await FirebaseAuth.instance.signOut();
+    widget.onSignedOut();
+  }
+}
+
+class _MyAccountView extends StatelessWidget {
+  const _MyAccountView({
+    required this.user,
+    required this.role,
+    required this.identity,
+    required this.profile,
+  });
+
+  final User user;
+  final String role;
+  final WebRoleIdentity? identity;
+  final Map<String, dynamic> profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final billing = BillingService.billingFromUserData(profile);
+    return ListView(
+      children: [
+        Text(
+          role == 'employer' ? 'Employer account' : 'Worker account',
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
+        const SizedBox(height: 18),
+        _InfoRow('Account type', role == 'employer' ? 'Employer' : 'Worker'),
+        _InfoRow(role == 'employer' ? 'Company name' : 'Name',
+            identity?.displayName ?? ''),
+        _InfoRow('Email', user.email ?? profile['email']?.toString() ?? ''),
+        if (role == 'worker')
+          _InfoRow('Trade / position', identity?.subtitle ?? ''),
+        if (role == 'employer') ...[
+          _InfoRow('Company type', identity?.subtitle ?? ''),
+          const SizedBox(height: 16),
+          Text('Billing summary',
+              style: Theme.of(context).textTheme.titleLarge),
+          _InfoRow(
+              'Current plan',
+              (billing['planName'] ?? billing['activePlanName'] ?? '')
+                  .toString()),
+          _InfoRow(
+            'Plan status',
+            BillingService.formatLabel(
+              (billing['status'] ?? billing['billingPlanStatus'] ?? 'not_set')
+                  .toString(),
+            ),
+          ),
+          _InfoRow(
+            'Payment method',
+            BillingService.formatLabel(
+              (billing['paymentMethod'] ?? billing['paymentMode'] ?? 'not_set')
+                  .toString(),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _BillingView extends StatefulWidget {
+  const _BillingView({required this.profile});
+
+  final Map<String, dynamic> profile;
+
+  @override
+  State<_BillingView> createState() => _BillingViewState();
+}
+
+class _BillingViewState extends State<_BillingView> {
+  final service = WebAccountDataService();
+  Map<String, dynamic>? overrideBilling;
+  bool busy = false;
+  String? changingPlan;
+
+  Map<String, dynamic> get billing =>
+      overrideBilling ?? BillingService.billingFromUserData(widget.profile);
+
+  @override
+  Widget build(BuildContext context) {
+    final configured = BillingService.isDirectDebitConfigured(billing);
+    final plans = BillingService.plansFromBilling(billing);
+    final currentPlan = BillingService.currentPlanId(billing);
+    return ListView(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text('Billing / Subscription',
+                  style: Theme.of(context).textTheme.headlineMedium),
+            ),
+            OutlinedButton.icon(
+              onPressed: busy ? null : _refresh,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        _InfoRow(
+            'Current plan',
+            (billing['planName'] ?? billing['activePlanName'] ?? currentPlan)
+                .toString()),
+        _InfoRow(
+          'Monthly price',
+          _priceLabel(billing['planAmountPence'] ?? billing['monthlyPrice']),
+        ),
+        _InfoRow(
+            'Vacancy slot limit',
+            (billing['vacancySlotLimit'] ?? billing['includedJobSlots'] ?? '')
+                .toString()),
+        _InfoRow('Direct Debit', configured ? 'Active' : 'Set up'),
+        _InfoRow(
+          'Trial status',
+          BillingService.formatLabel((billing['trialStatus'] ?? '').toString()),
+        ),
+        _InfoRow(
+            'Trial end date',
+            BillingService.formatDate(
+                billing['trialEndsAt'] ?? billing['trialEndDate'])),
+        _InfoRow('First payment date',
+            BillingService.formatDate(billing['firstPaymentDate'])),
+        const SizedBox(height: 18),
+        if (!configured)
+          FilledButton.icon(
+            onPressed: busy ? null : () => _startSetup(currentPlan),
+            icon: const Icon(Icons.account_balance_outlined),
+            label: const Text('Set up Direct Debit'),
+          )
+        else
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              OutlinedButton.icon(
+                onPressed: busy ? null : () => _startSetup(currentPlan),
+                icon: const Icon(Icons.swap_horiz),
+                label: const Text('Replace Direct Debit'),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy ? null : _cancelSubscription,
+                icon: const Icon(Icons.cancel_outlined),
+                label: const Text('Cancel Direct Debit'),
+              ),
+            ],
+          ),
+        const SizedBox(height: 24),
+        Text('Change plan', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final plan in plans)
+              _PlanCard(
+                plan: plan,
+                selected: (plan['id'] ?? '').toString() == currentPlan,
+                busy: busy || changingPlan != null,
+                onTap: () => _changePlan((plan['id'] ?? '').toString()),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _refresh() async {
+    setState(() => busy = true);
+    try {
+      overrideBilling = await service.loadBillingStatus();
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _startSetup(String planId) async {
+    setState(() => busy = true);
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('createGoCardlessDirectDebitSetup')
+          .call({'planId': planId.isEmpty ? 'starter' : planId});
+      final data = result.data;
+      final url = data is Map ? data['authorisationUrl']?.toString() : null;
+      if (url == null || url.isEmpty) throw StateError('missing_url');
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _changePlan(String planId) async {
+    if (planId.isEmpty) return;
+    setState(() => changingPlan = planId);
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('changeGoCardlessPlan')
+          .call({'planId': planId});
+      if (result.data is Map) {
+        overrideBilling = Map<String, dynamic>.from(result.data as Map);
+      }
+    } finally {
+      if (mounted) setState(() => changingPlan = null);
+    }
+  }
+
+  Future<void> _cancelSubscription() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel subscription?'),
+        content: const Text(
+          'New vacancy publishing will pause while Direct Debit is restored.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => busy = true);
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('cancelGoCardlessSubscription')
+          .call();
+      if (result.data is Map) {
+        overrideBilling = Map<String, dynamic>.from(result.data as Map);
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  String _priceLabel(dynamic value) {
+    final amount = BillingService.readInt(value);
+    if (amount <= 0) return '';
+    return 'GBP ${(amount / 100).toStringAsFixed(0)}/month';
+  }
+}
+
+class _AdminInboxView extends StatefulWidget {
+  const _AdminInboxView({
+    required this.userId,
+    required this.role,
+    required this.senderName,
+  });
+
+  final String userId;
+  final String role;
+  final String senderName;
+
+  @override
+  State<_AdminInboxView> createState() => _AdminInboxViewState();
+}
+
+class _AdminInboxViewState extends State<_AdminInboxView> {
+  final service = WebAccountDataService();
+  final replyController = TextEditingController();
+  late Stream<WebDataState<List<WebAdminMessageThread>>> stream;
+  WebAdminMessageThread? selected;
+  bool sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    stream = _stream();
+  }
+
+  @override
+  void dispose() {
+    replyController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<WebDataState<List<WebAdminMessageThread>>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final threads = state?.data ?? const <WebAdminMessageThread>[];
+        selected ??= threads.isEmpty ? null : threads.first;
+        return Row(
+          children: [
+            SizedBox(
+              width: 360,
+              child: _ThreadList(
+                loading: state == null || state.loading,
+                threads: threads,
+                selectedKey: selected?.key,
+                onSelected: _selectThread,
+              ),
+            ),
+            const VerticalDivider(width: 28),
+            Expanded(
+              child: selected == null
+                  ? const Center(child: Text('No admin messages yet'))
+                  : _AdminThreadDetail(
+                      thread: selected!,
+                      controller: replyController,
+                      sending: sending,
+                      onSend: _sendReply,
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Stream<WebDataState<List<WebAdminMessageThread>>> _stream() {
+    return service.poll(
+      () => service.loadAdminInbox(widget.userId),
+      empty: const <WebAdminMessageThread>[],
+      logPrefix: 'WEB ADMIN INBOX LOAD ERROR',
+    );
+  }
+
+  Future<void> _selectThread(WebAdminMessageThread thread) async {
+    setState(() => selected = thread);
+    await service.markAdminThreadRead(widget.userId, thread);
+  }
+
+  Future<void> _sendReply() async {
+    final thread = selected;
+    if (thread == null || sending) return;
+    setState(() => sending = true);
+    try {
+      await service.replyToAdminThread(
+        uid: widget.userId,
+        role: widget.role,
+        thread: thread,
+        message: replyController.text,
+        senderName: widget.senderName,
+      );
+      replyController.clear();
+      stream = _stream();
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+}
+
+class _SubscriptionsView extends StatefulWidget {
+  const _SubscriptionsView({required this.userId});
+
+  final String userId;
+
+  @override
+  State<_SubscriptionsView> createState() => _SubscriptionsViewState();
+}
+
+class _SubscriptionsViewState extends State<_SubscriptionsView> {
+  final service = WebAccountDataService();
+  final postcodeLookup = IdealPostcodesAddressLookupService();
+  final trade = TextEditingController(text: 'All');
+  final postcode = TextEditingController();
+  String jobType = 'All';
+  double distance = 50;
+  late Stream<WebDataState<List<WebJobAlertItem>>> stream;
+  bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    stream = _stream();
+  }
+
+  @override
+  void dispose() {
+    trade.dispose();
+    postcode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<WebDataState<List<WebJobAlertItem>>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        final alerts = snapshot.data?.data ?? const <WebJobAlertItem>[];
+        return ListView(
+          children: [
+            Text('Job Subscriptions',
+                style: Theme.of(context).textTheme.headlineMedium),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                SizedBox(
+                    width: 220,
+                    child: TextField(
+                        controller: trade,
+                        decoration: const InputDecoration(labelText: 'Trade'))),
+                SizedBox(
+                    width: 180,
+                    child: TextField(
+                        controller: postcode,
+                        decoration:
+                            const InputDecoration(labelText: 'Postcode'))),
+                SizedBox(
+                  width: 180,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: jobType,
+                    items: const [
+                      DropdownMenuItem(value: 'All', child: Text('All')),
+                      DropdownMenuItem(value: 'hourly', child: Text('Hourly')),
+                      DropdownMenuItem(value: 'price', child: Text('Price')),
+                      DropdownMenuItem(
+                          value: 'negotiable', child: Text('Negotiable')),
+                    ],
+                    onChanged: (value) =>
+                        setState(() => jobType = value ?? 'All'),
+                    decoration: const InputDecoration(labelText: 'Work format'),
+                  ),
+                ),
+                SizedBox(
+                  width: 210,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Distance: ${distance.toStringAsFixed(0)} mi'),
+                      Slider(
+                        value: distance,
+                        min: 5,
+                        max: 100,
+                        divisions: 19,
+                        onChanged: (value) => setState(() => distance = value),
+                      ),
+                    ],
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: saving ? null : _save,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Create'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            if ((snapshot.data == null || snapshot.data!.loading) &&
+                alerts.isEmpty)
+              const Center(child: CircularProgressIndicator())
+            else if (alerts.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('No job subscriptions yet'),
+              )
+            else
+              for (final alert in alerts)
+                ListTile(
+                  leading: const Icon(Icons.work_history_outlined),
+                  title: Text((alert.data['trade'] ?? 'All trades').toString()),
+                  subtitle: Text(_subscriptionSubtitle(alert.data)),
+                  trailing: IconButton(
+                    tooltip: 'Delete subscription',
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: () => _delete(alert.id),
+                  ),
+                ),
+          ],
+        );
+      },
+    );
+  }
+
+  Stream<WebDataState<List<WebJobAlertItem>>> _stream() {
+    return service.poll(
+      () => service.loadJobAlerts(widget.userId),
+      empty: const <WebJobAlertItem>[],
+      logPrefix: 'WEB JOB ALERTS LOAD ERROR',
+    );
+  }
+
+  Future<void> _save() async {
+    setState(() => saving = true);
+    try {
+      final normalized = postcodeLookup.normalizePostcode(postcode.text);
+      final found = await postcodeLookup.lookupPostcode(normalized);
+      if (found?.latitude == null || found?.longitude == null) {
+        throw StateError('Enter a valid UK postcode.');
+      }
+      await service.saveJobAlert(
+        uid: widget.userId,
+        trade: trade.text.trim().isEmpty ? 'All' : trade.text.trim(),
+        jobType: jobType,
+        distance: distance,
+        postcode: normalized,
+        lat: found!.latitude!,
+        lng: found.longitude!,
+      );
+      trade.text = 'All';
+      postcode.clear();
+      stream = _stream();
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _delete(String alertId) async {
+    await service.deleteJobAlert(widget.userId, alertId);
+    setState(() => stream = _stream());
+  }
+}
+
+class _SettingsView extends StatelessWidget {
+  const _SettingsView({required this.userId, required this.profile});
+
+  final String userId;
+  final Map<String, dynamic> profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = profile['settings'] is Map
+        ? Map<String, dynamic>.from(profile['settings'] as Map)
+        : const <String, dynamic>{};
+    return ListView(
+      children: [
+        Text('Settings', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 16),
+        _SwitchSetting(
+          userId: userId,
+          settings: settings,
+          field: 'pushMessages',
+          title: 'Message notifications',
+        ),
+        _SwitchSetting(
+          userId: userId,
+          settings: settings,
+          field: 'pushApplications',
+          title: 'Application notifications',
+        ),
+        _SwitchSetting(
+          userId: userId,
+          settings: settings,
+          field: 'pushAdmin',
+          title: 'Inbox from Admin and official notices',
+        ),
+        _SwitchSetting(
+          userId: userId,
+          settings: settings,
+          field: 'pushBilling',
+          title: 'Billing notifications',
+        ),
+      ],
+    );
+  }
+}
+
+class _SupportView extends StatefulWidget {
+  const _SupportView({
+    required this.userId,
+    required this.role,
+    required this.userData,
+  });
+
+  final String userId;
+  final String role;
+  final Map<String, dynamic> userData;
+
+  @override
+  State<_SupportView> createState() => _SupportViewState();
+}
+
+class _SupportViewState extends State<_SupportView> {
+  final service = WebAccountDataService();
+  final message = TextEditingController();
+  String type = 'technical_issue';
+  bool submitting = false;
+
+  @override
+  void dispose() {
+    message.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final types = widget.role == 'worker'
+        ? const {
+            'technical_issue': 'Technical issue',
+            'employer_complaint': 'Complaint about employer/company',
+            'application_issue': 'Application issue',
+            'profile_account_issue': 'Profile/account issue',
+            'other': 'Other',
+          }
+        : const {
+            'billing': 'Billing',
+            'payment': 'Payment',
+            'direct_debit': 'Direct debit',
+            'job_posting_issue': 'Job posting issue',
+            'technical_issue': 'Technical issue',
+            'profile_company_account_issue': 'Profile/company account issue',
+            'other': 'Other',
+          };
+    if (!types.containsKey(type)) type = types.keys.first;
+    return ListView(
+      children: [
+        Text('Support', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 16),
+        DropdownButtonFormField<String>(
+          initialValue: type,
+          items: [
+            for (final entry in types.entries)
+              DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+          ],
+          onChanged: (value) =>
+              setState(() => type = value ?? types.keys.first),
+          decoration: const InputDecoration(labelText: 'Request type'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: message,
+          maxLines: 8,
+          decoration: const InputDecoration(labelText: 'Message'),
+        ),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          onPressed: submitting ? null : _submit,
+          icon: const Icon(Icons.send),
+          label: const Text('Submit support request'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _submit() async {
+    if (message.text.trim().isEmpty || submitting) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => submitting = true);
+    try {
+      await service.submitSupportRequest(
+        uid: widget.userId,
+        role: widget.role,
+        userData: widget.userData,
+        type: type,
+        message: message.text,
+      );
+      message.clear();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Support request sent')),
+      );
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
+  }
+}
+
+class _AboutLegalView extends StatefulWidget {
+  const _AboutLegalView();
+
+  @override
+  State<_AboutLegalView> createState() => _AboutLegalViewState();
+}
+
+class _AboutLegalViewState extends State<_AboutLegalView> {
+  String? selectedAsset = _legalDocuments.first.assetPath;
+  String body = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = _legalDocuments
+        .where((doc) => doc.assetPath == selectedAsset)
+        .cast<_WebLegalDocument?>()
+        .firstOrNull;
+    return Row(
+      children: [
+        SizedBox(
+          width: 320,
+          child: ListView(
+            children: [
+              for (final doc in _legalDocuments)
+                ListTile(
+                  selected: doc.assetPath == selectedAsset,
+                  title: Text(doc.title),
+                  subtitle: Text('Version ${doc.version}'),
+                  onTap: () => setState(() {
+                    selectedAsset = doc.assetPath;
+                    _load();
+                  }),
+                ),
+            ],
+          ),
+        ),
+        const VerticalDivider(width: 28),
+        Expanded(
+          child: ListView(
+            children: [
+              Text(selected?.title ?? 'About STROYKA',
+                  style: Theme.of(context).textTheme.headlineMedium),
+              const SizedBox(height: 12),
+              Text(body.isEmpty ? 'Loading...' : body),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _load() async {
+    final asset = selectedAsset;
+    if (asset == null) return;
+    try {
+      final text = await rootBundle.loadString(asset);
+      if (mounted) setState(() => body = text);
+    } catch (_) {
+      if (mounted) setState(() => body = 'Document unavailable.');
+    }
+  }
+}
+
+class _DeleteAccountView extends StatefulWidget {
+  const _DeleteAccountView({required this.onDeleted});
+
+  final VoidCallback onDeleted;
+
+  @override
+  State<_DeleteAccountView> createState() => _DeleteAccountViewState();
+}
+
+class _DeleteAccountViewState extends State<_DeleteAccountView> {
+  final password = TextEditingController();
+  bool deleting = false;
+
+  @override
+  void dispose() {
+    password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      children: [
+        Text('Delete Account',
+            style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 12),
+        const Text(
+          'This action cannot be undone. Your profile and related data will be permanently removed or anonymised according to the data retention policy.',
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: password,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'Password for recent-login confirmation',
+          ),
+        ),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: deleting ? null : _delete,
+          icon: const Icon(Icons.delete_forever_outlined),
+          label: const Text('Delete Account'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _delete() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final email = user?.email;
+    if (user == null || email == null || password.text.trim().isEmpty) return;
+    setState(() => deleting = true);
+    try {
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: password.text.trim(),
+      );
+      await user.reauthenticateWithCredential(credential);
+      await AccountDeletionService().deleteCurrentAccount();
+      widget.onDeleted();
+    } on AccountDeletionRequiresRecentLogin {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in again before deleting.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not delete account: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => deleting = false);
+    }
+  }
+}
+
+class _IdentityTile extends StatelessWidget {
+  const _IdentityTile({required this.identity});
+
+  final WebRoleIdentity identity;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: WebTheme.greenSoft,
+        child: identity.avatarUrl.isEmpty
+            ? const Icon(Icons.person_outline, color: WebTheme.green)
+            : ClipOval(
+                child: Image.network(
+                  identity.avatarUrl,
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                  webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                  errorBuilder: (_, __, ___) =>
+                      const Icon(Icons.person_outline, color: WebTheme.green),
+                ),
+              ),
+      ),
+      title: Text(identity.displayName),
+      subtitle: Text(identity.subtitle),
+    );
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.title, required this.onClose});
+
+  final String title;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Row(
+        children: [
+          IconButton(onPressed: onClose, icon: const Icon(Icons.arrow_back)),
+          const SizedBox(width: 8),
+          Text(title, style: Theme.of(context).textTheme.headlineMedium),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow(this.label, this.value);
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 170,
+            child: Text(label,
+                style: const TextStyle(
+                  color: WebTheme.muted,
+                  fontWeight: FontWeight.w700,
+                )),
+          ),
+          Expanded(child: Text(value.isEmpty ? 'Not set' : value)),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlanCard extends StatelessWidget {
+  const _PlanCard({
+    required this.plan,
+    required this.selected,
+    required this.busy,
+    required this.onTap,
+  });
+
+  final Map<String, dynamic> plan;
+  final bool selected;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = BillingService.readInt(plan['amountPence']);
+    return InkWell(
+      onTap: busy || selected ? null : onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: 210,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border:
+              Border.all(color: selected ? WebTheme.green : WebTheme.border),
+          color: selected ? WebTheme.greenSoft : WebTheme.surfaceAlt,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(BillingService.planDisplayName(plan),
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text('GBP ${(amount / 100).toStringAsFixed(0)}/month'),
+            Text('${BillingService.readInt(plan['vacancySlotLimit'])} slots'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ThreadList extends StatelessWidget {
+  const _ThreadList({
+    required this.loading,
+    required this.threads,
+    required this.selectedKey,
+    required this.onSelected,
+  });
+
+  final bool loading;
+  final List<WebAdminMessageThread> threads;
+  final String? selectedKey;
+  final ValueChanged<WebAdminMessageThread> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading && threads.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (threads.isEmpty) {
+      return const Center(child: Text('No admin messages yet'));
+    }
+    return ListView.separated(
+      itemCount: threads.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final thread = threads[index];
+        return ListTile(
+          selected: thread.key == selectedKey,
+          selectedTileColor: WebTheme.greenSoft,
+          leading: Icon(
+            thread.unread
+                ? Icons.mark_email_unread_outlined
+                : Icons.mark_email_read_outlined,
+            color: WebTheme.green,
+          ),
+          title: Text(thread.latest.subject),
+          subtitle: Text(thread.latest.message,
+              maxLines: 2, overflow: TextOverflow.ellipsis),
+          onTap: () => onSelected(thread),
+        );
+      },
+    );
+  }
+}
+
+class _AdminThreadDetail extends StatelessWidget {
+  const _AdminThreadDetail({
+    required this.thread,
+    required this.controller,
+    required this.sending,
+    required this.onSend,
+  });
+
+  final WebAdminMessageThread thread;
+  final TextEditingController controller;
+  final bool sending;
+  final VoidCallback onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(thread.latest.subject,
+            style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 14),
+        Expanded(
+          child: ListView(
+            children: [
+              for (final message in thread.messages)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: message.data['senderId'] == 'admin'
+                        ? WebTheme.greenSoft
+                        : WebTheme.surfaceAlt,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(message.senderName,
+                          style: const TextStyle(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 6),
+                      Text(message.message),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        TextField(
+          controller: controller,
+          minLines: 2,
+          maxLines: 4,
+          decoration: const InputDecoration(labelText: 'Reply to Admin'),
+        ),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            onPressed: sending ? null : onSend,
+            icon: const Icon(Icons.send),
+            label: const Text('Send'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SwitchSetting extends StatefulWidget {
+  const _SwitchSetting({
+    required this.userId,
+    required this.settings,
+    required this.field,
+    required this.title,
+  });
+
+  final String userId;
+  final Map<String, dynamic> settings;
+  final String field;
+  final String title;
+
+  @override
+  State<_SwitchSetting> createState() => _SwitchSettingState();
+}
+
+class _SwitchSettingState extends State<_SwitchSetting> {
+  late bool value = widget.settings[widget.field] != false;
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      value: value,
+      title: Text(widget.title),
+      onChanged: (next) async {
+        setState(() => value = next);
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.userId)
+            .set({
+          'settings': {widget.field: next},
+        }, SetOptions(merge: true));
+      },
+    );
+  }
+}
+
+class _WebLegalDocument {
+  const _WebLegalDocument(this.title, this.assetPath, this.version);
+
+  final String title;
+  final String assetPath;
+  final String version;
+}
+
+const _legalDocuments = [
+  _WebLegalDocument(
+    'Privacy Policy / Privacy Notice',
+    'assets/legal/privacy_policy.md',
+    '2026-05-20',
+  ),
+  _WebLegalDocument(
+      'Terms and Conditions', 'assets/legal/terms_of_use.md', '2026-05-20'),
+  _WebLegalDocument(
+      'Worker Terms', 'assets/legal/worker_terms.md', '2026-05-20'),
+  _WebLegalDocument(
+      'Employer Terms', 'assets/legal/employer_terms.md', '2026-05-20'),
+  _WebLegalDocument('Billing & Payment Terms',
+      'assets/legal/billing_payment_terms.md', '2026-05-20'),
+  _WebLegalDocument('Account Deletion Notice',
+      'assets/legal/account_deletion_policy.md', '2026-05-20'),
+  _WebLegalDocument('Company Information',
+      'assets/legal/company_information.md', '2026-05-20'),
+];
+
+String _subscriptionSubtitle(Map<String, dynamic> data) {
+  final type = (data['jobType'] ?? 'All').toString();
+  final postcode = (data['postcode'] ?? '').toString();
+  final distance = data['distance']?.toString() ?? '50';
+  return [
+    if (postcode.isNotEmpty) 'Postcode: $postcode',
+    'Type: ${BillingService.formatLabel(type)}',
+    'Distance: $distance mi',
+  ].join(' • ');
+}
