@@ -29,6 +29,7 @@ class WebShell extends StatefulWidget {
 class _WebShellState extends State<WebShell> {
   WebSection selected = WebSection.jobs;
   _WebProfileRoute? profileRoute;
+  String? initialChatId;
 
   @override
   Widget build(BuildContext context) {
@@ -47,10 +48,12 @@ class _WebShellState extends State<WebShell> {
                 userId: widget.user.uid,
                 role: widget.role,
                 onOpenProfile: _openProfile,
+                onOpenChat: _openChat,
               ),
             WebSection.chats => WebChatsPage(
                 userId: widget.user.uid,
                 role: widget.role,
+                initialChatId: initialChatId,
               ),
           }
         : WebProfilePage(
@@ -73,6 +76,7 @@ class _WebShellState extends State<WebShell> {
             onSelected: (value) => setState(() {
               selected = value;
               profileRoute = null;
+              if (value != WebSection.chats) initialChatId = null;
             }),
             onPostJob: () {},
             onProfile: () => _openProfile(widget.user.uid, widget.role),
@@ -87,6 +91,14 @@ class _WebShellState extends State<WebShell> {
   void _openProfile(String userId, String role) {
     setState(() {
       profileRoute = _WebProfileRoute(userId: userId, role: role);
+    });
+  }
+
+  void _openChat(String chatId) {
+    setState(() {
+      selected = WebSection.chats;
+      profileRoute = null;
+      initialChatId = chatId;
     });
   }
 }

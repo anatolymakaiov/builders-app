@@ -12,6 +12,8 @@ class WebApplicationSummary {
     this.jobData,
     this.profileData,
     this.teamData,
+    this.memberProfiles = const <String, Map<String, dynamic>>{},
+    this.jobUnavailable = false,
   });
 
   final String id;
@@ -19,6 +21,8 @@ class WebApplicationSummary {
   final Map<String, dynamic>? jobData;
   final Map<String, dynamic>? profileData;
   final Map<String, dynamic>? teamData;
+  final Map<String, Map<String, dynamic>> memberProfiles;
+  final bool jobUnavailable;
 
   bool get isTeam {
     final type = (data['applicationType'] ?? data['type'] ?? '').toString();
@@ -51,11 +55,77 @@ class WebApplicationSummary {
   String get status =>
       _firstText(data, const ['status', 'applicationStatus'], 'submitted');
 
+  Map<String, dynamic> get offer {
+    final raw = data['offer'];
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return const <String, dynamic>{};
+  }
+
   String get workerId =>
       (data['workerId'] ?? data['applicantId'])?.toString().trim() ?? '';
 
   String get employerId =>
       (data['employerId'] ?? data['ownerId'])?.toString().trim() ?? '';
+
+  String get teamId => data['teamId']?.toString().trim() ?? '';
+
+  String get trade => _firstText(
+        data,
+        const ['jobTrade', 'trade', 'position', 'jobType'],
+        _firstText(jobData, const ['trade', 'position', 'jobType'], ''),
+      );
+
+  String get site => _firstText(
+        data,
+        const ['jobSite', 'site', 'siteAddress', 'fullAddress', 'location'],
+        _firstText(jobData, const ['site', 'siteAddress', 'fullAddress'], ''),
+      );
+
+  String get message => _firstText(
+        data,
+        const ['message', 'coverLetter', 'applicationMessage', 'note'],
+        '',
+      );
+
+  int get workersCount {
+    final value = data['workersCount'];
+    if (value is num) return value.toInt();
+    final parsed = int.tryParse(value?.toString() ?? '');
+    if (parsed != null) return parsed;
+    return memberIds.length;
+  }
+
+  List<String> get memberIds {
+    final ids = <String>{};
+    ids.addAll(_idsFromListValue(data['members']));
+    ids.addAll(_idsFromListValue(data['memberIds']));
+    return ids.toList();
+  }
+
+  List<String> get selectedWorkerIds {
+    final raw = offer['selectedWorkerIds'] ?? data['selectedWorkerIds'];
+    if (raw is! List) return const [];
+    return raw
+        .map((item) => item?.toString().trim() ?? '')
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  List<String> get selectedWorkerNames {
+    final raw = offer['selectedWorkerNames'] ?? data['selectedWorkerNames'];
+    if (raw is! List) return const [];
+    return raw
+        .map((item) => item?.toString().trim() ?? '')
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+  bool unreadFor(String uid) {
+    final unreadFor = data['unreadFor'];
+    return unreadFor is List &&
+        unreadFor.map((item) => item.toString()).contains(uid);
+  }
 
   Timestamp? get activityAt {
     for (final key in const [
@@ -70,16 +140,49 @@ class WebApplicationSummary {
   }
 
   String get avatarUrl => _firstText(
-        isTeam ? teamData : profileData,
+        isTeam && teamData != null ? teamData : profileData,
         const [
           'avatarUrl',
+          'companyLogoUrl',
+          'employerAvatarUrl',
           'photoUrl',
           'profilePhotoUrl',
+          'photo',
           'companyLogo',
-          'companyLogoUrl',
+          'companyAvatarUrl',
+          'teamLogo',
+          'logo',
         ],
-        '',
+        _firstText(
+          data,
+          const [
+            'companyLogoUrl',
+            'employerAvatarUrl',
+            'avatarUrl',
+            'photoUrl',
+            'profilePhotoUrl',
+          ],
+          '',
+        ),
       );
+
+  String get companyLogoUrl => _firstText(
+        data,
+        const ['companyLogoUrl', 'companyLogo', 'employerAvatarUrl'],
+        _firstText(
+          jobData,
+          const ['companyLogoUrl', 'companyLogo', 'logo', 'avatarUrl'],
+          '',
+        ),
+      );
+
+  String memberName(String id) {
+    return _firstText(
+      memberProfiles[id],
+      const ['name', 'displayName', 'firstName', 'email'],
+      id,
+    );
+  }
 }
 
 class WebApplicationsDataService {
@@ -90,6 +193,8 @@ class WebApplicationsDataService {
 
   final FirebaseFirestore _firestore;
   final Duration pollInterval;
+  final _negativeEnrichmentCache = <String, DateTime>{};
+  static const _negativeCacheTtl = Duration(minutes: 20);
 
   Stream<WebDataState<List<WebApplicationSummary>>> applications({
     required String uid,
@@ -250,31 +355,11 @@ class WebApplicationsDataService {
 
   List<String> _teamMemberIds(Map<String, dynamic> data) {
     final ids = <String>{};
-    ids.addAll(_idsFromList(data['members']));
-    ids.addAll(_idsFromList(data['memberIds']));
+    ids.addAll(_idsFromListValue(data['members']));
+    ids.addAll(_idsFromListValue(data['memberIds']));
     _addStatusMemberIds(ids, data['membersStatus']);
     _addStatusMemberIds(ids, data['memberStatuses']);
     return ids.toList();
-  }
-
-  List<String> _idsFromList(dynamic value) {
-    if (value is! List) return const [];
-    return value
-        .map((item) {
-          if (item is String) return item;
-          if (item is Map) {
-            return (item['userId'] ??
-                    item['uid'] ??
-                    item['workerId'] ??
-                    item['id'])
-                ?.toString();
-          }
-          return null;
-        })
-        .whereType<String>()
-        .where((id) => id.trim().isNotEmpty)
-        .toSet()
-        .toList();
   }
 
   void _addStatusMemberIds(Set<String> ids, dynamic value) {
@@ -314,19 +399,53 @@ class WebApplicationsDataService {
     final jobData = await _safeGet('jobs', jobId);
     final profileData = await _safeGet('users', workerId);
     final teamData = await _safeGet('teams', teamId);
+    final memberProfiles = <String, Map<String, dynamic>>{};
+    final isTeam =
+        (data['applicationType'] ?? data['type'] ?? '').toString() == 'team' ||
+            teamId.isNotEmpty;
+    if (isTeam) {
+      for (final memberId in _teamMemberIds({
+        ...?teamData,
+        ...data,
+      })) {
+        final memberData = await _safeGet('users', memberId);
+        if (memberData != null) memberProfiles[memberId] = memberData;
+      }
+    }
     return WebApplicationSummary(
       id: id,
       data: data,
       jobData: jobData,
       profileData: profileData,
       teamData: teamData,
+      memberProfiles: memberProfiles,
+      jobUnavailable: jobId.isNotEmpty && jobData == null,
     );
   }
 
   Future<Map<String, dynamic>?> _safeGet(String collection, String id) async {
     if (id.isEmpty) return null;
+    final cacheKey = '$collection/$id';
+    final cachedAt = _negativeEnrichmentCache[cacheKey];
+    if (cachedAt != null &&
+        DateTime.now().difference(cachedAt) < _negativeCacheTtl) {
+      return null;
+    }
     try {
-      return (await _firestore.collection(collection).doc(id).get()).data();
+      final doc = await _firestore.collection(collection).doc(id).get();
+      if (!doc.exists) {
+        _negativeEnrichmentCache[cacheKey] = DateTime.now();
+        return null;
+      }
+      return doc.data();
+    } on FirebaseException catch (error) {
+      if (error.code == 'permission-denied' || error.code == 'not-found') {
+        _negativeEnrichmentCache[cacheKey] = DateTime.now();
+      }
+      debugPrint(
+        'WEB APPLICATION ENRICH ERROR $collection/$id code=${error.code}',
+      );
+      return null;
     } catch (error) {
       debugPrint('WEB APPLICATION ENRICH ERROR $collection/$id $error');
       return null;
@@ -368,6 +487,26 @@ class WebApplicationsDataService {
     controller.onCancel = () => timer?.cancel();
     return controller.stream;
   }
+}
+
+List<String> _idsFromListValue(dynamic value) {
+  if (value is! List) return const [];
+  return value
+      .map((item) {
+        if (item is String) return item;
+        if (item is Map) {
+          return (item['userId'] ??
+                  item['uid'] ??
+                  item['workerId'] ??
+                  item['id'])
+              ?.toString();
+        }
+        return null;
+      })
+      .whereType<String>()
+      .where((id) => id.trim().isNotEmpty)
+      .toSet()
+      .toList();
 }
 
 class _QueryResult {

@@ -17,10 +17,12 @@ class WebChatsPage extends StatefulWidget {
     super.key,
     required this.userId,
     required this.role,
+    this.initialChatId,
   });
 
   final String userId;
   final String role;
+  final String? initialChatId;
 
   @override
   State<WebChatsPage> createState() => _WebChatsPageState();
@@ -44,18 +46,26 @@ class _WebChatsPageState extends State<WebChatsPage> {
   @override
   void initState() {
     super.initState();
+    selectedChatId = widget.initialChatId;
+    if (selectedChatId != null) {
+      threadStream = service.chatThread(selectedChatId!, widget.userId);
+    }
     chatsStream = service.chats(widget.userId);
   }
 
   @override
   void didUpdateWidget(covariant WebChatsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.userId != widget.userId) {
+    if (oldWidget.userId != widget.userId ||
+        oldWidget.initialChatId != widget.initialChatId) {
       chatsStream = service.chats(widget.userId);
-      selectedChatId = null;
+      selectedChatId = widget.initialChatId;
       threadStream = null;
       lastThread = null;
       lastMarkedReadKey = null;
+      if (selectedChatId != null) {
+        threadStream = service.chatThread(selectedChatId!, widget.userId);
+      }
     }
   }
 
