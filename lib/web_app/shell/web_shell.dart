@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import '../pages/applications/web_applications_page.dart';
 import '../pages/chats/web_chats_page.dart';
 import '../pages/jobs/web_jobs_page.dart';
+import '../pages/jobs/web_post_job_page.dart';
 import '../pages/map/web_map_page.dart';
+import '../../services/application_status_utils.dart';
 import '../pages/profile/web_profile_page.dart';
 import '../theme/web_theme.dart';
 import 'web_profile_menu.dart';
@@ -30,40 +32,55 @@ class _WebShellState extends State<WebShell> {
   WebSection selected = WebSection.jobs;
   _WebProfileRoute? profileRoute;
   String? initialChatId;
+  _ApplicationsRoute? applicationsRoute;
+  bool postingJob = false;
 
   @override
   Widget build(BuildContext context) {
-    final page = profileRoute == null
-        ? switch (selected) {
-            WebSection.jobs => WebJobsPage(
-                userId: widget.user.uid,
+    final page = postingJob
+        ? WebPostJobPage(
+            userId: widget.user.uid,
+            onCancel: () => setState(() => postingJob = false),
+            onDone: (_) => setState(() {
+              postingJob = false;
+              selected = WebSection.jobs;
+            }),
+            onOpenBilling: () => _openProfile(widget.user.uid, widget.role),
+          )
+        : profileRoute == null
+            ? switch (selected) {
+                WebSection.jobs => WebJobsPage(
+                    userId: widget.user.uid,
+                    role: widget.role,
+                    onOpenProfile: _openProfile,
+                    onViewApplications: _openApplications,
+                  ),
+                WebSection.map => WebMapPage(
+                    userId: widget.user.uid,
+                    role: widget.role,
+                  ),
+                WebSection.applications => WebApplicationsPage(
+                    userId: widget.user.uid,
+                    role: widget.role,
+                    onOpenProfile: _openProfile,
+                    onOpenChat: _openChat,
+                    initialJobId: applicationsRoute?.jobId,
+                    initialStatusFilter: applicationsRoute?.statusFilter,
+                  ),
+                WebSection.chats => WebChatsPage(
+                    userId: widget.user.uid,
+                    role: widget.role,
+                    initialChatId: initialChatId,
+                  ),
+              }
+            : WebProfilePage(
+                user: widget.user,
                 role: widget.role,
-                onOpenProfile: _openProfile,
-              ),
-            WebSection.map => WebMapPage(
-                userId: widget.user.uid,
-                role: widget.role,
-              ),
-            WebSection.applications => WebApplicationsPage(
-                userId: widget.user.uid,
-                role: widget.role,
-                onOpenProfile: _openProfile,
-                onOpenChat: _openChat,
-              ),
-            WebSection.chats => WebChatsPage(
-                userId: widget.user.uid,
-                role: widget.role,
-                initialChatId: initialChatId,
-              ),
-          }
-        : WebProfilePage(
-            user: widget.user,
-            role: widget.role,
-            profile: widget.profile,
-            viewedUserId: profileRoute!.userId,
-            viewedRole: profileRoute!.role,
-            onClose: () => setState(() => profileRoute = null),
-          );
+                profile: widget.profile,
+                viewedUserId: profileRoute!.userId,
+                viewedRole: profileRoute!.role,
+                onClose: () => setState(() => profileRoute = null),
+              );
 
     return Scaffold(
       backgroundColor: WebTheme.page,
@@ -76,9 +93,11 @@ class _WebShellState extends State<WebShell> {
             onSelected: (value) => setState(() {
               selected = value;
               profileRoute = null;
+              postingJob = false;
               if (value != WebSection.chats) initialChatId = null;
+              if (value != WebSection.applications) applicationsRoute = null;
             }),
-            onPostJob: () {},
+            onPostJob: _openPostJob,
             onProfile: () => _openProfile(widget.user.uid, widget.role),
             onSignOut: () => FirebaseAuth.instance.signOut(),
           ),
@@ -90,6 +109,7 @@ class _WebShellState extends State<WebShell> {
 
   void _openProfile(String userId, String role) {
     setState(() {
+      postingJob = false;
       profileRoute = _WebProfileRoute(userId: userId, role: role);
     });
   }
@@ -98,7 +118,31 @@ class _WebShellState extends State<WebShell> {
     setState(() {
       selected = WebSection.chats;
       profileRoute = null;
+      postingJob = false;
       initialChatId = chatId;
+    });
+  }
+
+  void _openPostJob() {
+    setState(() {
+      selected = WebSection.jobs;
+      profileRoute = null;
+      initialChatId = null;
+      applicationsRoute = null;
+      postingJob = true;
+    });
+  }
+
+  void _openApplications(String jobId, {String? statusFilter}) {
+    setState(() {
+      selected = WebSection.applications;
+      profileRoute = null;
+      postingJob = false;
+      initialChatId = null;
+      applicationsRoute = _ApplicationsRoute(
+        jobId: jobId,
+        statusFilter: statusFilter ?? ApplicationStatusUtils.allFilter,
+      );
     });
   }
 }
@@ -108,4 +152,11 @@ class _WebProfileRoute {
 
   final String userId;
   final String role;
+}
+
+class _ApplicationsRoute {
+  const _ApplicationsRoute({required this.jobId, required this.statusFilter});
+
+  final String jobId;
+  final String statusFilter;
 }

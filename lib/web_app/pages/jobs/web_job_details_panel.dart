@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/job.dart';
+import '../../services/web_job_management_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
@@ -16,6 +17,12 @@ class WebJobDetailsPanel extends StatelessWidget {
     this.onApply,
     this.onToggleSaved,
     this.onViewCompanyProfile,
+    this.onEdit,
+    this.onToggleActive,
+    this.onDelete,
+    this.onViewApplications,
+    this.statsLoader,
+    this.managing = false,
   });
 
   final Job? job;
@@ -26,6 +33,12 @@ class WebJobDetailsPanel extends StatelessWidget {
   final VoidCallback? onApply;
   final VoidCallback? onToggleSaved;
   final VoidCallback? onViewCompanyProfile;
+  final VoidCallback? onEdit;
+  final VoidCallback? onToggleActive;
+  final VoidCallback? onDelete;
+  final VoidCallback? onViewApplications;
+  final Future<WebJobApplicationStats> Function()? statsLoader;
+  final bool managing;
 
   @override
   Widget build(BuildContext context) {
@@ -165,6 +178,18 @@ class WebJobDetailsPanel extends StatelessWidget {
                         ],
                       ),
                     ],
+                    if (isEmployerOwner) ...[
+                      const SizedBox(height: 22),
+                      _OwnerActions(
+                        job: currentJob,
+                        managing: managing,
+                        onEdit: onEdit,
+                        onToggleActive: onToggleActive,
+                        onDelete: onDelete,
+                        onViewApplications: onViewApplications,
+                        statsLoader: statsLoader,
+                      ),
+                    ],
                     const SizedBox(height: 28),
                     if (currentJob.photos.isNotEmpty) ...[
                       _PhotoGrid(photos: currentJob.photos),
@@ -292,6 +317,169 @@ class _PhotoGrid extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _OwnerActions extends StatelessWidget {
+  const _OwnerActions({
+    required this.job,
+    required this.managing,
+    this.onEdit,
+    this.onToggleActive,
+    this.onDelete,
+    this.onViewApplications,
+    this.statsLoader,
+  });
+
+  final Job job;
+  final bool managing;
+  final VoidCallback? onEdit;
+  final VoidCallback? onToggleActive;
+  final VoidCallback? onDelete;
+  final VoidCallback? onViewApplications;
+  final Future<WebJobApplicationStats> Function()? statsLoader;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = job.status.trim().toLowerCase();
+    final pending = job.moderationStatus == 'pending_review';
+    final rejected = job.moderationStatus == 'rejected';
+    final active =
+        status == 'active' || status == 'published' || status == 'open';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: WebTheme.surfaceAlt,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: WebTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Vacancy management',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              _OwnerStatusBadge(job: job),
+            ],
+          ),
+          if (pending ||
+              rejected ||
+              job.moderationReason.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              pending
+                  ? 'Pending review'
+                  : rejected
+                      ? 'Rejected${job.moderationReason.trim().isEmpty ? '' : ': ${job.moderationReason}'}'
+                      : job.moderationReason,
+              style: TextStyle(
+                color: rejected ? Colors.red : WebTheme.muted,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          if (statsLoader != null)
+            FutureBuilder<WebJobApplicationStats>(
+              future: statsLoader!(),
+              builder: (context, snapshot) {
+                final stats = snapshot.data;
+                if (stats == null) return const LinearProgressIndicator();
+                final left = (job.positions - stats.acceptedSlots)
+                    .clamp(0, job.positions)
+                    .toInt();
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _DetailChip(
+                        icon: Icons.assignment_outlined,
+                        label: '${stats.total} applications'),
+                    _DetailChip(
+                        icon: Icons.visibility_outlined,
+                        label: '${stats.inReview} in review'),
+                    _DetailChip(
+                        icon: Icons.local_offer_outlined,
+                        label: '${stats.offers} offers'),
+                    _DetailChip(
+                        icon: Icons.check_circle_outline,
+                        label: '${stats.acceptedSlots} hired'),
+                    _DetailChip(
+                        icon: Icons.groups_outlined,
+                        label: '$left/${job.positions} left'),
+                  ],
+                );
+              },
+            ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              OutlinedButton.icon(
+                onPressed: managing ? null : onEdit,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Edit vacancy'),
+              ),
+              if (!pending && !rejected)
+                OutlinedButton.icon(
+                  onPressed: managing ? null : onToggleActive,
+                  icon: Icon(active
+                      ? Icons.pause_circle_outline
+                      : Icons.play_circle_outline),
+                  label: Text(active ? 'Make inactive' : 'Make active'),
+                ),
+              OutlinedButton.icon(
+                onPressed: managing ? null : onViewApplications,
+                icon: const Icon(Icons.assignment_outlined),
+                label: const Text('View applications'),
+              ),
+              OutlinedButton.icon(
+                onPressed: managing ? null : onDelete,
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Delete'),
+                style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OwnerStatusBadge extends StatelessWidget {
+  const _OwnerStatusBadge({required this.job});
+
+  final Job job;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = job.moderationStatus == 'pending_review'
+        ? 'PENDING REVIEW'
+        : job.moderationStatus == 'rejected'
+            ? 'REJECTED'
+            : job.status.trim().toLowerCase() == 'active'
+                ? 'ACTIVE'
+                : 'INACTIVE';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: WebTheme.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: WebTheme.border),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
+      ),
     );
   }
 }

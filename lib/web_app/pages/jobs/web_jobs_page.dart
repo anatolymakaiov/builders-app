@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../../models/job.dart';
 import '../../services/web_data_state.dart';
+import '../../services/web_job_management_service.dart';
 import '../../services/web_jobs_data_service.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../widgets/web_page_container.dart';
 import 'web_job_details_panel.dart';
 import 'web_job_list_panel.dart';
+import 'web_post_job_page.dart';
 
 class WebJobsPage extends StatefulWidget {
   const WebJobsPage({
@@ -14,11 +16,15 @@ class WebJobsPage extends StatefulWidget {
     required this.userId,
     required this.role,
     this.onOpenProfile,
+    this.onPostJob,
+    this.onViewApplications,
   });
 
   final String userId;
   final String role;
   final void Function(String userId, String role)? onOpenProfile;
+  final VoidCallback? onPostJob;
+  final void Function(String jobId, {String? statusFilter})? onViewApplications;
 
   @override
   State<WebJobsPage> createState() => _WebJobsPageState();
@@ -26,13 +32,17 @@ class WebJobsPage extends StatefulWidget {
 
 class _WebJobsPageState extends State<WebJobsPage> {
   final service = WebJobsDataService();
+  final managementService = WebJobManagementService();
   final searchController = TextEditingController();
-  late final Stream<WebDataState<WebJobsResult>> jobsStream;
+  late Stream<WebDataState<WebJobsResult>> jobsStream;
   WebJobsMode mode = WebJobsMode.market;
   Set<String> savedJobIds = const <String>{};
   String search = '';
   String? selectedJobId;
   bool applying = false;
+  bool managing = false;
+  bool creatingJob = false;
+  Job? editingJob;
 
   bool get isEmployer => widget.role == 'employer';
   bool get isWorker => widget.role == 'worker';
@@ -41,7 +51,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
   void initState() {
     super.initState();
     mode = isEmployer ? WebJobsMode.owner : WebJobsMode.market;
-    jobsStream = service.jobs(userId: widget.userId, role: widget.role);
+    _resetJobsStream();
     _loadSavedJobs();
   }
 
@@ -67,6 +77,38 @@ class _WebJobsPageState extends State<WebJobsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (creatingJob || editingJob != null) {
+      final editedJob = editingJob;
+      return WebPostJobPage(
+        userId: widget.userId,
+        existingJob: editedJob,
+        onCancel: () => setState(() {
+          creatingJob = false;
+          editingJob = null;
+        }),
+        onDone: (jobId) {
+          setState(() {
+            creatingJob = false;
+            editingJob = null;
+            mode = WebJobsMode.owner;
+            if (jobId != null && jobId.isNotEmpty) selectedJobId = jobId;
+            _resetJobsStream();
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                editedJob == null
+                    ? 'Vacancy sent for approval'
+                    : 'Vacancy edit sent for review',
+              ),
+            ),
+          );
+        },
+        onOpenBilling: () => ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Open Billing from your profile menu.')),
+        ),
+      );
+    }
     return StreamBuilder<WebDataState<WebJobsResult>>(
       stream: jobsStream,
       builder: (context, snapshot) {
@@ -157,6 +199,39 @@ class _WebJobsPageState extends State<WebJobsPage> {
                                 selectedJob!.ownerId,
                                 'employer',
                               ),
+                      onEdit: selectedJob == null ||
+                              !isEmployer ||
+                              selectedJob.ownerId != widget.userId
+                          ? null
+                          : () => setState(() => editingJob = selectedJob),
+                      onToggleActive: selectedJob == null ||
+                              !isEmployer ||
+                              selectedJob.ownerId != widget.userId
+                          ? null
+                          : () => _setJobActive(
+                                selectedJob!,
+                                selectedJob.status.trim().toLowerCase() !=
+                                    'active',
+                              ),
+                      onDelete: selectedJob == null ||
+                              !isEmployer ||
+                              selectedJob.ownerId != widget.userId
+                          ? null
+                          : () => _deleteJob(selectedJob!),
+                      onViewApplications: selectedJob == null ||
+                              !isEmployer ||
+                              selectedJob.ownerId != widget.userId
+                          ? null
+                          : () =>
+                              widget.onViewApplications?.call(selectedJob!.id),
+                      statsLoader: selectedJob == null ||
+                              !isEmployer ||
+                              selectedJob.ownerId != widget.userId
+                          ? null
+                          : () => managementService.applicationStats(
+                                selectedJob!.id,
+                              ),
+                      managing: managing,
                     );
                     if (compact) {
                       return Column(
@@ -191,6 +266,10 @@ class _WebJobsPageState extends State<WebJobsPage> {
       return count == 1 ? '1 of your vacancies' : '$count of your vacancies';
     }
     return count == 1 ? '1 market vacancy' : '$count market vacancies';
+  }
+
+  void _resetJobsStream() {
+    jobsStream = service.jobs(userId: widget.userId, role: widget.role);
   }
 
   Future<void> _loadSavedJobs() async {
@@ -251,6 +330,69 @@ class _WebJobsPageState extends State<WebJobsPage> {
       );
     } finally {
       if (mounted) setState(() => applying = false);
+    }
+  }
+
+  Future<void> _setJobActive(Job job, bool active) async {
+    if (managing) return;
+    setState(() => managing = true);
+    try {
+      await managementService.setJobActive(job, active);
+      if (!mounted) return;
+      setState(() => _resetJobsStream());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(active ? 'Vacancy activated' : 'Vacancy made inactive'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update vacancy: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => managing = false);
+    }
+  }
+
+  Future<void> _deleteJob(Job job) async {
+    if (managing) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete vacancy'),
+        content: const Text('Delete this vacancy?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    setState(() => managing = true);
+    try {
+      await managementService.deleteJob(job);
+      if (!mounted) return;
+      setState(() {
+        selectedJobId = null;
+        _resetJobsStream();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vacancy deleted')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not delete vacancy: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => managing = false);
     }
   }
 }

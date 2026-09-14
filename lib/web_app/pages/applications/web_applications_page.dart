@@ -18,12 +18,16 @@ class WebApplicationsPage extends StatefulWidget {
     required this.role,
     this.onOpenProfile,
     this.onOpenChat,
+    this.initialJobId,
+    this.initialStatusFilter,
   });
 
   final String userId;
   final String role;
   final void Function(String userId, String role)? onOpenProfile;
   final ValueChanged<String>? onOpenChat;
+  final String? initialJobId;
+  final String? initialStatusFilter;
 
   @override
   State<WebApplicationsPage> createState() => _WebApplicationsPageState();
@@ -44,6 +48,8 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
   @override
   void initState() {
     super.initState();
+    statusFilter =
+        widget.initialStatusFilter ?? ApplicationStatusUtils.allFilter;
     applicationsStream = service.applications(
       uid: widget.userId,
       role: widget.role,
@@ -54,6 +60,8 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
   void didUpdateWidget(covariant WebApplicationsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.userId != widget.userId || oldWidget.role != widget.role) {
+      statusFilter =
+          widget.initialStatusFilter ?? ApplicationStatusUtils.allFilter;
       applicationsStream = service.applications(
         uid: widget.userId,
         role: widget.role,
@@ -197,6 +205,11 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
     final query = searchFilter.trim().toLowerCase();
     return applications.where((item) {
       if (!ApplicationStatusUtils.isStatusInFilter(item.status, statusFilter)) {
+        return false;
+      }
+      if (widget.initialJobId != null &&
+          widget.initialJobId!.isNotEmpty &&
+          item.data['jobId']?.toString() != widget.initialJobId) {
         return false;
       }
       if (query.isEmpty) return true;
