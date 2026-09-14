@@ -9,7 +9,9 @@ import '../../services/web_job_filters.dart';
 import '../../widgets/web_job_filters_dialog.dart';
 import '../../widgets/web_apply_dialog.dart';
 import '../../theme/web_breakpoints.dart';
+import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
+import '../../widgets/web_design_components.dart';
 import 'web_job_details_panel.dart';
 import 'web_job_list_panel.dart';
 import 'web_post_job_page.dart';
@@ -154,7 +156,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
       builder: (context, snapshot) {
         final state = snapshot.data;
         if (state == null || state.loading) {
-          return const Center(child: CircularProgressIndicator());
+          return const WebLoadingState(label: 'Loading vacancies');
         }
 
         final result = state.data ??
@@ -190,6 +192,20 @@ class _WebJobsPageState extends State<WebJobsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              WebPageHeader(
+                title: 'Jobs',
+                subtitle: isEmployer
+                    ? 'Manage your vacancies or explore the market.'
+                    : 'Find active construction work across the UK.',
+                actions: [
+                  if (isEmployer && widget.onPostJob != null)
+                    FilledButton.icon(
+                      onPressed: widget.onPostJob,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Post a job'),
+                    ),
+                ],
+              ),
               if (state.error != null)
                 Container(
                   margin: const EdgeInsets.only(bottom: 14),
@@ -381,10 +397,10 @@ class _WebJobsPageState extends State<WebJobsPage> {
                             managing: managing,
                           );
                     if (compact) {
-                      return Column(
+                      return ListView(
                         children: [
                           SizedBox(height: 430, child: list),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: WebSpacing.lg),
                           SizedBox(height: 760, child: detail),
                         ],
                       );
@@ -393,8 +409,13 @@ class _WebJobsPageState extends State<WebJobsPage> {
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        SizedBox(width: 410, child: list),
-                        const SizedBox(width: 22),
+                        SizedBox(
+                          width: WebBreakpoints.masterPaneWidth(
+                            constraints.maxWidth,
+                          ),
+                          child: list,
+                        ),
+                        const SizedBox(width: WebSpacing.lg),
                         Expanded(child: detail),
                       ],
                     );

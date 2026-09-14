@@ -11,6 +11,7 @@ import '../../widgets/web_report_dialog.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
+import '../../widgets/web_design_components.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
 import 'web_chat_media_widgets.dart';
@@ -101,13 +102,17 @@ class _WebChatsPageState extends State<WebChatsPage> {
         final state = snapshot.data;
         final chats = state?.data ?? const <WebChatSummary>[];
         if ((state == null || state.loading) && chats.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
+          return const WebLoadingState(label: 'Loading conversations');
         }
         _ensureSelectedChat(chats);
 
         return WebPageContainer(
           child: Column(
             children: [
+              const WebPageHeader(
+                title: 'Chats',
+                subtitle: 'Conversations about work, teams and vacancies.',
+              ),
               if (state?.error != null)
                 _ErrorBanner(
                     message: 'Could not refresh chats: ${state!.error}'),
@@ -164,18 +169,23 @@ class _WebChatsPageState extends State<WebChatsPage> {
                       ),
                     );
                     if (compact) {
-                      return Column(
+                      return ListView(
                         children: [
                           SizedBox(height: 320, child: list),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: WebSpacing.lg),
                           SizedBox(height: 700, child: thread),
                         ],
                       );
                     }
                     return Row(
                       children: [
-                        SizedBox(width: 390, child: list),
-                        const SizedBox(width: 22),
+                        SizedBox(
+                          width: WebBreakpoints.masterPaneWidth(
+                            constraints.maxWidth,
+                          ),
+                          child: list,
+                        ),
+                        const SizedBox(width: WebSpacing.lg),
                         Expanded(child: thread),
                       ],
                     );
@@ -520,7 +530,13 @@ class _ChatList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (chats.isEmpty) return const Center(child: Text('No chats yet.'));
+    if (chats.isEmpty) {
+      return const WebEmptyState(
+        icon: Icons.chat_bubble_outline,
+        title: 'No conversations yet',
+        message: 'Your work conversations will appear here.',
+      );
+    }
     return ListView.separated(
       padding: const EdgeInsets.all(14),
       itemCount: chats.length,
@@ -530,12 +546,12 @@ class _ChatList extends StatelessWidget {
         final selected = chat.id == selectedChatId;
         return InkWell(
           onTap: () => onSelected(chat.id),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(WebRadii.card),
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: selected ? const Color(0xFFFFF6E9) : Colors.white,
-              borderRadius: BorderRadius.circular(14),
+              color: selected ? WebTheme.selected : WebTheme.surface,
+              borderRadius: BorderRadius.circular(WebRadii.card),
               border: Border.all(
                 color: selected ? WebTheme.green : WebTheme.border,
               ),
@@ -637,7 +653,10 @@ class _ThreadStreamView extends StatelessWidget {
   Widget build(BuildContext context) {
     final currentStream = stream;
     if (currentStream == null) {
-      return const Center(child: Text('Select a conversation.'));
+      return const WebEmptyState(
+        icon: Icons.forum_outlined,
+        title: 'Select a conversation',
+      );
     }
     return StreamBuilder<WebDataState<WebChatThread?>>(
       stream: currentStream,
@@ -646,10 +665,13 @@ class _ThreadStreamView extends StatelessWidget {
         final state = snapshot.data;
         final thread = state?.data ?? lastThread;
         if ((state == null || state.loading) && thread == null) {
-          return const Center(child: CircularProgressIndicator());
+          return const WebLoadingState(label: 'Loading messages');
         }
         if (thread == null) {
-          return const Center(child: Text('Conversation is unavailable.'));
+          return const WebEmptyState(
+            icon: Icons.forum_outlined,
+            title: 'Conversation is unavailable',
+          );
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           onThreadUpdated(thread);

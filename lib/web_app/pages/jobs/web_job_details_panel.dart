@@ -5,6 +5,7 @@ import '../../services/web_job_management_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
+import '../../widgets/web_design_components.dart';
 
 class WebJobDetailsPanel extends StatelessWidget {
   const WebJobDetailsPanel({
@@ -54,7 +55,7 @@ class WebJobDetailsPanel extends StatelessWidget {
     return WebPanel(
       padding: EdgeInsets.zero,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(WebRadii.panel),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -352,7 +353,7 @@ class _OwnerActions extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: WebTheme.surfaceAlt,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(WebRadii.card),
         border: Border.all(color: WebTheme.border),
       ),
       child: Column(
@@ -469,18 +470,7 @@ class _OwnerStatusBadge extends StatelessWidget {
             : job.status.trim().toLowerCase() == 'active'
                 ? 'ACTIVE'
                 : 'INACTIVE';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: WebTheme.surface,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: WebTheme.border),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
-      ),
-    );
+    return WebStatusChip(label: label);
   }
 }
 

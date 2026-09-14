@@ -19,6 +19,8 @@ import '../../services/web_role_identity_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
+import '../../widgets/web_design_components.dart';
+import '../../theme/web_breakpoints.dart';
 
 enum WebAccountDestination {
   account('My Account', Icons.account_circle_outlined),
@@ -93,65 +95,90 @@ class _WebAccountPageState extends State<WebAccountPage> {
 
   @override
   Widget build(BuildContext context) {
-    final destinations = WebAccountDestination.values.where((item) {
-      if (item == WebAccountDestination.subscriptions) {
-        return widget.role == 'worker';
-      }
-      if (item == WebAccountDestination.billing) {
-        return widget.role == 'employer';
-      }
-      return true;
-    }).toList();
-
     return WebPageContainer(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _Header(title: selected.label, onClose: widget.onClose),
           Expanded(
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 300,
-                  child: WebPanel(
-                    padding: EdgeInsets.zero,
-                    child: ListView(
-                      children: [
-                        if (identity != null)
-                          _IdentityTile(identity: identity!),
-                        const Divider(height: 1),
-                        for (final destination in destinations)
-                          ListTile(
-                            leading: Icon(destination.icon),
-                            selected: destination == selected,
-                            selectedTileColor: WebTheme.greenSoft,
-                            title: Text(destination.label),
-                            onTap: () => setState(() => selected = destination),
-                          ),
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: const Icon(Icons.logout, color: Colors.red),
-                          title: const Text(
-                            'Logout',
-                            style: TextStyle(color: Colors.red),
-                          ),
-                          onTap: _logout,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final compact =
+                    constraints.maxWidth < WebBreakpoints.compactWidth;
+                final navigation = WebPanel(
+                  padding: EdgeInsets.zero,
+                  child: ListView(
+                    children: [
+                      if (identity != null) _IdentityTile(identity: identity!),
+                      const Divider(height: 1),
+                      const _AccountGroupLabel('PROFILE'),
+                      _accountDestination(WebAccountDestination.account),
+                      const _AccountGroupLabel('WORK'),
+                      if (widget.role == 'employer')
+                        _accountDestination(WebAccountDestination.billing),
+                      if (widget.role == 'worker')
+                        _accountDestination(
+                          WebAccountDestination.subscriptions,
                         ),
-                      ],
-                    ),
+                      const _AccountGroupLabel('COMMUNICATION'),
+                      _accountDestination(WebAccountDestination.adminInbox),
+                      _accountDestination(WebAccountDestination.support),
+                      const _AccountGroupLabel('SYSTEM'),
+                      _accountDestination(WebAccountDestination.settings),
+                      _accountDestination(WebAccountDestination.about),
+                      const _AccountGroupLabel('SESSION'),
+                      _accountDestination(
+                        WebAccountDestination.deleteAccount,
+                        destructive: true,
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.logout, color: Colors.red),
+                        title: const Text(
+                          'Logout',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                        onTap: _logout,
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 22),
-                Expanded(
-                  child: WebPanel(
-                    child: _content(),
-                  ),
-                ),
-              ],
+                );
+                final content = WebPanel(child: _content());
+                if (compact) {
+                  return ListView(
+                    children: [
+                      SizedBox(height: 430, child: navigation),
+                      const SizedBox(height: WebSpacing.lg),
+                      SizedBox(height: 760, child: content),
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    SizedBox(width: 280, child: navigation),
+                    const SizedBox(width: WebSpacing.lg),
+                    Expanded(child: content),
+                  ],
+                );
+              },
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _accountDestination(
+    WebAccountDestination destination, {
+    bool destructive = false,
+  }) {
+    final color = destructive ? WebTheme.danger : null;
+    return ListTile(
+      leading: Icon(destination.icon, color: color),
+      selected: destination == selected,
+      selectedTileColor: WebTheme.selected,
+      title: Text(destination.label, style: TextStyle(color: color)),
+      onTap: () => setState(() => selected = destination),
     );
   }
 
@@ -283,6 +310,11 @@ class _BillingViewState extends State<_BillingView> {
               child: Text('Billing / Subscription',
                   style: Theme.of(context).textTheme.headlineMedium),
             ),
+            WebStatusChip(
+              label: configured ? 'Direct Debit active' : 'Setup required',
+              tone: configured ? WebStatusTone.success : WebStatusTone.warning,
+            ),
+            const SizedBox(width: WebSpacing.sm),
             OutlinedButton.icon(
               onPressed: busy ? null : _refresh,
               icon: const Icon(Icons.refresh),
@@ -335,6 +367,10 @@ class _BillingViewState extends State<_BillingView> {
                 onPressed: busy ? null : _cancelSubscription,
                 icon: const Icon(Icons.cancel_outlined),
                 label: const Text('Cancel Direct Debit'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: WebTheme.danger,
+                  side: const BorderSide(color: WebTheme.danger),
+                ),
               ),
             ],
           ),
@@ -489,41 +525,53 @@ class _AdminInboxViewState extends State<_AdminInboxView> {
                   (thread) => thread?.key == selectedKey,
                   orElse: () => null,
                 );
-        return Row(
-          children: [
-            SizedBox(
-              width: 360,
-              child: _ThreadList(
-                loading: state == null || state.loading,
-                threads: threads,
-                selectedKey: selected?.key,
-                onSelected: _selectThread,
-              ),
-            ),
-            const VerticalDivider(width: 28),
-            Expanded(
-              child: selected == null
-                  ? Center(
-                      child: Text(threads.isEmpty
-                          ? 'No admin messages yet'
-                          : 'Select a message'),
-                    )
-                  : _AdminThreadDetail(
-                      thread: selected!,
-                      controller: replyController,
-                      sending: sending || actionBusy,
-                      pendingAttachments: pendingAttachments,
-                      onAttach: _pickAttachments,
-                      onRemoveAttachment: (index) => setState(
-                        () => pendingAttachments.removeAt(index),
-                      ),
-                      onSend: _sendReply,
-                      onToggleImportant: _toggleImportant,
-                      onToggleRead: _toggleRead,
-                      onDelete: _deleteThread,
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < WebBreakpoints.narrow;
+            final list = _ThreadList(
+              loading: state == null || state.loading,
+              threads: threads,
+              selectedKey: selected?.key,
+              onSelected: _selectThread,
+            );
+            final detail = selected == null
+                ? WebEmptyState(
+                    icon: Icons.mark_email_unread_outlined,
+                    title: threads.isEmpty
+                        ? 'No admin messages yet'
+                        : 'Select a message',
+                  )
+                : _AdminThreadDetail(
+                    thread: selected!,
+                    controller: replyController,
+                    sending: sending || actionBusy,
+                    pendingAttachments: pendingAttachments,
+                    onAttach: _pickAttachments,
+                    onRemoveAttachment: (index) => setState(
+                      () => pendingAttachments.removeAt(index),
                     ),
-            ),
-          ],
+                    onSend: _sendReply,
+                    onToggleImportant: _toggleImportant,
+                    onToggleRead: _toggleRead,
+                    onDelete: _deleteThread,
+                  );
+            if (compact) {
+              return Column(
+                children: [
+                  SizedBox(height: 260, child: list),
+                  const Divider(height: WebSpacing.lg),
+                  Expanded(child: detail),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                SizedBox(width: 340, child: list),
+                const VerticalDivider(width: WebSpacing.lg),
+                Expanded(child: detail),
+              ],
+            );
+          },
         );
       },
     );
@@ -1248,6 +1296,31 @@ class _IdentityTile extends StatelessWidget {
   }
 }
 
+class _AccountGroupLabel extends StatelessWidget {
+  const _AccountGroupLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        WebSpacing.md,
+        WebSpacing.md,
+        WebSpacing.md,
+        WebSpacing.xs,
+      ),
+      child: Text(
+        label,
+        style: WebTypography.caption.copyWith(
+          color: WebTheme.subtleText,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
   const _Header({required this.title, required this.onClose});
 
@@ -1256,14 +1329,13 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Row(
-        children: [
-          IconButton(onPressed: onClose, icon: const Icon(Icons.arrow_back)),
-          const SizedBox(width: 8),
-          Text(title, style: Theme.of(context).textTheme.headlineMedium),
-        ],
+    return WebPageHeader(
+      title: title,
+      subtitle: 'Manage your profile, work preferences and account services.',
+      leading: IconButton(
+        tooltip: 'Back',
+        onPressed: onClose,
+        icon: const Icon(Icons.arrow_back),
       ),
     );
   }
@@ -1315,12 +1387,12 @@ class _PlanCard extends StatelessWidget {
     final amount = BillingService.readInt(plan['amountPence']);
     return InkWell(
       onTap: busy || selected ? null : onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(WebRadii.card),
       child: Container(
         width: 210,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(WebRadii.card),
           border:
               Border.all(color: selected ? WebTheme.green : WebTheme.border),
           color: selected ? WebTheme.greenSoft : WebTheme.surfaceAlt,

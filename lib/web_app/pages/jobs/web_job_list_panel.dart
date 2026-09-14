@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../models/job.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_panel.dart';
+import '../../widgets/web_remote_image.dart';
+import '../../widgets/web_design_components.dart';
 
 class WebJobListPanel extends StatelessWidget {
   const WebJobListPanel({
@@ -54,7 +56,11 @@ class WebJobListPanel extends StatelessWidget {
           const Divider(height: 1, color: WebTheme.border),
           Expanded(
             child: jobs.isEmpty
-                ? const Center(child: Text('No jobs to display.'))
+                ? const WebEmptyState(
+                    icon: Icons.work_outline,
+                    title: 'No vacancies to display',
+                    message: 'Try adjusting your search or filters.',
+                  )
                 : ListView.separated(
                     padding: const EdgeInsets.all(12),
                     itemCount: jobs.length,
@@ -93,13 +99,13 @@ class _WebJobCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final location = job.fullAddress;
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(WebRadii.card),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: selected ? WebTheme.greenSoft : WebTheme.surfaceAlt,
-          borderRadius: BorderRadius.circular(14),
+          color: selected ? WebTheme.selected : WebTheme.surface,
+          borderRadius: BorderRadius.circular(WebRadii.card),
           border: Border.all(
             color: selected ? WebTheme.green : WebTheme.border,
             width: selected ? 1.5 : 1,
@@ -111,6 +117,12 @@ class _WebJobCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                WebCircleImage(
+                  url: job.companyLogo,
+                  size: 44,
+                  fallbackIcon: Icons.business_outlined,
+                ),
+                const SizedBox(width: WebSpacing.sm),
                 Expanded(
                   child: Text(
                     job.displayTitle,
@@ -197,7 +209,7 @@ class _Chip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: WebTheme.surface,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(WebRadii.tag),
         border: Border.all(color: WebTheme.border),
       ),
       child: Text(

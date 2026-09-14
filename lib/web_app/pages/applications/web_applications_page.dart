@@ -8,6 +8,7 @@ import '../../services/web_data_state.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
+import '../../widgets/web_design_components.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
 
@@ -85,7 +86,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
       builder: (context, snapshot) {
         final state = snapshot.data;
         if (state == null || state.loading) {
-          return const Center(child: CircularProgressIndicator());
+          return const WebLoadingState(label: 'Loading applications');
         }
         final loadedApplications =
             state.data ?? const <WebApplicationSummary>[];
@@ -114,6 +115,12 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
         return WebPageContainer(
           child: Column(
             children: [
+              WebPageHeader(
+                title: 'Applications',
+                subtitle: isWorker
+                    ? 'Track your single and team applications.'
+                    : 'Review candidates, teams and offer activity.',
+              ),
               if (state.error != null)
                 _ErrorBanner(
                   message: 'Could not refresh applications: ${state.error}',
@@ -181,18 +188,23 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                       ),
                     );
                     if (compact) {
-                      return Column(
+                      return ListView(
                         children: [
                           SizedBox(height: 360, child: list),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: WebSpacing.lg),
                           SizedBox(height: 620, child: detail),
                         ],
                       );
                     }
                     return Row(
                       children: [
-                        SizedBox(width: 390, child: list),
-                        const SizedBox(width: 22),
+                        SizedBox(
+                          width: WebBreakpoints.masterPaneWidth(
+                            constraints.maxWidth,
+                          ),
+                          child: list,
+                        ),
+                        const SizedBox(width: WebSpacing.lg),
                         Expanded(child: detail),
                       ],
                     );
@@ -274,40 +286,54 @@ class _ApplicationFilters extends StatelessWidget {
       ApplicationStatusUtils.rejectedFilter,
       ApplicationStatusUtils.withdrawnFilter,
     ];
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        SegmentedButton<String>(
-          showSelectedIcon: false,
-          segments: [
-            for (final filter in filters)
-              ButtonSegment(
-                value: filter,
-                label: Text(_filterLabel(filter, role)),
-              ),
-          ],
-          selected: {statusFilter},
-          onSelectionChanged: (value) => onStatusChanged(value.first),
-        ),
-        SizedBox(
-          width: 260,
-          child: TextField(
-            controller: TextEditingController(text: searchFilter)
-              ..selection = TextSelection.collapsed(
-                offset: searchFilter.length,
-              ),
-            onChanged: onSearchChanged,
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search),
-              hintText: 'Job, trade or site',
-              border: OutlineInputBorder(),
+    final statuses = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SegmentedButton<String>(
+        showSelectedIcon: false,
+        segments: [
+          for (final filter in filters)
+            ButtonSegment(
+              value: filter,
+              label: Text(_filterLabel(filter, role)),
             ),
-          ),
+        ],
+        selected: {statusFilter},
+        onSelectionChanged: (value) => onStatusChanged(value.first),
+      ),
+    );
+    final search = SizedBox(
+      width: 260,
+      child: TextFormField(
+        initialValue: searchFilter,
+        onChanged: onSearchChanged,
+        decoration: const InputDecoration(
+          isDense: true,
+          prefixIcon: Icon(Icons.search),
+          hintText: 'Job, trade or site',
+          border: OutlineInputBorder(),
         ),
-      ],
+      ),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < WebBreakpoints.narrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              statuses,
+              const SizedBox(height: WebSpacing.sm),
+              SizedBox(width: double.infinity, child: search),
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: statuses),
+            const SizedBox(width: WebSpacing.sm),
+            search,
+          ],
+        );
+      },
     );
   }
 
@@ -386,7 +412,11 @@ class _ApplicationList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (applications.isEmpty) {
-      return const Center(child: Text('No applications yet.'));
+      return const WebEmptyState(
+        icon: Icons.assignment_outlined,
+        title: 'No applications yet',
+        message: 'Applications matching this view will appear here.',
+      );
     }
     return ListView.separated(
       padding: const EdgeInsets.all(14),
@@ -397,12 +427,12 @@ class _ApplicationList extends StatelessWidget {
         final selected = application.id == selectedId;
         return InkWell(
           onTap: () => onSelected(application.id),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(WebRadii.card),
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: selected ? const Color(0xFFFFF6E9) : Colors.white,
-              borderRadius: BorderRadius.circular(14),
+              color: selected ? WebTheme.selected : WebTheme.surface,
+              borderRadius: BorderRadius.circular(WebRadii.card),
               border: Border.all(
                 color: selected ? WebTheme.green : WebTheme.border,
               ),
@@ -997,30 +1027,9 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final normalized = ApplicationStatusUtils.normalizeStatus(status);
-    final color = switch (normalized) {
-      'pending' => const Color(0xFF2563EB),
-      'negotiation' => const Color(0xFF7C3AED),
-      'offer_sent' => const Color(0xFFB45309),
-      'offer_accepted' => const Color(0xFF217A42),
-      'offer_rejected' || 'offer_withdrawn' || 'withdrawn' => WebTheme.muted,
-      'rejected' => Colors.red,
-      _ => WebTheme.green,
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        ApplicationStatusUtils.getStatusDisplayLabel(status, role),
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
-        ),
-      ),
+    return WebStatusChip(
+      label: ApplicationStatusUtils.getStatusDisplayLabel(status, role),
+      tone: webStatusTone(ApplicationStatusUtils.normalizeStatus(status)),
     );
   }
 }
@@ -1399,7 +1408,7 @@ class _DetailSection extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: WebTheme.surfaceAlt,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(WebRadii.card),
         border: Border.all(color: WebTheme.border),
       ),
       child: Column(

@@ -14,6 +14,7 @@ import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
+import '../../widgets/web_design_components.dart';
 import 'web_profile_gallery.dart';
 import 'web_worker_reviews.dart';
 
@@ -175,6 +176,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
                           child: const Text('View Administrator Message'))
                     ],
                   ),
+                if (!ownProfile) const SizedBox(height: WebSpacing.md),
                 if (!ownProfile)
                   Wrap(spacing: 10, children: [
                     OutlinedButton.icon(
@@ -391,12 +393,15 @@ class _ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final small = MediaQuery.sizeOf(context).width < WebBreakpoints.narrow;
+    final avatarSize = small ? 112.0 : 150.0;
     return WebPanel(
       padding: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(WebRadii.panel),
         child: SizedBox(
-          height: 320,
+          height: small ? 280 : 320,
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -432,32 +437,48 @@ class _ProfileHeader extends StatelessWidget {
                       ),
               ),
               Positioned(
-                right: 22,
+                right: small ? 14 : 22,
                 top: 22,
                 child: Wrap(
                   spacing: 10,
                   children: [
                     if (onChangeHeader != null)
-                      FilledButton.tonalIcon(
-                        onPressed: onChangeHeader,
-                        icon: const Icon(
-                          Icons.photo_size_select_actual_outlined,
+                      if (small)
+                        IconButton.filledTonal(
+                          tooltip: 'Change header',
+                          onPressed: onChangeHeader,
+                          icon: const Icon(
+                            Icons.photo_size_select_actual_outlined,
+                          ),
+                        )
+                      else
+                        FilledButton.tonalIcon(
+                          onPressed: onChangeHeader,
+                          icon: const Icon(
+                            Icons.photo_size_select_actual_outlined,
+                          ),
+                          label: const Text('Header'),
                         ),
-                        label: const Text('Header'),
-                      ),
                     if (onEdit != null)
-                      FilledButton.icon(
-                        onPressed: onEdit,
-                        icon: const Icon(Icons.edit_outlined),
-                        label: const Text('Edit profile'),
-                      ),
+                      if (small)
+                        IconButton.filled(
+                          tooltip: 'Edit profile',
+                          onPressed: onEdit,
+                          icon: const Icon(Icons.edit_outlined),
+                        )
+                      else
+                        FilledButton.icon(
+                          onPressed: onEdit,
+                          icon: const Icon(Icons.edit_outlined),
+                          label: const Text('Edit profile'),
+                        ),
                   ],
                 ),
               ),
               Positioned(
-                left: 30,
-                right: 30,
-                bottom: 28,
+                left: small ? 16 : 30,
+                right: small ? 16 : 30,
+                bottom: small ? 20 : 28,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -465,7 +486,7 @@ class _ProfileHeader extends StatelessWidget {
                       children: [
                         WebCircleImage(
                           url: profile.avatarUrl,
-                          size: 150,
+                          size: avatarSize,
                           fallbackIcon: role == 'employer'
                               ? Icons.business_outlined
                               : Icons.person_outline,
@@ -484,7 +505,7 @@ class _ProfileHeader extends StatelessWidget {
                           ),
                       ],
                     ),
-                    const SizedBox(width: 24),
+                    SizedBox(width: small ? 16 : 24),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -494,9 +515,9 @@ class _ProfileHeader extends StatelessWidget {
                             profile.displayName,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: Colors.white,
-                              fontSize: 34,
+                              fontSize: small ? 26 : 34,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
@@ -859,7 +880,7 @@ class _TeamsList extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: WebTheme.surfaceAlt,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(WebRadii.card),
             border: Border.all(color: WebTheme.border),
           ),
           child: Column(
@@ -973,13 +994,13 @@ class _CompanyJobsList extends StatelessWidget {
         return InkWell(
           onTap:
               onOpenJob == null ? null : () => onOpenJob!(job.id, ownProfile),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(WebRadii.card),
           child: Container(
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: WebTheme.surfaceAlt,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(WebRadii.card),
               border: Border.all(color: WebTheme.border),
             ),
             child: Row(
@@ -1589,21 +1610,7 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF6EF),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label.replaceAll('_', ' '),
-        style: const TextStyle(
-          color: Color(0xFF217A42),
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
-        ),
-      ),
-    );
+    return WebStatusChip(label: label.replaceAll('_', ' '));
   }
 }
 

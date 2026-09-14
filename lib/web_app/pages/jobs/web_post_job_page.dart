@@ -10,6 +10,7 @@ import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
+import '../../widgets/web_design_components.dart';
 
 class WebPostJobPage extends StatefulWidget {
   const WebPostJobPage({
@@ -133,22 +134,17 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                IconButton.filledTonal(
-                  onPressed: saving ? null : widget.onCancel,
-                  icon: const Icon(Icons.arrow_back),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    editing ? 'Edit vacancy' : 'Post a job',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                ),
-              ],
+            WebPageHeader(
+              title: editing ? 'Edit vacancy' : 'Post a job',
+              subtitle: editing
+                  ? 'Update vacancy details and submit changes for review.'
+                  : 'Create a clear vacancy for qualified construction workers.',
+              leading: IconButton(
+                tooltip: 'Back',
+                onPressed: saving ? null : widget.onCancel,
+                icon: const Icon(Icons.arrow_back),
+              ),
             ),
-            const SizedBox(height: 18),
             if (error != null) _ErrorBanner(message: error!),
             LayoutBuilder(
               builder: (context, constraints) {

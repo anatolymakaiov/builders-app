@@ -6,6 +6,8 @@ import '../../services/web_data_state.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
+import '../../widgets/web_design_components.dart';
+import '../../theme/web_theme.dart';
 import '../jobs/web_job_details_panel.dart';
 import '../jobs/web_job_list_panel.dart';
 
@@ -77,7 +79,7 @@ class _WebSavedJobsPageState extends State<WebSavedJobsPage> {
                     final list = WebPanel(
                       padding: EdgeInsets.zero,
                       child: (state == null || state.loading) && jobs.isEmpty
-                          ? const Center(child: CircularProgressIndicator())
+                          ? const WebLoadingState(label: 'Loading saved jobs')
                           : WebJobListPanel(
                               jobs: jobs,
                               selectedJobId: selectedJobId,
@@ -108,18 +110,23 @@ class _WebSavedJobsPageState extends State<WebSavedJobsPage> {
                                   ),
                     );
                     if (compact) {
-                      return Column(
+                      return ListView(
                         children: [
                           SizedBox(height: 360, child: list),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: WebSpacing.lg),
                           SizedBox(height: 680, child: detail),
                         ],
                       );
                     }
                     return Row(
                       children: [
-                        SizedBox(width: 410, child: list),
-                        const SizedBox(width: 22),
+                        SizedBox(
+                          width: WebBreakpoints.masterPaneWidth(
+                            constraints.maxWidth,
+                          ),
+                          child: list,
+                        ),
+                        const SizedBox(width: WebSpacing.lg),
                         Expanded(child: detail),
                       ],
                     );
@@ -171,14 +178,13 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Row(
-        children: [
-          IconButton(onPressed: onClose, icon: const Icon(Icons.arrow_back)),
-          const SizedBox(width: 8),
-          Text(title, style: Theme.of(context).textTheme.headlineMedium),
-        ],
+    return WebPageHeader(
+      title: title,
+      subtitle: 'Vacancies you saved for later.',
+      leading: IconButton(
+        tooltip: 'Back',
+        onPressed: onClose,
+        icon: const Icon(Icons.arrow_back),
       ),
     );
   }

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../services/web_account_data_service.dart';
 import '../../services/web_data_state.dart';
 import '../../theme/web_theme.dart';
+import '../../theme/web_breakpoints.dart';
+import '../../widgets/web_design_components.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
 
@@ -75,32 +77,52 @@ class _WebNotificationsPageState extends State<WebNotificationsPage> {
                   message: 'Could not refresh notifications.',
                 ),
               Expanded(
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 430,
-                      child: WebPanel(
-                        padding: EdgeInsets.zero,
-                        child: _NotificationList(
-                          loading: state == null || state.loading,
-                          notifications: notifications,
-                          selectedId: selected?.id,
-                          onSelected: _openNotification,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact =
+                        constraints.maxWidth < WebBreakpoints.compactWidth;
+                    final list = WebPanel(
+                      padding: EdgeInsets.zero,
+                      child: _NotificationList(
+                        loading: state == null || state.loading,
+                        notifications: notifications,
+                        selectedId: selected?.id,
+                        onSelected: _openNotification,
+                      ),
+                    );
+                    final detail = WebPanel(
+                      child: selected == null
+                          ? const WebEmptyState(
+                              icon: Icons.notifications_none,
+                              title: 'No notifications yet',
+                            )
+                          : _NotificationDetail(
+                              notification: selected!,
+                              onOpen: () => _routeSelected(selected!),
+                            ),
+                    );
+                    if (compact) {
+                      return ListView(
+                        children: [
+                          SizedBox(height: 360, child: list),
+                          const SizedBox(height: WebSpacing.lg),
+                          SizedBox(height: 480, child: detail),
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        SizedBox(
+                          width: WebBreakpoints.masterPaneWidth(
+                            constraints.maxWidth,
+                          ),
+                          child: list,
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 22),
-                    Expanded(
-                      child: WebPanel(
-                        child: selected == null
-                            ? const Center(child: Text('No notifications yet'))
-                            : _NotificationDetail(
-                                notification: selected!,
-                                onOpen: () => _routeSelected(selected!),
-                              ),
-                      ),
-                    ),
-                  ],
+                        const SizedBox(width: WebSpacing.lg),
+                        Expanded(child: detail),
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
@@ -274,19 +296,15 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Row(
-        children: [
-          IconButton(onPressed: onClose, icon: const Icon(Icons.arrow_back)),
-          const SizedBox(width: 8),
-          Expanded(
-            child:
-                Text(title, style: Theme.of(context).textTheme.headlineMedium),
-          ),
-          if (action != null) action!,
-        ],
+    return WebPageHeader(
+      title: title,
+      subtitle: 'Updates about applications, offers, work and your account.',
+      leading: IconButton(
+        tooltip: 'Back',
+        onPressed: onClose,
+        icon: const Icon(Icons.arrow_back),
       ),
+      actions: [if (action != null) action!],
     );
   }
 }

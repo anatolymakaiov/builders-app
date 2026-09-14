@@ -90,6 +90,8 @@ class _WebShellState extends State<WebShell> {
                         initialJobId: initialJobId,
                         initialOwnerMode: initialJobOwnerMode,
                         onOpenProfile: _openProfile,
+                        onPostJob:
+                            widget.role == 'employer' ? _openPostJob : null,
                         onViewApplications: _openApplications,
                       ),
                     WebSection.map => WebMapPage(

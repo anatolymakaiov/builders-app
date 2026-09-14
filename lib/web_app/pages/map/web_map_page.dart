@@ -16,6 +16,8 @@ import '../../services/web_jobs_data_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
+import '../../widgets/web_design_components.dart';
+import '../../theme/web_breakpoints.dart';
 
 class WebMapPage extends StatefulWidget {
   const WebMapPage({
@@ -73,7 +75,7 @@ class _WebMapPageState extends State<WebMapPage> {
       builder: (context, snapshot) {
         final state = snapshot.data;
         if (state == null || state.loading) {
-          return const Center(child: CircularProgressIndicator());
+          return const WebLoadingState(label: 'Loading vacancy map');
         }
         final result = state.data ??
             const WebJobsResult(publicJobs: <Job>[], ownerJobs: <Job>[]);
@@ -88,149 +90,167 @@ class _WebMapPageState extends State<WebMapPage> {
         }
 
         return WebPageContainer(
-          padding: const EdgeInsets.fromLTRB(24, 22, 24, 30),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (state.error != null)
                 _ErrorBanner(
                     message: 'Could not refresh map jobs: ${state.error}'),
-              Wrap(spacing: 10, children: [
-                OutlinedButton.icon(
-                    icon: const Icon(Icons.tune),
-                    label: const Text('Trade filters'),
-                    onPressed: () async {
-                      final next = await showDialog<WebJobFilters>(
-                          context: context,
-                          builder: (_) => WebJobFiltersDialog(
-                              current: filters, rolesOnly: true));
-                      if (mounted && next != null) {
-                        setState(() => filters = next);
-                      }
-                    }),
-                OutlinedButton.icon(
-                    icon: const Icon(Icons.open_in_new),
-                    label: const Text('View selected vacancy'),
-                    onPressed: selectedJobId == null
-                        ? null
-                        : () => _openJob(mapJobs
-                            .firstWhere((job) => job.id == selectedJobId))),
-              ]),
-              const SizedBox(height: 10),
+              WebPageHeader(
+                title: 'Map',
+                subtitle: '${mapJobs.length} active vacancies in this area.',
+                actions: [
+                  OutlinedButton.icon(
+                      icon: const Icon(Icons.tune),
+                      label: const Text('Trade filters'),
+                      onPressed: () async {
+                        final next = await showDialog<WebJobFilters>(
+                            context: context,
+                            builder: (_) => WebJobFiltersDialog(
+                                current: filters, rolesOnly: true));
+                        if (mounted && next != null) {
+                          setState(() => filters = next);
+                        }
+                      }),
+                  OutlinedButton.icon(
+                      icon: const Icon(Icons.open_in_new),
+                      label: const Text('View selected vacancy'),
+                      onPressed: selectedJobId == null
+                          ? null
+                          : () => _openJob(mapJobs
+                              .firstWhere((job) => job.id == selectedJobId))),
+                ],
+              ),
               Expanded(
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 410,
-                      child: _MapResultsPanel(
-                        jobs: mapJobs,
-                        selectedJobId: selectedJobId,
-                        controller: listController,
-                        searchController: searchController,
-                        search: search,
-                        userLocation: userLocation,
-                        onSearchChanged: (value) {
-                          setState(() => search = value);
-                        },
-                        onSelected: _selectJobFromList,
-                      ),
-                    ),
-                    const SizedBox(width: 18),
-                    Expanded(
-                      child: WebPanel(
-                        padding: EdgeInsets.zero,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              _MapCanvas(
-                                jobs: mapJobs,
-                                selectedJobId: selectedJobId,
-                                userLocation: userLocation,
-                                mapController: mapController,
-                                onPositionChanged: (bounds, hasGesture) {
-                                  pendingBounds = bounds;
-                                  if (hasGesture && !showSearchArea) {
-                                    setState(() => showSearchArea = true);
-                                  }
-                                },
-                                onMarkerSelected: _selectJobFromMarker,
-                              ),
-                              if (showSearchArea)
-                                Positioned(
-                                  top: 18,
-                                  left: 0,
-                                  right: 0,
-                                  child: Center(
-                                    child: FilledButton.icon(
-                                      onPressed: () {
-                                        setState(() {
-                                          activeBounds = pendingBounds;
-                                          showSearchArea = false;
-                                        });
-                                      },
-                                      icon: const Icon(Icons.search),
-                                      label: const Text('Search this area'),
-                                    ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact =
+                        constraints.maxWidth < WebBreakpoints.compactWidth;
+                    final results = _MapResultsPanel(
+                      jobs: mapJobs,
+                      selectedJobId: selectedJobId,
+                      controller: listController,
+                      searchController: searchController,
+                      search: search,
+                      userLocation: userLocation,
+                      onSearchChanged: (value) {
+                        setState(() => search = value);
+                      },
+                      onSelected: _selectJobFromList,
+                    );
+                    final map = WebPanel(
+                      padding: EdgeInsets.zero,
+                      clipBehavior: Clip.antiAlias,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(WebRadii.panel),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            _MapCanvas(
+                              jobs: mapJobs,
+                              selectedJobId: selectedJobId,
+                              userLocation: userLocation,
+                              mapController: mapController,
+                              onPositionChanged: (bounds, hasGesture) {
+                                pendingBounds = bounds;
+                                if (hasGesture && !showSearchArea) {
+                                  setState(() => showSearchArea = true);
+                                }
+                              },
+                              onMarkerSelected: _selectJobFromMarker,
+                            ),
+                            if (showSearchArea)
+                              Positioned(
+                                top: 18,
+                                left: 0,
+                                right: 0,
+                                child: Center(
+                                  child: FilledButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        activeBounds = pendingBounds;
+                                        showSearchArea = false;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.search),
+                                    label: const Text('Search this area'),
                                   ),
                                 ),
-                              Positioned(
-                                right: 18,
-                                top: 18,
-                                child: Column(
-                                  children: [
-                                    FloatingActionButton.small(
-                                      heroTag: 'web-map-zoom-in',
-                                      onPressed: () => mapController.move(
-                                        mapController.camera.center,
-                                        mapController.camera.zoom + 1,
-                                      ),
-                                      child: const Icon(Icons.add),
+                              ),
+                            Positioned(
+                              right: 18,
+                              top: 18,
+                              child: Column(
+                                children: [
+                                  FloatingActionButton.small(
+                                    heroTag: 'web-map-zoom-in',
+                                    onPressed: () => mapController.move(
+                                      mapController.camera.center,
+                                      mapController.camera.zoom + 1,
                                     ),
+                                    child: const Icon(Icons.add),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  FloatingActionButton.small(
+                                    heroTag: 'web-map-zoom-out',
+                                    onPressed: () => mapController.move(
+                                      mapController.camera.center,
+                                      mapController.camera.zoom - 1,
+                                    ),
+                                    child: const Icon(Icons.remove),
+                                  ),
+                                  if (isWorker) ...[
                                     const SizedBox(height: 10),
                                     FloatingActionButton.small(
-                                      heroTag: 'web-map-zoom-out',
-                                      onPressed: () => mapController.move(
-                                        mapController.camera.center,
-                                        mapController.camera.zoom - 1,
-                                      ),
-                                      child: const Icon(Icons.remove),
+                                      heroTag: 'web-map-location',
+                                      onPressed:
+                                          loadingLocation ? null : _locateUser,
+                                      child: loadingLocation
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : const Icon(Icons.my_location),
                                     ),
-                                    if (isWorker) ...[
-                                      const SizedBox(height: 10),
-                                      FloatingActionButton.small(
-                                        heroTag: 'web-map-location',
-                                        onPressed: loadingLocation
-                                            ? null
-                                            : _locateUser,
-                                        child: loadingLocation
-                                            ? const SizedBox(
-                                                width: 18,
-                                                height: 18,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                ),
-                                              )
-                                            : const Icon(Icons.my_location),
-                                      ),
-                                    ],
                                   ],
-                                ),
+                                ],
                               ),
-                              if (locationError != null)
-                                Positioned(
-                                  right: 18,
-                                  bottom: 18,
-                                  child: _MapNotice(text: locationError!),
-                                ),
-                            ],
-                          ),
+                            ),
+                            if (locationError != null)
+                              Positioned(
+                                right: 18,
+                                bottom: 18,
+                                child: _MapNotice(text: locationError!),
+                              ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
+                    );
+                    if (compact) {
+                      return ListView(
+                        children: [
+                          SizedBox(height: 360, child: results),
+                          const SizedBox(height: WebSpacing.lg),
+                          SizedBox(height: 560, child: map),
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        SizedBox(
+                          width: WebBreakpoints.masterPaneWidth(
+                            constraints.maxWidth,
+                          ),
+                          child: results,
+                        ),
+                        const SizedBox(width: WebSpacing.lg),
+                        Expanded(child: map),
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
@@ -591,12 +611,12 @@ class _ResultCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(WebRadii.card),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: selected ? WebTheme.greenSoft : WebTheme.surfaceAlt,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(WebRadii.card),
           border: Border.all(
             color: selected ? WebTheme.green : WebTheme.border,
             width: selected ? 1.5 : 1,
