@@ -536,7 +536,13 @@ class _MapCanvas extends StatelessWidget {
         maxZoom: 18,
         backgroundColor: const Color(0xFFE7EEF3),
         interactionOptions: const InteractionOptions(
-          flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+          flags: InteractiveFlag.drag |
+              InteractiveFlag.flingAnimation |
+              InteractiveFlag.pinchMove |
+              InteractiveFlag.pinchZoom |
+              InteractiveFlag.scrollWheelZoom |
+              InteractiveFlag.doubleTapZoom |
+              InteractiveFlag.doubleTapDragZoom,
         ),
         onPositionChanged: (camera, hasGesture) {
           onPositionChanged(camera.bounds, hasGesture);
