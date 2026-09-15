@@ -1,4 +1,4 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' show User;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -253,7 +253,6 @@ class _WebProfilePageState extends State<WebProfilePage> {
                                 ownProfile ? _removePortfolioPhoto : null,
                             onCreateTeam:
                                 ownProfile && !held ? _openCreateTeam : null,
-                            onEditTeam: ownProfile ? _openEditTeam : null,
                             onOpenProfile: widget.onOpenProfile,
                           );
                     if (compact) {
@@ -346,29 +345,6 @@ class _WebProfilePageState extends State<WebProfilePage> {
             trade: values['trade'] ?? '',
           );
         },
-      ),
-    );
-    if (saved == true) _loadDetails();
-  }
-
-  Future<void> _openEditTeam(WebTeamData team) async {
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (_) => _TeamDialog(
-        title: 'Edit team',
-        team: team,
-        onSave: (values) => editService.saveTeam(
-          teamId: team.id,
-          updates: values,
-        ),
-        onChangeAvatar: () => editService.pickAndUploadTeamImage(
-          teamId: team.id,
-          header: false,
-        ),
-        onChangeHeader: () => editService.pickAndUploadTeamImage(
-          teamId: team.id,
-          header: true,
-        ),
       ),
     );
     if (saved == true) _loadDetails();
@@ -557,7 +533,6 @@ class _WorkerProfileBody extends StatelessWidget {
     this.onAddPortfolio,
     this.onRemovePortfolio,
     this.onCreateTeam,
-    this.onEditTeam,
     this.onOpenProfile,
   });
 
@@ -569,7 +544,6 @@ class _WorkerProfileBody extends StatelessWidget {
   final VoidCallback? onAddPortfolio;
   final ValueChanged<String>? onRemovePortfolio;
   final VoidCallback? onCreateTeam;
-  final ValueChanged<WebTeamData>? onEditTeam;
   final void Function(String, String)? onOpenProfile;
 
   @override
@@ -673,8 +647,6 @@ class _WorkerProfileBody extends StatelessWidget {
               ? const LinearProgressIndicator()
               : _TeamsList(
                   teams: teams,
-                  ownProfile: ownProfile,
-                  onEditTeam: onEditTeam,
                   onOpenProfile: onOpenProfile,
                 ),
         ),
@@ -887,14 +859,10 @@ class _ContactPanel extends StatelessWidget {
 class _TeamsList extends StatelessWidget {
   const _TeamsList({
     required this.teams,
-    required this.ownProfile,
-    this.onEditTeam,
     this.onOpenProfile,
   });
 
   final List<WebTeamData> teams;
-  final bool ownProfile;
-  final ValueChanged<WebTeamData>? onEditTeam;
   final void Function(String, String)? onOpenProfile;
 
   @override
@@ -932,39 +900,51 @@ class _TeamsList extends StatelessWidget {
                           team.name,
                           style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
-                        if (team.trade.isNotEmpty)
-                          Text(
-                            team.trade,
-                            style: const TextStyle(color: WebTheme.muted),
-                          ),
+                        const SizedBox(height: 4),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                team.description.isEmpty
+                                    ? 'View team details'
+                                    : team.description,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(height: 1.35),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              tooltip: 'Open Team',
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 36,
+                                height: 36,
+                              ),
+                              padding: EdgeInsets.zero,
+                              onPressed: onOpenProfile == null
+                                  ? null
+                                  : () => onOpenProfile!(team.id, 'team'),
+                              icon: const Icon(Icons.visibility_outlined),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
                         Text(
-                          '${team.memberCount} member${team.memberCount == 1 ? '' : 's'}',
+                          [
+                            if (team.trade.isNotEmpty) team.trade,
+                            '${team.memberCount} member${team.memberCount == 1 ? '' : 's'}',
+                          ].join('  |  '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(color: WebTheme.muted),
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
-                      tooltip: 'Open team',
-                      onPressed: () => onOpenProfile?.call(team.id, 'team'),
-                      icon: const Icon(Icons.open_in_new)),
-                  if (ownProfile &&
-                      onEditTeam != null &&
-                      (team.data['ownerId'] ==
-                              FirebaseAuth.instance.currentUser?.uid ||
-                          team.data['createdBy'] ==
-                              FirebaseAuth.instance.currentUser?.uid))
-                    IconButton(
-                      tooltip: 'Edit team',
-                      onPressed: () => onEditTeam!(team),
-                      icon: const Icon(Icons.more_horiz),
-                    ),
                 ],
               ),
-              if (team.description.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(team.description),
-              ],
               if (team.members.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Wrap(
@@ -1483,16 +1463,10 @@ class _TeamDialog extends StatefulWidget {
   const _TeamDialog({
     required this.title,
     required this.onSave,
-    this.team,
-    this.onChangeAvatar,
-    this.onChangeHeader,
   });
 
   final String title;
-  final WebTeamData? team;
   final Future<void> Function(Map<String, String> values) onSave;
-  final Future<String?> Function()? onChangeAvatar;
-  final Future<String?> Function()? onChangeHeader;
 
   @override
   State<_TeamDialog> createState() => _TeamDialogState();
@@ -1507,9 +1481,9 @@ class _TeamDialogState extends State<_TeamDialog> {
   @override
   void initState() {
     super.initState();
-    name = TextEditingController(text: widget.team?.name ?? '');
-    description = TextEditingController(text: widget.team?.description ?? '');
-    trade = TextEditingController(text: widget.team?.trade ?? '');
+    name = TextEditingController();
+    description = TextEditingController();
+    trade = TextEditingController();
   }
 
   @override
@@ -1553,25 +1527,6 @@ class _TeamDialogState extends State<_TeamDialog> {
                 border: OutlineInputBorder(),
               ),
             ),
-            if (widget.team != null) ...[
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: WebSpacing.sm,
-                runSpacing: WebSpacing.xs,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: widget.onChangeAvatar,
-                    icon: const Icon(Icons.photo_camera_outlined),
-                    label: const Text('Avatar'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: widget.onChangeHeader,
-                    icon: const Icon(Icons.image_outlined),
-                    label: const Text('Header'),
-                  ),
-                ],
-              ),
-            ],
           ],
         ),
       ),

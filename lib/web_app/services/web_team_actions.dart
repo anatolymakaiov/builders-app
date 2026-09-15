@@ -40,8 +40,11 @@ class WebTeamActions {
     return ids.where((id) => id.isNotEmpty).toList();
   }
 
-  bool leader(Map<String, dynamic> data) =>
-      data['ownerId'] == uid || data['createdBy'] == uid;
+  bool leader(Map<String, dynamic> data) => const [
+        'ownerId',
+        'createdBy',
+        'leaderId',
+      ].any((field) => data[field]?.toString() == uid);
 
   Future<void> changeMember(String teamId,
       {String? removeId, String? search}) async {
