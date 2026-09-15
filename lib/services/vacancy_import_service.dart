@@ -1,11 +1,12 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/widgets.dart';
 
 import 'job_taxonomy_service.dart';
+import 'vacancy_file_bytes.dart';
 
 class ParsedVacancy {
   final String sourceFileName;
@@ -96,7 +97,7 @@ class VacancyImportService {
     }
 
     final bytes = file.bytes ??
-        (file.path == null ? null : await File(file.path!).readAsBytes());
+        (file.path == null ? null : await readVacancyFileBytes(file.path!));
     if (bytes == null || bytes.isEmpty) {
       throw const VacancyImportException("Could not read selected file.");
     }
@@ -166,13 +167,13 @@ class VacancyImportService {
         if (method == 0) {
           entries[name] = Uint8List.fromList(compressed);
         } else if (method == 8) {
-          entries[name] = Uint8List.fromList(zlib.decode(compressed));
+          entries[name] = const ZLibDecoder().decodeBytes(compressed);
         }
       } catch (_) {
         try {
           if (method == 8) {
             entries[name] = Uint8List.fromList(
-              ZLibCodec(raw: true).decode(compressed),
+              const ZLibDecoder().decodeBytes(compressed, raw: true),
             );
           }
         } catch (_) {
@@ -282,14 +283,17 @@ class VacancyImportService {
       final streamText = streamMatch.group(1);
       if (streamText == null || streamText.isEmpty) continue;
       try {
-        final decoded = zlib.decode(latin1.encode(streamText));
+        final decoded =
+            const ZLibDecoder().decodeBytes(latin1.encode(streamText));
         final decodedText = latin1.decode(decoded);
         chunks.addAll(_extractPdfTextObjects(decodedText));
         chunks.add(_extractReadableText(decodedText));
       } catch (_) {
         try {
-          final decoded =
-              ZLibCodec(raw: true).decode(latin1.encode(streamText));
+          final decoded = const ZLibDecoder().decodeBytes(
+            latin1.encode(streamText),
+            raw: true,
+          );
           final decodedText = latin1.decode(decoded);
           chunks.addAll(_extractPdfTextObjects(decodedText));
           chunks.add(_extractReadableText(decodedText));
@@ -384,11 +388,14 @@ class VacancyImportService {
       return latin1.decode(bytes, allowInvalid: true);
     }
     try {
-      return latin1.decode(zlib.decode(bytes), allowInvalid: true);
+      return latin1.decode(
+        const ZLibDecoder().decodeBytes(bytes),
+        allowInvalid: true,
+      );
     } catch (_) {
       try {
         return latin1.decode(
-          ZLibCodec(raw: true).decode(bytes),
+          const ZLibDecoder().decodeBytes(bytes, raw: true),
           allowInvalid: true,
         );
       } catch (_) {

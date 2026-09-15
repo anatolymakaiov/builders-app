@@ -4,13 +4,16 @@ import '../../../models/job.dart';
 import '../../../services/address_lookup_service.dart';
 import '../../../services/billing_service.dart';
 import '../../../services/job_taxonomy_service.dart';
+import '../../../services/vacancy_import_service.dart';
 import '../../services/web_job_management_service.dart';
+import '../../services/web_vacancy_import_metadata.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
 import '../../widgets/web_design_components.dart';
+import '../../widgets/web_vacancy_import_dialog.dart';
 
 class WebPostJobPage extends StatefulWidget {
   const WebPostJobPage({
@@ -59,6 +62,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
   double lng = 0;
   bool saving = false;
   bool uploading = false;
+  bool importingVacancy = false;
   bool lookingUp = false;
   String? error;
   late final String mediaScope;
@@ -148,6 +152,25 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
                 onPressed: saving ? null : widget.onCancel,
                 icon: const Icon(Icons.arrow_back),
               ),
+              actions: [
+                if (!editing)
+                  OutlinedButton.icon(
+                    onPressed:
+                        saving || importingVacancy ? null : _importVacancy,
+                    icon: importingVacancy
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.upload_file_outlined),
+                    label: Text(
+                      importingVacancy
+                          ? 'Parsing vacancy file...'
+                          : 'Import PDF / Word',
+                    ),
+                  ),
+              ],
             ),
             if (error != null) _ErrorBanner(message: error!),
             LayoutBuilder(
@@ -368,7 +391,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: saving ? null : _submit,
+            onPressed: saving || importingVacancy ? null : _submit,
             icon: saving
                 ? const SizedBox(
                     width: 16,
@@ -467,6 +490,91 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
       setState(() => error = 'Could not upload photos: $err');
     } finally {
       if (mounted) setState(() => uploading = false);
+    }
+  }
+
+  Future<void> _importVacancy() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      importingVacancy = true;
+      error = null;
+    });
+    try {
+      final parsed = await VacancyImportService.pickAndParseVacancyFile();
+      if (parsed == null || !mounted) return;
+      final reviewed = await showDialog<ParsedVacancy>(
+        context: context,
+        builder: (_) => WebVacancyImportDialog(parsedVacancy: parsed),
+      );
+      if (reviewed == null || !mounted) return;
+
+      final metadata = WebVacancyImportMetadata.fromParsed(reviewed);
+      setState(() {
+        if (reviewed.jobDescription.isNotEmpty) {
+          description.text = reviewed.jobDescription;
+        }
+        if (reviewed.responsibilities.isNotEmpty) {
+          responsibilities.text = reviewed.responsibilities;
+        }
+        if (reviewed.requirements.isNotEmpty) {
+          candidateRequirements.text = reviewed.requirements;
+        }
+        if (reviewed.requiredDocumentsAndCertifications.isNotEmpty) {
+          requiredDocuments.text = reviewed.requiredDocumentsAndCertifications;
+        }
+        if (reviewed.additionalInformation.isNotEmpty) {
+          additionalInformation.text = reviewed.additionalInformation;
+        }
+        if (role.text.trim().isEmpty &&
+            reviewed.suggestedRole?.trim().isNotEmpty == true) {
+          role.text = reviewed.suggestedRole!.trim();
+        }
+        if (site.text.trim().isEmpty && metadata.site.isNotEmpty) {
+          site.text = metadata.site;
+        }
+        if (metadata.positions != null && metadata.positions! > 0) {
+          positions.text = metadata.positions.toString();
+        }
+        if (metadata.rate != null && metadata.rate! > 0) {
+          rate.text = metadata.rate!.toStringAsFixed(
+            metadata.rate! % 1 == 0 ? 0 : 2,
+          );
+          jobType = 'hourly';
+        }
+        if (metadata.duration.isNotEmpty) {
+          duration.text = metadata.duration;
+        }
+        if (metadata.weeklyHours.isNotEmpty) {
+          weeklyHours.text = metadata.weeklyHours;
+        }
+        if (postcode.text.trim().isEmpty && metadata.postcode.isNotEmpty) {
+          postcode.text = metadata.postcode;
+        }
+        if (addressLine1.text.trim().isEmpty &&
+            metadata.addressLine1.isNotEmpty) {
+          addressLine1.text = metadata.addressLine1;
+        }
+        if (city.text.trim().isEmpty && metadata.city.isNotEmpty) {
+          city.text = metadata.city;
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vacancy imported. Review all fields before sending.'),
+        ),
+      );
+    } on VacancyImportException catch (err) {
+      if (mounted) setState(() => error = err.message);
+    } catch (err) {
+      debugPrint('WEB VACANCY IMPORT ERROR $err');
+      if (mounted) {
+        setState(() {
+          error = 'Could not import this vacancy file. '
+              'You can continue entering the vacancy manually.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => importingVacancy = false);
     }
   }
 
