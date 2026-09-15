@@ -37,8 +37,7 @@ class WebJobFilters {
           );
     return jobs.where((job) {
       if (!JobTaxonomyService.matchesAnyRole(job, roles)) return false;
-      if (query.trim().isNotEmpty &&
-          !JobTaxonomyService.matchesJob(job, query)) {
+      if (query.trim().isNotEmpty && !_matchesSmartQuery(job, query)) {
         return false;
       }
       if (employmentTypes.isNotEmpty &&
@@ -73,4 +72,30 @@ class WebJobFilters {
         job.postcode
       ].any((value) => value.toLowerCase().contains(city.trim().toLowerCase()));
   bool _hasCoordinates(Job job) => job.lat != 0 && job.lng != 0;
+
+  bool _matchesSmartQuery(Job job, String query) {
+    if (JobTaxonomyService.matchesJob(job, query)) return true;
+
+    final normalizedQuery = JobTaxonomyService.normalise(query);
+    if (normalizedQuery.isEmpty) return true;
+    final compactQuery = JobTaxonomyService.compactNormalise(query);
+    final roleValues = <String>{
+      job.canonicalRoleName,
+      job.originalEmployerInput,
+      job.title,
+      job.trade,
+    }.where((value) => value.trim().isNotEmpty);
+
+    for (final value in roleValues) {
+      for (final term in JobTaxonomyService.searchTermsFor(value)) {
+        final normalizedTerm = JobTaxonomyService.normalise(term);
+        final compactTerm = JobTaxonomyService.compactNormalise(term);
+        if (normalizedTerm.contains(normalizedQuery) ||
+            compactTerm.contains(compactQuery)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 }

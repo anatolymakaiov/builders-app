@@ -19,6 +19,7 @@ import '../../services/web_jobs_data_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
+import '../../widgets/web_smart_job_search_field.dart';
 import '../../widgets/web_design_components.dart';
 import '../../theme/web_breakpoints.dart';
 
@@ -663,13 +664,10 @@ class _MapResultsPanel extends StatelessWidget {
                   style: const TextStyle(color: WebTheme.muted),
                 ),
                 const SizedBox(height: 14),
-                TextField(
+                WebSmartJobSearchField(
                   controller: searchController,
                   onChanged: onSearchChanged,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
-                    hintText: 'Search title, trade, company, location',
-                  ),
+                  hintText: 'Search title, trade, company, location',
                 ),
               ],
             ),

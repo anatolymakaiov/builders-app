@@ -4,6 +4,7 @@ import '../../../models/job.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_design_components.dart';
+import '../../widgets/web_smart_job_search_field.dart';
 import 'web_worker_job_application_status.dart';
 import 'web_worker_vacancy_card.dart';
 
@@ -56,13 +57,9 @@ class WebJobListPanel extends StatelessWidget {
                 ),
                 if (showSearch) ...[
                   const SizedBox(height: 12),
-                  TextField(
+                  WebSmartJobSearchField(
                     controller: searchController,
                     onChanged: onSearchChanged,
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Search jobs, trades, companies',
-                    ),
                   ),
                 ],
               ],

@@ -17,6 +17,7 @@ import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_design_components.dart';
+import '../../widgets/web_smart_job_search_field.dart';
 import 'web_job_details_panel.dart';
 import 'web_job_list_panel.dart';
 import 'web_post_job_page.dart';
@@ -298,16 +299,12 @@ class _WebJobsPageState extends State<WebJobsPage> {
                 children: [
                   SizedBox(
                     width: 320,
-                    child: TextField(
+                    child: WebSmartJobSearchField(
                       controller: searchController,
                       onChanged: (value) => setState(() {
                         search = value;
                         page = 1;
                       }),
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search),
-                        hintText: 'Search jobs, trades, companies',
-                      ),
                     ),
                   ),
                   OutlinedButton.icon(
