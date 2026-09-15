@@ -20,6 +20,7 @@ import '../../widgets/web_design_components.dart';
 import 'web_job_details_panel.dart';
 import 'web_job_list_panel.dart';
 import 'web_post_job_page.dart';
+import 'web_worker_job_application_status.dart';
 
 class WebJobsPage extends StatefulWidget {
   const WebJobsPage({
@@ -80,6 +81,8 @@ class _WebJobsPageState extends State<WebJobsPage> {
   StreamSubscription<WebDataState<List<WebApplicationSummary>>>?
       workerApplicationsSubscription;
   Map<String, _WorkerJobApplicationState> workerApplicationStates = const {};
+  Map<String, WebWorkerJobApplicationStatus> workerApplicationStatuses =
+      const {};
   bool workerApplicationsReady = false;
 
   bool get isEmployer => widget.role == 'employer';
@@ -190,9 +193,6 @@ class _WebJobsPageState extends State<WebJobsPage> {
 
         final result = state.data ??
             const WebJobsResult(publicJobs: <Job>[], ownerJobs: <Job>[]);
-        if (isWorker && !workerApplicationsReady) {
-          return const WebLoadingState(label: 'Loading vacancies');
-        }
         final permittedJobs = result.jobsForMode(mode, widget.role);
         final jobs = filterJobs(permittedJobs);
         final pages = (jobs.length / 10).ceil();
@@ -377,8 +377,17 @@ class _WebJobsPageState extends State<WebJobsPage> {
                       }),
                       title: _listTitle(jobs.length),
                       savedJobIds: savedJobIds,
-                      appliedJobIds: workerApplicationStates.keys.toSet(),
+                      applicationStatuses: workerApplicationStatuses,
+                      applicationStatusesResolved: workerApplicationsReady,
+                      showApplicationStatus: isWorker,
                       onToggleSaved: isWorker ? _toggleSaved : null,
+                      onViewVacancy: isWorker
+                          ? (job) => setState(() {
+                                targetJobId = null;
+                                selectedJobId = job.id;
+                                compactDetailVisible = true;
+                              })
+                          : null,
                       showSearch: false,
                     );
                     final applicationState = selectedJob == null
@@ -628,6 +637,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
       if (!mounted || applications == null) return;
       setState(() {
         workerApplicationStates = _groupWorkerApplications(applications);
+        workerApplicationStatuses = resolveWorkerJobStatuses(applications);
         workerApplicationsReady = true;
       });
     });
@@ -639,6 +649,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
     if (!mounted) return;
     setState(() {
       workerApplicationStates = const {};
+      workerApplicationStatuses = const {};
       workerApplicationsReady = false;
     });
     _startWorkerApplications();
@@ -652,6 +663,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
       if (!mounted) return;
       setState(() {
         workerApplicationStates = _groupWorkerApplications(applications);
+        workerApplicationStatuses = resolveWorkerJobStatuses(applications);
         workerApplicationsReady = true;
       });
     } catch (error) {

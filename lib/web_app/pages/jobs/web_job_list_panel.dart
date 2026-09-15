@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import '../../../models/job.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_panel.dart';
-import '../../widgets/web_remote_image.dart';
 import '../../widgets/web_design_components.dart';
-import 'web_job_display.dart';
+import 'web_worker_job_application_status.dart';
+import 'web_worker_vacancy_card.dart';
 
 class WebJobListPanel extends StatelessWidget {
   const WebJobListPanel({
@@ -17,8 +17,11 @@ class WebJobListPanel extends StatelessWidget {
     required this.onSearchChanged,
     required this.title,
     required this.savedJobIds,
-    this.appliedJobIds = const <String>{},
+    this.applicationStatuses = const {},
+    this.applicationStatusesResolved = true,
+    this.showApplicationStatus = false,
     this.onToggleSaved,
+    this.onViewVacancy,
     this.showSearch = true,
   });
 
@@ -29,8 +32,11 @@ class WebJobListPanel extends StatelessWidget {
   final ValueChanged<String> onSearchChanged;
   final String title;
   final Set<String> savedJobIds;
-  final Set<String> appliedJobIds;
+  final Map<String, WebWorkerJobApplicationStatus> applicationStatuses;
+  final bool applicationStatusesResolved;
+  final bool showApplicationStatus;
   final ValueChanged<Job>? onToggleSaved;
+  final ValueChanged<Job>? onViewVacancy;
   final bool showSearch;
 
   @override
@@ -76,12 +82,17 @@ class WebJobListPanel extends StatelessWidget {
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final job = jobs[index];
-                      return _WebJobCard(
+                      return WebWorkerVacancyCard(
                         job: job,
                         selected: job.id == selectedJobId,
                         saved: savedJobIds.contains(job.id),
-                        applied: appliedJobIds.contains(job.id),
+                        applicationStatus: applicationStatuses[job.id],
+                        applicationStatusResolved: applicationStatusesResolved,
+                        showApplicationStatus: showApplicationStatus,
                         onTap: () => onSelected(job),
+                        onViewVacancy: onViewVacancy == null
+                            ? null
+                            : () => onViewVacancy!(job),
                         onToggleSaved: onToggleSaved == null
                             ? null
                             : () => onToggleSaved!(job),
@@ -90,170 +101,6 @@ class WebJobListPanel extends StatelessWidget {
                   ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _WebJobCard extends StatelessWidget {
-  const _WebJobCard({
-    required this.job,
-    required this.selected,
-    required this.saved,
-    required this.applied,
-    required this.onTap,
-    this.onToggleSaved,
-  });
-
-  final Job job;
-  final bool selected;
-  final bool saved;
-  final bool applied;
-  final VoidCallback onTap;
-  final VoidCallback? onToggleSaved;
-
-  @override
-  Widget build(BuildContext context) {
-    final location = job.fullAddress;
-    final posted = webJobPostedLabel(job);
-    final rate = webJobRate(job);
-    return InkWell(
-      borderRadius: BorderRadius.circular(WebRadii.card),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: selected ? WebTheme.selected : WebTheme.surface,
-          borderRadius: BorderRadius.circular(WebRadii.card),
-          border: Border.all(
-            color: selected ? WebTheme.accent : WebTheme.border,
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                WebCircleImage(
-                  url: job.companyLogo,
-                  size: 44,
-                  fallbackIcon: Icons.business_outlined,
-                ),
-                const SizedBox(width: WebSpacing.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        job.displayTitle,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: WebTheme.ink,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      if (job.companyName.trim().isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          job.companyName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: WebTheme.muted),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (onToggleSaved != null)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: IconButton(
-                      tooltip: saved ? 'Remove from saved' : 'Save job',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onToggleSaved,
-                      icon: Icon(
-                        saved ? Icons.favorite : Icons.favorite_border,
-                        color: saved ? WebTheme.accent : WebTheme.muted,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            if (location.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.place_outlined,
-                    size: 16,
-                    color: WebTheme.muted,
-                  ),
-                  const SizedBox(width: 5),
-                  Expanded(
-                    child: Text(
-                      location,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: WebTheme.muted),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            if (posted != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                posted,
-                style: const TextStyle(
-                  color: WebTheme.subtleText,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _Chip(label: webJobWorkFormat(job)),
-                if (rate != null) _Chip(label: rate),
-                if (job.duration.isNotEmpty) _Chip(label: job.duration),
-                _Chip(label: applied ? 'Applied' : 'Not Applied'),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: WebTheme.surface,
-        borderRadius: BorderRadius.circular(WebRadii.tag),
-        border: Border.all(color: WebTheme.border),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: WebTheme.ink,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
       ),
     );
   }

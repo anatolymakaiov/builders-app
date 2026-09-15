@@ -322,7 +322,11 @@ class WebApplicationsDataService {
       _mergeDocs(
         docsById,
         result.docs.where(
-          (doc) => _isRelevantTeamApplication(doc.data(), team.id),
+          (doc) => _isRelevantTeamApplication(
+            doc.data(),
+            team.id,
+            includeInactiveStatuses: true,
+          ),
         ),
       );
       if (result.error != null) queryErrors.add(result.error!);
@@ -472,15 +476,17 @@ class WebApplicationsDataService {
     return _teamMemberIds(data).contains(uid);
   }
 
-  bool _isRelevantTeamApplication(Map<String, dynamic> data, String teamId) {
+  bool _isRelevantTeamApplication(
+    Map<String, dynamic> data,
+    String teamId, {
+    bool includeInactiveStatuses = false,
+  }) {
     final type = (data['applicationType'] ?? data['type'] ?? '').toString();
     final status = data['status']?.toString().toLowerCase().trim();
     final appTeamId = data['teamId']?.toString();
-    return type == 'team' &&
-        appTeamId == teamId &&
-        status != 'withdrawn' &&
-        status != 'cancelled' &&
-        status != 'deleted';
+    if (type != 'team' || appTeamId != teamId) return false;
+    return includeInactiveStatuses ||
+        (status != 'withdrawn' && status != 'cancelled' && status != 'deleted');
   }
 
   bool _isInactive(Map<String, dynamic> data) {
