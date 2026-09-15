@@ -43,6 +43,8 @@ class _WebShellState extends State<WebShell> {
   String? initialJobId;
   bool? initialJobOwnerMode;
   String? initialMapJobId;
+  String? mapJobDetailId;
+  int mapSavedJobsRefreshToken = 0;
   bool postingJob = false;
   _SecondaryRoute? secondaryRoute;
   late Stream<WebDataState<WebShellBadges>> badgesStream;
@@ -103,6 +105,8 @@ class _WebShellState extends State<WebShell> {
                     role: widget.role,
                     initialJobId: initialMapJobId,
                     onOpenProfile: _openProfile,
+                    onOpenJob: _openJobFromMap,
+                    savedJobsRefreshToken: mapSavedJobsRefreshToken,
                   ),
                 WebSection.applications => WebApplicationsPage(
                     userId: widget.user.uid,
@@ -143,6 +147,21 @@ class _WebShellState extends State<WebShell> {
                     onAdminInbox: () =>
                         _openAccount(WebAccountDestination.adminInbox),
                   );
+    final mapJobPage = mapJobDetailId == null
+        ? null
+        : WebJobsPage(
+            userId: widget.user.uid,
+            role: widget.role,
+            initialJobId: mapJobDetailId,
+            initialOwnerMode: false,
+            onOpenProfile: _openProfile,
+            onOpenSubscriptions: widget.role == 'worker'
+                ? () => _openAccount(WebAccountDestination.subscriptions)
+                : null,
+            onOpenChat: _openChat,
+            onShowOnMap: _returnToMapJob,
+            onBackToMap: _closeMapJobDetail,
+          );
     final secondaryPage =
         secondaryRoute == null ? null : _secondaryPage(secondaryRoute!);
 
@@ -155,7 +174,7 @@ class _WebShellState extends State<WebShell> {
             builder: (context, snapshot) {
               final badges = snapshot.data?.data ?? const WebShellBadges();
               return WebTopNavigation(
-                selected: selected,
+                selected: mapJobPage == null ? selected : WebSection.jobs,
                 role: widget.role,
                 avatar: WebProfileAvatar(
                   profile: widget.profile,
@@ -179,9 +198,14 @@ class _WebShellState extends State<WebShell> {
               fit: StackFit.expand,
               children: [
                 Offstage(
-                  offstage: secondaryPage != null,
+                  offstage: secondaryPage != null || mapJobPage != null,
                   child: primaryPage,
                 ),
+                if (mapJobPage != null)
+                  Offstage(
+                    offstage: secondaryPage != null,
+                    child: mapJobPage,
+                  ),
                 if (secondaryPage != null) secondaryPage,
               ],
             ),
@@ -196,6 +220,7 @@ class _WebShellState extends State<WebShell> {
       if (profileRoute != null) profileHistory.add(profileRoute!);
       secondaryRoute = null;
       postingJob = false;
+      mapJobDetailId = null;
       profileRoute = _WebProfileRoute(userId: userId, role: role);
     });
   }
@@ -212,6 +237,7 @@ class _WebShellState extends State<WebShell> {
       postingJob = false;
       initialChatId = chatId;
       initialMapJobId = null;
+      mapJobDetailId = null;
     });
   }
 
@@ -222,6 +248,7 @@ class _WebShellState extends State<WebShell> {
       initialJobId = jobId;
       initialJobOwnerMode = ownerMode;
       initialMapJobId = null;
+      mapJobDetailId = null;
       secondaryRoute = null;
       profileRoute = null;
       postingJob = false;
@@ -238,6 +265,31 @@ class _WebShellState extends State<WebShell> {
       secondaryRoute = null;
       profileRoute = null;
       postingJob = false;
+      mapJobDetailId = null;
+    });
+  }
+
+  void _openJobFromMap(String jobId) {
+    setState(() {
+      mapJobDetailId = jobId;
+      secondaryRoute = null;
+      profileRoute = null;
+      postingJob = false;
+    });
+  }
+
+  void _closeMapJobDetail() {
+    setState(() {
+      mapJobDetailId = null;
+      mapSavedJobsRefreshToken++;
+    });
+  }
+
+  void _returnToMapJob(String jobId) {
+    setState(() {
+      initialMapJobId = jobId;
+      mapJobDetailId = null;
+      mapSavedJobsRefreshToken++;
     });
   }
 
@@ -252,6 +304,7 @@ class _WebShellState extends State<WebShell> {
       initialJobOwnerMode = null;
       initialMapJobId = null;
       postingJob = true;
+      mapJobDetailId = null;
     });
   }
 
@@ -275,6 +328,7 @@ class _WebShellState extends State<WebShell> {
         applicationId: applicationId,
         statusFilter: statusFilter ?? ApplicationStatusUtils.allFilter,
       );
+      mapJobDetailId = null;
     });
   }
 
@@ -290,6 +344,7 @@ class _WebShellState extends State<WebShell> {
       if (value != WebSection.jobs) initialJobId = null;
       if (value != WebSection.jobs) initialJobOwnerMode = null;
       if (value != WebSection.map) initialMapJobId = null;
+      mapJobDetailId = null;
     });
   }
 

@@ -7,16 +7,16 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../models/job.dart';
-import '../jobs/web_job_details_panel.dart';
+import '../jobs/web_job_display.dart';
 import '../../services/web_job_filters.dart';
 import '../../widgets/web_job_filters_dialog.dart';
-import '../../widgets/web_apply_dialog.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_jobs_data_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_design_components.dart';
+import '../../widgets/web_remote_image.dart';
 import '../../theme/web_breakpoints.dart';
 
 class WebMapPage extends StatefulWidget {
@@ -26,12 +26,16 @@ class WebMapPage extends StatefulWidget {
     required this.role,
     this.initialJobId,
     this.onOpenProfile,
+    this.onOpenJob,
+    this.savedJobsRefreshToken = 0,
   });
 
   final String userId;
   final String role;
   final String? initialJobId;
   final void Function(String userId, String role)? onOpenProfile;
+  final ValueChanged<String>? onOpenJob;
+  final int savedJobsRefreshToken;
 
   @override
   State<WebMapPage> createState() => _WebMapPageState();
@@ -42,6 +46,7 @@ class _WebMapPageState extends State<WebMapPage> {
   final mapController = MapController();
   final listController = ScrollController();
   final searchController = TextEditingController();
+  final resultCardKeys = <String, GlobalKey>{};
   late final Stream<WebDataState<WebJobsResult>> jobsStream;
   LatLngBounds? activeBounds;
   LatLngBounds? pendingBounds;
@@ -54,6 +59,7 @@ class _WebMapPageState extends State<WebMapPage> {
   WebJobFilters filters = const WebJobFilters();
   bool compactMapVisible = true;
   bool initialJobFocused = false;
+  Set<String> savedJobIds = const <String>{};
 
   bool get isWorker => widget.role == 'worker';
 
@@ -62,6 +68,7 @@ class _WebMapPageState extends State<WebMapPage> {
     super.initState();
     jobsStream = service.jobs(userId: widget.userId, role: 'worker');
     selectedJobId = widget.initialJobId;
+    _loadSavedJobs();
     debugPrint('WEB MAP INIT tileSource=osm polling=jobs');
   }
 
@@ -71,6 +78,9 @@ class _WebMapPageState extends State<WebMapPage> {
     if (oldWidget.initialJobId != widget.initialJobId) {
       selectedJobId = widget.initialJobId;
       initialJobFocused = false;
+    }
+    if (oldWidget.savedJobsRefreshToken != widget.savedJobsRefreshToken) {
+      _loadSavedJobs();
     }
   }
 
@@ -105,7 +115,7 @@ class _WebMapPageState extends State<WebMapPage> {
               final job = mapJobs[index];
               setState(() => selectedJobId = job.id);
               mapController.move(LatLng(job.lat, job.lng), 13);
-              _scrollTo(index);
+              _scrollTo(job.id, index);
             });
           }
         }
@@ -140,13 +150,25 @@ class _WebMapPageState extends State<WebMapPage> {
                           setState(() => filters = next);
                         }
                       }),
+                  if (isWorker)
+                    OutlinedButton.icon(
+                        icon: loadingLocation
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.my_location),
+                        label: const Text('Use my location'),
+                        onPressed: loadingLocation ? null : _locateUser),
                   OutlinedButton.icon(
                       icon: const Icon(Icons.open_in_new),
-                      label: const Text('View selected vacancy'),
-                      onPressed: selectedJobId == null
-                          ? null
-                          : () => _openJob(mapJobs
-                              .firstWhere((job) => job.id == selectedJobId))),
+                      label: const Text('View vacancy'),
+                      onPressed:
+                          selectedJobId == null || widget.onOpenJob == null
+                              ? null
+                              : () => widget.onOpenJob!(selectedJobId!)),
                 ],
               ),
               Expanded(
@@ -161,10 +183,13 @@ class _WebMapPageState extends State<WebMapPage> {
                       searchController: searchController,
                       search: search,
                       userLocation: userLocation,
+                      savedJobIds: savedJobIds,
                       onSearchChanged: (value) {
                         setState(() => search = value);
                       },
                       onSelected: _selectJobFromList,
+                      onToggleSaved: isWorker ? _toggleSaved : null,
+                      cardKeyForJob: _cardKeyForJob,
                     );
                     final map = WebPanel(
                       padding: EdgeInsets.zero,
@@ -313,77 +338,43 @@ class _WebMapPageState extends State<WebMapPage> {
         jobs.where((job) => job.lat != 0 && job.lng != 0).toList(), search);
   }
 
-  Future<void> _openJob(Job job) async {
-    Set<String> saved;
+  Future<void> _loadSavedJobs() async {
+    if (!isWorker) return;
     try {
-      saved = isWorker ? await service.savedJobIds(widget.userId) : <String>{};
+      final ids = await service.savedJobIds(widget.userId);
+      if (mounted) setState(() => savedJobIds = ids);
     } catch (_) {
-      saved = <String>{};
+      if (mounted) setState(() => savedJobIds = const <String>{});
     }
-    if (!mounted) return;
-    var busy = false;
-    await showDialog<void>(
-        context: context,
-        builder: (dialogContext) => Dialog(
-              insetPadding: const EdgeInsets.all(WebSpacing.lg),
-              child: SizedBox(
-                width: (MediaQuery.sizeOf(dialogContext).width - 48)
-                    .clamp(280.0, 840.0)
-                    .toDouble(),
-                height: MediaQuery.sizeOf(dialogContext).height * .88,
-                child: StatefulBuilder(
-                    builder: (context, update) => Column(children: [
-                          Align(
-                              alignment: Alignment.centerRight,
-                              child: IconButton(
-                                  tooltip: 'Close',
-                                  icon: const Icon(Icons.close),
-                                  onPressed: () =>
-                                      Navigator.pop(dialogContext))),
-                          Expanded(
-                              child: WebJobDetailsPanel(
-                            job: job,
-                            isWorker: isWorker,
-                            isSaved: saved.contains(job.id),
-                            applying: busy,
-                            onApply: () async {
-                              update(() => busy = true);
-                              await showWebApplyDialog(context,
-                                  userId: widget.userId, job: job);
-                              if (context.mounted) update(() => busy = false);
-                            },
-                            onToggleSaved: () async {
-                              try {
-                                final wasSaved = saved.contains(job.id);
-                                await service.toggleSavedJob(
-                                    userId: widget.userId,
-                                    jobId: job.id,
-                                    isSaved: wasSaved);
-                                if (context.mounted) {
-                                  update(() {
-                                    wasSaved
-                                        ? saved.remove(job.id)
-                                        : saved.add(job.id);
-                                  });
-                                }
-                              } catch (error) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                          content: Text(
-                                              'Could not save job: $error')));
-                                }
-                              }
-                            },
-                            onViewCompanyProfile: () {
-                              Navigator.pop(dialogContext);
-                              widget.onOpenProfile
-                                  ?.call(job.ownerId, 'employer');
-                            },
-                          )),
-                        ])),
-              ),
-            ));
+  }
+
+  Future<void> _toggleSaved(Job job) async {
+    if (!isWorker) return;
+    final wasSaved = savedJobIds.contains(job.id);
+    setState(() {
+      savedJobIds = {
+        ...savedJobIds.where((id) => id != job.id),
+        if (!wasSaved) job.id,
+      };
+    });
+    try {
+      await service.toggleSavedJob(
+        userId: widget.userId,
+        jobId: job.id,
+        isSaved: wasSaved,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        savedJobIds = {
+          ...savedJobIds.where((id) => id != job.id),
+          if (wasSaved) job.id,
+        };
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update saved job.')),
+      );
+    }
   }
 
   List<Job> _jobsInBounds(List<Job> jobs) {
@@ -402,16 +393,37 @@ class _WebMapPageState extends State<WebMapPage> {
 
   void _selectJobFromMarker(Job job, int index) {
     setState(() => selectedJobId = job.id);
-    _scrollTo(index);
+    _scrollTo(job.id, index);
   }
 
-  void _scrollTo(int index) {
-    if (!listController.hasClients) return;
-    listController.animateTo(
-      (index * 156).toDouble(),
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-    );
+  GlobalKey _cardKeyForJob(String jobId) {
+    return resultCardKeys.putIfAbsent(jobId, GlobalKey.new);
+  }
+
+  void _scrollTo(String jobId, int index) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final cardContext = resultCardKeys[jobId]?.currentContext;
+      if (cardContext != null) {
+        Scrollable.ensureVisible(
+          cardContext,
+          alignment: 0.08,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+        );
+        return;
+      }
+      if (!listController.hasClients) return;
+      final estimatedOffset = (index * 210).toDouble().clamp(
+            0.0,
+            listController.position.maxScrollExtent,
+          );
+      listController.animateTo(
+        estimatedOffset,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   Future<void> _locateUser() async {
@@ -562,8 +574,11 @@ class _MapResultsPanel extends StatelessWidget {
     required this.searchController,
     required this.search,
     required this.userLocation,
+    required this.savedJobIds,
     required this.onSearchChanged,
     required this.onSelected,
+    required this.cardKeyForJob,
+    this.onToggleSaved,
   });
 
   final List<Job> jobs;
@@ -572,8 +587,11 @@ class _MapResultsPanel extends StatelessWidget {
   final TextEditingController searchController;
   final String search;
   final LatLng? userLocation;
+  final Set<String> savedJobIds;
   final ValueChanged<String> onSearchChanged;
   final ValueChanged<Job> onSelected;
+  final GlobalKey Function(String jobId) cardKeyForJob;
+  final ValueChanged<Job>? onToggleSaved;
 
   @override
   Widget build(BuildContext context) {
@@ -619,10 +637,15 @@ class _MapResultsPanel extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final job = jobs[index];
                       return _ResultCard(
+                        key: cardKeyForJob(job.id),
                         job: job,
                         selected: job.id == selectedJobId,
+                        saved: savedJobIds.contains(job.id),
                         distanceMiles: _distanceMiles(job),
                         onTap: () => onSelected(job),
+                        onToggleSaved: onToggleSaved == null
+                            ? null
+                            : () => onToggleSaved!(job),
                       );
                     },
                   ),
@@ -647,19 +670,26 @@ class _MapResultsPanel extends StatelessWidget {
 
 class _ResultCard extends StatelessWidget {
   const _ResultCard({
+    super.key,
     required this.job,
     required this.selected,
+    required this.saved,
     required this.distanceMiles,
     required this.onTap,
+    this.onToggleSaved,
   });
 
   final Job job;
   final bool selected;
+  final bool saved;
   final double? distanceMiles;
   final VoidCallback onTap;
+  final VoidCallback? onToggleSaved;
 
   @override
   Widget build(BuildContext context) {
+    final rate = webJobRate(job);
+    final posted = webJobPostedLabel(job);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(WebRadii.card),
@@ -676,22 +706,53 @@ class _ResultCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              job.displayTitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: WebTheme.ink,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              job.companyName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: WebTheme.muted),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                WebCircleImage(
+                  url: job.companyLogo,
+                  size: 44,
+                  fallbackIcon: Icons.business_outlined,
+                ),
+                const SizedBox(width: WebSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        job.displayTitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: WebTheme.ink,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      if (job.companyName.trim().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          job.companyName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: WebTheme.muted),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (onToggleSaved != null)
+                  IconButton(
+                    tooltip: saved ? 'Remove from saved' : 'Save job',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onToggleSaved,
+                    icon: Icon(
+                      saved ? Icons.favorite : Icons.favorite_border,
+                      color: saved ? WebTheme.accent : WebTheme.muted,
+                      size: 20,
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
             Row(
@@ -709,17 +770,29 @@ class _ResultCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (posted != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                posted,
+                style: const TextStyle(
+                  color: WebTheme.subtleText,
+                  fontSize: 12,
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                if (job.rateText.isNotEmpty) _MiniChip(label: job.rateText),
-                _MiniChip(
-                  label: '${job.remainingPositions}/${job.positions} spots',
-                ),
+                _MiniChip(label: webJobWorkFormat(job)),
+                if (rate != null) _MiniChip(label: rate),
+                if (job.duration.trim().isNotEmpty)
+                  _MiniChip(label: job.duration),
                 if (distanceMiles != null)
-                  _MiniChip(label: '${distanceMiles!.toStringAsFixed(1)} mi'),
+                  _MiniChip(
+                    label: '${distanceMiles!.toStringAsFixed(1)} miles away',
+                  ),
               ],
             ),
           ],
@@ -740,6 +813,7 @@ class _JobMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rate = webJobRate(job);
     return Container(
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -756,7 +830,7 @@ class _JobMarker extends StatelessWidget {
         ],
       ),
       child: Text(
-        job.rateText.isEmpty ? job.workFormatText : job.rateText,
+        rate ?? webJobWorkFormat(job),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(

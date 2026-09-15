@@ -31,6 +31,7 @@ class WebJobsPage extends StatefulWidget {
     this.onOpenSubscriptions,
     this.onOpenChat,
     this.onShowOnMap,
+    this.onBackToMap,
     this.onViewApplications,
     this.initialJobId,
     this.initialOwnerMode,
@@ -43,6 +44,7 @@ class WebJobsPage extends StatefulWidget {
   final VoidCallback? onOpenSubscriptions;
   final ValueChanged<String>? onOpenChat;
   final ValueChanged<String>? onShowOnMap;
+  final VoidCallback? onBackToMap;
   final void Function(String jobId, {String? statusFilter})? onViewApplications;
   final String? initialJobId;
   final bool? initialOwnerMode;
@@ -222,6 +224,17 @@ class _WebJobsPageState extends State<WebJobsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (widget.onBackToMap != null) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: widget.onBackToMap,
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Back to Jobs Map'),
+                  ),
+                ),
+                const SizedBox(height: WebSpacing.sm),
+              ],
               WebPageHeader(
                 title: 'Jobs',
                 subtitle: isEmployer
