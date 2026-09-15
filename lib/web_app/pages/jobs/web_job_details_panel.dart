@@ -6,6 +6,7 @@ import '../../theme/web_theme.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
 import '../../widgets/web_design_components.dart';
+import 'web_job_display.dart';
 
 class WebJobDetailsPanel extends StatelessWidget {
   const WebJobDetailsPanel({
@@ -18,6 +19,13 @@ class WebJobDetailsPanel extends StatelessWidget {
     this.onApply,
     this.onToggleSaved,
     this.onViewCompanyProfile,
+    this.onMessageEmployer,
+    this.onShowOnMap,
+    this.onWithdraw,
+    this.hasApplication = false,
+    this.canWithdraw = false,
+    this.acceptedApplication = false,
+    this.withdrawing = false,
     this.onEdit,
     this.onToggleActive,
     this.onDelete,
@@ -34,6 +42,13 @@ class WebJobDetailsPanel extends StatelessWidget {
   final VoidCallback? onApply;
   final VoidCallback? onToggleSaved;
   final VoidCallback? onViewCompanyProfile;
+  final VoidCallback? onMessageEmployer;
+  final VoidCallback? onShowOnMap;
+  final VoidCallback? onWithdraw;
+  final bool hasApplication;
+  final bool canWithdraw;
+  final bool acceptedApplication;
+  final bool withdrawing;
   final VoidCallback? onEdit;
   final VoidCallback? onToggleActive;
   final VoidCallback? onDelete;
@@ -52,6 +67,7 @@ class WebJobDetailsPanel extends StatelessWidget {
     }
 
     final currentJob = job!;
+    final rate = webJobRate(currentJob);
     return WebPanel(
       padding: EdgeInsets.zero,
       child: ClipRRect(
@@ -59,46 +75,32 @@ class WebJobDetailsPanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _Hero(job: currentJob),
+            _Hero(
+              job: currentJob,
+              showCompanyAvatar: isWorker,
+              showModeration: isEmployerOwner,
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(28),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        WebCircleImage(
-                          url: currentJob.companyLogo,
-                          size: 58,
-                          fallbackIcon: Icons.business_outlined,
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                currentJob.displayTitle,
-                                style:
-                                    Theme.of(context).textTheme.headlineMedium,
-                              ),
-                              if (currentJob.companyName.trim().isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  currentJob.companyName,
-                                  style: const TextStyle(
-                                    color: WebTheme.muted,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
+                    _IdentityRow(
+                      job: currentJob,
+                      isWorker: isWorker,
+                      isSaved: isSaved,
+                      applying: applying,
+                      withdrawing: withdrawing,
+                      hasApplication: hasApplication,
+                      canWithdraw: canWithdraw,
+                      acceptedApplication: acceptedApplication,
+                      onApply: onApply,
+                      onToggleSaved: onToggleSaved,
+                      onViewCompanyProfile: onViewCompanyProfile,
+                      onMessageEmployer: onMessageEmployer,
+                      onShowOnMap: onShowOnMap,
+                      onWithdraw: onWithdraw,
                     ),
                     const SizedBox(height: 18),
                     Wrap(
@@ -111,10 +113,14 @@ class WebJobDetailsPanel extends StatelessWidget {
                               ? 'Location not set'
                               : currentJob.fullAddress,
                         ),
-                        if (currentJob.rateText.isNotEmpty)
+                        _DetailChip(
+                          icon: Icons.work_outline,
+                          label: webJobWorkFormat(currentJob),
+                        ),
+                        if (rate != null)
                           _DetailChip(
                             icon: Icons.payments_outlined,
-                            label: currentJob.rateText,
+                            label: rate,
                           ),
                         _DetailChip(
                           icon: Icons.groups_outlined,
@@ -137,48 +143,13 @@ class WebJobDetailsPanel extends StatelessWidget {
                             label:
                                 'Starts ${_formatDate(currentJob.startDate!)}',
                           ),
-                        _DetailChip(
-                          icon: Icons.verified_outlined,
-                          label: isEmployerOwner
-                              ? currentJob.moderationLabel
-                              : 'Public vacancy',
-                        ),
+                        if (isEmployerOwner)
+                          _DetailChip(
+                            icon: Icons.verified_outlined,
+                            label: currentJob.moderationLabel,
+                          ),
                       ],
                     ),
-                    if (isWorker) ...[
-                      const SizedBox(height: 22),
-                      Wrap(
-                        spacing: WebSpacing.sm,
-                        runSpacing: WebSpacing.sm,
-                        children: [
-                          FilledButton.icon(
-                            onPressed: applying ? null : onApply,
-                            icon: applying
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.send_outlined),
-                            label: const Text('Apply'),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: onToggleSaved,
-                            icon: Icon(isSaved
-                                ? Icons.favorite
-                                : Icons.favorite_border),
-                            label: Text(isSaved ? 'Saved' : 'Save'),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: onViewCompanyProfile,
-                            icon: const Icon(Icons.business_outlined),
-                            label: const Text('View company profile'),
-                          ),
-                        ],
-                      ),
-                    ],
                     if (isEmployerOwner) ...[
                       const SizedBox(height: 22),
                       _OwnerActions(
@@ -197,7 +168,7 @@ class WebJobDetailsPanel extends StatelessWidget {
                       const SizedBox(height: 28),
                     ],
                     _Section(
-                      title: 'Description',
+                      title: 'Job Description',
                       body: currentJob.description,
                       fallback: 'No description has been added yet.',
                     ),
@@ -206,15 +177,15 @@ class WebJobDetailsPanel extends StatelessWidget {
                       body: currentJob.responsibilities,
                     ),
                     _Section(
-                      title: 'Candidate requirements',
+                      title: 'Candidate Requirements',
                       body: currentJob.candidateRequirements,
                     ),
                     _Section(
-                      title: 'Required documents',
+                      title: 'Required Documents',
                       body: currentJob.requiredDocuments,
                     ),
                     _Section(
-                      title: 'Additional information',
+                      title: 'Additional Information',
                       body: currentJob.additionalInformation,
                     ),
                   ],
@@ -234,9 +205,15 @@ class WebJobDetailsPanel extends StatelessWidget {
 }
 
 class _Hero extends StatelessWidget {
-  const _Hero({required this.job});
+  const _Hero({
+    required this.job,
+    required this.showCompanyAvatar,
+    required this.showModeration,
+  });
 
   final Job job;
+  final bool showCompanyAvatar;
+  final bool showModeration;
 
   @override
   Widget build(BuildContext context) {
@@ -265,25 +242,235 @@ class _Hero extends StatelessWidget {
               ),
             ),
           ),
-          Positioned(
-            left: 28,
-            bottom: 24,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(
-                color: WebTheme.surface.withValues(alpha: 0.92),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                job.moderationLabel,
-                style: const TextStyle(
-                  color: WebTheme.ink,
-                  fontWeight: FontWeight.w800,
+          if (showCompanyAvatar)
+            Positioned(
+              left: 28,
+              bottom: 20,
+              child: Container(
+                width: 140,
+                height: 140,
+                padding: const EdgeInsets.all(5),
+                decoration: const BoxDecoration(
+                  color: WebTheme.surface,
+                  shape: BoxShape.circle,
+                ),
+                child: WebCircleImage(
+                  url: job.companyLogo,
+                  size: 130,
+                  fallbackIcon: Icons.business_outlined,
                 ),
               ),
             ),
+          if (showModeration)
+            Positioned(
+              left: 28,
+              bottom: 24,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: WebTheme.surface.withValues(alpha: 0.92),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  job.moderationLabel,
+                  style: const TextStyle(
+                    color: WebTheme.ink,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IdentityRow extends StatelessWidget {
+  const _IdentityRow({
+    required this.job,
+    required this.isWorker,
+    required this.isSaved,
+    required this.applying,
+    required this.withdrawing,
+    required this.hasApplication,
+    required this.canWithdraw,
+    required this.acceptedApplication,
+    this.onApply,
+    this.onToggleSaved,
+    this.onViewCompanyProfile,
+    this.onMessageEmployer,
+    this.onShowOnMap,
+    this.onWithdraw,
+  });
+
+  final Job job;
+  final bool isWorker;
+  final bool isSaved;
+  final bool applying;
+  final bool withdrawing;
+  final bool hasApplication;
+  final bool canWithdraw;
+  final bool acceptedApplication;
+  final VoidCallback? onApply;
+  final VoidCallback? onToggleSaved;
+  final VoidCallback? onViewCompanyProfile;
+  final VoidCallback? onMessageEmployer;
+  final VoidCallback? onShowOnMap;
+  final VoidCallback? onWithdraw;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!isWorker) ...[
+          WebCircleImage(
+            url: job.companyLogo,
+            size: 58,
+            fallbackIcon: Icons.business_outlined,
+          ),
+          const SizedBox(width: 14),
+        ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                job.displayTitle,
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              if (job.companyName.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                TextButton(
+                  onPressed: onViewCompanyProfile,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 34),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    alignment: Alignment.centerLeft,
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  child: Text(job.companyName),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (isWorker) ...[
+          const SizedBox(width: WebSpacing.md),
+          _WorkerActionsMenu(
+            isSaved: isSaved,
+            applying: applying,
+            withdrawing: withdrawing,
+            hasApplication: hasApplication,
+            canWithdraw: canWithdraw,
+            acceptedApplication: acceptedApplication,
+            onApply: onApply,
+            onToggleSaved: onToggleSaved,
+            onViewCompanyProfile: onViewCompanyProfile,
+            onMessageEmployer: onMessageEmployer,
+            onShowOnMap: onShowOnMap,
+            onWithdraw: onWithdraw,
           ),
         ],
+      ],
+    );
+  }
+}
+
+class _WorkerActionsMenu extends StatelessWidget {
+  const _WorkerActionsMenu({
+    required this.isSaved,
+    required this.applying,
+    required this.withdrawing,
+    required this.hasApplication,
+    required this.canWithdraw,
+    required this.acceptedApplication,
+    this.onApply,
+    this.onToggleSaved,
+    this.onViewCompanyProfile,
+    this.onMessageEmployer,
+    this.onShowOnMap,
+    this.onWithdraw,
+  });
+
+  final bool isSaved;
+  final bool applying;
+  final bool withdrawing;
+  final bool hasApplication;
+  final bool canWithdraw;
+  final bool acceptedApplication;
+  final VoidCallback? onApply;
+  final VoidCallback? onToggleSaved;
+  final VoidCallback? onViewCompanyProfile;
+  final VoidCallback? onMessageEmployer;
+  final VoidCallback? onShowOnMap;
+  final VoidCallback? onWithdraw;
+
+  @override
+  Widget build(BuildContext context) {
+    final busy = applying || withdrawing;
+    return MenuAnchor(
+      menuChildren: [
+        if (onMessageEmployer != null)
+          MenuItemButton(
+            onPressed: busy ? null : onMessageEmployer,
+            leadingIcon: const Icon(Icons.chat_bubble_outline),
+            child: const Text('Message employer'),
+          ),
+        if (onViewCompanyProfile != null)
+          MenuItemButton(
+            onPressed: busy ? null : onViewCompanyProfile,
+            leadingIcon: const Icon(Icons.business_outlined),
+            child: const Text('View company profile'),
+          ),
+        if (onShowOnMap != null && !acceptedApplication)
+          MenuItemButton(
+            onPressed: busy ? null : onShowOnMap,
+            leadingIcon: const Icon(Icons.map_outlined),
+            child: const Text('Show location on map'),
+          ),
+        if (onToggleSaved != null)
+          MenuItemButton(
+            onPressed: busy ? null : onToggleSaved,
+            leadingIcon: Icon(
+              isSaved ? Icons.favorite : Icons.favorite_border,
+            ),
+            child: Text(isSaved ? 'Remove from saved' : 'Save job'),
+          ),
+        if (!hasApplication && onApply != null)
+          MenuItemButton(
+            onPressed: busy ? null : onApply,
+            leadingIcon: const Icon(Icons.send_outlined),
+            child: const Text('Apply for this job'),
+          ),
+        if (canWithdraw && onWithdraw != null)
+          MenuItemButton(
+            onPressed: busy ? null : onWithdraw,
+            leadingIcon: const Icon(Icons.undo),
+            child: const Text('Withdraw application'),
+          ),
+      ],
+      builder: (context, controller, child) => OutlinedButton.icon(
+        onPressed: busy
+            ? null
+            : controller.isOpen
+                ? controller.close
+                : controller.open,
+        icon: const Icon(Icons.more_horiz),
+        label: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Actions'),
+            SizedBox(width: 4),
+            Icon(Icons.arrow_drop_down, size: 18),
+          ],
+        ),
       ),
     );
   }

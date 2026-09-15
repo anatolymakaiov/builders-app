@@ -42,6 +42,7 @@ class _WebShellState extends State<WebShell> {
   _ApplicationsRoute? applicationsRoute;
   String? initialJobId;
   bool? initialJobOwnerMode;
+  String? initialMapJobId;
   bool postingJob = false;
   _SecondaryRoute? secondaryRoute;
   late Stream<WebDataState<WebShellBadges>> badgesStream;
@@ -93,11 +94,14 @@ class _WebShellState extends State<WebShell> {
                               WebAccountDestination.subscriptions,
                             )
                         : null,
+                    onOpenChat: _openChat,
+                    onShowOnMap: _openJobOnMap,
                     onViewApplications: _openApplications,
                   ),
                 WebSection.map => WebMapPage(
                     userId: widget.user.uid,
                     role: widget.role,
+                    initialJobId: initialMapJobId,
                     onOpenProfile: _openProfile,
                   ),
                 WebSection.applications => WebApplicationsPage(
@@ -207,6 +211,7 @@ class _WebShellState extends State<WebShell> {
       secondaryRoute = null;
       postingJob = false;
       initialChatId = chatId;
+      initialMapJobId = null;
     });
   }
 
@@ -216,6 +221,20 @@ class _WebShellState extends State<WebShell> {
       selected = WebSection.jobs;
       initialJobId = jobId;
       initialJobOwnerMode = ownerMode;
+      initialMapJobId = null;
+      secondaryRoute = null;
+      profileRoute = null;
+      postingJob = false;
+    });
+  }
+
+  void _openJobOnMap(String jobId) {
+    setState(() {
+      profileHistory.clear();
+      selected = WebSection.map;
+      initialMapJobId = jobId;
+      initialJobId = null;
+      initialJobOwnerMode = null;
       secondaryRoute = null;
       profileRoute = null;
       postingJob = false;
@@ -231,6 +250,7 @@ class _WebShellState extends State<WebShell> {
       applicationsRoute = null;
       initialJobId = null;
       initialJobOwnerMode = null;
+      initialMapJobId = null;
       postingJob = true;
     });
   }
@@ -249,6 +269,7 @@ class _WebShellState extends State<WebShell> {
       initialChatId = null;
       initialJobId = null;
       initialJobOwnerMode = null;
+      initialMapJobId = null;
       applicationsRoute = _ApplicationsRoute(
         jobId: jobId,
         applicationId: applicationId,
@@ -268,6 +289,7 @@ class _WebShellState extends State<WebShell> {
       if (value != WebSection.applications) applicationsRoute = null;
       if (value != WebSection.jobs) initialJobId = null;
       if (value != WebSection.jobs) initialJobOwnerMode = null;
+      if (value != WebSection.map) initialMapJobId = null;
     });
   }
 

@@ -85,11 +85,11 @@ class WebRoleIdentityResolver {
       avatarUrl: _firstText(
         data,
         const [
-          'photo',
           'companyLogoUrl',
           'companyLogo',
           'companyAvatarUrl',
           'logo',
+          'employerAvatarUrl',
           'avatarUrl',
           'photoUrl',
           'photo',

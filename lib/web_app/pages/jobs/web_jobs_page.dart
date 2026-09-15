@@ -1,11 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../models/job.dart';
 import '../../services/web_data_state.dart';
+import '../../services/web_application_actions_service.dart';
+import '../../services/web_applications_data_service.dart';
 import '../../services/web_job_management_service.dart';
 import '../../services/web_jobs_data_service.dart';
 import '../../services/web_job_filters.dart';
+import '../../services/web_profile_communication.dart';
 import '../../widgets/web_job_filters_dialog.dart';
 import '../../widgets/web_apply_dialog.dart';
 import '../../theme/web_breakpoints.dart';
@@ -24,6 +29,8 @@ class WebJobsPage extends StatefulWidget {
     this.onOpenProfile,
     this.onPostJob,
     this.onOpenSubscriptions,
+    this.onOpenChat,
+    this.onShowOnMap,
     this.onViewApplications,
     this.initialJobId,
     this.initialOwnerMode,
@@ -34,6 +41,8 @@ class WebJobsPage extends StatefulWidget {
   final void Function(String userId, String role)? onOpenProfile;
   final VoidCallback? onPostJob;
   final VoidCallback? onOpenSubscriptions;
+  final ValueChanged<String>? onOpenChat;
+  final ValueChanged<String>? onShowOnMap;
   final void Function(String jobId, {String? statusFilter})? onViewApplications;
   final String? initialJobId;
   final bool? initialOwnerMode;
@@ -45,6 +54,9 @@ class WebJobsPage extends StatefulWidget {
 class _WebJobsPageState extends State<WebJobsPage> {
   final service = WebJobsDataService();
   final managementService = WebJobManagementService();
+  final applicationsService = WebApplicationsDataService();
+  final applicationActions = WebApplicationActionsService();
+  final profileCommunication = WebProfileCommunication();
   final searchController = TextEditingController();
   late Stream<WebDataState<WebJobsResult>> jobsStream;
   WebJobsMode mode = WebJobsMode.market;
@@ -59,9 +71,14 @@ class _WebJobsPageState extends State<WebJobsPage> {
   WebJobSort sort = WebJobSort.newest;
   Position? location;
   bool savedOnly = false;
+  bool withdrawing = false;
   int page = 1;
   String? targetJobId;
   bool compactDetailVisible = false;
+  StreamSubscription<WebDataState<List<WebApplicationSummary>>>?
+      workerApplicationsSubscription;
+  Map<String, _WorkerJobApplicationState> workerApplicationStates = const {};
+  bool workerApplicationsReady = false;
 
   bool get isEmployer => widget.role == 'employer';
   bool get isWorker => widget.role == 'worker';
@@ -77,6 +94,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
     compactDetailVisible = widget.initialJobId != null;
     _resetJobsStream();
     _loadSavedJobs();
+    _startWorkerApplications();
   }
 
   @override
@@ -94,10 +112,14 @@ class _WebJobsPageState extends State<WebJobsPage> {
         }
       });
     }
+    if (oldWidget.userId != widget.userId || oldWidget.role != widget.role) {
+      unawaited(_restartWorkerApplications());
+    }
   }
 
   @override
   void dispose() {
+    workerApplicationsSubscription?.cancel();
     searchController.dispose();
     super.dispose();
   }
@@ -166,6 +188,9 @@ class _WebJobsPageState extends State<WebJobsPage> {
 
         final result = state.data ??
             const WebJobsResult(publicJobs: <Job>[], ownerJobs: <Job>[]);
+        if (isWorker && !workerApplicationsReady) {
+          return const WebLoadingState(label: 'Loading vacancies');
+        }
         final permittedJobs = result.jobsForMode(mode, widget.role);
         final jobs = filterJobs(permittedJobs);
         final pages = (jobs.length / 10).ceil();
@@ -339,8 +364,13 @@ class _WebJobsPageState extends State<WebJobsPage> {
                       }),
                       title: _listTitle(jobs.length),
                       savedJobIds: savedJobIds,
+                      appliedJobIds: workerApplicationStates.keys.toSet(),
+                      onToggleSaved: isWorker ? _toggleSaved : null,
                       showSearch: false,
                     );
+                    final applicationState = selectedJob == null
+                        ? null
+                        : workerApplicationStates[selectedJob.id];
                     final detail = targetUnavailable
                         ? const Center(
                             child: Text('This vacancy is no longer available.'),
@@ -354,6 +384,12 @@ class _WebJobsPageState extends State<WebJobsPage> {
                                 ? false
                                 : savedJobIds.contains(selectedJob.id),
                             applying: applying,
+                            withdrawing: withdrawing,
+                            hasApplication:
+                                applicationState?.hasApplication ?? false,
+                            canWithdraw: applicationState?.withdrawable != null,
+                            acceptedApplication:
+                                applicationState?.accepted ?? false,
                             onApply: selectedJob == null
                                 ? null
                                 : () => _applyToJob(selectedJob!),
@@ -366,6 +402,20 @@ class _WebJobsPageState extends State<WebJobsPage> {
                                 : () => widget.onOpenProfile?.call(
                                       selectedJob!.ownerId,
                                       'employer',
+                                    ),
+                            onMessageEmployer: selectedJob == null ||
+                                    selectedJob.ownerId == 'unknown'
+                                ? null
+                                : () => _messageEmployer(selectedJob!),
+                            onShowOnMap: selectedJob == null ||
+                                    widget.onShowOnMap == null
+                                ? null
+                                : () =>
+                                    widget.onShowOnMap?.call(selectedJob!.id),
+                            onWithdraw: applicationState?.withdrawable == null
+                                ? null
+                                : () => _withdrawApplication(
+                                      applicationState!.withdrawable!,
                                     ),
                             onEdit: selectedJob == null ||
                                     !isEmployer ||
@@ -540,6 +590,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Application sent')),
       );
+      await _refreshWorkerApplications();
     } catch (error) {
       if (!mounted) return;
       final message = error.toString().contains('already_applied')
@@ -550,6 +601,118 @@ class _WebJobsPageState extends State<WebJobsPage> {
       );
     } finally {
       if (mounted) setState(() => applying = false);
+    }
+  }
+
+  void _startWorkerApplications() {
+    if (!isWorker) return;
+    workerApplicationsSubscription = applicationsService
+        .workerJobApplications(widget.userId)
+        .listen((state) {
+      final applications = state.data;
+      if (!mounted || applications == null) return;
+      setState(() {
+        workerApplicationStates = _groupWorkerApplications(applications);
+        workerApplicationsReady = true;
+      });
+    });
+  }
+
+  Future<void> _restartWorkerApplications() async {
+    await workerApplicationsSubscription?.cancel();
+    workerApplicationsSubscription = null;
+    if (!mounted) return;
+    setState(() {
+      workerApplicationStates = const {};
+      workerApplicationsReady = false;
+    });
+    _startWorkerApplications();
+  }
+
+  Future<void> _refreshWorkerApplications() async {
+    if (!isWorker) return;
+    try {
+      final applications =
+          await applicationsService.loadWorkerJobApplications(widget.userId);
+      if (!mounted) return;
+      setState(() {
+        workerApplicationStates = _groupWorkerApplications(applications);
+        workerApplicationsReady = true;
+      });
+    } catch (error) {
+      debugPrint('WEB JOB APPLICATION PRESENCE REFRESH ERROR $error');
+    }
+  }
+
+  Map<String, _WorkerJobApplicationState> _groupWorkerApplications(
+    List<WebApplicationSummary> applications,
+  ) {
+    final grouped = <String, List<WebApplicationSummary>>{};
+    for (final application in applications) {
+      final jobId = application.data['jobId']?.toString().trim() ?? '';
+      final status = application.status.trim().toLowerCase();
+      if (jobId.isEmpty ||
+          status == 'withdrawn' ||
+          status == 'cancelled' ||
+          status == 'deleted') {
+        continue;
+      }
+      grouped.putIfAbsent(jobId, () => []).add(application);
+    }
+    return {
+      for (final entry in grouped.entries)
+        entry.key: _WorkerJobApplicationState(entry.value),
+    };
+  }
+
+  Future<void> _messageEmployer(Job job) async {
+    try {
+      final chatId = await profileCommunication.message(job.ownerId);
+      if (!mounted) return;
+      widget.onOpenChat?.call(chatId);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open chat: $error')),
+      );
+    }
+  }
+
+  Future<void> _withdrawApplication(WebApplicationSummary application) async {
+    if (withdrawing) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Withdraw application'),
+        content: const Text('Withdraw this application?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Withdraw'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => withdrawing = true);
+    try {
+      await applicationActions.withdrawApplication(application);
+      await _refreshWorkerApplications();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Application withdrawn')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not withdraw application')),
+      );
+    } finally {
+      if (mounted) setState(() => withdrawing = false);
     }
   }
 
@@ -614,6 +777,29 @@ class _WebJobsPageState extends State<WebJobsPage> {
     } finally {
       if (mounted) setState(() => managing = false);
     }
+  }
+}
+
+class _WorkerJobApplicationState {
+  const _WorkerJobApplicationState(this.applications);
+
+  final List<WebApplicationSummary> applications;
+
+  bool get hasApplication => applications.isNotEmpty;
+
+  bool get accepted => applications.any((application) {
+        final status = application.status.trim().toLowerCase();
+        return status == 'offer_accepted' ||
+            status == 'accepted' ||
+            status == 'hired';
+      });
+
+  WebApplicationSummary? get withdrawable {
+    for (final application in applications) {
+      final status = application.status.trim().toLowerCase();
+      if (status == 'pending' || status == 'in_review') return application;
+    }
+    return null;
   }
 }
 

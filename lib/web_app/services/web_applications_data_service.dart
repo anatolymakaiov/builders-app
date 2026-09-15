@@ -208,6 +208,55 @@ class WebApplicationsDataService {
     );
   }
 
+  Stream<WebDataState<List<WebApplicationSummary>>> workerJobApplications(
+    String uid,
+  ) {
+    return _poll(
+      () => loadWorkerJobApplications(uid),
+      interval: pollInterval,
+      empty: const <WebApplicationSummary>[],
+      logPrefix: 'WEB JOB APPLICATION PRESENCE LOAD ERROR',
+    );
+  }
+
+  Future<List<WebApplicationSummary>> loadWorkerJobApplications(
+    String uid,
+  ) async {
+    final docsById = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    final queryErrors = <Object>[];
+    final single = await _runApplicationQuery(
+      source: 'worker_job_presence_single',
+      query: _firestore
+          .collection('applications')
+          .where('workerId', isEqualTo: uid),
+    );
+    _mergeDocs(docsById, single.docs);
+    if (single.error != null) queryErrors.add(single.error!);
+
+    final teams = await _loadWorkerTeams(uid);
+    for (final team in teams) {
+      final result = await _runApplicationQuery(
+        source: 'worker_job_presence_team:${team.id}',
+        query: _firestore
+            .collection('applications')
+            .where('teamId', isEqualTo: team.id),
+      );
+      _mergeDocs(
+        docsById,
+        result.docs.where(
+          (doc) => _isRelevantTeamApplication(doc.data(), team.id),
+        ),
+      );
+      if (result.error != null) queryErrors.add(result.error!);
+    }
+    if (docsById.isEmpty && queryErrors.isNotEmpty) {
+      throw queryErrors.first;
+    }
+    return docsById.values
+        .map((doc) => WebApplicationSummary(id: doc.id, data: doc.data()))
+        .toList();
+  }
+
   Future<List<WebApplicationSummary>> loadApplications({
     required String uid,
     required String role,

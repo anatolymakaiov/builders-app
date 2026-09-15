@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/job.dart';
 import '../../services/moderation_hold_service.dart';
 import 'web_data_state.dart';
+import 'web_role_identity_service.dart';
 
 class WebJobsDataService {
   WebJobsDataService({
@@ -16,6 +17,8 @@ class WebJobsDataService {
 
   final FirebaseFirestore _firestore;
   final Duration pollInterval;
+  late final WebRoleIdentityResolver _identityResolver =
+      WebRoleIdentityResolver(firestore: _firestore);
 
   Stream<WebDataState<WebJobsResult>> jobs({
     required String userId,
@@ -76,9 +79,10 @@ class WebJobsDataService {
     }
 
     final publicJobs = publicDocsById.values
-        .map((doc) => Job.fromFirestore(doc.id, doc.data()))
+        .map(_jobFromDocument)
         .where(_isPublicWebJob)
         .toList();
+    await _enrichCompanyIdentity(publicJobs);
     _sortNewest(publicJobs);
 
     final ownerDocsById =
@@ -101,9 +105,10 @@ class WebJobsDataService {
     }
 
     final ownerJobs = ownerDocsById.values
-        .map((doc) => Job.fromFirestore(doc.id, doc.data()))
+        .map(_jobFromDocument)
         .where((job) => _isOwnerWebJob(job, userId))
         .toList();
+    await _enrichCompanyIdentity(ownerJobs);
     _sortNewest(ownerJobs);
 
     return WebJobsResult(publicJobs: publicJobs, ownerJobs: ownerJobs);
@@ -134,10 +139,11 @@ class WebJobsDataService {
     }
 
     final jobs = docsById.values
-        .map((doc) => Job.fromFirestore(doc.id, doc.data()))
+        .map(_jobFromDocument)
         .where((job) =>
             ownProfile ? _isOwnerWebJob(job, ownerId) : _isPublicWebJob(job))
         .toList();
+    await _enrichCompanyIdentity(jobs);
     _sortNewest(jobs);
     return jobs;
   }
@@ -172,6 +178,77 @@ class WebJobsDataService {
       if (bDate == null) return -1;
       return bDate.compareTo(aDate);
     });
+  }
+
+  Job _jobFromDocument(
+    QueryDocumentSnapshot<Map<String, dynamic>> document,
+  ) {
+    final data = document.data();
+    return Job.fromFirestore(document.id, {
+      ...data,
+      'companyName': _firstNonEmpty(data, const [
+        'companyName',
+        'employerName',
+        'businessName',
+      ]),
+      'companyLogo': _firstNonEmpty(data, const [
+        'companyLogo',
+        'companyLogoUrl',
+        'companyAvatarUrl',
+        'employerAvatarUrl',
+        'logo',
+      ]),
+    });
+  }
+
+  String _firstNonEmpty(
+    Map<String, dynamic> data,
+    List<String> fields,
+  ) {
+    for (final field in fields) {
+      final value = data[field]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return '';
+  }
+
+  Future<void> _enrichCompanyIdentity(List<Job> jobs) async {
+    final identities = <String, Future<WebRoleIdentity?>>{};
+    for (final job in jobs) {
+      final ownerId = job.ownerId.trim();
+      if (ownerId.isEmpty || ownerId == 'unknown') continue;
+      identities.putIfAbsent(ownerId, () async {
+        try {
+          return await _identityResolver.resolve(
+            userId: ownerId,
+            role: 'employer',
+          );
+        } catch (error) {
+          debugPrint('WEB JOB COMPANY RESOLVE ERROR ownerId=$ownerId $error');
+          return null;
+        }
+      });
+    }
+    if (identities.isEmpty) return;
+    final resolved = <String, WebRoleIdentity?>{};
+    await Future.wait(identities.entries.map((entry) async {
+      resolved[entry.key] = await entry.value;
+    }));
+    for (var index = 0; index < jobs.length; index++) {
+      final job = jobs[index];
+      final identity = resolved[job.ownerId];
+      if (identity == null || identity.data.isEmpty) continue;
+      final liveName = identity.displayName.trim();
+      jobs[index] = job.copyWith(
+        companyName: liveName.isEmpty ||
+                (liveName == 'Company' && job.companyName.trim().isNotEmpty)
+            ? job.companyName
+            : liveName,
+        companyLogo: identity.avatarUrl.trim().isEmpty
+            ? job.companyLogo
+            : identity.avatarUrl,
+      );
+    }
   }
 
   Future<Set<String>> savedJobIds(String userId) async {

@@ -41,11 +41,11 @@ class _ApplyDialogState extends State<_ApplyDialog> {
                     segments: const [
                       ButtonSegment(
                           value: 'single',
-                          label: Text('Worker'),
+                          label: Text('Apply as a worker'),
                           icon: Icon(Icons.person_outline)),
                       ButtonSegment(
                           value: 'team',
-                          label: Text('Team'),
+                          label: Text('Apply as a team'),
                           icon: Icon(Icons.groups_outlined)),
                     ],
                     selected: {

@@ -24,11 +24,13 @@ class WebMapPage extends StatefulWidget {
     super.key,
     required this.userId,
     required this.role,
+    this.initialJobId,
     this.onOpenProfile,
   });
 
   final String userId;
   final String role;
+  final String? initialJobId;
   final void Function(String userId, String role)? onOpenProfile;
 
   @override
@@ -51,6 +53,7 @@ class _WebMapPageState extends State<WebMapPage> {
   String? locationError;
   WebJobFilters filters = const WebJobFilters();
   bool compactMapVisible = true;
+  bool initialJobFocused = false;
 
   bool get isWorker => widget.role == 'worker';
 
@@ -58,7 +61,17 @@ class _WebMapPageState extends State<WebMapPage> {
   void initState() {
     super.initState();
     jobsStream = service.jobs(userId: widget.userId, role: 'worker');
+    selectedJobId = widget.initialJobId;
     debugPrint('WEB MAP INIT tileSource=osm polling=jobs');
+  }
+
+  @override
+  void didUpdateWidget(covariant WebMapPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialJobId != widget.initialJobId) {
+      selectedJobId = widget.initialJobId;
+      initialJobFocused = false;
+    }
   }
 
   @override
@@ -82,6 +95,20 @@ class _WebMapPageState extends State<WebMapPage> {
             const WebJobsResult(publicJobs: <Job>[], ownerJobs: <Job>[]);
         final marketJobs = _filterJobs(result.publicJobs);
         final mapJobs = _jobsInBounds(marketJobs);
+        final requestedJobId = widget.initialJobId;
+        if (!initialJobFocused && requestedJobId != null) {
+          final index = mapJobs.indexWhere((job) => job.id == requestedJobId);
+          if (index >= 0) {
+            initialJobFocused = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              final job = mapJobs[index];
+              setState(() => selectedJobId = job.id);
+              mapController.move(LatLng(job.lat, job.lng), 13);
+              _scrollTo(index);
+            });
+          }
+        }
         if (selectedJobId == null && mapJobs.isNotEmpty) {
           selectedJobId = mapJobs.first.id;
         }

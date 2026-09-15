@@ -5,6 +5,7 @@ import '../../theme/web_theme.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
 import '../../widgets/web_design_components.dart';
+import 'web_job_display.dart';
 
 class WebJobListPanel extends StatelessWidget {
   const WebJobListPanel({
@@ -16,6 +17,8 @@ class WebJobListPanel extends StatelessWidget {
     required this.onSearchChanged,
     required this.title,
     required this.savedJobIds,
+    this.appliedJobIds = const <String>{},
+    this.onToggleSaved,
     this.showSearch = true,
   });
 
@@ -26,6 +29,8 @@ class WebJobListPanel extends StatelessWidget {
   final ValueChanged<String> onSearchChanged;
   final String title;
   final Set<String> savedJobIds;
+  final Set<String> appliedJobIds;
+  final ValueChanged<Job>? onToggleSaved;
   final bool showSearch;
 
   @override
@@ -75,7 +80,11 @@ class WebJobListPanel extends StatelessWidget {
                         job: job,
                         selected: job.id == selectedJobId,
                         saved: savedJobIds.contains(job.id),
+                        applied: appliedJobIds.contains(job.id),
                         onTap: () => onSelected(job),
+                        onToggleSaved: onToggleSaved == null
+                            ? null
+                            : () => onToggleSaved!(job),
                       );
                     },
                   ),
@@ -91,17 +100,23 @@ class _WebJobCard extends StatelessWidget {
     required this.job,
     required this.selected,
     required this.saved,
+    required this.applied,
     required this.onTap,
+    this.onToggleSaved,
   });
 
   final Job job;
   final bool selected;
   final bool saved;
+  final bool applied;
   final VoidCallback onTap;
+  final VoidCallback? onToggleSaved;
 
   @override
   Widget build(BuildContext context) {
     final location = job.fullAddress;
+    final posted = webJobPostedLabel(job);
+    final rate = webJobRate(job);
     return InkWell(
       borderRadius: BorderRadius.circular(WebRadii.card),
       onTap: onTap,
@@ -128,34 +143,47 @@ class _WebJobCard extends StatelessWidget {
                 ),
                 const SizedBox(width: WebSpacing.sm),
                 Expanded(
-                  child: Text(
-                    job.displayTitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: WebTheme.ink,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        job.displayTitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: WebTheme.ink,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (job.companyName.trim().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          job.companyName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: WebTheme.muted),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (saved)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 8),
-                    child:
-                        Icon(Icons.favorite, color: WebTheme.accent, size: 18),
+                if (onToggleSaved != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: IconButton(
+                      tooltip: saved ? 'Remove from saved' : 'Save job',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onToggleSaved,
+                      icon: Icon(
+                        saved ? Icons.favorite : Icons.favorite_border,
+                        color: saved ? WebTheme.accent : WebTheme.muted,
+                        size: 20,
+                      ),
+                    ),
                   ),
               ],
             ),
-            if (job.companyName.trim().isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                job.companyName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: WebTheme.muted),
-              ),
-            ],
             if (location.isNotEmpty) ...[
               const SizedBox(height: 8),
               Row(
@@ -177,22 +205,25 @@ class _WebJobCard extends StatelessWidget {
                 ],
               ),
             ],
+            if (posted != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                posted,
+                style: const TextStyle(
+                  color: WebTheme.subtleText,
+                  fontSize: 12,
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                if (job.rateText.isNotEmpty) _Chip(label: job.rateText),
+                _Chip(label: webJobWorkFormat(job)),
+                if (rate != null) _Chip(label: rate),
                 if (job.duration.isNotEmpty) _Chip(label: job.duration),
-                if (job.positions > 1)
-                  _Chip(
-                    label: '${job.remainingPositions} of ${job.positions}',
-                  ),
-                if (job.status.trim().isNotEmpty)
-                  _Chip(
-                      label: job.moderationStatus == 'approved'
-                          ? job.status
-                          : job.moderationLabel),
+                _Chip(label: applied ? 'Applied' : 'Not Applied'),
               ],
             ),
           ],
