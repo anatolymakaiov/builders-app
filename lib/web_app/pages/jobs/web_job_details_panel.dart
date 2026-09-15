@@ -75,118 +75,125 @@ class WebJobDetailsPanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _Hero(
-              job: currentJob,
-              showCompanyAvatar: isWorker,
-              showModeration: isEmployerOwner,
-            ),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(28),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _IdentityRow(
+                    _Hero(
                       job: currentJob,
-                      isWorker: isWorker,
-                      isSaved: isSaved,
-                      applying: applying,
-                      withdrawing: withdrawing,
-                      hasApplication: hasApplication,
-                      canWithdraw: canWithdraw,
-                      acceptedApplication: acceptedApplication,
-                      onApply: onApply,
-                      onToggleSaved: onToggleSaved,
-                      onViewCompanyProfile: onViewCompanyProfile,
-                      onMessageEmployer: onMessageEmployer,
-                      onShowOnMap: onShowOnMap,
-                      onWithdraw: onWithdraw,
+                      showCompanyAvatar: isWorker,
+                      showModeration: isEmployerOwner,
                     ),
-                    const SizedBox(height: 18),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        _DetailChip(
-                          icon: Icons.place_outlined,
-                          label: currentJob.fullAddress.isEmpty
-                              ? 'Location not set'
-                              : currentJob.fullAddress,
-                        ),
-                        _DetailChip(
-                          icon: Icons.work_outline,
-                          label: webJobWorkFormat(currentJob),
-                        ),
-                        if (rate != null)
-                          _DetailChip(
-                            icon: Icons.payments_outlined,
-                            label: rate,
+                    Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _IdentityRow(
+                            job: currentJob,
+                            isWorker: isWorker,
+                            isSaved: isSaved,
+                            applying: applying,
+                            withdrawing: withdrawing,
+                            hasApplication: hasApplication,
+                            canWithdraw: canWithdraw,
+                            acceptedApplication: acceptedApplication,
+                            onApply: onApply,
+                            onToggleSaved: onToggleSaved,
+                            onViewCompanyProfile: onViewCompanyProfile,
+                            onMessageEmployer: onMessageEmployer,
+                            onShowOnMap: onShowOnMap,
+                            onWithdraw: onWithdraw,
                           ),
-                        _DetailChip(
-                          icon: Icons.groups_outlined,
-                          label:
-                              '${currentJob.remainingPositions} of ${currentJob.positions} positions',
-                        ),
-                        if (currentJob.duration.isNotEmpty)
-                          _DetailChip(
-                            icon: Icons.schedule_outlined,
-                            label: currentJob.duration,
+                          const SizedBox(height: 18),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              _DetailChip(
+                                icon: Icons.place_outlined,
+                                label: currentJob.fullAddress.isEmpty
+                                    ? 'Location not set'
+                                    : currentJob.fullAddress,
+                              ),
+                              _DetailChip(
+                                icon: Icons.work_outline,
+                                label: webJobWorkFormat(currentJob),
+                              ),
+                              if (rate != null)
+                                _DetailChip(
+                                  icon: Icons.payments_outlined,
+                                  label: rate,
+                                ),
+                              _DetailChip(
+                                icon: Icons.groups_outlined,
+                                label:
+                                    '${currentJob.remainingPositions} of ${currentJob.positions} positions',
+                              ),
+                              if (currentJob.duration.isNotEmpty)
+                                _DetailChip(
+                                  icon: Icons.schedule_outlined,
+                                  label: currentJob.duration,
+                                ),
+                              if (currentJob.weeklyHours.isNotEmpty)
+                                _DetailChip(
+                                  icon: Icons.access_time_outlined,
+                                  label: '${currentJob.weeklyHours} hours/week',
+                                ),
+                              if (currentJob.startDate != null)
+                                _DetailChip(
+                                  icon: Icons.event_outlined,
+                                  label:
+                                      'Starts ${_formatDate(currentJob.startDate!)}',
+                                ),
+                              if (isEmployerOwner)
+                                _DetailChip(
+                                  icon: Icons.verified_outlined,
+                                  label: currentJob.moderationLabel,
+                                ),
+                            ],
                           ),
-                        if (currentJob.weeklyHours.isNotEmpty)
-                          _DetailChip(
-                            icon: Icons.access_time_outlined,
-                            label: '${currentJob.weeklyHours} hours/week',
+                          if (isEmployerOwner) ...[
+                            const SizedBox(height: 22),
+                            _OwnerActions(
+                              job: currentJob,
+                              managing: managing,
+                              onEdit: onEdit,
+                              onToggleActive: onToggleActive,
+                              onDelete: onDelete,
+                              onViewApplications: onViewApplications,
+                              statsLoader: statsLoader,
+                            ),
+                          ],
+                          const SizedBox(height: 28),
+                          if (currentJob.photos.isNotEmpty) ...[
+                            _PhotoGrid(photos: currentJob.photos),
+                            const SizedBox(height: 28),
+                          ],
+                          _Section(
+                            title: 'Job Description',
+                            body: currentJob.description,
+                            fallback: 'No description has been added yet.',
                           ),
-                        if (currentJob.startDate != null)
-                          _DetailChip(
-                            icon: Icons.event_outlined,
-                            label:
-                                'Starts ${_formatDate(currentJob.startDate!)}',
+                          _Section(
+                            title: 'Responsibilities',
+                            body: currentJob.responsibilities,
                           ),
-                        if (isEmployerOwner)
-                          _DetailChip(
-                            icon: Icons.verified_outlined,
-                            label: currentJob.moderationLabel,
+                          _Section(
+                            title: 'Candidate Requirements',
+                            body: currentJob.candidateRequirements,
                           ),
-                      ],
-                    ),
-                    if (isEmployerOwner) ...[
-                      const SizedBox(height: 22),
-                      _OwnerActions(
-                        job: currentJob,
-                        managing: managing,
-                        onEdit: onEdit,
-                        onToggleActive: onToggleActive,
-                        onDelete: onDelete,
-                        onViewApplications: onViewApplications,
-                        statsLoader: statsLoader,
+                          _Section(
+                            title: 'Required Documents',
+                            body: currentJob.requiredDocuments,
+                          ),
+                          _Section(
+                            title: 'Additional Information',
+                            body: currentJob.additionalInformation,
+                          ),
+                        ],
                       ),
-                    ],
-                    const SizedBox(height: 28),
-                    if (currentJob.photos.isNotEmpty) ...[
-                      _PhotoGrid(photos: currentJob.photos),
-                      const SizedBox(height: 28),
-                    ],
-                    _Section(
-                      title: 'Job Description',
-                      body: currentJob.description,
-                      fallback: 'No description has been added yet.',
-                    ),
-                    _Section(
-                      title: 'Responsibilities',
-                      body: currentJob.responsibilities,
-                    ),
-                    _Section(
-                      title: 'Candidate Requirements',
-                      body: currentJob.candidateRequirements,
-                    ),
-                    _Section(
-                      title: 'Required Documents',
-                      body: currentJob.requiredDocuments,
-                    ),
-                    _Section(
-                      title: 'Additional Information',
-                      body: currentJob.additionalInformation,
                     ),
                   ],
                 ),
