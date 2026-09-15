@@ -25,6 +25,7 @@ class WebApplicationsPage extends StatefulWidget {
     this.initialJobId,
     this.initialApplicationId,
     this.initialStatusFilter,
+    this.navigationRequestId = 0,
   });
 
   final String userId;
@@ -35,6 +36,7 @@ class WebApplicationsPage extends StatefulWidget {
   final String? initialJobId;
   final String? initialApplicationId;
   final String? initialStatusFilter;
+  final int navigationRequestId;
 
   @override
   State<WebApplicationsPage> createState() => _WebApplicationsPageState();
@@ -44,6 +46,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
   final service = WebApplicationsDataService();
   final actionsService = WebApplicationActionsService();
   late Stream<WebDataState<List<WebApplicationSummary>>> applicationsStream;
+  List<WebApplicationSummary>? lastApplications;
   String? selectedApplicationId;
   bool showTeamApplications = false;
   String statusFilter = ApplicationStatusUtils.allFilter;
@@ -69,17 +72,22 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
   @override
   void didUpdateWidget(covariant WebApplicationsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.userId != widget.userId ||
-        oldWidget.role != widget.role ||
+    final identityChanged =
+        oldWidget.userId != widget.userId || oldWidget.role != widget.role;
+    if (identityChanged) {
+      applicationsStream = service.applications(
+        uid: widget.userId,
+        role: widget.role,
+      );
+      lastApplications = null;
+    }
+    if (identityChanged ||
+        oldWidget.navigationRequestId != widget.navigationRequestId ||
         oldWidget.initialJobId != widget.initialJobId ||
         oldWidget.initialApplicationId != widget.initialApplicationId ||
         oldWidget.initialStatusFilter != widget.initialStatusFilter) {
       statusFilter =
           widget.initialStatusFilter ?? ApplicationStatusUtils.allFilter;
-      applicationsStream = service.applications(
-        uid: widget.userId,
-        role: widget.role,
-      );
       selectedApplicationId = widget.initialApplicationId;
       compactDetailVisible = widget.initialApplicationId != null;
       showTeamApplications = false;
@@ -92,11 +100,12 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
       stream: applicationsStream,
       builder: (context, snapshot) {
         final state = snapshot.data;
-        if (state == null || state.loading) {
+        if (state?.data != null) lastApplications = state!.data;
+        if ((state == null || state.loading) && lastApplications == null) {
           return const WebLoadingState(label: 'Loading applications');
         }
         final loadedApplications =
-            state.data ?? const <WebApplicationSummary>[];
+            state?.data ?? lastApplications ?? const <WebApplicationSummary>[];
         final applications = _filterApplications(isWorker
             ? loadedApplications
                 .where((item) => item.isTeam == showTeamApplications)
@@ -128,9 +137,9 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                     ? 'Track your single and team applications.'
                     : 'Review candidates, teams and offer activity.',
               ),
-              if (state.error != null)
+              if (state?.error != null)
                 _ErrorBanner(
-                  message: 'Could not refresh applications: ${state.error}',
+                  message: 'Could not refresh applications: ${state!.error}',
                 ),
               if (isWorker) ...[
                 _WorkerApplicationToggle(

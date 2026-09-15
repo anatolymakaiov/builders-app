@@ -23,6 +23,7 @@ class WebChatsPage extends StatefulWidget {
     required this.userId,
     required this.role,
     this.initialChatId,
+    this.navigationRequestId = 0,
     this.onOpenProfile,
     this.onOpenJob,
   });
@@ -30,6 +31,7 @@ class WebChatsPage extends StatefulWidget {
   final String userId;
   final String role;
   final String? initialChatId;
+  final int navigationRequestId;
   final void Function(String, String)? onOpenProfile;
   final ValueChanged<String>? onOpenJob;
 
@@ -76,9 +78,14 @@ class _WebChatsPageState extends State<WebChatsPage> {
   @override
   void didUpdateWidget(covariant WebChatsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.userId != widget.userId ||
-        oldWidget.initialChatId != widget.initialChatId) {
+    final identityChanged =
+        oldWidget.userId != widget.userId || oldWidget.role != widget.role;
+    if (identityChanged) {
       chatsStream = service.chats(widget.userId);
+    }
+    if (identityChanged ||
+        oldWidget.navigationRequestId != widget.navigationRequestId ||
+        oldWidget.initialChatId != widget.initialChatId) {
       selectedChatId = widget.initialChatId;
       compactThreadVisible = widget.initialChatId != null;
       threadStream = null;

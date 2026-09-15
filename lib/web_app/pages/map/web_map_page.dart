@@ -31,6 +31,7 @@ class WebMapPage extends StatefulWidget {
     this.onOpenProfile,
     this.onOpenJob,
     this.savedJobsRefreshToken = 0,
+    this.navigationRequestId = 0,
   });
 
   final String userId;
@@ -39,6 +40,7 @@ class WebMapPage extends StatefulWidget {
   final void Function(String userId, String role)? onOpenProfile;
   final ValueChanged<String>? onOpenJob;
   final int savedJobsRefreshToken;
+  final int navigationRequestId;
 
   @override
   State<WebMapPage> createState() => _WebMapPageState();
@@ -52,6 +54,7 @@ class _WebMapPageState extends State<WebMapPage> {
   final searchController = TextEditingController();
   final resultCardKeys = <String, GlobalKey>{};
   late final Stream<WebDataState<WebJobsResult>> jobsStream;
+  WebJobsResult? lastJobsResult;
   LatLngBounds? activeBounds;
   LatLngBounds? pendingBounds;
   LatLng? userLocation;
@@ -85,7 +88,8 @@ class _WebMapPageState extends State<WebMapPage> {
   @override
   void didUpdateWidget(covariant WebMapPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialJobId != widget.initialJobId) {
+    if (oldWidget.navigationRequestId != widget.navigationRequestId ||
+        oldWidget.initialJobId != widget.initialJobId) {
       selectedJobId = widget.initialJobId;
       initialJobFocused = false;
     }
@@ -109,10 +113,12 @@ class _WebMapPageState extends State<WebMapPage> {
       stream: jobsStream,
       builder: (context, snapshot) {
         final state = snapshot.data;
-        if (state == null || state.loading) {
+        if (state?.data != null) lastJobsResult = state!.data;
+        if ((state == null || state.loading) && lastJobsResult == null) {
           return const WebLoadingState(label: 'Loading vacancy map');
         }
-        final result = state.data ??
+        final result = state?.data ??
+            lastJobsResult ??
             const WebJobsResult(publicJobs: <Job>[], ownerJobs: <Job>[]);
         final marketJobs = _filterJobs(result.publicJobs);
         final mapJobs = _jobsInBounds(marketJobs);
@@ -142,9 +148,9 @@ class _WebMapPageState extends State<WebMapPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (state.error != null)
+              if (state?.error != null)
                 _ErrorBanner(
-                    message: 'Could not refresh map jobs: ${state.error}'),
+                    message: 'Could not refresh map jobs: ${state!.error}'),
               WebPageHeader(
                 title: 'Map',
                 subtitle: '${mapJobs.length} active vacancies in this area.',

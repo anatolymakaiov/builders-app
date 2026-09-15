@@ -36,6 +36,9 @@ class WebJobsPage extends StatefulWidget {
     this.onViewApplications,
     this.initialJobId,
     this.initialOwnerMode,
+    this.navigationRequestId = 0,
+    this.refreshRequestId = 0,
+    this.backLabel = 'Back to Jobs Map',
   });
 
   final String userId;
@@ -49,6 +52,9 @@ class WebJobsPage extends StatefulWidget {
   final void Function(String jobId, {String? statusFilter})? onViewApplications;
   final String? initialJobId;
   final bool? initialOwnerMode;
+  final int navigationRequestId;
+  final int refreshRequestId;
+  final String backLabel;
 
   @override
   State<WebJobsPage> createState() => _WebJobsPageState();
@@ -62,6 +68,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
   final profileCommunication = WebProfileCommunication();
   final searchController = TextEditingController();
   late Stream<WebDataState<WebJobsResult>> jobsStream;
+  WebJobsResult? lastJobsResult;
   WebJobsMode mode = WebJobsMode.market;
   Set<String> savedJobIds = const <String>{};
   String search = '';
@@ -105,19 +112,25 @@ class _WebJobsPageState extends State<WebJobsPage> {
   @override
   void didUpdateWidget(covariant WebJobsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialJobId != widget.initialJobId ||
-        oldWidget.initialOwnerMode != widget.initialOwnerMode) {
-      setState(() {
-        selectedJobId = widget.initialJobId;
-        targetJobId = widget.initialJobId;
-        compactDetailVisible = widget.initialJobId != null;
-        if (isEmployer && widget.initialOwnerMode != null) {
-          mode =
-              widget.initialOwnerMode! ? WebJobsMode.owner : WebJobsMode.market;
-        }
-      });
+    final identityChanged =
+        oldWidget.userId != widget.userId || oldWidget.role != widget.role;
+    if (identityChanged ||
+        oldWidget.refreshRequestId != widget.refreshRequestId) {
+      _resetJobsStream();
     }
-    if (oldWidget.userId != widget.userId || oldWidget.role != widget.role) {
+    if (identityChanged ||
+        oldWidget.navigationRequestId != widget.navigationRequestId ||
+        oldWidget.initialJobId != widget.initialJobId ||
+        oldWidget.initialOwnerMode != widget.initialOwnerMode) {
+      selectedJobId = widget.initialJobId;
+      targetJobId = widget.initialJobId;
+      compactDetailVisible = widget.initialJobId != null;
+      if (isEmployer && widget.initialOwnerMode != null) {
+        mode =
+            widget.initialOwnerMode! ? WebJobsMode.owner : WebJobsMode.market;
+      }
+    }
+    if (identityChanged) {
       unawaited(_restartWorkerApplications());
     }
   }
@@ -187,11 +200,13 @@ class _WebJobsPageState extends State<WebJobsPage> {
       stream: jobsStream,
       builder: (context, snapshot) {
         final state = snapshot.data;
-        if (state == null || state.loading) {
+        if (state?.data != null) lastJobsResult = state!.data;
+        if ((state == null || state.loading) && lastJobsResult == null) {
           return const WebLoadingState(label: 'Loading vacancies');
         }
 
-        final result = state.data ??
+        final result = state?.data ??
+            lastJobsResult ??
             const WebJobsResult(publicJobs: <Job>[], ownerJobs: <Job>[]);
         final permittedJobs = result.jobsForMode(mode, widget.role);
         final jobs = filterJobs(permittedJobs);
@@ -230,7 +245,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
                   child: TextButton.icon(
                     onPressed: widget.onBackToMap,
                     icon: const Icon(Icons.arrow_back),
-                    label: const Text('Back to Jobs Map'),
+                    label: Text(widget.backLabel),
                   ),
                 ),
                 const SizedBox(height: WebSpacing.sm),
@@ -249,7 +264,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
                     ),
                 ],
               ),
-              if (state.error != null)
+              if (state?.error != null)
                 Container(
                   margin: const EdgeInsets.only(bottom: 14),
                   padding: const EdgeInsets.all(12),
@@ -257,7 +272,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
                     color: const Color(0xFFFFF3E0),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text('Could not refresh jobs: ${state.error}'),
+                  child: Text('Could not refresh jobs: ${state!.error}'),
                 ),
               if (isEmployer) ...[
                 _EmployerModeTabs(
