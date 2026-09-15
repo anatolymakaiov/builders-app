@@ -83,6 +83,7 @@ class WebJobListPanel extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final job = jobs[index];
                       return WebWorkerVacancyCard(
+                        key: ValueKey<String>('web-job-card:${job.id}'),
                         job: job,
                         selected: job.id == selectedJobId,
                         saved: savedJobIds.contains(job.id),

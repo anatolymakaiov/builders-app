@@ -167,6 +167,9 @@ class _WebJobsPageState extends State<WebJobsPage> {
     if (creatingJob || editingJob != null) {
       final editedJob = editingJob;
       return WebPostJobPage(
+        key: ValueKey<String>(
+          'web-post-job:${editedJob?.id ?? 'new'}',
+        ),
         userId: widget.userId,
         existingJob: editedJob,
         onCancel: () => setState(() {
@@ -413,6 +416,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
                             child: Text('This vacancy is no longer available.'),
                           )
                         : WebJobDetailsPanel(
+                            key: ValueKey<String?>(selectedJob?.id),
                             job: selectedJob,
                             isWorker: isWorker,
                             isEmployerOwner: selectedJob != null &&

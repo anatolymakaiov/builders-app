@@ -26,11 +26,12 @@ class WebRemoteImage extends StatelessWidget {
     final child = clean == null || clean.isEmpty
         ? _Fallback(icon: fallbackIcon)
         : Image.network(
+            key: ValueKey<String>('web-remote-image:$clean'),
             clean,
             width: width,
             height: height,
             fit: fit,
-            gaplessPlayback: true,
+            gaplessPlayback: false,
             webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
             errorBuilder: (_, error, __) {
               debugPrint('WEB IMAGE LOAD ERROR ${_safeUrl(clean)} $error');

@@ -98,6 +98,7 @@ class _WebSavedJobsPageState extends State<WebSavedJobsPage> {
                             ),
                     );
                     final detail = WebJobDetailsPanel(
+                      key: ValueKey<String?>(selected?.id),
                       job: selected,
                       isWorker: true,
                       isEmployerOwner: false,

@@ -73,7 +73,10 @@ class WebJobManagementService {
     await _firestore.collection('jobs').doc(job.id).delete();
   }
 
-  Future<List<String>> pickAndUploadPhotos() async {
+  Future<List<String>> pickAndUploadPhotos({
+    required String ownerId,
+    required String mediaScope,
+  }) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
       allowMultiple: true,
@@ -88,6 +91,8 @@ class WebJobManagementService {
         bytes: bytes,
         fileName: file.name,
         extension: file.extension,
+        ownerId: ownerId,
+        mediaScope: mediaScope,
       ));
     }
     return urls;
@@ -96,11 +101,15 @@ class WebJobManagementService {
   Future<String> uploadPhotoBytes({
     required Uint8List bytes,
     required String fileName,
+    required String ownerId,
+    required String mediaScope,
     String? extension,
   }) async {
     final safeName = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-    final path =
-        'job_photos/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+    final safeOwner = _safeStorageSegment(ownerId, fallback: 'unknown-owner');
+    final safeScope = _safeStorageSegment(mediaScope, fallback: 'draft');
+    final uploadId = DateTime.now().microsecondsSinceEpoch;
+    final path = 'job_photos/${safeOwner}_${safeScope}_${uploadId}_$safeName';
     final ref = _storage.ref(path);
     await ref.putData(
       bytes,
@@ -267,6 +276,11 @@ class WebJobManagementService {
       'heif' => 'image/heif',
       _ => 'image/jpeg',
     };
+  }
+
+  String _safeStorageSegment(String value, {required String fallback}) {
+    final clean = value.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    return clean.isEmpty ? fallback : clean;
   }
 }
 

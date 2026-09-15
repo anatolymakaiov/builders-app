@@ -544,10 +544,10 @@ class WebApplicationsDataService {
     final teamId = data['teamId']?.toString() ?? '';
     final jobData = await _safeGet('jobs', jobId);
     final profileData = await _safeGet('users', workerId);
-    final employerId = (data['employerId'] ??
-            data['ownerId'] ??
-            jobData?['ownerId'] ??
-            jobData?['employerId'])
+    final employerId = (jobData?['ownerId'] ??
+            jobData?['employerId'] ??
+            data['employerId'] ??
+            data['ownerId'])
         ?.toString()
         .trim();
     var companyData = await _safeGet('users', employerId ?? '');

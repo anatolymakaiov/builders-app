@@ -168,7 +168,10 @@ class WebJobDetailsPanel extends StatelessWidget {
                           ],
                           const SizedBox(height: 28),
                           if (currentJob.photos.isNotEmpty) ...[
-                            _PhotoGrid(photos: currentJob.photos),
+                            _PhotoGrid(
+                              jobId: currentJob.id,
+                              photos: currentJob.photos,
+                            ),
                             const SizedBox(height: 28),
                           ],
                           _Section(
@@ -233,6 +236,7 @@ class _Hero extends StatelessWidget {
         children: [
           if (photo.isNotEmpty)
             WebRemoteImage(
+              key: ValueKey<String>('job-hero:${job.id}:$photo'),
               url: photo,
               fit: BoxFit.cover,
               fallbackIcon: Icons.image_outlined,
@@ -262,6 +266,9 @@ class _Hero extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: WebCircleImage(
+                  key: ValueKey<String>(
+                    'job-company-logo:${job.id}:${job.ownerId}',
+                  ),
                   url: job.companyLogo,
                   size: 150,
                   fallbackIcon: Icons.business_outlined,
@@ -484,8 +491,9 @@ class _WorkerActionsMenu extends StatelessWidget {
 }
 
 class _PhotoGrid extends StatelessWidget {
-  const _PhotoGrid({required this.photos});
+  const _PhotoGrid({required this.jobId, required this.photos});
 
+  final String jobId;
   final List<String> photos;
 
   @override
@@ -506,6 +514,7 @@ class _PhotoGrid extends StatelessWidget {
             builder: (_) => _PhotoDialog(photos: photos, initialIndex: index),
           ),
           child: WebRemoteImage(
+            key: ValueKey<String>('job-photo:$jobId:${photos[index]}'),
             url: photos[index],
             fit: BoxFit.cover,
             borderRadius: 12,

@@ -29,9 +29,10 @@ class WebRoleIdentityResolver {
     required String userId,
     String? role,
     Map<String, dynamic>? profile,
+    bool useCache = true,
   }) async {
     final cacheKey = '$userId:${role ?? ''}';
-    if (profile == null && _cache.containsKey(cacheKey)) {
+    if (useCache && profile == null && _cache.containsKey(cacheKey)) {
       return _cache[cacheKey]!;
     }
     final data = profile ??

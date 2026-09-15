@@ -222,6 +222,7 @@ class WebJobsDataService {
           return await _identityResolver.resolve(
             userId: ownerId,
             role: 'employer',
+            useCache: false,
           );
         } catch (error) {
           debugPrint('WEB JOB COMPANY RESOLVE ERROR ownerId=$ownerId $error');
@@ -236,7 +237,7 @@ class WebJobsDataService {
     }));
     for (var index = 0; index < jobs.length; index++) {
       final job = jobs[index];
-      final identity = resolved[job.ownerId];
+      final identity = resolved[job.ownerId.trim()];
       if (identity == null || identity.data.isEmpty) continue;
       final liveName = identity.displayName.trim();
       jobs[index] = job.copyWith(

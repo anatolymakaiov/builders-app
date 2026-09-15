@@ -61,6 +61,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
   bool uploading = false;
   bool lookingUp = false;
   String? error;
+  late final String mediaScope;
 
   bool get editing => widget.existingJob != null;
 
@@ -68,6 +69,9 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
   void initState() {
     super.initState();
     final job = widget.existingJob;
+    mediaScope = job?.id.trim().isNotEmpty == true
+        ? job!.id.trim()
+        : 'draft-${DateTime.now().microsecondsSinceEpoch}';
     role = TextEditingController(
       text: job?.canonicalRoleName.isNotEmpty == true
           ? job!.canonicalRoleName
@@ -452,7 +456,10 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
       error = null;
     });
     try {
-      final uploaded = await service.pickAndUploadPhotos();
+      final uploaded = await service.pickAndUploadPhotos(
+        ownerId: widget.userId,
+        mediaScope: mediaScope,
+      );
       if (uploaded.isNotEmpty) {
         setState(() => photos = [...photos, ...uploaded]);
       }
