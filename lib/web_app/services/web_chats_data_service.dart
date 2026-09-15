@@ -348,11 +348,20 @@ class WebChatsDataService {
   ({String id, String role})? profileTarget(WebChatSummary chat, String uid) {
     final target = _displayTarget(chat.data, uid);
     if (target == null) return null;
+    final workerId = chat.data['workerId']?.toString();
+    final employerId = chat.data['employerId']?.toString();
+    final profileRole = chat.displayData?['role']?.toString().toLowerCase();
     return (
       id: target.id,
       role: target.collection == 'teams'
           ? 'team'
-          : chat.displayData?['role']?.toString() ?? 'worker'
+          : profileRole == 'employer' ||
+                  profileRole == 'company' ||
+                  target.id == employerId
+              ? 'employer'
+              : target.id == workerId
+                  ? 'worker'
+                  : profileRole ?? 'worker'
     );
   }
 

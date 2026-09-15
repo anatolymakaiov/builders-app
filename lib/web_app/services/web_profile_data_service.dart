@@ -35,6 +35,22 @@ class WebProfileData {
   }
 
   String get avatarUrl {
+    if (role == 'employer' || role == 'company') {
+      return _firstText(
+        data,
+        const [
+          'companyLogo',
+          'companyLogoUrl',
+          'companyAvatarUrl',
+          'logo',
+          'avatarUrl',
+          'profilePhotoUrl',
+          'photoUrl',
+          'photo',
+        ],
+        '',
+      );
+    }
     final photo = _firstText(data, const ['photo'], '');
     if (photo.isNotEmpty) return photo;
     return _firstText(
@@ -119,6 +135,22 @@ class WebProfileData {
   List<String> get companyPhotos => listField(const ['companyPhotos']);
   List<String> get portfolioUrls =>
       listField(const ['portfolio', 'portfolioUrls']);
+
+  List<Map<String, String>> get references {
+    final raw = data['references'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          final value = Map<String, dynamic>.from(item);
+          return {
+            for (final key in const ['name', 'company', 'phone', 'email'])
+              key: value[key]?.toString().trim() ?? '',
+          };
+        })
+        .where((item) => item.values.any((value) => value.isNotEmpty))
+        .toList();
+  }
 }
 
 class WebPortfolioItem {

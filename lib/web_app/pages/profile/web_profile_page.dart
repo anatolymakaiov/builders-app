@@ -577,7 +577,8 @@ class _WorkerProfileBody extends StatelessWidget {
       for (final entry in const {
         'permits': 'Permits / licences',
         'education': 'Education',
-        'previousWork': 'Previous work'
+        'previousWork': 'Previous work',
+        'workHistory': 'Work history',
       }.entries)
         MapEntry(entry.value, profile.listField([entry.key]).join(', ')),
       MapEntry(
@@ -617,6 +618,32 @@ class _WorkerProfileBody extends StatelessWidget {
                           _FieldTile(label: item.key, value: item.value))
                       .toList(),
                 ),
+              if (profile.references.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                const Divider(),
+                const SizedBox(height: 10),
+                const Text(
+                  'References',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 14,
+                  children: profile.references.map((reference) {
+                    final name = reference['name'] ?? '';
+                    final details = [
+                      reference['company'] ?? '',
+                      reference['phone'] ?? '',
+                      reference['email'] ?? '',
+                    ].where((value) => value.isNotEmpty).join('\n');
+                    return _FieldTile(
+                      label: name.isEmpty ? 'Reference' : name,
+                      value: details,
+                    );
+                  }).toList(),
+                ),
+              ],
             ],
           ),
         ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/web_chat_media_service.dart';
+import '../../services/web_chat_recipient_search_service.dart';
 import '../../services/web_chats_data_service.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_voice_recorder.dart';
@@ -39,6 +40,8 @@ class WebChatsPage extends StatefulWidget {
 class _WebChatsPageState extends State<WebChatsPage> {
   final service = WebChatsDataService();
   final mediaService = WebChatMediaService();
+  final recipientSearchService = WebChatRecipientSearchService();
+  final conversationSearchController = TextEditingController();
   final messageController = TextEditingController();
   final messagesController = ScrollController();
   late Stream<WebDataState<List<WebChatSummary>>> chatsStream;
@@ -92,6 +95,7 @@ class _WebChatsPageState extends State<WebChatsPage> {
     recordingLimit?.cancel();
     typingTimer?.cancel();
     unawaited(recorder.dispose());
+    conversationSearchController.dispose();
     messageController.dispose();
     messagesController.dispose();
     super.dispose();
@@ -108,13 +112,40 @@ class _WebChatsPageState extends State<WebChatsPage> {
           return const WebLoadingState(label: 'Loading conversations');
         }
         _ensureSelectedChat(chats);
+        final conversationQuery =
+            conversationSearchController.text.trim().toLowerCase();
+        final visibleChats = conversationQuery.isEmpty
+            ? chats
+            : chats
+                .where((chat) =>
+                    chat.title.toLowerCase().contains(conversationQuery) ||
+                    chat.lastMessage.toLowerCase().contains(conversationQuery))
+                .toList();
 
         return WebPageContainer(
           child: Column(
             children: [
-              const WebPageHeader(
+              WebPageHeader(
                 title: 'Chats',
                 subtitle: 'Conversations about work, teams and vacancies.',
+                actions: [
+                  SizedBox(
+                    width: 300,
+                    child: TextField(
+                      controller: conversationSearchController,
+                      onChanged: (_) => setState(() {}),
+                      decoration: const InputDecoration(
+                        hintText: 'Search conversations........',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                    ),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _openNewMessage,
+                    icon: const Icon(Icons.edit_square),
+                    label: const Text('New message'),
+                  ),
+                ],
               ),
               if (state?.error != null)
                 _ErrorBanner(
@@ -127,7 +158,8 @@ class _WebChatsPageState extends State<WebChatsPage> {
                     final list = WebPanel(
                       padding: EdgeInsets.zero,
                       child: _ChatList(
-                        chats: chats,
+                        chats: visibleChats,
+                        emptySearch: conversationQuery.isNotEmpty,
                         selectedChatId: selectedChatId,
                         userId: widget.userId,
                         onSelected: _selectChat,
@@ -234,6 +266,23 @@ class _WebChatsPageState extends State<WebChatsPage> {
       return;
     }
     setState(() {
+      _setSelectedChat(chatId);
+      compactThreadVisible = true;
+    });
+  }
+
+  Future<void> _openNewMessage() async {
+    final chatId = await showDialog<String>(
+      context: context,
+      builder: (_) => _NewMessageDialog(
+        service: recipientSearchService,
+        userId: widget.userId,
+        role: widget.role,
+      ),
+    );
+    if (!mounted || chatId == null || chatId.isEmpty) return;
+    setState(() {
+      chatsStream = service.chats(widget.userId);
       _setSelectedChat(chatId);
       compactThreadVisible = true;
     });
@@ -527,12 +576,14 @@ class _WebChatsPageState extends State<WebChatsPage> {
 class _ChatList extends StatelessWidget {
   const _ChatList({
     required this.chats,
+    required this.emptySearch,
     required this.selectedChatId,
     required this.userId,
     required this.onSelected,
   });
 
   final List<WebChatSummary> chats;
+  final bool emptySearch;
   final String? selectedChatId;
   final String userId;
   final ValueChanged<String> onSelected;
@@ -540,10 +591,13 @@ class _ChatList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (chats.isEmpty) {
-      return const WebEmptyState(
+      return WebEmptyState(
         icon: Icons.chat_bubble_outline,
-        title: 'No conversations yet',
-        message: 'Your work conversations will appear here.',
+        title:
+            emptySearch ? 'No matching conversations' : 'No conversations yet',
+        message: emptySearch
+            ? 'Try another name or message.'
+            : 'Your work conversations will appear here.',
       );
     }
     return ListView.separated(
@@ -609,6 +663,193 @@ class _ChatList extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _NewMessageDialog extends StatefulWidget {
+  const _NewMessageDialog({
+    required this.service,
+    required this.userId,
+    required this.role,
+  });
+
+  final WebChatRecipientSearchService service;
+  final String userId;
+  final String role;
+
+  @override
+  State<_NewMessageDialog> createState() => _NewMessageDialogState();
+}
+
+class _NewMessageDialogState extends State<_NewMessageDialog> {
+  final controller = TextEditingController();
+  Timer? debounce;
+  List<WebChatRecipient> results = const [];
+  bool searching = false;
+  String? openingId;
+  String? error;
+  int request = 0;
+
+  @override
+  void dispose() {
+    debounce?.cancel();
+    controller.dispose();
+    super.dispose();
+  }
+
+  void _changed(String value) {
+    debounce?.cancel();
+    final query = value.trim();
+    if (query.length < 2) {
+      request++;
+      setState(() {
+        searching = false;
+        results = const [];
+        error = null;
+      });
+      return;
+    }
+    debounce = Timer(const Duration(milliseconds: 400), () => _search(query));
+  }
+
+  Future<void> _search(String query) async {
+    final currentRequest = ++request;
+    setState(() {
+      searching = true;
+      error = null;
+    });
+    try {
+      final found = await widget.service.search(
+        query: query,
+        currentUserId: widget.userId,
+        currentRole: widget.role,
+      );
+      if (!mounted || currentRequest != request) return;
+      setState(() {
+        results = found;
+        searching = false;
+      });
+    } catch (searchError) {
+      if (!mounted || currentRequest != request) return;
+      setState(() {
+        searching = false;
+        error = 'Could not search recipients. Please try again.';
+      });
+    }
+  }
+
+  Future<void> _open(WebChatRecipient recipient) async {
+    if (openingId != null) return;
+    setState(() {
+      openingId = recipient.id;
+      error = null;
+    });
+    try {
+      final chatId = await widget.service.openOrCreate(
+        currentUserId: widget.userId,
+        currentRole: widget.role,
+        recipient: recipient,
+      );
+      if (mounted) Navigator.of(context).pop(chatId);
+    } catch (openError) {
+      if (!mounted) return;
+      setState(() {
+        openingId = null;
+        error = 'Could not open this conversation. Please try again.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasQuery = controller.text.trim().length >= 2;
+    return AlertDialog(
+      title: const Text('New message'),
+      content: SizedBox(
+        width: 620,
+        height: 520,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: controller,
+              autofocus: true,
+              onChanged: _changed,
+              decoration: const InputDecoration(
+                labelText: 'Search people or companies',
+                prefixIcon: Icon(Icons.search),
+              ),
+            ),
+            const SizedBox(height: WebSpacing.md),
+            if (searching) const LinearProgressIndicator(),
+            if (error != null) ...[
+              Text(error!, style: const TextStyle(color: WebTheme.danger)),
+              const SizedBox(height: WebSpacing.sm),
+            ],
+            Expanded(
+              child: !hasQuery
+                  ? const WebEmptyState(
+                      icon: Icons.person_search_outlined,
+                      title: 'Search by name, trade or location',
+                    )
+                  : !searching && results.isEmpty
+                      ? const WebEmptyState(
+                          icon: Icons.search_off,
+                          title: 'No available recipients found',
+                        )
+                      : ListView.separated(
+                          itemCount: results.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final result = results[index];
+                            final opening = openingId == result.id;
+                            return ListTile(
+                              enabled: openingId == null,
+                              onTap: () => _open(result),
+                              leading: WebCircleImage(
+                                url: result.avatarUrl,
+                                size: 48,
+                                fallbackIcon: result.role == 'team'
+                                    ? Icons.groups_2_outlined
+                                    : result.role == 'employer'
+                                        ? Icons.business_outlined
+                                        : Icons.person_outline,
+                              ),
+                              title: Text(result.name),
+                              subtitle: Text(
+                                [
+                                  result.role == 'team'
+                                      ? 'Team'
+                                      : result.role == 'employer'
+                                          ? 'Company'
+                                          : 'Worker',
+                                  result.context,
+                                ].where((item) => item.isNotEmpty).join(' · '),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: opening
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.arrow_forward),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: openingId == null ? () => Navigator.pop(context) : null,
+          child: const Text('Cancel'),
+        ),
+      ],
     );
   }
 }
@@ -779,48 +1020,58 @@ class _ThreadHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          IconButton(
-              tooltip: 'Open profile',
-              onPressed: onOpenProfile,
-              icon: const Icon(Icons.person_outline)),
-          if ((thread.chat.data['jobId']?.toString() ?? '').isNotEmpty)
-            IconButton(
-                tooltip: 'View vacancy',
-                onPressed: onOpenJob,
-                icon: const Icon(Icons.work_outline)),
-          WebCircleImage(
-            url: thread.chat.avatarFor(userId),
-            size: 58,
-            fallbackIcon: thread.chat.data['type'] == 'team'
-                ? Icons.groups_2_outlined
-                : Icons.person_outline,
-          ),
-          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  thread.chat.title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
+            child: InkWell(
+              onTap: onOpenProfile,
+              borderRadius: BorderRadius.circular(WebRadii.card),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    WebCircleImage(
+                      url: thread.chat.avatarFor(userId),
+                      size: 58,
+                      fallbackIcon: thread.chat.data['type'] == 'team'
+                          ? Icons.groups_2_outlined
+                          : Icons.person_outline,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            thread.chat.title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                            ),
+                          ),
+                          if (thread.chat.jobData != null)
+                            Text(
+                              (thread.chat.jobData!['title'] ??
+                                      thread.chat.jobData!['position'] ??
+                                      thread.chat.jobData!['trade'] ??
+                                      '')
+                                  .toString(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: WebTheme.muted),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                if (thread.chat.jobData != null)
-                  Text(
-                    (thread.chat.jobData!['title'] ??
-                            thread.chat.jobData!['position'] ??
-                            thread.chat.jobData!['trade'] ??
-                            '')
-                        .toString(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: WebTheme.muted),
-                  ),
-              ],
+              ),
             ),
           ),
+          if ((thread.chat.data['jobId']?.toString() ?? '').isNotEmpty)
+            IconButton(
+              tooltip: 'View vacancy',
+              onPressed: onOpenJob,
+              icon: const Icon(Icons.work_outline),
+            ),
         ],
       ),
     );
