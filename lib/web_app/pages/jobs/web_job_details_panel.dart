@@ -247,8 +247,8 @@ class _Hero extends StatelessWidget {
               left: 28,
               bottom: 20,
               child: Container(
-                width: 140,
-                height: 140,
+                width: 160,
+                height: 160,
                 padding: const EdgeInsets.all(5),
                 decoration: const BoxDecoration(
                   color: WebTheme.surface,
@@ -256,7 +256,7 @@ class _Hero extends StatelessWidget {
                 ),
                 child: WebCircleImage(
                   url: job.companyLogo,
-                  size: 130,
+                  size: 150,
                   fallbackIcon: Icons.business_outlined,
                 ),
               ),
@@ -429,7 +429,7 @@ class _WorkerActionsMenu extends StatelessWidget {
             leadingIcon: const Icon(Icons.business_outlined),
             child: const Text('View company profile'),
           ),
-        if (onShowOnMap != null && !acceptedApplication)
+        if (onShowOnMap != null)
           MenuItemButton(
             onPressed: busy ? null : onShowOnMap,
             leadingIcon: const Icon(Icons.map_outlined),

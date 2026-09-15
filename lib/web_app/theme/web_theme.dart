@@ -5,10 +5,10 @@ class WebTheme {
   static const ink = Color(0xFF20343F);
   static const muted = Color(0xFF667781);
   static const subtleText = Color(0xFF87949C);
-  static const accent = Color(0xFF2F78A8);
-  static const accentHover = Color(0xFF24678F);
+  static const accent = Color(0xFF367FAF);
+  static const accentHover = Color(0xFF2D709B);
   static const accentSoft = Color(0xFFEAF5FC);
-  static const accentBorder = Color(0xFFAED5EC);
+  static const accentBorder = Color(0xFFA9D3EC);
   static const blueprint = Color(0xFF4B82A1);
   static const border = Color(0xFFDDE4E8);
   static const borderStrong = Color(0xFFC3CDD3);

@@ -18,7 +18,11 @@ class WebProfileData {
 
   String get displayName {
     if (role == 'employer' || role == 'company') {
-      return _firstText(data, const ['companyName', 'name'], 'Company');
+      return _firstText(
+        data,
+        const ['companyName', 'businessName', 'displayName', 'name'],
+        'Company',
+      );
     }
     final name = _firstText(data, const ['name', 'displayName'], '');
     if (name.isNotEmpty) return name;

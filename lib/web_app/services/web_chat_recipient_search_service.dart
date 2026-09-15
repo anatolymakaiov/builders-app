@@ -38,43 +38,55 @@ class WebChatRecipientSearchService {
 
     final isEmployer = _isEmployer(currentRole);
     final results = <WebChatRecipient>[];
-    final roles = isEmployer ? const ['worker'] : const ['employer', 'company'];
-
-    for (final role in roles) {
-      final snapshot = await _firestore
-          .collection('users')
-          .where('role', isEqualTo: role)
-          .limit(150)
-          .get();
-      for (final doc in snapshot.docs) {
-        if (doc.id == currentUserId) continue;
-        final data = doc.data();
-        if (WebProfileCommunication.unavailable(data)) continue;
-        final profile = WebProfileData(id: doc.id, data: data);
-        if (!_matches(needle, [
-          profile.displayName,
-          profile.trade,
-          profile.location,
-          profile.city,
-          profile.postcode,
-        ])) {
-          continue;
-        }
-        final details = isEmployer
-            ? [profile.trade, profile.location]
-            : [profile.location, profile.city, profile.postcode];
-        results.add(WebChatRecipient(
-          id: doc.id,
-          role: isEmployer ? 'worker' : 'employer',
-          name: profile.displayName,
-          avatarUrl: profile.avatarUrl,
-          context: details.where((item) => item.isNotEmpty).toSet().join(' · '),
-        ));
-      }
+    final userFields = isEmployer
+        ? const [
+            'name',
+            'displayName',
+            'firstName',
+            'lastName',
+            'trade',
+            'position',
+          ]
+        : const [
+            'companyName',
+            'businessName',
+            'displayName',
+            'name',
+          ];
+    final userDocs = await _prefixDocuments('users', userFields, query);
+    for (final doc in userDocs.values) {
+      if (doc.id == currentUserId) continue;
+      final data = doc.data();
+      if (WebProfileCommunication.unavailable(data)) continue;
+      final role = data['role']?.toString().toLowerCase() ?? '';
+      final allowedRole = isEmployer
+          ? role == 'worker'
+          : role == 'employer' || role == 'company';
+      if (!allowedRole) continue;
+      final profile = WebProfileData(id: doc.id, data: data);
+      final searchableValues = [for (final field in userFields) data[field]];
+      if (!_hasPrefix(needle, searchableValues)) continue;
+      final details = isEmployer
+          ? [profile.trade, profile.location]
+          : [profile.location, profile.city, profile.postcode];
+      results.add(WebChatRecipient(
+        id: doc.id,
+        role: isEmployer ? 'worker' : 'employer',
+        name: profile.displayName,
+        avatarUrl: profile.avatarUrl,
+        context: details.where((item) => item.isNotEmpty).toSet().join(' · '),
+      ));
     }
 
-    final teams = await _firestore.collection('teams').limit(150).get();
-    for (final doc in teams.docs) {
+    const teamFields = [
+      'nameLower',
+      'name',
+      'teamName',
+      'trade',
+      'specialization',
+    ];
+    final teamDocs = await _prefixDocuments('teams', teamFields, query);
+    for (final doc in teamDocs.values) {
       final data = doc.data();
       if (WebProfileCommunication.unavailable(data)) continue;
       final team = WebTeamData(id: doc.id, data: data);
@@ -83,7 +95,10 @@ class WebChatRecipientSearchService {
           (!isEmployer && !memberIds.contains(currentUserId))) {
         continue;
       }
-      if (!_matches(needle, [team.name, team.trade, team.description])) {
+      if (!_hasPrefix(
+        needle,
+        [for (final field in teamFields) data[field]],
+      )) {
         continue;
       }
       final memberLabel =
@@ -114,7 +129,11 @@ class WebChatRecipientSearchService {
     required String currentRole,
     required WebChatRecipient recipient,
   }) async {
-    final existing = await _existingChat(currentUserId, recipient);
+    final existing = await _existingChat(
+      currentUserId,
+      currentRole,
+      recipient,
+    );
     if (existing != null) return existing;
 
     if (recipient.role == 'team') {
@@ -144,14 +163,35 @@ class WebChatRecipientSearchService {
 
   Future<String?> _existingChat(
     String currentUserId,
+    String currentRole,
     WebChatRecipient recipient,
   ) async {
-    final snapshot = await _firestore
+    final currentIsEmployer = _isEmployer(currentRole);
+    final primary = recipient.role == 'team' && !currentIsEmployer
+        ? _firestore
+            .collection('chats')
+            .where('participants', arrayContains: currentUserId)
+        : _firestore.collection('chats').where(
+              currentIsEmployer ? 'employerId' : 'workerId',
+              isEqualTo: currentUserId,
+            );
+    final primarySnapshot = await primary.get();
+    final primaryMatch = _matchingChat(primarySnapshot.docs, recipient);
+    if (primaryMatch != null) return primaryMatch;
+
+    if (recipient.role == 'team' && !currentIsEmployer) return null;
+    final legacySnapshot = await _firestore
         .collection('chats')
         .where('participants', arrayContains: currentUserId)
-        .limit(100)
         .get();
-    for (final doc in snapshot.docs) {
+    return _matchingChat(legacySnapshot.docs, recipient);
+  }
+
+  String? _matchingChat(
+    Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    WebChatRecipient recipient,
+  ) {
+    for (final doc in docs) {
       final data = doc.data();
       if (recipient.role == 'team') {
         if (data['teamId']?.toString() == recipient.id) return doc.id;
@@ -172,9 +212,48 @@ class WebChatRecipientSearchService {
     return null;
   }
 
-  bool _matches(String needle, Iterable<String> values) => values
-      .map(_normalize)
-      .any((value) => value.isNotEmpty && value.contains(needle));
+  Future<Map<String, QueryDocumentSnapshot<Map<String, dynamic>>>>
+      _prefixDocuments(
+    String collection,
+    List<String> fields,
+    String rawQuery,
+  ) async {
+    final documents = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    final prefixes = _prefixVariants(rawQuery);
+    final requests = <Future<QuerySnapshot<Map<String, dynamic>>>>[];
+    for (final field in fields) {
+      for (final prefix in prefixes) {
+        requests.add(
+          _firestore
+              .collection(collection)
+              .orderBy(field)
+              .startAt([prefix])
+              .endAt(['$prefix\uf8ff'])
+              .limit(12)
+              .get(),
+        );
+      }
+    }
+    for (final snapshot in await Future.wait(requests)) {
+      for (final doc in snapshot.docs) {
+        documents[doc.id] = doc;
+      }
+    }
+    return documents;
+  }
+
+  Set<String> _prefixVariants(String value) {
+    final trimmed = value.trim();
+    final lower = trimmed.toLowerCase();
+    final title = lower.isEmpty
+        ? lower
+        : '${lower[0].toUpperCase()}${lower.substring(1)}';
+    return {trimmed, lower, title, trimmed.toUpperCase()};
+  }
+
+  bool _hasPrefix(String needle, Iterable<dynamic> values) => values.any(
+        (value) => _normalize(value?.toString() ?? '').startsWith(needle),
+      );
 
   bool _isEmployer(String role) =>
       role.toLowerCase() == 'employer' || role.toLowerCase() == 'company';

@@ -421,7 +421,9 @@ class _WebJobsPageState extends State<WebJobsPage> {
                                 ? null
                                 : () => _messageEmployer(selectedJob!),
                             onShowOnMap: selectedJob == null ||
-                                    widget.onShowOnMap == null
+                                    widget.onShowOnMap == null ||
+                                    selectedJob.lat == 0 ||
+                                    selectedJob.lng == 0
                                 ? null
                                 : () =>
                                     widget.onShowOnMap?.call(selectedJob!.id),

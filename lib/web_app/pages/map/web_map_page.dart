@@ -188,6 +188,7 @@ class _WebMapPageState extends State<WebMapPage> {
                         setState(() => search = value);
                       },
                       onSelected: _selectJobFromList,
+                      onOpenJob: widget.onOpenJob,
                       onToggleSaved: isWorker ? _toggleSaved : null,
                       cardKeyForJob: _cardKeyForJob,
                     );
@@ -577,6 +578,7 @@ class _MapResultsPanel extends StatelessWidget {
     required this.savedJobIds,
     required this.onSearchChanged,
     required this.onSelected,
+    required this.onOpenJob,
     required this.cardKeyForJob,
     this.onToggleSaved,
   });
@@ -590,6 +592,7 @@ class _MapResultsPanel extends StatelessWidget {
   final Set<String> savedJobIds;
   final ValueChanged<String> onSearchChanged;
   final ValueChanged<Job> onSelected;
+  final ValueChanged<String>? onOpenJob;
   final GlobalKey Function(String jobId) cardKeyForJob;
   final ValueChanged<Job>? onToggleSaved;
 
@@ -643,6 +646,8 @@ class _MapResultsPanel extends StatelessWidget {
                         saved: savedJobIds.contains(job.id),
                         distanceMiles: _distanceMiles(job),
                         onTap: () => onSelected(job),
+                        onOpenJob:
+                            onOpenJob == null ? null : () => onOpenJob!(job.id),
                         onToggleSaved: onToggleSaved == null
                             ? null
                             : () => onToggleSaved!(job),
@@ -676,6 +681,7 @@ class _ResultCard extends StatelessWidget {
     required this.saved,
     required this.distanceMiles,
     required this.onTap,
+    this.onOpenJob,
     this.onToggleSaved,
   });
 
@@ -684,6 +690,7 @@ class _ResultCard extends StatelessWidget {
   final bool saved;
   final double? distanceMiles;
   final VoidCallback onTap;
+  final VoidCallback? onOpenJob;
   final VoidCallback? onToggleSaved;
 
   @override
@@ -795,6 +802,17 @@ class _ResultCard extends StatelessWidget {
                   ),
               ],
             ),
+            if (onOpenJob != null) ...[
+              const SizedBox(height: WebSpacing.sm),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onOpenJob,
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text('View vacancy'),
+                ),
+              ),
+            ],
           ],
         ),
       ),

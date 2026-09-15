@@ -5,12 +5,14 @@ import '../../../services/application_status_utils.dart';
 import '../../services/web_application_actions_service.dart';
 import '../../services/web_applications_data_service.dart';
 import '../../services/web_data_state.dart';
+import '../../services/web_profile_data_service.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_design_components.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
+import '../profile/web_profile_gallery.dart';
 
 class WebApplicationsPage extends StatefulWidget {
   const WebApplicationsPage({
@@ -749,6 +751,10 @@ class _ApplicationDetail extends StatelessWidget {
       useMenu: role == 'worker',
       onChanged: onChanged,
     );
+    final companyPhotos = role == 'worker' && item.companyData != null
+        ? WebProfileData(id: item.employerId, data: item.companyData!)
+            .companyPhotos
+        : const <String>[];
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -852,7 +858,7 @@ class _ApplicationDetail extends StatelessWidget {
                 ),
               ],
             ),
-          if (role == 'worker' && item.companyData != null)
+          if (role == 'worker' && item.companyData != null) ...[
             _DetailSection(
               title: 'Company details',
               children: [
@@ -882,6 +888,14 @@ class _ApplicationDetail extends StatelessWidget {
                 ),
               ],
             ),
+            if (companyPhotos.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              _DetailSection(
+                title: 'Company photos',
+                children: [WebProfileGallery(urls: companyPhotos)],
+              ),
+            ],
+          ],
         ],
       ),
     );
