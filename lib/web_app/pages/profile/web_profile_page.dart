@@ -227,6 +227,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
                   builder: (context, constraints) {
                     final compact =
                         constraints.maxWidth < WebBreakpoints.compactWidth;
+                    final contact = _ContactPanel(profile: current);
                     final main = isEmployer
                         ? _EmployerProfileBody(
                             profile: current,
@@ -238,6 +239,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
                             onRemoveCompanyPhoto:
                                 ownProfile ? _removeCompanyPhoto : null,
                             onOpenJob: widget.onOpenJob,
+                            contactAfterInformation: compact ? contact : null,
                           )
                         : _WorkerProfileBody(
                             profile: current,
@@ -254,9 +256,10 @@ class _WebProfilePageState extends State<WebProfilePage> {
                             onEditTeam: ownProfile ? _openEditTeam : null,
                             onOpenProfile: widget.onOpenProfile,
                           );
-                    final contact = _ContactPanel(profile: current);
                     if (compact) {
+                      if (isEmployer) return main;
                       return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           main,
                           const SizedBox(height: 18),
@@ -593,6 +596,7 @@ class _WorkerProfileBody extends StatelessWidget {
     ].where((item) => item.value.trim().isNotEmpty).toList();
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         WebPanel(
           child: Column(
@@ -610,14 +614,7 @@ class _WorkerProfileBody extends StatelessWidget {
                   style: TextStyle(color: WebTheme.muted),
                 )
               else
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: cvItems
-                      .map((item) =>
-                          _FieldTile(label: item.key, value: item.value))
-                      .toList(),
-                ),
+                _ResponsiveFieldGrid(items: cvItems),
               if (profile.references.isNotEmpty) ...[
                 const SizedBox(height: 18),
                 const Divider(),
@@ -627,19 +624,17 @@ class _WorkerProfileBody extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 10),
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: profile.references.map((reference) {
+                _ResponsiveFieldGrid(
+                  items: profile.references.map((reference) {
                     final name = reference['name'] ?? '';
                     final details = [
                       reference['company'] ?? '',
                       reference['phone'] ?? '',
                       reference['email'] ?? '',
                     ].where((value) => value.isNotEmpty).join('\n');
-                    return _FieldTile(
-                      label: name.isEmpty ? 'Reference' : name,
-                      value: details,
+                    return MapEntry(
+                      name.isEmpty ? 'Reference' : name,
+                      details,
                     );
                   }).toList(),
                 ),
@@ -697,6 +692,7 @@ class _EmployerProfileBody extends StatelessWidget {
     this.onAddCompanyPhotos,
     this.onRemoveCompanyPhoto,
     this.onOpenJob,
+    this.contactAfterInformation,
   });
 
   final WebProfileData profile;
@@ -706,10 +702,27 @@ class _EmployerProfileBody extends StatelessWidget {
   final VoidCallback? onAddCompanyPhotos;
   final ValueChanged<String>? onRemoveCompanyPhoto;
   final void Function(String jobId, bool ownerView)? onOpenJob;
+  final Widget? contactAfterInformation;
 
   @override
   Widget build(BuildContext context) {
+    final facts = <MapEntry<String, String>>[
+      MapEntry('Website', profile.website),
+      MapEntry('Speciality', profile.trade),
+      MapEntry('Location', profile.location),
+    ].where((entry) => entry.value.trim().isNotEmpty).toList();
+    final sections = <MapEntry<String, String>>[
+      for (final entry in const {
+        'companyGoals': 'Our goals and objectives',
+        'companyAdvantages': 'Our advantages',
+        'companyClients': 'Our clients',
+        'companyWhoWeAre': 'Who we are',
+        'companyHistory': 'Our history',
+      }.entries)
+        MapEntry(entry.value, profile.data[entry.key]?.toString() ?? ''),
+    ].where((entry) => entry.value.trim().isNotEmpty).toList();
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         WebPanel(
           child: Column(
@@ -729,35 +742,25 @@ class _EmployerProfileBody extends StatelessWidget {
                   height: 1.45,
                 ),
               ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 14,
-                runSpacing: 14,
-                children: [
-                  if (profile.website.isNotEmpty)
-                    _FieldTile(label: 'Website', value: profile.website),
-                  if (profile.trade.isNotEmpty)
-                    _FieldTile(label: 'Speciality', value: profile.trade),
-                  if (profile.location.isNotEmpty)
-                    _FieldTile(label: 'Location', value: profile.location),
-                  for (final entry in const {
-                    'companyGoals': 'Our goals and objectives',
-                    'companyAdvantages': 'Our advantages',
-                    'companyClients': 'Our clients',
-                    'companyWhoWeAre': 'Who we are',
-                    'companyHistory': 'Our history'
-                  }.entries)
-                    if ((profile.data[entry.key]?.toString().trim() ?? '')
-                        .isNotEmpty)
-                      _FieldTile(
-                          label: entry.value,
-                          value: profile.data[entry.key].toString(),
-                          fullWidth: true),
-                ],
-              ),
+              if (facts.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _ResponsiveFieldGrid(items: facts),
+              ],
+              for (final section in sections) ...[
+                const SizedBox(height: 18),
+                _FieldTile(
+                  label: section.key,
+                  value: section.value,
+                  fullWidth: true,
+                ),
+              ],
             ],
           ),
         ),
+        if (contactAfterInformation != null) ...[
+          const SizedBox(height: 18),
+          contactAfterInformation!,
+        ],
         const SizedBox(height: 18),
         _SectionPanel(
           title: 'Company photos',
@@ -1622,7 +1625,7 @@ class _FieldTile extends StatelessWidget {
           Text(
             label,
             style: const TextStyle(
-              color: WebTheme.muted,
+              color: WebTheme.ink,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -1630,6 +1633,41 @@ class _FieldTile extends StatelessWidget {
           Text(value, style: const TextStyle(fontSize: 15, height: 1.35)),
         ],
       ),
+    );
+  }
+}
+
+class _ResponsiveFieldGrid extends StatelessWidget {
+  const _ResponsiveFieldGrid({required this.items});
+
+  final List<MapEntry<String, String>> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 18.0;
+        final columns = constraints.maxWidth >= 620 ? 2 : 1;
+        final itemWidth = columns == 1
+            ? constraints.maxWidth
+            : (constraints.maxWidth - gap) / 2;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: items
+              .map(
+                (item) => SizedBox(
+                  width: itemWidth,
+                  child: _FieldTile(
+                    label: item.key,
+                    value: item.value,
+                    fullWidth: true,
+                  ),
+                ),
+              )
+              .toList(),
+        );
+      },
     );
   }
 }
