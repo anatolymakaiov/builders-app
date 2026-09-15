@@ -19,6 +19,7 @@ class WebApplicationsPage extends StatefulWidget {
     required this.role,
     this.onOpenProfile,
     this.onOpenChat,
+    this.onOpenJob,
     this.initialJobId,
     this.initialApplicationId,
     this.initialStatusFilter,
@@ -28,6 +29,7 @@ class WebApplicationsPage extends StatefulWidget {
   final String role;
   final void Function(String userId, String role)? onOpenProfile;
   final ValueChanged<String>? onOpenChat;
+  final ValueChanged<String>? onOpenJob;
   final String? initialJobId;
   final String? initialApplicationId;
   final String? initialStatusFilter;
@@ -193,6 +195,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                         actionService: actionsService,
                         onOpenProfile: widget.onOpenProfile,
                         onOpenChat: widget.onOpenChat,
+                        onOpenJob: widget.onOpenJob,
                         onChanged: () => setState(() {}),
                       ),
                     );
@@ -436,30 +439,58 @@ class _ApplicationList extends StatelessWidget {
       itemBuilder: (context, index) {
         final application = applications[index];
         final selected = application.id == selectedId;
-        return InkWell(
+        if (role == 'worker') {
+          return _WorkerApplicationCard(
+            application: application,
+            selected: selected,
+            unread: application.unreadFor(userId),
+            onTap: () => onSelected(application.id),
+          );
+        }
+        return _EmployerApplicationCard(
+          application: application,
+          selected: selected,
+          unread: application.unreadFor(userId),
           onTap: () => onSelected(application.id),
-          borderRadius: BorderRadius.circular(WebRadii.card),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: selected ? WebTheme.selected : WebTheme.surface,
-              borderRadius: BorderRadius.circular(WebRadii.card),
-              border: Border.all(
-                color: selected ? WebTheme.accent : WebTheme.border,
-              ),
-            ),
-            child: Row(
+        );
+      },
+    );
+  }
+}
+
+class _WorkerApplicationCard extends StatelessWidget {
+  const _WorkerApplicationCard({
+    required this.application,
+    required this.selected,
+    required this.unread,
+    required this.onTap,
+  });
+
+  final WebApplicationSummary application;
+  final bool selected;
+  final bool unread;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final submitted = application.submittedAt;
+    final rate = application.rateLabel;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(WebRadii.card),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: _applicationCardDecoration(selected),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 WebCircleImage(
-                  url: role == 'worker'
-                      ? application.companyLogoUrl
-                      : application.avatarUrl,
+                  url: application.companyLogoUrl,
                   size: 44,
-                  fallbackIcon: role == 'worker'
-                      ? Icons.business_outlined
-                      : application.isTeam
-                          ? Icons.groups_2_outlined
-                          : Icons.person_outline,
+                  fallbackIcon: Icons.business_outlined,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -467,54 +498,215 @@ class _ApplicationList extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        application.title,
-                        maxLines: 1,
+                        application.jobTitle,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w900),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        application.jobTitle,
+                        application.companyName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(color: WebTheme.muted),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        [
-                          if (role == 'worker') application.companyName,
-                          if (application.trade.isNotEmpty) application.trade,
-                          if (application.site.isNotEmpty) application.site,
-                          if (application.activityAt != null)
-                            _formatDate(application.activityAt!.toDate()),
-                        ].where((part) => part.trim().isNotEmpty).join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: WebTheme.muted,
-                          fontSize: 12,
-                        ),
-                      ),
                     ],
                   ),
                 ),
-                if (application.unreadFor(userId)) ...[
-                  Container(
-                    width: 9,
-                    height: 9,
-                    decoration: const BoxDecoration(
-                      color: WebTheme.accent,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
+                if (unread) ...[
                   const SizedBox(width: 8),
+                  const _UnreadDot(),
                 ],
-                _StatusChip(status: application.status, role: role),
               ],
             ),
+            if (application.site.isNotEmpty) ...[
+              const SizedBox(height: 9),
+              _ApplicationMetaLine(
+                icon: Icons.place_outlined,
+                text: application.site,
+              ),
+            ],
+            if (submitted != null) ...[
+              const SizedBox(height: 6),
+              _ApplicationMetaLine(
+                icon: Icons.schedule_outlined,
+                text: 'Applied ${_formatDateTime(submitted)}',
+              ),
+            ],
+            if (application.isTeam && application.title.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              _ApplicationMetaLine(
+                icon: Icons.groups_2_outlined,
+                text: 'Team: ${application.title}',
+              ),
+            ],
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _ApplicationFactChip(label: application.workFormat),
+                if (rate != null) _ApplicationFactChip(label: rate),
+                if (application.duration.isNotEmpty)
+                  _ApplicationFactChip(label: application.duration),
+                _StatusChip(status: application.status, role: 'worker'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmployerApplicationCard extends StatelessWidget {
+  const _EmployerApplicationCard({
+    required this.application,
+    required this.selected,
+    required this.unread,
+    required this.onTap,
+  });
+
+  final WebApplicationSummary application;
+  final bool selected;
+  final bool unread;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(WebRadii.card),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: _applicationCardDecoration(selected),
+        child: Row(
+          children: [
+            WebCircleImage(
+              url: application.avatarUrl,
+              size: 44,
+              fallbackIcon: application.isTeam
+                  ? Icons.groups_2_outlined
+                  : Icons.person_outline,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    application.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    application.jobTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: WebTheme.muted),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    [
+                      if (application.trade.isNotEmpty) application.trade,
+                      if (application.site.isNotEmpty) application.site,
+                      if (application.activityAt != null)
+                        _formatDate(application.activityAt!.toDate()),
+                    ].where((part) => part.trim().isNotEmpty).join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: WebTheme.muted,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (unread) ...[
+              const _UnreadDot(),
+              const SizedBox(width: 8),
+            ],
+            _StatusChip(status: application.status, role: 'employer'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+BoxDecoration _applicationCardDecoration(bool selected) => BoxDecoration(
+      color: selected ? WebTheme.selected : WebTheme.surface,
+      borderRadius: BorderRadius.circular(WebRadii.card),
+      border: Border.all(
+        color: selected ? WebTheme.accent : WebTheme.border,
+      ),
+    );
+
+class _UnreadDot extends StatelessWidget {
+  const _UnreadDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 9,
+      height: 9,
+      decoration: const BoxDecoration(
+        color: WebTheme.accent,
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+class _ApplicationMetaLine extends StatelessWidget {
+  const _ApplicationMetaLine({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 15, color: WebTheme.muted),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: WebTheme.muted, fontSize: 12),
           ),
-        );
-      },
+        ),
+      ],
+    );
+  }
+}
+
+class _ApplicationFactChip extends StatelessWidget {
+  const _ApplicationFactChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: WebTheme.surface,
+        borderRadius: BorderRadius.circular(WebRadii.tag),
+        border: Border.all(color: WebTheme.border),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+      ),
     );
   }
 }
@@ -527,6 +719,7 @@ class _ApplicationDetail extends StatelessWidget {
     required this.actionService,
     this.onOpenProfile,
     this.onOpenChat,
+    this.onOpenJob,
     this.onChanged,
   });
 
@@ -536,6 +729,7 @@ class _ApplicationDetail extends StatelessWidget {
   final WebApplicationActionsService actionService;
   final void Function(String userId, String role)? onOpenProfile;
   final ValueChanged<String>? onOpenChat;
+  final ValueChanged<String>? onOpenJob;
   final VoidCallback? onChanged;
 
   @override
@@ -544,22 +738,32 @@ class _ApplicationDetail extends StatelessWidget {
     if (item == null) {
       return const Center(child: Text('Select an application.'));
     }
+    final actions = _ApplicationActions(
+      application: item,
+      currentUserId: currentUserId,
+      role: role,
+      actionService: actionService,
+      onOpenProfile: onOpenProfile,
+      onOpenChat: onOpenChat,
+      onOpenJob: onOpenJob,
+      useMenu: role == 'worker',
+      onChanged: onChanged,
+    );
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _ApplicationHeader(
-              item: item, role: role, currentUserId: currentUserId),
-          const SizedBox(height: 18),
-          _ApplicationActions(
-            application: item,
-            currentUserId: currentUserId,
+            item: item,
             role: role,
-            actionService: actionService,
+            currentUserId: currentUserId,
             onOpenProfile: onOpenProfile,
-            onOpenChat: onOpenChat,
-            onChanged: onChanged,
+            actions: role == 'worker' ? actions : null,
           ),
+          if (role != 'worker') ...[
+            const SizedBox(height: 18),
+            actions,
+          ],
           const SizedBox(height: 20),
           if (item.offer.isNotEmpty) ...[
             _OfferCard(application: item, role: role),
@@ -573,6 +777,25 @@ class _ApplicationDetail extends StatelessWidget {
                 _InfoRow(label: 'Company', value: item.companyName),
               _InfoRow(label: 'Applicant', value: item.title),
               _InfoRow(label: 'Type', value: item.isTeam ? 'Team' : 'Single'),
+              if (role == 'worker') ...[
+                _InfoRow(label: 'Location', value: item.site),
+                _InfoRow(label: 'Work format', value: item.workFormat),
+                _InfoRow(label: 'Rate / price', value: item.rateLabel ?? ''),
+                _InfoRow(label: 'Duration', value: item.duration),
+                _InfoRow(
+                  label: 'Submitted',
+                  value: item.submittedAt == null
+                      ? ''
+                      : _formatDateTime(item.submittedAt!),
+                ),
+                _InfoRow(
+                  label: 'Status',
+                  value: ApplicationStatusUtils.getStatusDisplayLabel(
+                    item.status,
+                    role,
+                  ),
+                ),
+              ],
               if (item.trade.isNotEmpty)
                 _InfoRow(label: 'Trade', value: item.trade),
               if (item.site.isNotEmpty)
@@ -603,9 +826,9 @@ class _ApplicationDetail extends StatelessWidget {
                 if (item.memberIds.isNotEmpty) _MembersBlock(application: item),
               ],
             ),
-          if (!item.isTeam && item.profileData != null)
+          if (role == 'employer' && !item.isTeam && item.profileData != null)
             _DetailSection(
-              title: role == 'employer' ? 'Worker details' : 'Company details',
+              title: 'Worker details',
               children: [
                 _InfoRow(
                   label: 'Name',
@@ -629,6 +852,36 @@ class _ApplicationDetail extends StatelessWidget {
                 ),
               ],
             ),
+          if (role == 'worker' && item.companyData != null)
+            _DetailSection(
+              title: 'Company details',
+              children: [
+                _InfoRow(label: 'Company', value: item.companyName),
+                _InfoRow(
+                  label: 'Business type',
+                  value: _firstText(
+                    item.companyData,
+                    const ['companyType', 'businessType', 'industry'],
+                    '',
+                  ),
+                ),
+                _InfoRow(
+                  label: 'Location',
+                  value: _firstText(
+                    item.companyData,
+                    const [
+                      'fullAddress',
+                      'companyAddress',
+                      'location',
+                      'city',
+                      'town',
+                      'postcode',
+                    ],
+                    '',
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );
@@ -640,15 +893,101 @@ class _ApplicationHeader extends StatelessWidget {
     required this.item,
     required this.role,
     required this.currentUserId,
+    this.onOpenProfile,
+    this.actions,
   });
 
   final WebApplicationSummary item;
   final String role;
   final String currentUserId;
+  final void Function(String userId, String role)? onOpenProfile;
+  final Widget? actions;
 
   @override
   Widget build(BuildContext context) {
     final avatarUrl = role == 'worker' ? item.companyLogoUrl : item.avatarUrl;
+    if (role == 'worker') {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          WebCircleImage(
+            url: avatarUrl,
+            size: 72,
+            fallbackIcon: Icons.business_outlined,
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.jobTitle,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 3),
+                TextButton(
+                  onPressed: item.employerId.isEmpty || onOpenProfile == null
+                      ? null
+                      : () => onOpenProfile!(item.employerId, 'employer'),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    alignment: Alignment.centerLeft,
+                  ),
+                  child: Text(item.companyName),
+                ),
+                if (item.site.isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  _ApplicationMetaLine(
+                    icon: Icons.place_outlined,
+                    text: item.site,
+                  ),
+                ],
+                const SizedBox(height: 9),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _ApplicationFactChip(label: item.workFormat),
+                    if (item.rateLabel != null)
+                      _ApplicationFactChip(label: item.rateLabel!),
+                    if (item.duration.isNotEmpty)
+                      _ApplicationFactChip(label: item.duration),
+                    if (item.submittedAt != null)
+                      _MetaChip(
+                        icon: Icons.schedule_outlined,
+                        label: 'Applied ${_formatDateTime(item.submittedAt!)}',
+                      ),
+                    if (item.unreadFor(currentUserId))
+                      const _MetaChip(
+                        icon: Icons.mark_email_unread_outlined,
+                        label: 'Unread',
+                      ),
+                    if (item.jobUnavailable)
+                      const _MetaChip(
+                        icon: Icons.block_outlined,
+                        label: 'Vacancy unavailable',
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _StatusChip(status: item.status, role: role),
+              if (actions != null) ...[
+                const SizedBox(height: 10),
+                actions!,
+              ],
+            ],
+          ),
+        ],
+      );
+    }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -716,6 +1055,8 @@ class _ApplicationActions extends StatefulWidget {
     required this.actionService,
     this.onOpenProfile,
     this.onOpenChat,
+    this.onOpenJob,
+    this.useMenu = false,
     this.onChanged,
   });
 
@@ -725,6 +1066,8 @@ class _ApplicationActions extends StatefulWidget {
   final WebApplicationActionsService actionService;
   final void Function(String userId, String role)? onOpenProfile;
   final ValueChanged<String>? onOpenChat;
+  final ValueChanged<String>? onOpenJob;
+  final bool useMenu;
   final VoidCallback? onChanged;
 
   @override
@@ -740,6 +1083,9 @@ class _ApplicationActionsState extends State<_ApplicationActions> {
   @override
   Widget build(BuildContext context) {
     final status = ApplicationStatusUtils.normalizeStatus(application.status);
+    if (widget.useMenu && widget.role == 'worker') {
+      return _workerActionsMenu(status);
+    }
     final actions = <Widget>[
       if (widget.role == 'employer' && application.workerId.isNotEmpty)
         OutlinedButton.icon(
@@ -776,6 +1122,105 @@ class _ApplicationActionsState extends State<_ApplicationActions> {
     ];
     if (actions.isEmpty) return const SizedBox.shrink();
     return Wrap(spacing: 10, runSpacing: 10, children: actions);
+  }
+
+  Widget _workerActionsMenu(String status) {
+    final jobId = application.data['jobId']?.toString().trim() ?? '';
+    return MenuAnchor(
+      menuChildren: [
+        if (_canMessage(status))
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.chat_bubble_outline),
+            onPressed: busy ? null : () => _run('message', _message),
+            child: const Text('Message employer'),
+          ),
+        if (application.employerId.isNotEmpty && widget.onOpenProfile != null)
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.business_outlined),
+            onPressed: busy
+                ? null
+                : () => widget.onOpenProfile
+                    ?.call(application.employerId, 'employer'),
+            child: const Text('View company profile'),
+          ),
+        if (jobId.isNotEmpty &&
+            !application.jobUnavailable &&
+            widget.onOpenJob != null)
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.work_outline),
+            onPressed: busy ? null : () => widget.onOpenJob?.call(jobId),
+            child: const Text('View vacancy'),
+          ),
+        if (application.isTeam)
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.groups_2_outlined),
+            onPressed: busy ? null : () => _showTeamDetails(context),
+            child: const Text('Team details'),
+          ),
+        if (status == 'pending')
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.undo),
+            onPressed: busy
+                ? null
+                : () async {
+                    if (!await _confirm('Withdraw this application?')) return;
+                    await _run(
+                      'withdraw',
+                      () =>
+                          widget.actionService.withdrawApplication(application),
+                    );
+                  },
+            child: const Text('Withdraw application'),
+          ),
+        if (status == 'offer_sent' && _canCurrentWorkerActOnOffer()) ...[
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.check_circle_outline),
+            onPressed: busy
+                ? null
+                : () => _run(
+                      'accept',
+                      () => widget.actionService.acceptOffer(application),
+                    ),
+            child: const Text('Accept offer'),
+          ),
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.cancel_outlined),
+            onPressed: busy
+                ? null
+                : () async {
+                    if (!await _confirm('Reject this offer?')) return;
+                    await _run(
+                      'reject_offer',
+                      () => widget.actionService.rejectOffer(application),
+                    );
+                  },
+            child: const Text('Reject offer'),
+          ),
+        ],
+      ],
+      builder: (context, controller, child) => OutlinedButton.icon(
+        onPressed: busy
+            ? null
+            : controller.isOpen
+                ? controller.close
+                : controller.open,
+        icon: busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.more_horiz),
+        label: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Actions'),
+            SizedBox(width: 3),
+            Icon(Icons.arrow_drop_down, size: 18),
+          ],
+        ),
+      ),
+    );
   }
 
   List<Widget> _employerActions(String status) {
@@ -1516,6 +1961,12 @@ class _MetaChip extends StatelessWidget {
 String _formatDate(DateTime date) {
   return '${date.day.toString().padLeft(2, '0')}/'
       '${date.month.toString().padLeft(2, '0')}/${date.year}';
+}
+
+String _formatDateTime(DateTime date) {
+  final hour = date.hour.toString().padLeft(2, '0');
+  final minute = date.minute.toString().padLeft(2, '0');
+  return '${_formatDate(date)} at $hour:$minute';
 }
 
 String _firstText(

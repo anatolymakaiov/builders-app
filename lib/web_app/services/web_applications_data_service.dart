@@ -11,6 +11,7 @@ class WebApplicationSummary {
     required this.data,
     this.jobData,
     this.profileData,
+    this.companyData,
     this.teamData,
     this.memberProfiles = const <String, Map<String, dynamic>>{},
     this.jobUnavailable = false,
@@ -20,6 +21,7 @@ class WebApplicationSummary {
   final Map<String, dynamic> data;
   final Map<String, dynamic>? jobData;
   final Map<String, dynamic>? profileData;
+  final Map<String, dynamic>? companyData;
   final Map<String, dynamic>? teamData;
   final Map<String, Map<String, dynamic>> memberProfiles;
   final bool jobUnavailable;
@@ -47,9 +49,13 @@ class WebApplicationSummary {
       );
 
   String get companyName => _firstText(
-        data,
-        const ['companyName', 'employerName'],
-        _firstText(jobData, const ['companyName', 'employerName'], 'Company'),
+        companyData,
+        const ['companyName', 'businessName', 'displayName', 'name'],
+        _firstText(
+          data,
+          const ['companyName', 'employerName'],
+          _firstText(jobData, const ['companyName', 'employerName'], 'Company'),
+        ),
       );
 
   String get status =>
@@ -77,9 +83,62 @@ class WebApplicationSummary {
 
   String get site => _firstText(
         data,
-        const ['jobSite', 'site', 'siteAddress', 'fullAddress', 'location'],
-        _firstText(jobData, const ['site', 'siteAddress', 'fullAddress'], ''),
+        const [
+          'siteAddress',
+          'fullAddress',
+          'jobLocation',
+          'jobAddress',
+          'location',
+          'jobSite',
+          'site',
+        ],
+        _firstText(
+          jobData,
+          const ['siteAddress', 'fullAddress', 'location', 'site'],
+          '',
+        ),
       );
+
+  String get workFormat {
+    final raw = _firstText(
+      data,
+      const ['jobType', 'payType', 'workFormat', 'paymentType'],
+      _firstText(
+        jobData,
+        const ['jobType', 'payType', 'workFormat', 'paymentType'],
+        'hourly',
+      ),
+    ).toLowerCase();
+    if (raw.contains('negoti')) return 'Negotiable';
+    if (raw.contains('price') || raw.contains('fixed')) return 'Price';
+    return 'Day Work';
+  }
+
+  String get duration => _firstText(
+        data,
+        const ['duration', 'jobDuration', 'workPeriod'],
+        _firstText(
+            jobData, const ['duration', 'jobDuration', 'workPeriod'], ''),
+      );
+
+  String? get rateLabel {
+    final rate = _firstPositiveNumber(
+          data,
+          const ['rate', 'jobRate', 'payAmount', 'salary', 'amount'],
+        ) ??
+        _firstPositiveNumber(
+          jobData,
+          const ['rate', 'jobRate', 'payAmount', 'salary', 'amount'],
+        );
+    if (rate == null || workFormat == 'Negotiable') return null;
+    final amount = rate == rate.roundToDouble()
+        ? rate.toInt().toString()
+        : rate
+            .toStringAsFixed(2)
+            .replaceFirst(RegExp(r'0+$'), '')
+            .replaceFirst(RegExp(r'\.$'), '');
+    return workFormat == 'Price' ? '£$amount' : '£$amount/hour';
+  }
 
   String get message => _firstText(
         data,
@@ -139,6 +198,12 @@ class WebApplicationSummary {
     return null;
   }
 
+  DateTime? get submittedAt => _firstDate(data, const [
+        'createdAt',
+        'submittedAt',
+        'appliedAt',
+      ]);
+
   String get avatarUrl => _firstText(
         isTeam && teamData != null ? teamData : profileData,
         const [
@@ -167,12 +232,25 @@ class WebApplicationSummary {
       );
 
   String get companyLogoUrl => _firstText(
-        data,
-        const ['companyLogoUrl', 'companyLogo', 'employerAvatarUrl'],
+        companyData,
+        const [
+          'companyLogoUrl',
+          'companyLogo',
+          'companyAvatarUrl',
+          'logo',
+          'employerAvatarUrl',
+          'avatarUrl',
+          'photoUrl',
+          'photo',
+        ],
         _firstText(
-          jobData,
-          const ['companyLogoUrl', 'companyLogo', 'logo', 'avatarUrl'],
-          '',
+          data,
+          const ['companyLogoUrl', 'companyLogo', 'employerAvatarUrl'],
+          _firstText(
+            jobData,
+            const ['companyLogoUrl', 'companyLogo', 'logo', 'avatarUrl'],
+            '',
+          ),
         ),
       );
 
@@ -460,6 +538,14 @@ class WebApplicationsDataService {
     final teamId = data['teamId']?.toString() ?? '';
     final jobData = await _safeGet('jobs', jobId);
     final profileData = await _safeGet('users', workerId);
+    final employerId = (data['employerId'] ??
+            data['ownerId'] ??
+            jobData?['ownerId'] ??
+            jobData?['employerId'])
+        ?.toString()
+        .trim();
+    var companyData = await _safeGet('users', employerId ?? '');
+    companyData ??= await _safeGet('companies', employerId ?? '');
     final teamData = await _safeGet('teams', teamId);
     final memberProfiles = <String, Map<String, dynamic>>{};
     final isTeam =
@@ -479,6 +565,7 @@ class WebApplicationsDataService {
       data: data,
       jobData: jobData,
       profileData: profileData,
+      companyData: companyData,
       teamData: teamData,
       memberProfiles: memberProfiles,
       jobUnavailable: jobId.isNotEmpty && jobData == null,
@@ -602,4 +689,34 @@ String _firstText(
     if (value != null && value.isNotEmpty) return value;
   }
   return fallback;
+}
+
+double? _firstPositiveNumber(
+  Map<String, dynamic>? data,
+  List<String> keys,
+) {
+  if (data == null) return null;
+  for (final key in keys) {
+    final value = data[key];
+    final parsed = value is num
+        ? value.toDouble()
+        : double.tryParse(
+            value?.toString().replaceAll(RegExp(r'[^0-9.]'), '') ?? '',
+          );
+    if (parsed != null && parsed > 0) return parsed;
+  }
+  return null;
+}
+
+DateTime? _firstDate(Map<String, dynamic> data, List<String> keys) {
+  for (final key in keys) {
+    final value = data[key];
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) return parsed;
+    }
+  }
+  return null;
 }

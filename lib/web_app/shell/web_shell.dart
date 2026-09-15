@@ -113,6 +113,7 @@ class _WebShellState extends State<WebShell> {
                     role: widget.role,
                     onOpenProfile: _openProfile,
                     onOpenChat: _openChat,
+                    onOpenJob: _openJob,
                     initialJobId: applicationsRoute?.jobId,
                     initialApplicationId: applicationsRoute?.applicationId,
                     initialStatusFilter: applicationsRoute?.statusFilter,
