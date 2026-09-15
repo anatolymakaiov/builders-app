@@ -50,98 +50,136 @@ class WebTopNavigation extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: WebTheme.surface,
-      child: Container(
-        height: 72,
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: WebTheme.border)),
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final showLabels =
-                WebBreakpoints.isLargeDesktop(constraints.maxWidth);
-            final small = WebBreakpoints.isSmall(constraints.maxWidth);
-            final gutter = WebBreakpoints.gutter(constraints.maxWidth);
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: WebBreakpoints.desktopMaxWidth,
+      color: WebTheme.deep,
+      child: SizedBox(
+        height: 84,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Image.network(
+                  'stroyka_nav_banner.png',
+                  fit: BoxFit.cover,
+                  alignment: Alignment.centerLeft,
+                  filterQuality: FilterQuality.high,
+                  errorBuilder: (_, __, ___) =>
+                      const ColoredBox(color: WebTheme.deep),
                 ),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: gutter),
-                  child: Row(
-                    children: [
-                      Semantics(
-                        header: true,
-                        child: Text(
-                          small ? 'S' : 'STROYKA',
-                          style: const TextStyle(
-                            color: WebTheme.deep,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: small ? WebSpacing.sm : WebSpacing.xxl),
-                      Expanded(
-                        child: Row(
-                          mainAxisAlignment: showLabels
-                              ? MainAxisAlignment.start
-                              : MainAxisAlignment.center,
-                          children: [
-                            for (final section in WebSection.values)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: WebSpacing.xxs,
-                                ),
-                                child: _WebNavItem(
-                                  section: section,
-                                  selected: section == selected,
-                                  showLabel: showLabels,
-                                  onTap: () => onSelected(section),
-                                  badgeCount: switch (section) {
-                                    WebSection.applications => applicationCount,
-                                    WebSection.chats => chatCount,
-                                    _ => 0,
-                                  },
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      if (role == 'employer') ...[
-                        if (showLabels)
-                          FilledButton.icon(
-                            onPressed: onPostJob,
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Post a job'),
-                          )
-                        else
-                          IconButton(
-                            tooltip: 'Post a job',
-                            onPressed: onPostJob,
-                            icon: const Icon(Icons.add_business_outlined),
-                          ),
-                        const SizedBox(width: WebSpacing.xs),
+              ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        WebTheme.deep.withValues(alpha: 0.22),
+                        WebTheme.deep.withValues(alpha: 0.42),
+                        WebTheme.deep.withValues(alpha: 0.58),
                       ],
-                      IconButton(
-                        tooltip: 'Notifications',
-                        onPressed: onNotifications,
-                        icon: Badge(
-                          isLabelVisible: notificationCount > 0,
-                          label: Text(_badgeLabel(notificationCount)),
-                          child: const Icon(Icons.notifications_none),
-                        ),
-                      ),
-                      const SizedBox(width: WebSpacing.xs),
-                      _accountMenu(context),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            );
-          },
+            ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final showLabels =
+                    WebBreakpoints.isLargeDesktop(constraints.maxWidth);
+                final gutter = WebBreakpoints.gutter(constraints.maxWidth);
+                final brandSpace = showLabels
+                    ? 350.0
+                    : constraints.maxWidth >= WebBreakpoints.desktop
+                        ? 220.0
+                        : constraints.maxWidth >= 640
+                            ? 120.0
+                            : 0.0;
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: WebBreakpoints.desktopMaxWidth,
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: gutter),
+                      child: Row(
+                        children: [
+                          if (brandSpace > 0)
+                            Semantics(
+                              image: true,
+                              label: 'STROYKA',
+                              child: SizedBox(width: brandSpace),
+                            ),
+                          Expanded(
+                            child: Row(
+                              mainAxisAlignment: showLabels
+                                  ? MainAxisAlignment.start
+                                  : MainAxisAlignment.center,
+                              children: [
+                                for (final section in WebSection.values)
+                                  Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: constraints.maxWidth < 640
+                                          ? 0
+                                          : WebSpacing.xxs,
+                                    ),
+                                    child: _WebNavItem(
+                                      section: section,
+                                      selected: section == selected,
+                                      showLabel: showLabels,
+                                      onTap: () => onSelected(section),
+                                      badgeCount: switch (section) {
+                                        WebSection.applications =>
+                                          applicationCount,
+                                        WebSection.chats => chatCount,
+                                        _ => 0,
+                                      },
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (role == 'employer') ...[
+                            if (showLabels)
+                              FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFFEAF5FC),
+                                  foregroundColor: WebTheme.deep,
+                                  overlayColor: const Color(0xFFD4EBF8),
+                                ),
+                                onPressed: onPostJob,
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('Post a job'),
+                              )
+                            else
+                              IconButton(
+                                tooltip: 'Post a job',
+                                style: _headerIconButtonStyle(),
+                                onPressed: onPostJob,
+                                icon: const Icon(Icons.add_business_outlined),
+                              ),
+                            const SizedBox(width: WebSpacing.xs),
+                          ],
+                          IconButton(
+                            tooltip: 'Notifications',
+                            style: _headerIconButtonStyle(),
+                            onPressed: onNotifications,
+                            icon: Badge(
+                              isLabelVisible: notificationCount > 0,
+                              label: Text(_badgeLabel(notificationCount)),
+                              child: const Icon(Icons.notifications_none),
+                            ),
+                          ),
+                          const SizedBox(width: WebSpacing.xs),
+                          _accountMenu(context),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -231,9 +269,22 @@ class WebTopNavigation extends StatelessWidget {
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         child: Semantics(
-            button: true,
-            label: 'Open profile and account menu',
-            child: avatar),
+          button: true,
+          label: 'Open profile and account menu',
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.72),
+                width: 2,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: avatar,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -258,16 +309,20 @@ class _WebNavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final content = InkWell(
       borderRadius: BorderRadius.circular(WebRadii.button),
+      hoverColor: Colors.white.withValues(alpha: 0.12),
+      splashColor: Colors.white.withValues(alpha: 0.14),
       onTap: onTap,
       child: Container(
         height: 48,
         padding: EdgeInsets.symmetric(horizontal: showLabel ? 12 : 10),
         decoration: BoxDecoration(
-          color: selected ? WebTheme.selected : Colors.transparent,
+          color: selected
+              ? Colors.white.withValues(alpha: 0.18)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(WebRadii.button),
           border: Border(
             bottom: BorderSide(
-              color: selected ? WebTheme.accent : Colors.transparent,
+              color: selected ? const Color(0xFFBFE8FF) : Colors.transparent,
               width: 2,
             ),
           ),
@@ -281,7 +336,7 @@ class _WebNavItem extends StatelessWidget {
               child: Icon(
                 section.icon,
                 size: 20,
-                color: selected ? WebTheme.accent : WebTheme.muted,
+                color: selected ? Colors.white : const Color(0xFFE4F2FA),
               ),
             ),
             if (showLabel) ...[
@@ -289,7 +344,7 @@ class _WebNavItem extends StatelessWidget {
               Text(
                 section.label,
                 style: WebTypography.button.copyWith(
-                  color: selected ? WebTheme.accent : WebTheme.ink,
+                  color: selected ? Colors.white : const Color(0xFFE4F2FA),
                 ),
               ),
               if (badgeCount > 0) ...[
@@ -350,3 +405,10 @@ class _MenuRow extends StatelessWidget {
 }
 
 String _badgeLabel(int count) => count > 99 ? '99+' : count.toString();
+
+ButtonStyle _headerIconButtonStyle() => IconButton.styleFrom(
+      foregroundColor: Colors.white,
+      backgroundColor: Colors.transparent,
+      hoverColor: Colors.white.withValues(alpha: 0.12),
+      highlightColor: Colors.white.withValues(alpha: 0.14),
+    );
