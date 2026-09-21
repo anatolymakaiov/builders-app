@@ -13,6 +13,7 @@ import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/profile_hamburger_menu.dart';
+import '../widgets/worker_review_workflow.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -94,6 +95,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return "Admin message";
       case "package_approval":
         return "Package approval update";
+      case "worker_review_requested":
+        return "Review requested";
+      case "worker_review_responded":
+        return "Review response received";
+      case "worker_review_published":
+      case "worker_review_declined":
+        return "Review request updated";
       default:
         return "Notification";
     }
@@ -428,6 +436,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return "support_request";
     }
     if (type == "admin_message") return "admin_message";
+    if (type.startsWith("worker_review_")) return "worker_review";
     if (isOfferRelatedNotification(data)) {
       return "offer";
     }
@@ -476,6 +485,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final workerId = cleanId(data["workerId"]);
     final role = await currentUserRole();
     if (!context.mounted) return;
+
+    if (targetType == "worker_review") {
+      final requestId = cleanId(data["reviewRequestId"] ?? targetId);
+      if (requestId != null) {
+        await showEmployerReviewRequestDialog(
+          context,
+          requestId: requestId,
+        );
+        return;
+      }
+    }
 
     if (await openOfferRelatedNotification(
       context,

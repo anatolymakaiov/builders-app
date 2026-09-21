@@ -236,8 +236,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
                 const SizedBox(height: 22),
                 if (isWorker)
                   WebWorkerReviews(
-                      workerId: viewedUserId,
-                      canReview: !ownProfile && widget.role == 'employer'),
+                      workerId: viewedUserId, ownProfile: ownProfile),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final compact =

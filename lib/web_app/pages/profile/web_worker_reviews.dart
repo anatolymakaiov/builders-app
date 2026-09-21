@@ -1,14 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import '../../services/web_profile_communication.dart';
-import '../../widgets/web_design_components.dart';
+import '../../../widgets/app_cached_image.dart';
+import '../../../widgets/worker_review_workflow.dart';
 
 class WebWorkerReviews extends StatefulWidget {
   const WebWorkerReviews(
-      {super.key, required this.workerId, required this.canReview});
+      {super.key, required this.workerId, required this.ownProfile});
   final String workerId;
-  final bool canReview;
+  final bool ownProfile;
   @override
   State<WebWorkerReviews> createState() => _WebWorkerReviewsState();
 }
@@ -35,17 +34,13 @@ class _WebWorkerReviewsState extends State<WebWorkerReviews> {
           Expanded(
               child: Text('Employer reviews',
                   style: Theme.of(context).textTheme.titleLarge)),
-          if (widget.canReview)
-            TextButton.icon(
-                onPressed: () async {
-                  final saved = await showDialog<bool>(
-                      context: context,
-                      builder: (_) => _ReviewDialog(workerId: widget.workerId));
-                  if (mounted && saved == true) setState(() => future = load());
-                },
-                icon: const Icon(Icons.rate_review_outlined),
-                label: const Text('Add review'))
         ]),
+        if (widget.ownProfile) ...[
+          const SizedBox(height: 8),
+          WorkerReviewRequestsPanel(
+            onChanged: () => setState(() => future = load()),
+          ),
+        ],
         FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
             future: future,
             builder: (context, snapshot) {
@@ -70,96 +65,21 @@ class _WebWorkerReviewsState extends State<WebWorkerReviews> {
                         '${average.toStringAsFixed(1)} / 5 (${docs.length} reviews)'),
                     for (final doc in docs)
                       ListTile(
+                          leading: AppCachedCircleAvatar(
+                            imageUrl: doc.data()['employerLogoUrl']?.toString(),
+                            fallbackIcon: Icons.business_outlined,
+                            radius: 20,
+                          ),
                           title: Text(
                               '${doc.data()['employerName'] ?? 'Employer'} - ${doc.data()['rating'] ?? ''}/5'),
-                          subtitle:
-                              Text(doc.data()['review']?.toString() ?? '')),
+                          subtitle: Text([
+                            if ((doc.data()['jobTitle']?.toString().trim() ??
+                                    '')
+                                .isNotEmpty)
+                              doc.data()['jobTitle'].toString().trim(),
+                            doc.data()['review']?.toString() ?? '',
+                          ].where((value) => value.isNotEmpty).join('\n'))),
                   ]);
             }),
       ]);
-}
-
-class _ReviewDialog extends StatefulWidget {
-  const _ReviewDialog({required this.workerId});
-  final String workerId;
-  @override
-  State<_ReviewDialog> createState() => _ReviewDialogState();
-}
-
-class _ReviewDialogState extends State<_ReviewDialog> {
-  final text = TextEditingController();
-  int rating = 5;
-  bool busy = false;
-  String? error;
-  @override
-  void dispose() {
-    text.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-          title: const Text('Leave review'),
-          content: WebDialogScrollArea(
-              preferredWidth: 420,
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(
-                        5,
-                        (index) => IconButton(
-                            onPressed: busy
-                                ? null
-                                : () => setState(() => rating = index + 1),
-                            tooltip: '${index + 1} stars',
-                            icon: Icon(index < rating
-                                ? Icons.star
-                                : Icons.star_border)))),
-                TextField(
-                    controller: text,
-                    maxLines: 4,
-                    decoration: const InputDecoration(labelText: 'Review')),
-                if (error != null) Text(error!),
-              ])),
-          actions: [
-            TextButton(
-                onPressed: busy ? null : () => Navigator.pop(context),
-                child: const Text('Cancel')),
-            FilledButton(
-                onPressed: busy ? null : submit, child: const Text('Submit'))
-          ]);
-  Future<void> submit() async {
-    setState(() => busy = true);
-    try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
-      final db = FirebaseFirestore.instance;
-      final employer = (await db.collection('users').doc(uid).get()).data();
-      final worker =
-          (await db.collection('users').doc(widget.workerId).get()).data();
-      if (uid == widget.workerId ||
-          employer?['role'] != 'employer' ||
-          WebProfileCommunication.unavailable(employer) ||
-          WebProfileCommunication.unavailable(worker)) {
-        throw StateError('Review is not available.');
-      }
-      await db
-          .collection('users')
-          .doc(widget.workerId)
-          .collection('reviews')
-          .add({
-        'employerId': uid,
-        'employerName':
-            employer!['companyName'] ?? employer['name'] ?? 'Employer',
-        'rating': rating,
-        'review': text.text.trim(),
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-      // Aggregate display is derived from reviews; cross-user profile writes are protected.
-      if (mounted) Navigator.pop(context, true);
-    } catch (e) {
-      if (mounted) setState(() => error = e.toString());
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
 }

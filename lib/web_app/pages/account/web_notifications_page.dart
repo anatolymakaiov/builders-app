@@ -7,6 +7,7 @@ import '../../theme/web_breakpoints.dart';
 import '../../widgets/web_design_components.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
+import '../../../widgets/worker_review_workflow.dart';
 
 class WebNotificationsPage extends StatefulWidget {
   const WebNotificationsPage({
@@ -151,6 +152,19 @@ class _WebNotificationsPageState extends State<WebNotificationsPage> {
       await service.markNotificationRead(widget.userId, item.id);
     }
     if (!mounted) return;
+    if (item.type.startsWith('worker_review_')) {
+      final requestId =
+          (item.data['reviewRequestId'] ?? item.data['targetId'] ?? '')
+              .toString()
+              .trim();
+      if (requestId.isNotEmpty) {
+        await showEmployerReviewRequestDialog(
+          context,
+          requestId: requestId,
+        );
+        return;
+      }
+    }
     widget.onRoute(item);
   }
 
@@ -231,6 +245,7 @@ class _NotificationList extends StatelessWidget {
     if (type.contains('billing')) return Icons.receipt_long_outlined;
     if (type.contains('job')) return Icons.work_outline;
     if (type.contains('admin')) return Icons.admin_panel_settings_outlined;
+    if (type.contains('review')) return Icons.rate_review_outlined;
     return Icons.notifications_none;
   }
 }

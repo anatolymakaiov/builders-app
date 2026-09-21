@@ -398,6 +398,599 @@ function cleanText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+const ACCEPTED_WORK_STATUSES = new Set([
+  "offer_accepted",
+  "accepted",
+  "hired",
+  "completed",
+]);
+
+function userRole(data) {
+  return cleanText(data && (data.role || data.userRole)).toLowerCase();
+}
+
+function unavailableUser(data) {
+  return !data || data.deleted === true || data.accountDeleted === true ||
+    data.anonymised === true || data.active === false ||
+    data.moderationHold === true || data.profileSuspended === true ||
+    data.profileHold === true || data.accountOnHold === true ||
+    ["suspended", "on_hold"].includes(cleanText(data.status).toLowerCase());
+}
+
+function applicationWorkerIds(data) {
+  const ids = new Set();
+  for (const value of [data.workerId, data.applicantId, data.userId]) {
+    const id = cleanText(value);
+    if (id) ids.add(id);
+  }
+  if (Array.isArray(data.members)) {
+    for (const member of data.members) {
+      if (typeof member === "string") {
+        if (member.trim()) ids.add(member.trim());
+      } else if (member && typeof member === "object") {
+        const id = cleanText(
+          member.uid || member.userId || member.workerId || member.id,
+        );
+        if (id) ids.add(id);
+      }
+    }
+  }
+  for (const map of [data.membersStatus, data.memberStatuses]) {
+    if (map && typeof map === "object" && !Array.isArray(map)) {
+      for (const id of Object.keys(map)) {
+        if (id.trim()) ids.add(id.trim());
+      }
+    }
+  }
+  return ids;
+}
+
+async function accountsShareLinkGroup(firestore, firstUid, secondUid) {
+  const [first, second] = await Promise.all([
+    firestore.collection("account_link_members").doc(firstUid).get(),
+    firestore.collection("account_link_members").doc(secondUid).get(),
+  ]);
+  const firstGroup = cleanText(first.data()?.groupId);
+  const secondGroup = cleanText(second.data()?.groupId);
+  return Boolean(firstGroup && firstGroup === secondGroup);
+}
+
+function reviewCompanyName(data) {
+  return cleanText(
+    data.companyName || data.businessName || data.displayName || data.name,
+  ) || "Company";
+}
+
+function reviewCompanyLogo(data) {
+  return cleanText(
+    data.companyLogo || data.companyLogoUrl || data.companyAvatarUrl ||
+    data.logo || data.avatarUrl || data.photo,
+  );
+}
+
+function reviewWorkerName(data) {
+  return cleanText(
+    data.name || data.displayName ||
+    [data.firstName, data.lastName].map(cleanText).filter(Boolean).join(" "),
+  ) || "Worker";
+}
+
+function publicReviewRequest(snapshot) {
+  const data = snapshot.data() || {};
+  return {
+    id: snapshot.id,
+    workerId: cleanText(data.workerId),
+    employerId: cleanText(data.employerId),
+    applicationId: cleanText(data.applicationId),
+    jobId: cleanText(data.jobId),
+    jobTitle: cleanText(data.jobTitle),
+    workerName: cleanText(data.workerName),
+    employerName: cleanText(data.employerName),
+    employerLogoUrl: cleanText(data.employerLogoUrl),
+    status: cleanText(data.status),
+    rating: Number(data.rating) || 0,
+    review: cleanText(data.review),
+    createdAtMillis: data.createdAt?.toMillis?.() || 0,
+    respondedAtMillis: data.respondedAt?.toMillis?.() || 0,
+    decidedAtMillis: data.decidedAt?.toMillis?.() || 0,
+  };
+}
+
+async function reviewNotification(transaction, recipientId, id, payload) {
+  const ref = admin.firestore()
+    .collection("users")
+    .doc(recipientId)
+    .collection("notifications")
+    .doc(id);
+  transaction.set(ref, {
+    notificationId: id,
+    userId: recipientId,
+    category: "reviews",
+    read: false,
+    badgeEligible: true,
+    pushEligible: true,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    ...payload,
+  });
+}
+
+async function eligibleReviewApplications(firestore, workerId) {
+  const applications = new Map();
+  const queries = [
+    firestore.collection("applications").where("workerId", "==", workerId),
+    firestore.collection("applications").where("applicantId", "==", workerId),
+    firestore.collection("applications").where("userId", "==", workerId),
+    firestore.collection("applications").where(
+      "members",
+      "array-contains",
+      workerId,
+    ),
+  ];
+  for (const field of ["membersStatus", "memberStatuses"]) {
+    for (const status of [
+      "pending",
+      "accepted",
+      "offer_accepted",
+      "hired",
+      "completed",
+    ]) {
+      queries.push(
+        firestore.collection("applications").where(
+          new admin.firestore.FieldPath(field, workerId),
+          "==",
+          status,
+        ),
+      );
+    }
+  }
+  for (const query of queries) {
+    const snapshot = await query.get();
+    for (const doc of snapshot.docs) applications.set(doc.id, doc);
+  }
+  return [...applications.values()].filter((doc) => {
+    const data = doc.data() || {};
+    return ACCEPTED_WORK_STATUSES.has(cleanText(data.status).toLowerCase()) &&
+      applicationWorkerIds(data).has(workerId);
+  });
+}
+
+async function resolveReviewEngagement(firestore, workerId, applicationId) {
+  const application = await firestore
+    .collection("applications")
+    .doc(applicationId)
+    .get();
+  if (!application.exists) return null;
+  const data = application.data() || {};
+  if (!ACCEPTED_WORK_STATUSES.has(cleanText(data.status).toLowerCase()) ||
+      !applicationWorkerIds(data).has(workerId)) {
+    return null;
+  }
+  const jobId = cleanText(data.jobId);
+  const job = jobId
+    ? await firestore.collection("jobs").doc(jobId).get()
+    : null;
+  const jobData = job?.data() || {};
+  const employerId = cleanText(
+    data.employerId || data.ownerId || jobData.employerId ||
+    jobData.ownerId || jobData.createdBy,
+  );
+  if (!employerId) return null;
+  return {
+    application,
+    applicationData: data,
+    employerId,
+    jobId,
+    jobTitle: cleanText(
+      data.jobTitle || data.title || jobData.title || jobData.trade,
+    ) || "Work engagement",
+  };
+}
+
+exports.listEligibleEmployerReviews = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication is required.");
+  }
+  const firestore = admin.firestore();
+  const workerId = request.auth.uid;
+  const worker = await firestore.collection("users").doc(workerId).get();
+  const workerData = worker.data() || {};
+  if (userRole(workerData) !== "worker" || unavailableUser(workerData)) {
+    throw new HttpsError(
+      "permission-denied",
+      "Only an active Worker can request a review.",
+    );
+  }
+  const applications = await eligibleReviewApplications(firestore, workerId);
+  const engagements = [];
+  for (const application of applications) {
+    const resolved = await resolveReviewEngagement(
+      firestore,
+      workerId,
+      application.id,
+    );
+    if (!resolved) continue;
+    const employer = await firestore
+      .collection("users")
+      .doc(resolved.employerId)
+      .get();
+    const employerData = employer.data() || {};
+    if (!employer.exists || unavailableUser(employerData) ||
+        !["employer", "company"].includes(userRole(employerData)) ||
+        await accountsShareLinkGroup(
+          firestore,
+          workerId,
+          resolved.employerId,
+        )) {
+      continue;
+    }
+    const requestId = crypto.createHash("sha256")
+      .update(`${workerId}:${application.id}:${resolved.employerId}`)
+      .digest("hex");
+    const existing = await firestore
+      .collection("worker_review_requests")
+      .doc(requestId)
+      .get();
+    engagements.push({
+      applicationId: application.id,
+      employerId: resolved.employerId,
+      employerName: reviewCompanyName(employerData),
+      employerLogoUrl: reviewCompanyLogo(employerData),
+      jobId: resolved.jobId,
+      jobTitle: resolved.jobTitle,
+      requestStatus: existing.exists
+        ? cleanText(existing.data()?.status)
+        : "",
+    });
+  }
+  return { engagements };
+});
+
+exports.listMyEmployerReviewRequests = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication is required.");
+  }
+  const firestore = admin.firestore();
+  const uid = request.auth.uid;
+  const user = await firestore.collection("users").doc(uid).get();
+  const role = userRole(user.data() || {});
+  const field = role === "worker" ? "workerId" : "employerId";
+  if (role !== "worker" && role !== "employer" && role !== "company") {
+    throw new HttpsError("permission-denied", "Reviews are not available.");
+  }
+  const snapshot = await firestore
+    .collection("worker_review_requests")
+    .where(field, "==", uid)
+    .get();
+  const reviews = snapshot.docs.map(publicReviewRequest);
+  reviews.sort((a, b) => b.createdAtMillis - a.createdAtMillis);
+  return { reviews };
+});
+
+exports.getEmployerReviewRequest = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication is required.");
+  }
+  const requestId = cleanText(request.data?.requestId);
+  if (!requestId) {
+    throw new HttpsError("invalid-argument", "Review request is required.");
+  }
+  const snapshot = await admin.firestore()
+    .collection("worker_review_requests")
+    .doc(requestId)
+    .get();
+  if (!snapshot.exists) {
+    throw new HttpsError("not-found", "Review request was not found.");
+  }
+  const data = snapshot.data() || {};
+  if (![data.workerId, data.employerId].includes(request.auth.uid)) {
+    throw new HttpsError("permission-denied", "Review request is private.");
+  }
+  return { review: publicReviewRequest(snapshot) };
+});
+
+exports.requestEmployerReview = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication is required.");
+  }
+  const firestore = admin.firestore();
+  const workerId = request.auth.uid;
+  const applicationId = cleanText(request.data?.applicationId);
+  if (!applicationId) {
+    throw new HttpsError("invalid-argument", "Work engagement is required.");
+  }
+  const [worker, engagement] = await Promise.all([
+    firestore.collection("users").doc(workerId).get(),
+    resolveReviewEngagement(firestore, workerId, applicationId),
+  ]);
+  const workerData = worker.data() || {};
+  if (!worker.exists || userRole(workerData) !== "worker" ||
+      unavailableUser(workerData)) {
+    throw new HttpsError(
+      "permission-denied",
+      "Only an active Worker can request a review.",
+    );
+  }
+  if (!engagement) {
+    throw new HttpsError(
+      "permission-denied",
+      "A confirmed work relationship is required.",
+    );
+  }
+  const employer = await firestore
+    .collection("users")
+    .doc(engagement.employerId)
+    .get();
+  const employerData = employer.data() || {};
+  if (!employer.exists || unavailableUser(employerData) ||
+      !["employer", "company"].includes(userRole(employerData))) {
+    throw new HttpsError("failed-precondition", "Company is unavailable.");
+  }
+  if (await accountsShareLinkGroup(
+    firestore,
+    workerId,
+    engagement.employerId,
+  )) {
+    throw new HttpsError(
+      "permission-denied",
+      "Linked accounts cannot review each other.",
+    );
+  }
+  const requestId = crypto.createHash("sha256")
+    .update(`${workerId}:${applicationId}:${engagement.employerId}`)
+    .digest("hex");
+  const reviewRef = firestore.collection("worker_review_requests").doc(requestId);
+  await firestore.runTransaction(async (transaction) => {
+    const [existing, workerLink, employerLink] = await Promise.all([
+      transaction.get(reviewRef),
+      transaction.get(
+        firestore.collection("account_link_members").doc(workerId),
+      ),
+      transaction.get(
+        firestore.collection("account_link_members").doc(engagement.employerId),
+      ),
+    ]);
+    if (existing.exists) {
+      throw new HttpsError(
+        "already-exists",
+        "A review request already exists for this work engagement.",
+      );
+    }
+    const workerGroup = cleanText(workerLink.data()?.groupId);
+    const employerGroup = cleanText(employerLink.data()?.groupId);
+    if (workerGroup && workerGroup === employerGroup) {
+      throw new HttpsError(
+        "permission-denied",
+        "Linked accounts cannot review each other.",
+      );
+    }
+    transaction.create(reviewRef, {
+      workerId,
+      employerId: engagement.employerId,
+      applicationId,
+      jobId: engagement.jobId,
+      jobTitle: engagement.jobTitle,
+      workerName: reviewWorkerName(workerData),
+      employerName: reviewCompanyName(employerData),
+      employerLogoUrl: reviewCompanyLogo(employerData),
+      status: "requested",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await reviewNotification(
+      transaction,
+      engagement.employerId,
+      `worker-review-request-${requestId}`,
+      {
+        type: "worker_review_requested",
+        title: `${reviewWorkerName(workerData)} requested a review`,
+        body: engagement.jobTitle,
+        targetType: "worker_review",
+        targetId: requestId,
+        reviewRequestId: requestId,
+        workerId,
+        relatedJobId: engagement.jobId,
+        relatedApplicationId: applicationId,
+      },
+    );
+  });
+  return { requestId };
+});
+
+exports.respondEmployerReview = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication is required.");
+  }
+  const firestore = admin.firestore();
+  const employerId = request.auth.uid;
+  const requestId = cleanText(request.data?.requestId);
+  const reviewText = cleanText(request.data?.review);
+  const rating = Number(request.data?.rating);
+  if (!requestId || !reviewText || !Number.isInteger(rating) ||
+      rating < 1 || rating > 5) {
+    throw new HttpsError(
+      "invalid-argument",
+      "A 1–5 star rating and written review are required.",
+    );
+  }
+  const reviewRef = firestore.collection("worker_review_requests").doc(requestId);
+  await firestore.runTransaction(async (transaction) => {
+    const preliminary = await transaction.get(reviewRef);
+    if (!preliminary.exists) {
+      throw new HttpsError("not-found", "Review request was not found.");
+    }
+    const preliminaryData = preliminary.data() || {};
+    const [employer, workerLink, employerLink] = await Promise.all([
+      transaction.get(firestore.collection("users").doc(employerId)),
+      transaction.get(
+        firestore.collection("account_link_members").doc(preliminaryData.workerId),
+      ),
+      transaction.get(
+        firestore.collection("account_link_members").doc(employerId),
+      ),
+    ]);
+    const data = preliminaryData;
+    const employerData = employer.data() || {};
+    if (data.employerId !== employerId ||
+        !["employer", "company"].includes(userRole(employerData)) ||
+        unavailableUser(employerData)) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only the requested company can respond.",
+      );
+    }
+    if (data.status !== "requested") {
+      throw new HttpsError(
+        "failed-precondition",
+        "This review request has already been answered.",
+      );
+    }
+    const workerGroup = cleanText(workerLink.data()?.groupId);
+    const employerGroup = cleanText(employerLink.data()?.groupId);
+    if (workerGroup && workerGroup === employerGroup) {
+      throw new HttpsError(
+        "permission-denied",
+        "Linked accounts cannot review each other.",
+      );
+    }
+    transaction.update(reviewRef, {
+      status: "responded",
+      rating,
+      review: reviewText,
+      respondedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await reviewNotification(
+      transaction,
+      data.workerId,
+      `worker-review-response-${requestId}`,
+      {
+        type: "worker_review_responded",
+        title: `${data.employerName || "Company"} responded to your review request`,
+        body: "Review the response and choose whether to publish it.",
+        targetType: "worker_review",
+        targetId: requestId,
+        reviewRequestId: requestId,
+        employerId,
+        relatedJobId: data.jobId || "",
+        relatedApplicationId: data.applicationId || "",
+      },
+    );
+  });
+  return { status: "responded" };
+});
+
+exports.decideEmployerReview = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication is required.");
+  }
+  const firestore = admin.firestore();
+  const workerId = request.auth.uid;
+  const requestId = cleanText(request.data?.requestId);
+  const decision = cleanText(request.data?.decision).toLowerCase();
+  if (!requestId || !["publish", "decline"].includes(decision)) {
+    throw new HttpsError("invalid-argument", "Choose Publish or Decline.");
+  }
+  const reviewRef = firestore.collection("worker_review_requests").doc(requestId);
+  await firestore.runTransaction(async (transaction) => {
+    const review = await transaction.get(reviewRef);
+    if (!review.exists) {
+      throw new HttpsError("not-found", "Review request was not found.");
+    }
+    const data = review.data() || {};
+    if (data.workerId !== workerId) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only the Worker can publish or decline this review.",
+      );
+    }
+    if (data.status !== "responded") {
+      throw new HttpsError(
+        "failed-precondition",
+        "This response has already been decided.",
+      );
+    }
+    const [workerLink, employerLink, publishedReviews] = await Promise.all([
+      transaction.get(
+        firestore.collection("account_link_members").doc(workerId),
+      ),
+      transaction.get(
+        firestore.collection("account_link_members").doc(data.employerId),
+      ),
+      decision === "publish"
+        ? transaction.get(
+          firestore.collection("users").doc(workerId).collection("reviews"),
+        )
+        : Promise.resolve(null),
+    ]);
+    const workerGroup = cleanText(workerLink.data()?.groupId);
+    const employerGroup = cleanText(employerLink.data()?.groupId);
+    if (workerGroup && workerGroup === employerGroup) {
+      throw new HttpsError(
+        "permission-denied",
+        "Linked accounts cannot review each other.",
+      );
+    }
+    const status = decision === "publish" ? "published" : "declined";
+    transaction.update(reviewRef, {
+      status,
+      decidedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    if (decision === "publish") {
+      transaction.create(
+        firestore.collection("users")
+          .doc(workerId)
+          .collection("reviews")
+          .doc(requestId),
+        {
+          requestId,
+          employerId: data.employerId,
+          employerName: data.employerName,
+          employerLogoUrl: data.employerLogoUrl || "",
+          workerId,
+          applicationId: data.applicationId,
+          jobId: data.jobId || "",
+          jobTitle: data.jobTitle || "",
+          rating: data.rating,
+          review: data.review,
+          status: "published",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+      );
+      const existingRatings = publishedReviews.docs
+        .map((doc) => Number(doc.data().rating) || 0)
+        .filter((value) => value >= 1 && value <= 5);
+      const nextRatings = [...existingRatings, Number(data.rating)];
+      const ratingTotal = nextRatings.reduce((sum, value) => sum + value, 0);
+      transaction.set(
+        firestore.collection("users").doc(workerId),
+        {
+          rating: ratingTotal / nextRatings.length,
+          reviewsCount: nextRatings.length,
+        },
+        { merge: true },
+      );
+    }
+    await reviewNotification(
+      transaction,
+      data.employerId,
+      `worker-review-decision-${requestId}`,
+      {
+        type: `worker_review_${status}`,
+        title: decision === "publish"
+          ? `${data.workerName || "Worker"} published your review`
+          : `${data.workerName || "Worker"} declined your review`,
+        body: data.jobTitle || "Review request updated",
+        targetType: "worker_review",
+        targetId: requestId,
+        reviewRequestId: requestId,
+        workerId,
+      },
+    );
+  });
+  return { status: decision === "publish" ? "published" : "declined" };
+});
+
 function storagePathFromImageUrl(rawUrl) {
   const value = cleanText(rawUrl);
   if (!value) return "";

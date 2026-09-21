@@ -452,9 +452,10 @@ service cloud.firestore {
       }
 
       match /reviews/{reviewId} {
-        allow create: if signedIn();
+        // Published only by the trusted Worker-requested review workflow.
+        allow create: if false;
         allow read: if signedIn();
-        allow update, delete: if isAdmin() || isSelf(userId);
+        allow update, delete: if isAdmin();
       }
 
       match /legalAcceptances/{documentId} {
@@ -494,6 +495,11 @@ service cloud.firestore {
     }
 
     match /account_link_sessions/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Private lifecycle data is exposed only through participant-checked callables.
+    match /worker_review_requests/{document=**} {
       allow read, write: if false;
     }
 

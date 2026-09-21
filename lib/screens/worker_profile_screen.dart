@@ -25,6 +25,8 @@ import '../services/multi_account_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/app_photo_grid_gallery.dart';
+import '../widgets/app_cached_image.dart';
+import '../widgets/worker_review_workflow.dart';
 
 class WorkerProfileScreen extends StatelessWidget {
   final String userId;
@@ -827,119 +829,7 @@ class WorkerProfileScreen extends StatelessWidget {
     );
   }
 
-  Future<void> leaveReview(BuildContext context) async {
-    final employer = FirebaseAuth.instance.currentUser;
-    if (employer == null) return;
-
-    int rating = 5;
-    final reviewController = TextEditingController();
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text("Leave review"),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(5, (index) {
-                      return IconButton(
-                        icon: Icon(
-                          Icons.star,
-                          color: index < rating ? Colors.orange : Colors.grey,
-                        ),
-                        onPressed: () {
-                          setDialogState(() {
-                            rating = index + 1;
-                          });
-                        },
-                      );
-                    }),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: reviewController,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: "Review",
-                      hintText: "Quality of work, reliability, communication",
-                      border: StroykaInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text("Submit"),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (result != true) {
-      reviewController.dispose();
-      return;
-    }
-
-    final employerSnap = await FirebaseFirestore.instance
-        .collection("users")
-        .doc(employer.uid)
-        .get();
-    final employerData = employerSnap.data();
-
-    await FirebaseFirestore.instance
-        .collection("users")
-        .doc(userId)
-        .collection("reviews")
-        .add({
-      "employerId": employer.uid,
-      "employerName": employerData?["companyName"] ??
-          employerData?["name"] ??
-          employer.email ??
-          "Employer",
-      "rating": rating,
-      "review": reviewController.text.trim(),
-      "createdAt": FieldValue.serverTimestamp(),
-      if (jobId != null) "jobId": jobId,
-    });
-
-    final reviewsSnapshot = await FirebaseFirestore.instance
-        .collection("users")
-        .doc(userId)
-        .collection("reviews")
-        .get();
-    var total = 0.0;
-    for (final doc in reviewsSnapshot.docs) {
-      total += (doc.data()["rating"] ?? 0).toDouble();
-    }
-
-    final count = reviewsSnapshot.docs.length;
-    await FirebaseFirestore.instance.collection("users").doc(userId).set({
-      "rating": count == 0 ? 0 : total / count,
-      "reviewsCount": count,
-    }, SetOptions(merge: true));
-
-    reviewController.dispose();
-
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Review saved")),
-    );
-  }
-
-  Widget buildReviewsSection(bool canReview) {
+  Widget buildReviewsSection(bool ownProfile) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection("users")
@@ -955,22 +845,20 @@ class WorkerProfileScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       "Employer reviews",
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
-                  if (canReview)
-                    TextButton.icon(
-                      onPressed: () => leaveReview(context),
-                      icon: const Icon(Icons.rate_review),
-                      label: const Text("Add review"),
-                    ),
                 ],
               ),
+              if (ownProfile) ...[
+                const SizedBox(height: 8),
+                const WorkerReviewRequestsPanel(),
+              ],
               const SizedBox(height: 8),
               if (!snapshot.hasData)
                 const LinearProgressIndicator()
@@ -983,6 +871,9 @@ class WorkerProfileScreen extends StatelessWidget {
                   final text = review["review"]?.toString().trim() ?? "";
                   final employerName =
                       review["employerName"]?.toString() ?? "Employer";
+                  final employerLogo =
+                      review["employerLogoUrl"]?.toString() ?? "";
+                  final jobTitle = review["jobTitle"]?.toString().trim() ?? "";
 
                   return Container(
                     width: double.infinity,
@@ -997,10 +888,18 @@ class WorkerProfileScreen extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              employerName,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold),
+                            AppCachedCircleAvatar(
+                              imageUrl: employerLogo,
+                              fallbackIcon: Icons.business_outlined,
+                              radius: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                employerName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                              ),
                             ),
                             const SizedBox(width: 8),
                             const Icon(Icons.star,
@@ -1008,6 +907,11 @@ class WorkerProfileScreen extends StatelessWidget {
                             Text(rating.toString()),
                           ],
                         ),
+                        if (jobTitle.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(jobTitle,
+                              style: const TextStyle(color: AppColors.muted)),
+                        ],
                         if (text.isNotEmpty) ...[
                           const SizedBox(height: 6),
                           Text(text),
@@ -1991,8 +1895,7 @@ class WorkerProfileScreen extends StatelessWidget {
                             const SizedBox(height: 12),
                             StroykaSurface(
                               padding: const EdgeInsets.all(18),
-                              child: buildReviewsSection(
-                                  !isMyProfile && currentRole == "employer"),
+                              child: buildReviewsSection(isMyProfile),
                             ),
                           ],
                         ),
