@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../services/web_support_attachments.dart';
 import '../../services/web_chat_media_service.dart';
 import '../../services/web_admin_inbox_media_service.dart';
@@ -349,6 +351,8 @@ class _BillingView extends StatefulWidget {
 class _BillingViewState extends State<_BillingView> {
   final service = WebAccountDataService();
   Map<String, dynamic>? overrideBilling;
+  Timer? _refreshTimer;
+  bool _refreshingBilling = false;
   bool busy = false;
   String? changingPlan;
 
@@ -356,10 +360,38 @@ class _BillingViewState extends State<_BillingView> {
       overrideBilling ?? BillingService.billingFromUserData(widget.profile);
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refresh(showBusy: false);
+    });
+    _refreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (mounted) _refresh(showBusy: false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final configured = BillingService.isDirectDebitConfigured(billing);
     final plans = BillingService.plansFromBilling(billing);
     final currentPlan = BillingService.currentPlanId(billing);
+    final totalSlots = BillingService.readInt(
+      billing['vacancySlotLimit'] ??
+          billing['includedJobSlots'] ??
+          billing['availableJobPosts'],
+    );
+    final usedSlots = BillingService.readInt(
+      billing['occupiedVacancySlots'] ??
+          billing['usedJobPosts'] ??
+          billing['usedSlots'],
+    );
+    final availableSlots = (totalSlots - usedSlots).clamp(0, totalSlots);
     return ListView(
       children: [
         Row(
@@ -390,9 +422,9 @@ class _BillingViewState extends State<_BillingView> {
           _priceLabel(billing['planAmountPence'] ?? billing['monthlyPrice']),
         ),
         _InfoRow(
-            'Vacancy slot limit',
-            (billing['vacancySlotLimit'] ?? billing['includedJobSlots'] ?? '')
-                .toString()),
+          'Vacancy slots',
+          'Total: $totalSlots   Used: $usedSlots   Available: $availableSlots',
+        ),
         _InfoRow('Direct Debit', configured ? 'Active' : 'Set up'),
         _InfoRow(
           'Trial status',
@@ -452,12 +484,18 @@ class _BillingViewState extends State<_BillingView> {
     );
   }
 
-  Future<void> _refresh() async {
-    setState(() => busy = true);
+  Future<void> _refresh({bool showBusy = true}) async {
+    if (_refreshingBilling) return;
+    _refreshingBilling = true;
+    if (showBusy && mounted) setState(() => busy = true);
     try {
-      overrideBilling = await service.loadBillingStatus();
+      final latest = await service.loadBillingStatus();
+      if (mounted) setState(() => overrideBilling = latest);
+    } catch (error) {
+      debugPrint('WEB BILLING STATUS REFRESH ERROR $error');
     } finally {
-      if (mounted) setState(() => busy = false);
+      _refreshingBilling = false;
+      if (showBusy && mounted) setState(() => busy = false);
     }
   }
 
