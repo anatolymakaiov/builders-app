@@ -5,6 +5,9 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const sharp = require("sharp");
+const {
+  hasAcceptedWorkRelationship,
+} = require("./review_eligibility");
 
 admin.initializeApp();
 
@@ -398,13 +401,6 @@ function cleanText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-const ACCEPTED_WORK_STATUSES = new Set([
-  "offer_accepted",
-  "accepted",
-  "hired",
-  "completed",
-]);
-
 function userRole(data) {
   return cleanText(data && (data.role || data.userRole)).toLowerCase();
 }
@@ -415,34 +411,6 @@ function unavailableUser(data) {
     data.moderationHold === true || data.profileSuspended === true ||
     data.profileHold === true || data.accountOnHold === true ||
     ["suspended", "on_hold"].includes(cleanText(data.status).toLowerCase());
-}
-
-function applicationWorkerIds(data) {
-  const ids = new Set();
-  for (const value of [data.workerId, data.applicantId, data.userId]) {
-    const id = cleanText(value);
-    if (id) ids.add(id);
-  }
-  if (Array.isArray(data.members)) {
-    for (const member of data.members) {
-      if (typeof member === "string") {
-        if (member.trim()) ids.add(member.trim());
-      } else if (member && typeof member === "object") {
-        const id = cleanText(
-          member.uid || member.userId || member.workerId || member.id,
-        );
-        if (id) ids.add(id);
-      }
-    }
-  }
-  for (const map of [data.membersStatus, data.memberStatuses]) {
-    if (map && typeof map === "object" && !Array.isArray(map)) {
-      for (const id of Object.keys(map)) {
-        if (id.trim()) ids.add(id.trim());
-      }
-    }
-  }
-  return ids;
 }
 
 async function accountsShareLinkGroup(firestore, firstUid, secondUid) {
@@ -549,8 +517,7 @@ async function eligibleReviewApplications(firestore, workerId) {
   }
   return [...applications.values()].filter((doc) => {
     const data = doc.data() || {};
-    return ACCEPTED_WORK_STATUSES.has(cleanText(data.status).toLowerCase()) &&
-      applicationWorkerIds(data).has(workerId);
+    return hasAcceptedWorkRelationship(data, workerId);
   });
 }
 
@@ -561,8 +528,7 @@ async function resolveReviewEngagement(firestore, workerId, applicationId) {
     .get();
   if (!application.exists) return null;
   const data = application.data() || {};
-  if (!ACCEPTED_WORK_STATUSES.has(cleanText(data.status).toLowerCase()) ||
-      !applicationWorkerIds(data).has(workerId)) {
+  if (!hasAcceptedWorkRelationship(data, workerId)) {
     return null;
   }
   const jobId = cleanText(data.jobId);
