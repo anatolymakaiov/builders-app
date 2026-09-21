@@ -13,6 +13,7 @@ import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
+import '../../widgets/web_logo_crop_dialog.dart';
 import '../../widgets/web_remote_image.dart';
 import '../../widgets/web_design_components.dart';
 import 'web_profile_gallery.dart';
@@ -31,6 +32,7 @@ class WebProfilePage extends StatefulWidget {
     this.onOpenProfile,
     this.onOpenJob,
     this.onAdminInbox,
+    this.onOwnProfileChanged,
   });
 
   final User user;
@@ -43,6 +45,7 @@ class WebProfilePage extends StatefulWidget {
   final void Function(String, String)? onOpenProfile;
   final void Function(String jobId, bool ownerView)? onOpenJob;
   final VoidCallback? onAdminInbox;
+  final ValueChanged<Map<String, dynamic>>? onOwnProfileChanged;
 
   @override
   State<WebProfilePage> createState() => _WebProfilePageState();
@@ -59,6 +62,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
   List<Job> companyJobs = const <Job>[];
   bool loadingDetails = false;
   Object? detailsError;
+  final localProfileUpdates = <String, dynamic>{};
 
   bool get ownProfile => widget.user.uid == viewedUserId;
   bool get isEmployer => viewedRole == 'employer';
@@ -81,6 +85,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
     if (nextId != viewedUserId || nextRole != viewedRole) {
       viewedUserId = nextId;
       viewedRole = nextRole;
+      localProfileUpdates.clear();
       profileStream = service.profile(viewedUserId);
       portfolio = const <WebPortfolioItem>[];
       teams = const <WebTeamData>[];
@@ -134,8 +139,11 @@ class _WebProfilePageState extends State<WebProfilePage> {
         final fallback = viewedUserId == widget.user.uid
             ? widget.profile
             : const <String, dynamic>{};
-        final current =
-            state?.data ?? WebProfileData(id: viewedUserId, data: fallback);
+        final loaded = state?.data?.data ?? fallback;
+        final current = WebProfileData(
+          id: viewedUserId,
+          data: {...loaded, ...localProfileUpdates},
+        );
         if ((state == null || state.loading) && state?.data == null) {
           return const Center(child: CircularProgressIndicator());
         }
@@ -300,16 +308,47 @@ class _WebProfilePageState extends State<WebProfilePage> {
   }
 
   Future<void> _changeAvatar() async {
-    await editService.pickAndUploadProfileImage(
+    final picked = await editService.pickSingleImage();
+    if (picked == null || !mounted) return;
+    final selected = isEmployer
+        ? await showDialog<WebPickedFile>(
+            context: context,
+            builder: (_) => WebLogoCropDialog(file: picked),
+          )
+        : picked;
+    if (selected == null) return;
+    final url = await editService.uploadProfileImage(
       uid: viewedUserId,
       isEmployer: isEmployer,
+      image: selected,
     );
-    await _loadDetails();
+    _applyOwnProfileUpdates({
+      'avatarUrl': url,
+      'photo': url,
+      'photoUrl': url,
+      'profilePhotoUrl': url,
+      if (isEmployer) 'companyLogo': url,
+      if (isEmployer) 'companyLogoUrl': url,
+      if (isEmployer) 'companyAvatarUrl': url,
+    });
   }
 
   Future<void> _changeHeader() async {
-    await editService.pickAndUploadHeaderImage(viewedUserId);
-    await _loadDetails();
+    final url = await editService.pickAndUploadHeaderImage(viewedUserId);
+    if (url == null) return;
+    _applyOwnProfileUpdates({
+      'profileHeaderImage': url,
+      'headerImage': url,
+      'headerImageUrl': url,
+      'backgroundImageUrl': url,
+      'coverPhotoUrl': url,
+    });
+  }
+
+  void _applyOwnProfileUpdates(Map<String, dynamic> updates) {
+    if (!mounted) return;
+    setState(() => localProfileUpdates.addAll(updates));
+    widget.onOwnProfileChanged?.call(updates);
   }
 
   Future<void> _addCompanyPhotos() async {

@@ -54,10 +54,12 @@ class _WebShellState extends State<WebShell> {
   bool postingJob = false;
   _SecondaryRoute? secondaryRoute;
   late Stream<WebDataState<WebShellBadges>> badgesStream;
+  late Map<String, dynamic> liveProfile;
 
   @override
   void initState() {
     super.initState();
+    liveProfile = Map<String, dynamic>.from(widget.profile);
     badgesStream = WebAccountDataService().badges(
       uid: widget.user.uid,
       role: widget.role,
@@ -67,6 +69,9 @@ class _WebShellState extends State<WebShell> {
   @override
   void didUpdateWidget(covariant WebShell oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile != widget.profile) {
+      liveProfile = Map<String, dynamic>.from(widget.profile);
+    }
     if (oldWidget.user.uid != widget.user.uid ||
         oldWidget.role != widget.role) {
       badgesStream = WebAccountDataService().badges(
@@ -159,7 +164,7 @@ class _WebShellState extends State<WebShell> {
                 selected: selected,
                 role: widget.role,
                 avatar: WebProfileAvatar(
-                  profile: widget.profile,
+                  profile: liveProfile,
                   role: widget.role,
                 ),
                 notificationCount: badges.notifications,
@@ -240,7 +245,7 @@ class _WebShellState extends State<WebShell> {
     return WebProfilePage(
       user: widget.user,
       role: widget.role,
-      profile: widget.profile,
+      profile: liveProfile,
       viewedUserId: route.userId,
       viewedRole: route.role,
       onClose: _closeProfile,
@@ -248,6 +253,8 @@ class _WebShellState extends State<WebShell> {
       onOpenProfile: _openProfile,
       onOpenJob: _openJobFromProfile,
       onAdminInbox: () => _openAccount(WebAccountDestination.adminInbox),
+      onOwnProfileChanged:
+          route.userId == widget.user.uid ? _updateOwnProfile : null,
     );
   }
 
@@ -417,7 +424,7 @@ class _WebShellState extends State<WebShell> {
       _SecondaryKind.account => WebAccountPage(
           user: widget.user,
           role: widget.role,
-          profile: widget.profile,
+          profile: liveProfile,
           initialDestination:
               route.destination ?? WebAccountDestination.account,
           onClose: _closeSecondary,
@@ -428,6 +435,10 @@ class _WebShellState extends State<WebShell> {
 
   void _closeSecondary() {
     setState(() => secondaryRoute = null);
+  }
+
+  void _updateOwnProfile(Map<String, dynamic> updates) {
+    setState(() => liveProfile = {...liveProfile, ...updates});
   }
 
   void _openNotifications() {

@@ -30,17 +30,17 @@ class WebProfileEditService {
     }, SetOptions(merge: true));
   }
 
-  Future<String?> pickAndUploadProfileImage({
+  Future<String> uploadProfileImage({
     required String uid,
     required bool isEmployer,
+    required WebPickedFile image,
   }) async {
     await _ensureActiveOwner(uid);
-    final picked = await _pickSingleImage();
-    if (picked == null) return null;
     final url = await _uploadBytes(
-      bytes: picked.bytes!,
-      path: 'profile_photos/${uid}_${_stamp()}_${picked.safeName}',
-      contentType: picked.contentType,
+      bytes: image.bytes!,
+      path: 'profile_photos/${uid}_${_stamp()}_${image.safeName}',
+      contentType: image.contentType,
+      fileName: image.name,
     );
     await saveUserProfile(
       uid: uid,
@@ -59,7 +59,7 @@ class WebProfileEditService {
 
   Future<String?> pickAndUploadHeaderImage(String uid) async {
     await _ensureActiveOwner(uid);
-    final picked = await _pickSingleImage();
+    final picked = await pickSingleImage();
     if (picked == null) return null;
     final url = await _uploadBytes(
       bytes: picked.bytes!,
@@ -279,7 +279,7 @@ class WebProfileEditService {
     required bool header,
   }) async {
     await _ensureTeamLeader(teamId);
-    final picked = await _pickSingleImage();
+    final picked = await pickSingleImage();
     if (picked == null) return null;
     final path = header
         ? 'team_avatars/${teamId}_header_${_stamp()}.${picked.extension}'
@@ -310,7 +310,7 @@ class WebProfileEditService {
     return url;
   }
 
-  Future<WebPickedFile?> _pickSingleImage() async {
+  Future<WebPickedFile?> pickSingleImage() async {
     final files = await _pickImages(allowMultiple: false);
     return files.isEmpty ? null : files.first;
   }
