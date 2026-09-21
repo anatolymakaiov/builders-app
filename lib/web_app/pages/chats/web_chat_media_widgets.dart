@@ -150,12 +150,7 @@ class _VideoAttachment extends StatefulWidget {
 class _VideoAttachmentState extends State<_VideoAttachment> {
   VideoPlayerController? controller;
   Object? error;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
+  bool loading = false;
 
   @override
   void dispose() {
@@ -164,6 +159,11 @@ class _VideoAttachmentState extends State<_VideoAttachment> {
   }
 
   Future<void> _load() async {
+    if (loading || controller != null) return;
+    setState(() {
+      loading = true;
+      error = null;
+    });
     try {
       final video = VideoPlayerController.networkUrl(
         Uri.parse(widget.attachment.url),
@@ -173,9 +173,17 @@ class _VideoAttachmentState extends State<_VideoAttachment> {
         await video.dispose();
         return;
       }
-      setState(() => controller = video);
+      setState(() {
+        controller = video;
+        loading = false;
+      });
     } catch (e) {
-      if (mounted) setState(() => error = e);
+      if (mounted) {
+        setState(() {
+          error = e;
+          loading = false;
+        });
+      }
     }
   }
 
@@ -190,10 +198,19 @@ class _VideoAttachmentState extends State<_VideoAttachment> {
       );
     }
     if (video == null) {
-      return const SizedBox(
-        width: 280,
-        height: 160,
-        child: Center(child: CircularProgressIndicator()),
+      return _OpenAttachmentRow(
+        attachment: widget.attachment,
+        icon: Icons.movie_outlined,
+        subtitle: loading ? 'Loading video preview...' : 'Load video preview',
+        onTap: loading ? null : _load,
+        openExternally: false,
+        trailing: loading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.play_circle_outline, size: 20),
       );
     }
     return SizedBox(
@@ -285,19 +302,28 @@ class _OpenAttachmentRow extends StatelessWidget {
     required this.attachment,
     required this.icon,
     required this.subtitle,
+    this.onTap,
+    this.trailing,
+    this.openExternally = true,
   });
 
   final WebChatAttachment attachment;
   final IconData icon;
   final String subtitle;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+  final bool openExternally;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => launchUrl(
-        Uri.parse(attachment.url),
-        mode: LaunchMode.externalApplication,
-      ),
+      onTap: onTap ??
+          (openExternally
+              ? () => launchUrl(
+                    Uri.parse(attachment.url),
+                    mode: LaunchMode.externalApplication,
+                  )
+              : null),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         width: 300,
@@ -330,7 +356,7 @@ class _OpenAttachmentRow extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.open_in_new, size: 18),
+            trailing ?? const Icon(Icons.open_in_new, size: 18),
           ],
         ),
       ),

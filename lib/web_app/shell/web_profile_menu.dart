@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/web_theme.dart';
+import '../widgets/web_remote_image.dart';
 
 class WebProfileAvatar extends StatelessWidget {
   const WebProfileAvatar({
@@ -36,18 +37,12 @@ class WebProfileAvatar extends StatelessWidget {
       child: photo == null || photo.isEmpty
           ? const Icon(Icons.person_outline, color: WebTheme.accent)
           : ClipOval(
-              child: Image.network(
-                photo,
+              child: WebRemoteImage(
+                url: photo,
                 width: 40,
                 height: 40,
                 fit: BoxFit.cover,
-                webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-                errorBuilder: (_, __, ___) {
-                  return const Icon(
-                    Icons.person_outline,
-                    color: WebTheme.accent,
-                  );
-                },
+                fallbackIcon: Icons.person_outline,
               ),
             ),
     );

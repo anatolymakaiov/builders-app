@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
+import 'web_media_pipeline.dart';
+
 class WebProfileEditService {
   WebProfileEditService({
     FirebaseFirestore? firestore,
@@ -61,8 +63,9 @@ class WebProfileEditService {
     if (picked == null) return null;
     final url = await _uploadBytes(
       bytes: picked.bytes!,
-      path: 'profile_headers/$uid.jpg',
+      path: 'profile_headers/${uid}_${_stamp()}_${picked.safeName}',
       contentType: picked.contentType,
+      fileName: picked.name,
     );
     await saveUserProfile(
       uid: uid,
@@ -81,14 +84,16 @@ class WebProfileEditService {
     await _ensureActiveOwner(uid);
     final picked = await _pickImages();
     if (picked.isEmpty) return const [];
-    final urls = <String>[];
-    for (final file in picked) {
-      urls.add(await _uploadBytes(
+    final stamp = _stamp();
+    final urls = await WebMediaPipeline.mapBounded(
+      picked,
+      (file, index) => _uploadBytes(
         bytes: file.bytes!,
-        path: 'company_photos/$uid/${_stamp()}_${file.safeName}',
+        path: 'company_photos/$uid/${stamp}_${index}_${file.safeName}',
         contentType: file.contentType,
-      ));
-    }
+        fileName: file.name,
+      ),
+    );
     await saveUserProfile(
       uid: uid,
       updates: {'companyPhotos': FieldValue.arrayUnion(urls)},
@@ -100,15 +105,18 @@ class WebProfileEditService {
     await _ensureActiveOwner(uid);
     final picked = await _pickImages();
     if (picked.isEmpty) return const [];
-    final urls = <String>[];
-    final batch = _firestore.batch();
-    for (final file in picked) {
-      final url = await _uploadBytes(
+    final stamp = _stamp();
+    final urls = await WebMediaPipeline.mapBounded(
+      picked,
+      (file, index) => _uploadBytes(
         bytes: file.bytes!,
-        path: 'portfolio/$uid/${_stamp()}_${file.safeName}',
+        path: 'portfolio/$uid/${stamp}_${index}_${file.safeName}',
         contentType: file.contentType,
-      );
-      urls.add(url);
+        fileName: file.name,
+      ),
+    );
+    final batch = _firestore.batch();
+    for (final url in urls) {
       final ref =
           _firestore.collection('users').doc(uid).collection('portfolio').doc();
       batch.set(ref, {
@@ -280,6 +288,7 @@ class WebProfileEditService {
       bytes: picked.bytes!,
       path: path,
       contentType: picked.contentType,
+      fileName: picked.name,
     );
     await saveTeam(
       teamId: teamId,
@@ -322,9 +331,21 @@ class WebProfileEditService {
     required Uint8List bytes,
     required String path,
     required String contentType,
+    String? fileName,
   }) async {
+    final media = await WebMediaPipeline.optimizeImage(
+      bytes: bytes,
+      fileName: fileName ?? path.split('/').last,
+      contentType: contentType,
+    );
     final ref = _storage.ref().child(path);
-    await ref.putData(bytes, SettableMetadata(contentType: contentType));
+    await ref.putData(
+      media.bytes,
+      SettableMetadata(
+        contentType: media.contentType,
+        cacheControl: WebMediaPipeline.browserCacheControl,
+      ),
+    );
     return ref.getDownloadURL();
   }
 

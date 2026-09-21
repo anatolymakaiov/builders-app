@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
+
+import 'web_media_pipeline.dart';
 import 'web_profile_communication.dart';
 
 class WebTeamActions {
@@ -130,19 +132,54 @@ class WebTeamActions {
     }
     final files = await FilePicker.platform
         .pickFiles(type: FileType.image, allowMultiple: true, withData: true);
-    for (final file in files?.files ?? <PlatformFile>[]) {
-      if (file.bytes == null) continue;
-      final name = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-      final ref = FirebaseStorage.instance.ref(
-          'team_portfolio/$teamId/${DateTime.now().microsecondsSinceEpoch}_$name');
-      await ref.putData(file.bytes!);
-      final url = await ref.getDownloadURL();
-      await db.collection('teams').doc(teamId).collection('portfolio').add({
+    final selected = (files?.files ?? <PlatformFile>[])
+        .where((file) => file.bytes != null)
+        .toList();
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final urls = await WebMediaPipeline.mapBounded(
+      selected,
+      (file, index) async {
+        final name = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+        final media = await WebMediaPipeline.optimizeImage(
+          bytes: file.bytes!,
+          fileName: file.name,
+          contentType: _imageContentType(file.extension ?? file.name),
+        );
+        final ref = FirebaseStorage.instance
+            .ref('team_portfolio/$teamId/${stamp}_${index}_$name');
+        await ref.putData(
+          media.bytes,
+          SettableMetadata(
+            contentType: media.contentType,
+            cacheControl: WebMediaPipeline.browserCacheControl,
+          ),
+        );
+        return ref.getDownloadURL();
+      },
+    );
+    final batch = db.batch();
+    for (final url in urls) {
+      final ref =
+          db.collection('teams').doc(teamId).collection('portfolio').doc();
+      batch.set(ref, {
         'image': url,
         'imageUrl': url,
         'createdAt': FieldValue.serverTimestamp()
       });
     }
+    if (urls.isNotEmpty) await batch.commit();
+  }
+
+  String _imageContentType(String value) {
+    final extension = value.split('.').last.toLowerCase();
+    return switch (extension) {
+      'png' => 'image/png',
+      'gif' => 'image/gif',
+      'webp' => 'image/webp',
+      'heic' => 'image/heic',
+      'heif' => 'image/heif',
+      _ => 'image/jpeg',
+    };
   }
 
   Future<void> _ensureCurrentUserActive() async {

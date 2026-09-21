@@ -62,6 +62,8 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
   double lng = 0;
   bool saving = false;
   bool uploading = false;
+  int uploadCompleted = 0;
+  int uploadTotal = 0;
   bool importingVacancy = false;
   bool lookingUp = false;
   String? error;
@@ -384,6 +386,25 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
                   () => photos = photos.where((item) => item != url).toList(),
                 ),
               ),
+              if (uploading) ...[
+                const SizedBox(height: 12),
+                LinearProgressIndicator(
+                  value: uploadTotal > 0 ? uploadCompleted / uploadTotal : null,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  uploadTotal > 0
+                      ? 'Uploading photos: $uploadCompleted of $uploadTotal'
+                      : 'Preparing selected photos...',
+                  style: const TextStyle(color: WebTheme.muted),
+                ),
+              ] else if (photos.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                const Text(
+                  'Photos are uploaded and ready. Sending for approval will only submit the vacancy details and photo links.',
+                  style: TextStyle(color: WebTheme.muted),
+                ),
+              ],
             ],
           ),
         ),
@@ -391,7 +412,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: saving || importingVacancy ? null : _submit,
+            onPressed: saving || uploading || importingVacancy ? null : _submit,
             icon: saving
                 ? const SizedBox(
                     width: 16,
@@ -399,7 +420,13 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.send_outlined),
-            label: Text(editing ? 'Send edit for review' : 'Send for approval'),
+            label: Text(
+              saving
+                  ? (editing
+                      ? 'Sending edit for review...'
+                      : 'Sending for approval...')
+                  : (editing ? 'Send edit for review' : 'Send for approval'),
+            ),
           ),
         ),
         if (editing && widget.existingJob?.moderationStatus == 'approved')
@@ -476,12 +503,21 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
   Future<void> _addPhotos() async {
     setState(() {
       uploading = true;
+      uploadCompleted = 0;
+      uploadTotal = 0;
       error = null;
     });
     try {
       final uploaded = await service.pickAndUploadPhotos(
         ownerId: widget.userId,
         mediaScope: mediaScope,
+        onProgress: (completed, total) {
+          if (!mounted) return;
+          setState(() {
+            uploadCompleted = completed;
+            uploadTotal = total;
+          });
+        },
       );
       if (uploaded.isNotEmpty) {
         setState(() => photos = [...photos, ...uploaded]);
@@ -489,7 +525,13 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
     } catch (err) {
       setState(() => error = 'Could not upload photos: $err');
     } finally {
-      if (mounted) setState(() => uploading = false);
+      if (mounted) {
+        setState(() {
+          uploading = false;
+          uploadCompleted = 0;
+          uploadTotal = 0;
+        });
+      }
     }
   }
 

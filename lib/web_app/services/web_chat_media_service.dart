@@ -2,6 +2,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 
+import 'web_media_pipeline.dart';
+
 class WebChatAttachment {
   const WebChatAttachment({
     required this.type,
@@ -81,53 +83,75 @@ class WebChatMediaService {
     required String senderId,
     required List<WebPendingChatAttachment> attachments,
   }) async {
-    final uploaded = <WebChatAttachment>[];
-    for (final attachment in attachments) {
-      final cleanName = _sanitizeStorageName(attachment.fileName);
-      final storagePath = 'chat_attachments/$chatId/$messageId/$senderId/'
-          '${DateTime.now().microsecondsSinceEpoch}_$cleanName';
-      debugPrint(
-        'WEB CHAT ATTACHMENT UPLOAD START chatId=$chatId '
-        'messageId=$messageId senderId=$senderId storagePath=$storagePath',
-      );
-      try {
-        final ref = FirebaseStorage.instance.ref().child(storagePath);
-        final metadata = SettableMetadata(
-          contentType:
-              attachment.mimeType ?? _fallbackMime(attachment.fileName),
-        );
-        await ref.putData(attachment.bytes, metadata);
-        final url = await ref.getDownloadURL();
-        uploaded.add(
-          WebChatAttachment(
-            type: attachment.type,
-            url: url,
-            fileName: attachment.fileName,
-            mimeType: metadata.contentType,
-            sizeBytes: attachment.sizeBytes,
-            storagePath: storagePath,
-          ),
-        );
-        debugPrint(
-            'WEB CHAT ATTACHMENT UPLOAD SUCCESS storagePath=$storagePath');
-      } catch (error) {
-        debugPrint(
-          'WEB CHAT ATTACHMENT UPLOAD FAILED storagePath=$storagePath '
-          'error=$error',
-        );
-        for (final uploadedAttachment in uploaded) {
-          final path = uploadedAttachment.storagePath;
-          if (path == null || path.isEmpty) continue;
+    final uploaded = List<WebChatAttachment?>.filled(attachments.length, null);
+    final uploadedPaths = <String>[];
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    try {
+      await WebMediaPipeline.mapBounded(
+        attachments,
+        (attachment, index) async {
+          final originalContentType =
+              attachment.mimeType ?? _fallbackMime(attachment.fileName);
+          final media = attachment.type == 'image'
+              ? await WebMediaPipeline.optimizeImage(
+                  bytes: attachment.bytes,
+                  fileName: attachment.fileName,
+                  contentType: originalContentType,
+                )
+              : WebMediaPayload(
+                  bytes: attachment.bytes,
+                  fileName: attachment.fileName,
+                  contentType: originalContentType,
+                  originalSizeBytes: attachment.bytes.length,
+                  optimized: false,
+                );
+          final cleanName = _sanitizeStorageName(attachment.fileName);
+          final storagePath = 'chat_attachments/$chatId/$messageId/$senderId/'
+              '${stamp}_${index}_$cleanName';
+          debugPrint(
+            'WEB CHAT ATTACHMENT UPLOAD START chatId=$chatId '
+            'messageId=$messageId senderId=$senderId storagePath=$storagePath',
+          );
           try {
-            await FirebaseStorage.instance.ref(path).delete();
-          } catch (_) {
-            // Best-effort cleanup only.
+            final ref = FirebaseStorage.instance.ref().child(storagePath);
+            final metadata = SettableMetadata(
+              contentType: media.contentType,
+              cacheControl: WebMediaPipeline.browserCacheControl,
+            );
+            await ref.putData(media.bytes, metadata);
+            uploadedPaths.add(storagePath);
+            final url = await ref.getDownloadURL();
+            uploaded[index] = WebChatAttachment(
+              type: attachment.type,
+              url: url,
+              fileName: attachment.fileName,
+              mimeType: metadata.contentType,
+              sizeBytes: media.bytes.length,
+              storagePath: storagePath,
+            );
+            debugPrint(
+                'WEB CHAT ATTACHMENT UPLOAD SUCCESS storagePath=$storagePath');
+          } catch (error) {
+            debugPrint(
+              'WEB CHAT ATTACHMENT UPLOAD FAILED storagePath=$storagePath '
+              'error=$error',
+            );
+            rethrow;
           }
+        },
+      );
+      return uploaded.cast<WebChatAttachment>();
+    } catch (error) {
+      debugPrint('WEB CHAT ATTACHMENT UPLOAD FAILED error=$error');
+      for (final path in uploadedPaths) {
+        try {
+          await FirebaseStorage.instance.ref(path).delete();
+        } catch (_) {
+          // Best-effort cleanup only.
         }
-        rethrow;
       }
+      rethrow;
     }
-    return uploaded;
   }
 
   List<WebPendingChatAttachment> _pendingFromResult(
@@ -160,6 +184,8 @@ class WebChatMediaService {
     if (lower.endsWith('.png')) return 'image/png';
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.heic')) return 'image/heic';
+    if (lower.endsWith('.heif')) return 'image/heif';
     if (lower.endsWith('.mp4')) return 'video/mp4';
     if (lower.endsWith('.mov')) return 'video/quicktime';
     if (lower.endsWith('.m4a')) return 'audio/mp4';

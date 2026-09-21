@@ -19,6 +19,7 @@ import '../../services/web_role_identity_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
+import '../../widgets/web_remote_image.dart';
 import '../../widgets/web_design_components.dart';
 import '../../theme/web_breakpoints.dart';
 
@@ -1372,14 +1373,12 @@ class _IdentityTile extends StatelessWidget {
         child: identity.avatarUrl.isEmpty
             ? const Icon(Icons.person_outline, color: WebTheme.accent)
             : ClipOval(
-                child: Image.network(
-                  identity.avatarUrl,
+                child: WebRemoteImage(
+                  url: identity.avatarUrl,
                   width: 40,
                   height: 40,
                   fit: BoxFit.cover,
-                  webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-                  errorBuilder: (_, __, ___) =>
-                      const Icon(Icons.person_outline, color: WebTheme.accent),
+                  fallbackIcon: Icons.person_outline,
                 ),
               ),
       ),

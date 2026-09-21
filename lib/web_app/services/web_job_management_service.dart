@@ -11,6 +11,7 @@ import '../../services/billing_service.dart';
 import '../../services/job_taxonomy_service.dart';
 import '../../services/moderation_hold_service.dart';
 import '../../services/offer_acceptance_service.dart';
+import 'web_media_pipeline.dart';
 
 class WebJobManagementService {
   WebJobManagementService({
@@ -76,26 +77,35 @@ class WebJobManagementService {
   Future<List<String>> pickAndUploadPhotos({
     required String ownerId,
     required String mediaScope,
+    void Function(int completed, int total)? onProgress,
   }) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
       allowMultiple: true,
       withData: true,
     );
-    final files = result?.files ?? const <PlatformFile>[];
-    final urls = <String>[];
-    for (final file in files) {
-      final bytes = file.bytes;
-      if (bytes == null) continue;
-      urls.add(await uploadPhotoBytes(
-        bytes: bytes,
-        fileName: file.name,
-        extension: file.extension,
-        ownerId: ownerId,
-        mediaScope: mediaScope,
-      ));
-    }
-    return urls;
+    final files = (result?.files ?? const <PlatformFile>[])
+        .where((file) => file.bytes != null)
+        .toList();
+    var completed = 0;
+    final batchId = DateTime.now().microsecondsSinceEpoch;
+    onProgress?.call(0, files.length);
+    return WebMediaPipeline.mapBounded(
+      files,
+      (file, index) async {
+        final url = await uploadPhotoBytes(
+          bytes: file.bytes!,
+          fileName: file.name,
+          extension: file.extension,
+          ownerId: ownerId,
+          mediaScope: mediaScope,
+          storageId: '${batchId}_$index',
+        );
+        completed++;
+        onProgress?.call(completed, files.length);
+        return url;
+      },
+    );
   }
 
   Future<String> uploadPhotoBytes({
@@ -104,16 +114,26 @@ class WebJobManagementService {
     required String ownerId,
     required String mediaScope,
     String? extension,
+    String? storageId,
   }) async {
-    final safeName = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final contentType = _contentType(extension ?? fileName);
+    final media = await WebMediaPipeline.optimizeImage(
+      bytes: bytes,
+      fileName: fileName,
+      contentType: contentType,
+    );
+    final safeName = media.fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     final safeOwner = _safeStorageSegment(ownerId, fallback: 'unknown-owner');
     final safeScope = _safeStorageSegment(mediaScope, fallback: 'draft');
-    final uploadId = DateTime.now().microsecondsSinceEpoch;
+    final uploadId = storageId ?? DateTime.now().microsecondsSinceEpoch;
     final path = 'job_photos/${safeOwner}_${safeScope}_${uploadId}_$safeName';
     final ref = _storage.ref(path);
     await ref.putData(
-      bytes,
-      SettableMetadata(contentType: _contentType(extension ?? fileName)),
+      media.bytes,
+      SettableMetadata(
+        contentType: media.contentType,
+        cacheControl: WebMediaPipeline.browserCacheControl,
+      ),
     );
     return ref.getDownloadURL();
   }

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../services/web_image_service.dart';
 import '../theme/web_theme.dart';
 
-class WebRemoteImage extends StatelessWidget {
+class WebRemoteImage extends StatefulWidget {
   const WebRemoteImage({
     super.key,
     required this.url,
@@ -21,35 +22,86 @@ class WebRemoteImage extends StatelessWidget {
   final IconData fallbackIcon;
 
   @override
-  Widget build(BuildContext context) {
-    final clean = url?.trim();
-    final child = clean == null || clean.isEmpty
-        ? _Fallback(icon: fallbackIcon)
-        : Image.network(
-            key: ValueKey<String>('web-remote-image:$clean'),
-            clean,
-            width: width,
-            height: height,
-            fit: fit,
-            gaplessPlayback: false,
-            webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-            errorBuilder: (_, error, __) {
-              debugPrint('WEB IMAGE LOAD ERROR ${_safeUrl(clean)} $error');
-              return _Fallback(icon: fallbackIcon);
-            },
-          );
+  State<WebRemoteImage> createState() => _WebRemoteImageState();
+}
 
-    if (borderRadius <= 0) return child;
+class _WebRemoteImageState extends State<WebRemoteImage> {
+  Future<WebImageResolution>? resolution;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(covariant WebRemoteImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url?.trim() != widget.url?.trim()) _resolve();
+  }
+
+  void _resolve() {
+    final clean = widget.url?.trim();
+    resolution = clean == null || clean.isEmpty
+        ? null
+        : WebImageService.instance.resolve(clean);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final clean = widget.url?.trim();
+    final cached = clean == null || clean.isEmpty
+        ? null
+        : WebImageService.instance.cached(clean);
+    final child = clean == null || clean.isEmpty
+        ? _Fallback(icon: widget.fallbackIcon)
+        : cached != null
+            ? (cached.unsupported
+                ? _Fallback(icon: widget.fallbackIcon)
+                : _resolvedImage(cached))
+            : FutureBuilder<WebImageResolution>(
+                future: resolution,
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    WebImageService.logFailure(clean, snapshot.error!);
+                    return _Fallback(icon: widget.fallbackIcon);
+                  }
+                  final resolved = snapshot.data;
+                  if (resolved == null) {
+                    return _LoadingPlaceholder(icon: widget.fallbackIcon);
+                  }
+                  if (resolved.unsupported) {
+                    return _Fallback(icon: widget.fallbackIcon);
+                  }
+                  return _resolvedImage(resolved);
+                },
+              );
+
+    if (widget.borderRadius <= 0) return child;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
+      borderRadius: BorderRadius.circular(widget.borderRadius),
       child: child,
     );
   }
 
-  static String _safeUrl(String value) {
-    final uri = Uri.tryParse(value);
-    if (uri == null) return '<invalid-url>';
-    return uri.replace(query: uri.hasQuery ? '<redacted>' : '').toString();
+  Widget _resolvedImage(WebImageResolution resolved) {
+    return Image.network(
+      key: ValueKey<String>('web-remote-image:${resolved.url}'),
+      resolved.url,
+      width: widget.width,
+      height: widget.height,
+      fit: widget.fit,
+      gaplessPlayback: false,
+      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+      loadingBuilder: (context, child, loadingProgress) =>
+          loadingProgress == null
+              ? child
+              : _LoadingPlaceholder(icon: widget.fallbackIcon),
+      errorBuilder: (_, error, __) {
+        WebImageService.logFailure(resolved.url, error);
+        return _Fallback(icon: widget.fallbackIcon);
+      },
+    );
   }
 }
 
@@ -80,6 +132,22 @@ class WebCircleImage extends StatelessWidget {
           height: dimension,
           fallbackIcon: fallbackIcon,
         ),
+      ),
+    );
+  }
+}
+
+class _LoadingPlaceholder extends StatelessWidget {
+  const _LoadingPlaceholder({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: WebTheme.surfaceAlt,
+      child: Center(
+        child: Icon(icon, color: WebTheme.subtleText),
       ),
     );
   }

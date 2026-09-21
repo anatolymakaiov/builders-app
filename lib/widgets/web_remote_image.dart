@@ -49,9 +49,16 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
     final clean = widget.imageUrl.trim();
     if (clean.isEmpty) return _error();
 
+    final cached = WebImageService.instance.cached(clean);
+    if (cached != null) return _resolvedImage(cached);
+
     return FutureBuilder<WebImageResolution>(
       future: _resolution,
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          WebImageService.logFailure(clean, snapshot.error!);
+          return _error();
+        }
         if (!snapshot.hasData) return _placeholder();
 
         final resolution = snapshot.data!;
@@ -59,24 +66,29 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
           return _error();
         }
 
-        return Image.network(
-          resolution.url,
-          key: ValueKey(resolution.url),
-          width: widget.width,
-          height: widget.height,
-          fit: widget.fit,
-          alignment: widget.alignment,
-          gaplessPlayback: true,
-          webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return _placeholder();
-          },
-          errorBuilder: (context, error, stackTrace) {
-            WebImageService.logFailure(resolution.url, error);
-            return _error();
-          },
-        );
+        return _resolvedImage(resolution);
+      },
+    );
+  }
+
+  Widget _resolvedImage(WebImageResolution resolution) {
+    if (resolution.unsupported) return _error();
+    return Image.network(
+      resolution.url,
+      key: ValueKey(resolution.url),
+      width: widget.width,
+      height: widget.height,
+      fit: widget.fit,
+      alignment: widget.alignment,
+      gaplessPlayback: true,
+      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return _placeholder();
+      },
+      errorBuilder: (context, error, stackTrace) {
+        WebImageService.logFailure(resolution.url, error);
+        return _error();
       },
     );
   }

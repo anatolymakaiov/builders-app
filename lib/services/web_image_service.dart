@@ -21,6 +21,8 @@ class WebImageResolution {
 }
 
 class WebImageService {
+  static const int _maxCachedResolutions = 256;
+
   WebImageService({
     FirebaseStorage? storage,
     FirebaseFunctions? functions,
@@ -30,16 +32,51 @@ class WebImageService {
   final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
   final Map<String, Future<WebImageResolution>> _resolutionCache = {};
+  final Map<String, WebImageResolution> _resolvedCache = {};
 
   static final WebImageService instance = WebImageService();
 
   Future<WebImageResolution> resolve(String rawUrl) {
     final url = rawUrl.trim();
-    return _resolutionCache.putIfAbsent(url, () => _resolve(url));
+    return _resolutionCache.putIfAbsent(url, () async {
+      try {
+        final resolved = await _resolve(url);
+        _remember(url, resolved);
+        return resolved;
+      } catch (_) {
+        _resolutionCache.remove(url);
+        rethrow;
+      }
+    });
+  }
+
+  WebImageResolution? cached(String rawUrl) => _resolvedCache[rawUrl.trim()];
+
+  void _remember(String url, WebImageResolution resolution) {
+    _resolvedCache.remove(url);
+    _resolvedCache[url] = resolution;
+    while (_resolvedCache.length > _maxCachedResolutions) {
+      final oldest = _resolvedCache.keys.first;
+      _resolvedCache.remove(oldest);
+      _resolutionCache.remove(oldest);
+    }
   }
 
   Future<WebImageResolution> _resolve(String url) async {
     final extension = detectExtension(url);
+    if (_isBrowserNative(extension) && !_requiresMetadataVerification(url)) {
+      return WebImageResolution(
+        url: url,
+        originalUrl: url,
+        extension: extension,
+        contentType: _contentTypeForExtension(extension),
+      );
+    }
+
+    if (_isHeic(extension, null)) {
+      return _resolveHeic(url, extension: extension);
+    }
+
     String? contentType;
 
     try {
@@ -57,38 +94,10 @@ class WebImageService {
     }
 
     if (_isHeic(extension, contentType)) {
-      try {
-        final callable = _functions.httpsCallable("getWebCompatibleImage");
-        final result = await callable.call({"url": url});
-        final data = Map<String, dynamic>.from(result.data as Map);
-        final derivativeUrl = data["url"]?.toString().trim() ?? "";
-        if (derivativeUrl.isNotEmpty) {
-          _debug(
-            "WEB IMAGE DERIVATIVE READY original=${sanitizeUrl(url)} "
-            "derivative=${sanitizeUrl(derivativeUrl)}",
-          );
-          return WebImageResolution(
-            url: derivativeUrl,
-            originalUrl: url,
-            extension: extension,
-            contentType: contentType,
-            usedDerivative: true,
-          );
-        }
-      } catch (error) {
-        _debug(
-          "WEB IMAGE DERIVATIVE FAILED url=${sanitizeUrl(url)} "
-          "extension=${extension ?? ""} contentType=${contentType ?? ""} "
-          "error=$error",
-        );
-      }
-
-      return WebImageResolution(
-        url: url,
-        originalUrl: url,
+      return _resolveHeic(
+        url,
         extension: extension,
         contentType: contentType,
-        unsupported: true,
       );
     }
 
@@ -97,6 +106,46 @@ class WebImageService {
       originalUrl: url,
       extension: extension,
       contentType: contentType,
+    );
+  }
+
+  Future<WebImageResolution> _resolveHeic(
+    String url, {
+    String? extension,
+    String? contentType,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable("getWebCompatibleImage");
+      final result = await callable.call({"url": url});
+      final data = Map<String, dynamic>.from(result.data as Map);
+      final derivativeUrl = data["url"]?.toString().trim() ?? "";
+      if (derivativeUrl.isNotEmpty) {
+        _debug(
+          "WEB IMAGE DERIVATIVE READY original=${sanitizeUrl(url)} "
+          "derivative=${sanitizeUrl(derivativeUrl)}",
+        );
+        return WebImageResolution(
+          url: derivativeUrl,
+          originalUrl: url,
+          extension: extension,
+          contentType: contentType,
+          usedDerivative: true,
+        );
+      }
+    } catch (error) {
+      _debug(
+        "WEB IMAGE DERIVATIVE FAILED url=${sanitizeUrl(url)} "
+        "extension=${extension ?? ""} contentType=${contentType ?? ""} "
+        "error=$error",
+      );
+    }
+
+    return WebImageResolution(
+      url: url,
+      originalUrl: url,
+      extension: extension,
+      contentType: contentType,
+      unsupported: true,
     );
   }
 
@@ -149,6 +198,35 @@ class WebImageService {
         ext == "heif" ||
         type == "image/heic" ||
         type == "image/heif";
+  }
+
+  static bool _isBrowserNative(String? extension) => const {
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "gif",
+        "svg",
+        "avif",
+      }.contains(extension?.toLowerCase());
+
+  static bool _requiresMetadataVerification(String url) {
+    final path = storagePathFromUrl(url) ?? '';
+    // Older Web profile headers were stored under a forced .jpg name even
+    // when their actual Storage contentType was HEIC/HEIF.
+    return path.startsWith('profile_headers/');
+  }
+
+  static String? _contentTypeForExtension(String? extension) {
+    return switch (extension?.toLowerCase()) {
+      "jpg" || "jpeg" => "image/jpeg",
+      "png" => "image/png",
+      "webp" => "image/webp",
+      "gif" => "image/gif",
+      "svg" => "image/svg+xml",
+      "avif" => "image/avif",
+      _ => null,
+    };
   }
 
   static void logFailure(String url, Object error) {
