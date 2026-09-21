@@ -61,8 +61,10 @@ class _WebProfilePageState extends State<WebProfilePage> {
   List<WebTeamData> teams = const <WebTeamData>[];
   List<Job> companyJobs = const <Job>[];
   bool loadingDetails = false;
+  bool mediaBusy = false;
   Object? detailsError;
   final localProfileUpdates = <String, dynamic>{};
+  Map<String, dynamic> latestProfileData = const <String, dynamic>{};
 
   bool get ownProfile => widget.user.uid == viewedUserId;
   bool get isEmployer => viewedRole == 'employer';
@@ -144,6 +146,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
           id: viewedUserId,
           data: {...loaded, ...localProfileUpdates},
         );
+        latestProfileData = current.data;
         if ((state == null || state.loading) && state?.data == null) {
           return const Center(child: CircularProgressIndicator());
         }
@@ -173,6 +176,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
                       : null,
                   onChangeAvatar: ownProfile && !held ? _changeAvatar : null,
                   onChangeHeader: ownProfile && !held ? _changeHeader : null,
+                  mediaBusy: mediaBusy,
                 ),
                 if (ownProfile && held)
                   MaterialBanner(
@@ -241,6 +245,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
                             profile: current,
                             jobs: companyJobs,
                             loading: loadingDetails,
+                            mediaBusy: mediaBusy,
                             ownProfile: ownProfile,
                             onAddCompanyPhotos:
                                 ownProfile ? _addCompanyPhotos : null,
@@ -255,6 +260,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
                                 portfolio.map((item) => item.url).toList(),
                             teams: teams,
                             loading: loadingDetails,
+                            mediaBusy: mediaBusy,
                             ownProfile: ownProfile,
                             onAddPortfolio: ownProfile ? _addPortfolio : null,
                             onRemovePortfolio:
@@ -308,40 +314,44 @@ class _WebProfilePageState extends State<WebProfilePage> {
   }
 
   Future<void> _changeAvatar() async {
-    final picked = await editService.pickSingleImage();
-    if (picked == null || !mounted) return;
-    final selected = isEmployer
-        ? await showDialog<WebPickedFile>(
-            context: context,
-            builder: (_) => WebLogoCropDialog(file: picked),
-          )
-        : picked;
-    if (selected == null) return;
-    final url = await editService.uploadProfileImage(
-      uid: viewedUserId,
-      isEmployer: isEmployer,
-      image: selected,
-    );
-    _applyOwnProfileUpdates({
-      'avatarUrl': url,
-      'photo': url,
-      'photoUrl': url,
-      'profilePhotoUrl': url,
-      if (isEmployer) 'companyLogo': url,
-      if (isEmployer) 'companyLogoUrl': url,
-      if (isEmployer) 'companyAvatarUrl': url,
+    await _runMediaAction(() async {
+      final picked = await editService.pickSingleImage();
+      if (picked == null || !mounted) return;
+      final selected = isEmployer
+          ? await showDialog<WebPickedFile>(
+              context: context,
+              builder: (_) => WebLogoCropDialog(file: picked),
+            )
+          : picked;
+      if (selected == null) return;
+      final url = await editService.uploadProfileImage(
+        uid: viewedUserId,
+        isEmployer: isEmployer,
+        image: selected,
+      );
+      _applyOwnProfileUpdates({
+        'avatarUrl': url,
+        'photo': url,
+        'photoUrl': url,
+        'profilePhotoUrl': url,
+        if (isEmployer) 'companyLogo': url,
+        if (isEmployer) 'companyLogoUrl': url,
+        if (isEmployer) 'companyAvatarUrl': url,
+      });
     });
   }
 
   Future<void> _changeHeader() async {
-    final url = await editService.pickAndUploadHeaderImage(viewedUserId);
-    if (url == null) return;
-    _applyOwnProfileUpdates({
-      'profileHeaderImage': url,
-      'headerImage': url,
-      'headerImageUrl': url,
-      'backgroundImageUrl': url,
-      'coverPhotoUrl': url,
+    await _runMediaAction(() async {
+      final url = await editService.pickAndUploadHeaderImage(viewedUserId);
+      if (url == null) return;
+      _applyOwnProfileUpdates({
+        'profileHeaderImage': url,
+        'headerImage': url,
+        'headerImageUrl': url,
+        'backgroundImageUrl': url,
+        'coverPhotoUrl': url,
+      });
     });
   }
 
@@ -352,23 +362,73 @@ class _WebProfilePageState extends State<WebProfilePage> {
   }
 
   Future<void> _addCompanyPhotos() async {
-    await editService.pickAndAddCompanyPhotos(viewedUserId);
-    await _loadDetails();
+    await _runMediaAction(() async {
+      final urls = await editService.pickAndAddCompanyPhotos(viewedUserId);
+      if (urls.isEmpty) return;
+      final existing = WebProfileData(
+        id: viewedUserId,
+        data: latestProfileData,
+      ).companyPhotos;
+      _applyOwnProfileUpdates({
+        'companyPhotos': {...existing, ...urls}.toList(),
+      });
+    });
   }
 
   Future<void> _removeCompanyPhoto(String url) async {
-    await editService.removeCompanyPhoto(uid: viewedUserId, url: url);
-    await _loadDetails();
+    await _runMediaAction(() async {
+      await editService.removeCompanyPhoto(uid: viewedUserId, url: url);
+      final existing = WebProfileData(
+        id: viewedUserId,
+        data: latestProfileData,
+      ).companyPhotos;
+      _applyOwnProfileUpdates({
+        'companyPhotos': existing.where((item) => item != url).toList(),
+      });
+    });
   }
 
   Future<void> _addPortfolio() async {
-    await editService.pickAndAddWorkerPortfolio(viewedUserId);
-    await _loadDetails();
+    await _runMediaAction(() async {
+      final urls = await editService.pickAndAddWorkerPortfolio(viewedUserId);
+      if (urls.isEmpty || !mounted) return;
+      setState(() {
+        portfolio = [
+          ...portfolio,
+          for (var index = 0; index < urls.length; index++)
+            WebPortfolioItem(
+              id: 'uploaded-${DateTime.now().microsecondsSinceEpoch}-$index',
+              url: urls[index],
+              data: {'imageUrl': urls[index], 'url': urls[index]},
+            ),
+        ];
+      });
+    });
   }
 
   Future<void> _removePortfolioPhoto(String url) async {
-    await editService.removePortfolioPhoto(uid: viewedUserId, url: url);
-    await _loadDetails();
+    await _runMediaAction(() async {
+      await editService.removePortfolioPhoto(uid: viewedUserId, url: url);
+      if (!mounted) return;
+      setState(() {
+        portfolio = portfolio.where((item) => item.url != url).toList();
+      });
+    });
+  }
+
+  Future<void> _runMediaAction(Future<void> Function() action) async {
+    if (mediaBusy) return;
+    setState(() => mediaBusy = true);
+    try {
+      await action();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update media: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => mediaBusy = false);
+    }
   }
 
   Future<void> _openCreateTeam() async {
@@ -395,6 +455,7 @@ class _ProfileHeader extends StatelessWidget {
     required this.profile,
     required this.role,
     required this.ownProfile,
+    required this.mediaBusy,
     this.onBack,
     this.onEdit,
     this.onChangeAvatar,
@@ -404,6 +465,7 @@ class _ProfileHeader extends StatelessWidget {
   final WebProfileData profile;
   final String role;
   final bool ownProfile;
+  final bool mediaBusy;
   final VoidCallback? onBack;
   final VoidCallback? onEdit;
   final VoidCallback? onChangeAvatar;
@@ -464,14 +526,14 @@ class _ProfileHeader extends StatelessWidget {
                       if (small)
                         IconButton.filledTonal(
                           tooltip: 'Change header',
-                          onPressed: onChangeHeader,
+                          onPressed: mediaBusy ? null : onChangeHeader,
                           icon: const Icon(
                             Icons.photo_size_select_actual_outlined,
                           ),
                         )
                       else
                         FilledButton.tonalIcon(
-                          onPressed: onChangeHeader,
+                          onPressed: mediaBusy ? null : onChangeHeader,
                           icon: const Icon(
                             Icons.photo_size_select_actual_outlined,
                           ),
@@ -517,8 +579,16 @@ class _ProfileHeader extends StatelessWidget {
                               tooltip: role == 'employer'
                                   ? 'Change logo'
                                   : 'Change avatar',
-                              onPressed: onChangeAvatar,
-                              icon: const Icon(Icons.photo_camera_outlined),
+                              onPressed: mediaBusy ? null : onChangeAvatar,
+                              icon: mediaBusy
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.photo_camera_outlined),
                             ),
                           ),
                       ],
@@ -568,6 +638,7 @@ class _WorkerProfileBody extends StatelessWidget {
     required this.portfolio,
     required this.teams,
     required this.loading,
+    required this.mediaBusy,
     required this.ownProfile,
     this.onAddPortfolio,
     this.onRemovePortfolio,
@@ -579,6 +650,7 @@ class _WorkerProfileBody extends StatelessWidget {
   final List<String> portfolio;
   final List<WebTeamData> teams;
   final bool loading;
+  final bool mediaBusy;
   final bool ownProfile;
   final VoidCallback? onAddPortfolio;
   final ValueChanged<String>? onRemovePortfolio;
@@ -661,9 +733,15 @@ class _WorkerProfileBody extends StatelessWidget {
           action: onAddPortfolio == null
               ? null
               : FilledButton.icon(
-                  onPressed: onAddPortfolio,
-                  icon: const Icon(Icons.add_photo_alternate_outlined),
-                  label: const Text('Add photos'),
+                  onPressed: mediaBusy ? null : onAddPortfolio,
+                  icon: mediaBusy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.add_photo_alternate_outlined),
+                  label: Text(mediaBusy ? 'Uploading...' : 'Add photos'),
                 ),
           child: loading
               ? const LinearProgressIndicator()
@@ -699,6 +777,7 @@ class _EmployerProfileBody extends StatelessWidget {
     required this.profile,
     required this.jobs,
     required this.loading,
+    required this.mediaBusy,
     required this.ownProfile,
     this.onAddCompanyPhotos,
     this.onRemoveCompanyPhoto,
@@ -709,6 +788,7 @@ class _EmployerProfileBody extends StatelessWidget {
   final WebProfileData profile;
   final List<Job> jobs;
   final bool loading;
+  final bool mediaBusy;
   final bool ownProfile;
   final VoidCallback? onAddCompanyPhotos;
   final ValueChanged<String>? onRemoveCompanyPhoto;
@@ -778,9 +858,15 @@ class _EmployerProfileBody extends StatelessWidget {
           action: onAddCompanyPhotos == null
               ? null
               : FilledButton.icon(
-                  onPressed: onAddCompanyPhotos,
-                  icon: const Icon(Icons.add_photo_alternate_outlined),
-                  label: const Text('Add photos'),
+                  onPressed: mediaBusy ? null : onAddCompanyPhotos,
+                  icon: mediaBusy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.add_photo_alternate_outlined),
+                  label: Text(mediaBusy ? 'Uploading...' : 'Add photos'),
                 ),
           child: WebProfileGallery(
             urls: profile.companyPhotos,

@@ -27,6 +27,7 @@ class WebRemoteImage extends StatefulWidget {
 
 class _WebRemoteImageState extends State<WebRemoteImage> {
   Future<WebImageResolution>? resolution;
+  WebImageResolution? displayedResolution;
 
   @override
   void initState() {
@@ -53,6 +54,9 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
     final cached = clean == null || clean.isEmpty
         ? null
         : WebImageService.instance.cached(clean);
+    if (cached != null && !cached.unsupported) {
+      displayedResolution = cached;
+    }
     final child = clean == null || clean.isEmpty
         ? _Fallback(icon: widget.fallbackIcon)
         : cached != null
@@ -68,11 +72,15 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
                   }
                   final resolved = snapshot.data;
                   if (resolved == null) {
-                    return _LoadingPlaceholder(icon: widget.fallbackIcon);
+                    final previous = displayedResolution;
+                    return previous == null
+                        ? _LoadingPlaceholder(icon: widget.fallbackIcon)
+                        : _resolvedImage(previous);
                   }
                   if (resolved.unsupported) {
                     return _Fallback(icon: widget.fallbackIcon);
                   }
+                  displayedResolution = resolved;
                   return _resolvedImage(resolved);
                 },
               );
@@ -91,7 +99,7 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
       width: widget.width,
       height: widget.height,
       fit: widget.fit,
-      gaplessPlayback: false,
+      gaplessPlayback: true,
       webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
       loadingBuilder: (context, child, loadingProgress) =>
           loadingProgress == null

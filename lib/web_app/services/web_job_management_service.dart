@@ -89,23 +89,39 @@ class WebJobManagementService {
         .toList();
     var completed = 0;
     final batchId = DateTime.now().microsecondsSinceEpoch;
+    final uploadedPaths = <String>[];
     onProgress?.call(0, files.length);
-    return WebMediaPipeline.mapBounded(
-      files,
-      (file, index) async {
-        final url = await uploadPhotoBytes(
-          bytes: file.bytes!,
-          fileName: file.name,
-          extension: file.extension,
-          ownerId: ownerId,
-          mediaScope: mediaScope,
-          storageId: '${batchId}_$index',
-        );
-        completed++;
-        onProgress?.call(completed, files.length);
-        return url;
-      },
-    );
+    try {
+      return await WebMediaPipeline.mapBounded(
+        files,
+        (file, index) async {
+          final url = await uploadPhotoBytes(
+            bytes: file.bytes!,
+            fileName: file.name,
+            extension: file.extension,
+            ownerId: ownerId,
+            mediaScope: mediaScope,
+            storageId: '${batchId}_$index',
+            onStored: uploadedPaths.add,
+          );
+          completed++;
+          onProgress?.call(completed, files.length);
+          return url;
+        },
+      );
+    } catch (_) {
+      await WebMediaPipeline.mapBounded(
+        List<String>.from(uploadedPaths),
+        (path, _) async {
+          try {
+            await _storage.ref(path).delete();
+          } catch (_) {
+            // Best-effort cleanup for an incomplete upload batch.
+          }
+        },
+      );
+      rethrow;
+    }
   }
 
   Future<String> uploadPhotoBytes({
@@ -115,6 +131,7 @@ class WebJobManagementService {
     required String mediaScope,
     String? extension,
     String? storageId,
+    void Function(String path)? onStored,
   }) async {
     final contentType = _contentType(extension ?? fileName);
     final media = await WebMediaPipeline.optimizeImage(
@@ -135,6 +152,7 @@ class WebJobManagementService {
         cacheControl: WebMediaPipeline.browserCacheControl,
       ),
     );
+    onStored?.call(path);
     return ref.getDownloadURL();
   }
 
