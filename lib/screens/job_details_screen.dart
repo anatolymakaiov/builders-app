@@ -10,6 +10,7 @@ import 'post_job_screen.dart';
 import 'chat_screen.dart';
 
 import '../models/job.dart';
+import '../services/job_start_date.dart';
 import '../services/application_activity_service.dart';
 import '../services/calendar_service.dart';
 import '../services/chat_service.dart';
@@ -2329,6 +2330,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                       icon: Icons.schedule,
                       color: AppColors.greenDark,
                     ),
+                  metaPill(
+                    "Expected start: ${formatJobStartDate(activeJob.startDate)}",
+                    icon: Icons.event_outlined,
+                    color: AppColors.ink,
+                  ),
                   if (activeJob.listRateText.isNotEmpty)
                     metaPill(
                       activeJob.listRateText,

@@ -11,6 +11,7 @@ import '../models/job.dart';
 import '../services/address_lookup_service.dart';
 import '../services/billing_service.dart';
 import '../services/job_taxonomy_service.dart';
+import '../services/job_start_date.dart';
 import '../services/moderation_hold_service.dart';
 import '../services/stroyka_action_feedback.dart';
 import '../services/vacancy_import_service.dart';
@@ -60,6 +61,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
   bool importingVacancy = false;
   double? postcodeLatitude;
   double? postcodeLongitude;
+  DateTime? selectedStartDate;
 
   String jobType = "hourly";
   String selectedTrade = JobTaxonomyService.canonicalRoles.first;
@@ -81,6 +83,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
       siteController.text = job.site;
       durationController.text = job.duration;
       weeklyHoursController.text = job.weeklyHours;
+      selectedStartDate =
+          job.startDate == null ? null : jobDateOnly(job.startDate!);
       streetController.text = job.street;
       addressLine2Controller.text = "";
       addressLine3Controller.text = "";
@@ -186,6 +190,9 @@ class _PostJobScreenState extends State<PostJobScreen> {
       if (preview == null || !mounted) return;
 
       setState(() {
+        if (preview.expectedStartDate != null) {
+          selectedStartDate = jobDateOnly(preview.expectedStartDate!);
+        }
         if (preview.jobDescription.isNotEmpty) {
           descriptionController.text = preview.jobDescription;
         }
@@ -342,6 +349,16 @@ class _PostJobScreenState extends State<PostJobScreen> {
       showValidationMessage("Enter Country.");
       return;
     }
+    if (widget.existingJob == null && selectedStartDate == null) {
+      showValidationMessage("Choose the expected start date.");
+      return;
+    }
+    if (widget.existingJob == null &&
+        selectedStartDate != null &&
+        isHistoricalJobStartDate(selectedStartDate!)) {
+      showValidationMessage("Expected start date cannot be in the past.");
+      return;
+    }
 
     setState(() => loading = true);
 
@@ -398,6 +415,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
       "searchTerms": JobTaxonomyService.searchTermsFor(title),
       "duration": durationController.text.trim(),
       "weeklyHours": weeklyHoursController.text.trim(),
+      if (selectedStartDate != null)
+        "startDateMillis": jobStartDateStorageMillis(selectedStartDate!),
       "positions": int.tryParse(positionsController.text) ?? 1,
       "filledPositions": widget.existingJob?.filledPositions ?? 0,
       "street": siteStreet,
@@ -562,6 +581,20 @@ class _PostJobScreenState extends State<PostJobScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                InkWell(
+                  onTap: loading ? null : pickStartDate,
+                  borderRadius: BorderRadius.circular(4),
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: "Expected start date",
+                      helperText:
+                          "Choose the expected or approximate date the work will begin.",
+                      suffixIcon: Icon(Icons.calendar_month_outlined),
+                    ),
+                    child: Text(formatJobStartDate(selectedStartDate)),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 TextField(
                   controller: positionsController,
                   keyboardType: TextInputType.number,
@@ -677,5 +710,22 @@ class _PostJobScreenState extends State<PostJobScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> pickStartDate() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final today = jobDateOnly(DateTime.now());
+    final existing = selectedStartDate;
+    final firstDate =
+        existing != null && existing.isBefore(today) ? existing : today;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: existing ?? today,
+      firstDate: firstDate,
+      lastDate: DateTime(today.year + 10, 12, 31),
+      helpText: "Expected start date",
+    );
+    if (picked == null || !mounted) return;
+    setState(() => selectedStartDate = jobDateOnly(picked));
   }
 }

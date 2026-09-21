@@ -73,6 +73,7 @@ service cloud.firestore {
         "site",
         "trade",
         "duration",
+        "startDate",
         "weeklyHours",
         "positions",
         "street",

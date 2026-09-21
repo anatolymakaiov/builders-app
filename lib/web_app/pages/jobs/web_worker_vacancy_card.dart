@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/job.dart';
+import '../../../services/job_start_date.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_design_components.dart';
 import '../../widgets/web_remote_image.dart';
@@ -194,6 +195,9 @@ class WebWorkerVacancyCard extends StatelessWidget {
                 if (rate != null) _FactChip(label: rate),
                 if (job.duration.trim().isNotEmpty)
                   _FactChip(label: job.duration),
+                _FactChip(
+                  label: 'Start: ${formatJobStartDate(job.startDate)}',
+                ),
                 if (distanceMiles != null)
                   _FactChip(
                     label: '${distanceMiles!.toStringAsFixed(1)} miles away',

@@ -9,6 +9,7 @@ import '../../models/job.dart';
 import '../../services/application_status_utils.dart';
 import '../../services/billing_service.dart';
 import '../../services/job_taxonomy_service.dart';
+import '../../services/job_start_date.dart';
 import '../../services/moderation_hold_service.dart';
 import '../../services/offer_acceptance_service.dart';
 import 'web_media_pipeline.dart';
@@ -206,6 +207,7 @@ class WebJobManagementService {
     required String site,
     required String duration,
     required String weeklyHours,
+    required DateTime? startDate,
     required int positions,
     required int filledPositions,
     required String jobType,
@@ -257,6 +259,8 @@ class WebJobManagementService {
       'searchTerms': JobTaxonomyService.searchTermsFor(canonicalTitle),
       'duration': duration.trim(),
       'weeklyHours': weeklyHours.trim(),
+      if (startDate != null)
+        'startDateMillis': jobStartDateStorageMillis(startDate),
       'positions': positions <= 0 ? 1 : positions,
       'filledPositions': filledPositions,
       'street': addressLine1.trim(),

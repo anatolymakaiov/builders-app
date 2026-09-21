@@ -1206,6 +1206,15 @@ function safeJobPayload(data) {
   delete payload.preBillingSuspensionStatus;
   delete payload.slotCountedAt;
   delete payload.approvedAt;
+  const providedStartDate = payload.startDate;
+  const startDateMillis = Number(payload.startDateMillis);
+  delete payload.startDateMillis;
+  delete payload.startDate;
+  if (Number.isFinite(startDateMillis) && startDateMillis > 0) {
+    payload.startDate = admin.firestore.Timestamp.fromMillis(startDateMillis);
+  } else if (providedStartDate instanceof admin.firestore.Timestamp) {
+    payload.startDate = providedStartDate;
+  }
   return payload;
 }
 
@@ -1913,6 +1922,24 @@ exports.changeGoCardlessPlan = onCall(
     const uid = request.auth.uid;
     const firestore = admin.firestore();
     const jobData = safeJobPayload(request.data && request.data.jobData);
+    if (!(jobData.startDate instanceof admin.firestore.Timestamp)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Expected start date is required.",
+      );
+    }
+    const now = new Date();
+    const todayUtc = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    );
+    if (jobData.startDate.toMillis() < todayUtc) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Expected start date cannot be in the past.",
+      );
+    }
     const lockRef = firestore.collection("billing_entitlement_locks").doc(uid);
     const jobRef = firestore.collection("jobs").doc();
 

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../models/job.dart';
+import '../services/job_start_date.dart';
 import '../screens/job_details_screen.dart';
 import '../theme/stroyka_background.dart';
 import '../theme/app_theme.dart';
@@ -109,6 +110,10 @@ class JobCard extends StatelessWidget {
                         icon: Icons.work_outline, label: job.workFormatText),
                   if (job.duration.trim().isNotEmpty)
                     AppChip(icon: Icons.schedule, label: job.duration.trim()),
+                  AppChip(
+                    icon: Icons.event_outlined,
+                    label: "Start: ${formatJobStartDate(job.startDate)}",
+                  ),
                   if (job.listRateText.isNotEmpty)
                     AppChip(
                       icon: Icons.payments_outlined,

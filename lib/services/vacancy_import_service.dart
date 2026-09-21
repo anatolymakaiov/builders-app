@@ -16,6 +16,7 @@ class ParsedVacancy {
   final String requiredDocumentsAndCertifications;
   final String additionalInformation;
   final String? suggestedRole;
+  final DateTime? expectedStartDate;
 
   const ParsedVacancy({
     required this.sourceFileName,
@@ -25,6 +26,7 @@ class ParsedVacancy {
     this.requiredDocumentsAndCertifications = "",
     this.additionalInformation = "",
     this.suggestedRole,
+    this.expectedStartDate,
   });
 
   bool get hasAnyParsedContent =>
@@ -32,7 +34,8 @@ class ParsedVacancy {
       responsibilities.trim().isNotEmpty ||
       requirements.trim().isNotEmpty ||
       requiredDocumentsAndCertifications.trim().isNotEmpty ||
-      additionalInformation.trim().isNotEmpty;
+      additionalInformation.trim().isNotEmpty ||
+      expectedStartDate != null;
 
   ParsedVacancy copyWith({
     String? jobDescription,
@@ -40,6 +43,7 @@ class ParsedVacancy {
     String? requirements,
     String? requiredDocumentsAndCertifications,
     String? additionalInformation,
+    DateTime? expectedStartDate,
   }) {
     return ParsedVacancy(
       sourceFileName: sourceFileName,
@@ -51,6 +55,7 @@ class ParsedVacancy {
       additionalInformation:
           additionalInformation ?? this.additionalInformation,
       suggestedRole: suggestedRole,
+      expectedStartDate: expectedStartDate ?? this.expectedStartDate,
     );
   }
 }
@@ -883,7 +888,105 @@ class VacancyImportService {
           _joinBucket(buckets["requiredDocumentsAndCertifications"]!),
       additionalInformation: _joinBucket(buckets["additionalInformation"]!),
       suggestedRole: _detectRoleSuggestion(text),
+      expectedStartDate: _detectExpectedStartDate(text),
     );
+  }
+
+  static DateTime? _detectExpectedStartDate(String text) {
+    final match = RegExp(
+      r'^(?:expected\s+start\s+date|start\s+date|commencement\s+date|work\s+starts?)\s*[:\-]\s*([^\n\r]{3,40})$',
+      caseSensitive: false,
+      multiLine: true,
+    ).firstMatch(text);
+    if (match == null) return null;
+    final raw = (match.group(1) ?? '')
+        .trim()
+        .replaceAll(
+            RegExp(r'(\d)(?:st|nd|rd|th)\b', caseSensitive: false), r'$1')
+        .replaceAll(',', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ');
+
+    final iso = RegExp(r'\b(\d{4})-(\d{1,2})-(\d{1,2})\b').firstMatch(raw);
+    if (iso != null) {
+      return _validDate(
+        int.parse(iso.group(1)!),
+        int.parse(iso.group(2)!),
+        int.parse(iso.group(3)!),
+      );
+    }
+    final numeric =
+        RegExp(r'\b(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})\b').firstMatch(raw);
+    if (numeric != null) {
+      return _validDate(
+        int.parse(numeric.group(3)!),
+        int.parse(numeric.group(2)!),
+        int.parse(numeric.group(1)!),
+      );
+    }
+
+    const months = <String, int>{
+      'jan': 1,
+      'january': 1,
+      'feb': 2,
+      'february': 2,
+      'mar': 3,
+      'march': 3,
+      'apr': 4,
+      'april': 4,
+      'may': 5,
+      'jun': 6,
+      'june': 6,
+      'jul': 7,
+      'july': 7,
+      'aug': 8,
+      'august': 8,
+      'sep': 9,
+      'sept': 9,
+      'september': 9,
+      'oct': 10,
+      'october': 10,
+      'nov': 11,
+      'november': 11,
+      'dec': 12,
+      'december': 12,
+    };
+    final dayFirst = RegExp(
+      r'\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b',
+    ).firstMatch(raw);
+    if (dayFirst != null) {
+      final month = months[dayFirst.group(2)!.toLowerCase()];
+      if (month != null) {
+        return _validDate(
+          int.parse(dayFirst.group(3)!),
+          month,
+          int.parse(dayFirst.group(1)!),
+        );
+      }
+    }
+    final monthFirst = RegExp(
+      r'\b([A-Za-z]+)\s+(\d{1,2})\s+(\d{4})\b',
+    ).firstMatch(raw);
+    if (monthFirst != null) {
+      final month = months[monthFirst.group(1)!.toLowerCase()];
+      if (month != null) {
+        return _validDate(
+          int.parse(monthFirst.group(3)!),
+          month,
+          int.parse(monthFirst.group(2)!),
+        );
+      }
+    }
+    return null;
+  }
+
+  static DateTime? _validDate(int year, int month, int day) {
+    if (year < 2000 || year > 2200 || month < 1 || month > 12 || day < 1) {
+      return null;
+    }
+    final date = DateTime(year, month, day);
+    return date.year == year && date.month == month && date.day == day
+        ? date
+        : null;
   }
 
   static String? _headingFor(String line) {

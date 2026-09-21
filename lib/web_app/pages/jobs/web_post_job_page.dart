@@ -4,6 +4,7 @@ import '../../../models/job.dart';
 import '../../../services/address_lookup_service.dart';
 import '../../../services/billing_service.dart';
 import '../../../services/job_taxonomy_service.dart';
+import '../../../services/job_start_date.dart';
 import '../../../services/vacancy_import_service.dart';
 import '../../services/web_job_management_service.dart';
 import '../../services/web_vacancy_import_metadata.dart';
@@ -67,6 +68,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
   bool importingVacancy = false;
   bool lookingUp = false;
   String? error;
+  DateTime? selectedStartDate;
   late final String mediaScope;
 
   bool get editing => widget.existingJob != null;
@@ -86,6 +88,8 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
     site = TextEditingController(text: job?.site ?? '');
     duration = TextEditingController(text: job?.duration ?? '');
     weeklyHours = TextEditingController(text: job?.weeklyHours ?? '');
+    selectedStartDate =
+        job?.startDate == null ? null : jobDateOnly(job!.startDate!);
     positions = TextEditingController(text: (job?.positions ?? 1).toString());
     rate = TextEditingController(
         text: job == null || job.rate <= 0 ? '' : job.rate.toString());
@@ -313,6 +317,21 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
               _input(duration, 'Duration'),
               _gap(),
               _input(weeklyHours, 'Hours per week'),
+              _gap(),
+              InkWell(
+                onTap: saving ? null : _pickStartDate,
+                borderRadius: BorderRadius.circular(WebRadii.input),
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Expected start date',
+                    helperText:
+                        'Choose the expected or approximate date the work will begin.',
+                    suffixIcon: Icon(Icons.calendar_month_outlined),
+                    border: OutlineInputBorder(),
+                  ),
+                  child: Text(formatJobStartDate(selectedStartDate)),
+                ),
+              ),
             ],
           ),
         ),
@@ -589,6 +608,9 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
         if (metadata.weeklyHours.isNotEmpty) {
           weeklyHours.text = metadata.weeklyHours;
         }
+        if (reviewed.expectedStartDate != null) {
+          selectedStartDate = jobDateOnly(reviewed.expectedStartDate!);
+        }
         if (postcode.text.trim().isEmpty && metadata.postcode.isNotEmpty) {
           postcode.text = metadata.postcode;
         }
@@ -638,6 +660,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
         site: site.text.trim(),
         duration: duration.text.trim(),
         weeklyHours: weeklyHours.text.trim(),
+        startDate: selectedStartDate,
         positions: int.tryParse(positions.text) ?? 1,
         filledPositions: widget.existingJob?.filledPositions ?? 0,
         jobType: jobType,
@@ -689,10 +712,35 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
     if (addressLine1.text.trim().isEmpty) return 'Enter Address Line 1.';
     if (city.text.trim().isEmpty) return 'Enter Town / City.';
     if (country.text.trim().isEmpty) return 'Enter Country.';
+    if (!editing && selectedStartDate == null) {
+      return 'Choose the expected start date.';
+    }
+    if (!editing &&
+        selectedStartDate != null &&
+        isHistoricalJobStartDate(selectedStartDate!)) {
+      return 'Expected start date cannot be in the past.';
+    }
     if ((int.tryParse(positions.text) ?? 0) <= 0) {
       return 'Workers needed must be at least 1.';
     }
     return null;
+  }
+
+  Future<void> _pickStartDate() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final today = jobDateOnly(DateTime.now());
+    final existing = selectedStartDate;
+    final firstDate =
+        existing != null && existing.isBefore(today) ? existing : today;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: existing ?? today,
+      firstDate: firstDate,
+      lastDate: DateTime(today.year + 10, 12, 31),
+      helpText: 'Expected start date',
+    );
+    if (picked == null || !mounted) return;
+    setState(() => selectedStartDate = jobDateOnly(picked));
   }
 }
 

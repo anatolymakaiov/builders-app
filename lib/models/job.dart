@@ -111,6 +111,7 @@ class Job {
     double? rate,
     String? jobType,
     String? duration,
+    DateTime? startDate,
     String? status,
     String? moderationStatus,
     bool? active,
@@ -145,7 +146,7 @@ class Job {
       jobType: jobType ?? this.jobType,
       duration: duration ?? this.duration,
       weeklyHours: weeklyHours,
-      startDate: startDate,
+      startDate: startDate ?? this.startDate,
       employmentType: employmentType,
       ownerId: ownerId ?? this.ownerId,
       applicantsCount: applicantsCount,
@@ -312,6 +313,8 @@ class Job {
       if (value is Timestamp) {
         return value.toDate();
       }
+      if (value is DateTime) return value;
+      if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
       return null;
     }
 

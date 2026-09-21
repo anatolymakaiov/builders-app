@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/job.dart';
+import '../../../services/job_start_date.dart';
 import '../../services/web_job_management_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_panel.dart';
@@ -141,12 +142,11 @@ class WebJobDetailsPanel extends StatelessWidget {
                                   icon: Icons.access_time_outlined,
                                   label: '${currentJob.weeklyHours} hours/week',
                                 ),
-                              if (currentJob.startDate != null)
-                                _DetailChip(
-                                  icon: Icons.event_outlined,
-                                  label:
-                                      'Starts ${_formatDate(currentJob.startDate!)}',
-                                ),
+                              _DetailChip(
+                                icon: Icons.event_outlined,
+                                label:
+                                    'Expected start: ${formatJobStartDate(currentJob.startDate)}',
+                              ),
                               if (isEmployerOwner)
                                 _DetailChip(
                                   icon: Icons.verified_outlined,
@@ -207,11 +207,6 @@ class WebJobDetailsPanel extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 }
 
