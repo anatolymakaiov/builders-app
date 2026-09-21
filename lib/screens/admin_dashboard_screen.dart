@@ -31,7 +31,12 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   int selectedIndex = 0;
 
-  Future<void> approveJob(DocumentReference ref, Job job) async {
+  Future<void> approveJob(
+    DocumentReference ref,
+    Job job,
+    String? approvalMessage,
+  ) async {
+    final cleanApprovalMessage = approvalMessage?.trim() ?? "";
     final data = {
       "moderationStatus": "approved",
       "moderationReason": "",
@@ -53,7 +58,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       jobId: job.id,
       jobTitle: job.displayTitle,
       moderationStatus: "approved",
+      approvalMessage: cleanApprovalMessage,
     );
+
+    if (cleanApprovalMessage.isNotEmpty) {
+      await _sendAdminInboxMessage(
+        userId: job.ownerId,
+        title: "Vacancy approved",
+        message: cleanApprovalMessage,
+        audience: "employer",
+        relatedTargetType: "job",
+        relatedTargetId: job.id,
+      );
+    }
 
     await JobAlertService().notifyMatchingWorkers(
       jobId: job.id,
@@ -5651,7 +5668,11 @@ class _ReportMetaChip extends StatelessWidget {
 }
 
 class _JobModerationSection extends StatelessWidget {
-  final Future<void> Function(DocumentReference ref, Job job) onApprove;
+  final Future<void> Function(
+    DocumentReference ref,
+    Job job,
+    String? approvalMessage,
+  ) onApprove;
   final Future<bool> Function(BuildContext context, DocumentReference ref)
       onReject;
   final Future<void> Function(BuildContext context, DocumentSnapshot doc)
@@ -5902,7 +5923,11 @@ class _PendingJobCard extends StatelessWidget {
 class _AdminJobModerationDetailScreen extends StatelessWidget {
   final Job job;
   final DocumentReference jobRef;
-  final Future<void> Function(DocumentReference ref, Job job) onApprove;
+  final Future<void> Function(
+    DocumentReference ref,
+    Job job,
+    String? approvalMessage,
+  ) onApprove;
   final Future<bool> Function(BuildContext context, DocumentReference ref)
       onReject;
   final Future<void> Function(BuildContext context, DocumentReference ref)
@@ -5924,17 +5949,7 @@ class _AdminJobModerationDetailScreen extends StatelessWidget {
       hint: "Leave empty to approve without a message",
     );
     if (note == null) return;
-    await onApprove(jobRef, currentJob);
-    if (note.trim().isNotEmpty) {
-      await _sendAdminInboxMessage(
-        userId: currentJob.ownerId,
-        title: "Job publication approved",
-        message: note.trim(),
-        audience: "employer",
-        relatedTargetType: "job",
-        relatedTargetId: currentJob.id,
-      );
-    }
+    await onApprove(jobRef, currentJob, note);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Job approved")),

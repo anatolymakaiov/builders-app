@@ -716,19 +716,23 @@ class NotificationService {
     required String jobTitle,
     required String moderationStatus,
     String? reason,
+    String? approvalMessage,
   }) async {
     final approved = moderationStatus == "approved";
     final onHold = moderationStatus == "on_hold";
+    final cleanApprovalMessage = approvalMessage?.trim() ?? "";
     await sendEmployerNotification(
       employerId: employerId,
       type: "job_status",
       title: approved
-          ? "Job approved"
+          ? "Vacancy approved"
           : onHold
               ? "Job put on hold"
               : "Job rejected",
       message: approved
-          ? "$jobTitle has been approved and can be published."
+          ? cleanApprovalMessage.isEmpty
+              ? "$jobTitle has been approved and can be published."
+              : "$jobTitle has been approved and can be published.\n\n$cleanApprovalMessage"
           : onHold
               ? reason?.trim().isNotEmpty == true
                   ? "$jobTitle was put on hold: ${reason!.trim()}"
@@ -739,6 +743,8 @@ class NotificationService {
       relatedJobId: jobId,
       extra: {
         "status": moderationStatus,
+        if (cleanApprovalMessage.isNotEmpty)
+          "approvalMessage": cleanApprovalMessage,
         if (reason != null && reason.trim().isNotEmpty)
           "moderationReason": reason.trim(),
       },
