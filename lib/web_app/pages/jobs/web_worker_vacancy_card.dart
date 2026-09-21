@@ -84,10 +84,6 @@ class WebWorkerVacancyCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          if (showVacancyLifecycleStatus) ...[
-                            const SizedBox(width: WebSpacing.xs),
-                            webVacancyLifecycleBadge(job),
-                          ],
                           if (onToggleSaved != null)
                             Transform.translate(
                               offset: const Offset(6, -8),
@@ -109,6 +105,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
                         ],
                       ),
                       if (job.companyName.trim().isNotEmpty ||
+                          showVacancyLifecycleStatus ||
                           (showApplicationStatus && applicationStatusResolved))
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
@@ -121,6 +118,10 @@ class WebWorkerVacancyCard extends StatelessWidget {
                                 style: const TextStyle(color: WebTheme.muted),
                               ),
                             ),
+                            if (showVacancyLifecycleStatus) ...[
+                              const SizedBox(width: WebSpacing.xs),
+                              webVacancyLifecycleBadge(job),
+                            ],
                             if (showApplicationStatus &&
                                 applicationStatusResolved) ...[
                               const SizedBox(width: WebSpacing.xs),
