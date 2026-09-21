@@ -63,6 +63,323 @@ const DEFAULT_NOTIFICATION_PREFERENCES = {
   badges: true,
 };
 
+const ACCOUNT_LINK_MAX_MEMBERS = 10;
+const ACCOUNT_LINK_SESSION_MINUTES = 30;
+
+function accountLinkTokenHash(token) {
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
+}
+
+function accountIdentity(uid, data) {
+  const role = cleanText(data.role || data.userRole).toLowerCase() || "worker";
+  const employer = role === "employer" || role === "company";
+  const displayName = employer
+    ? cleanText(
+      data.companyName || data.businessName || data.displayName || data.name,
+    )
+    : cleanText(
+      data.name || data.displayName ||
+      [data.firstName, data.lastName].map(cleanText).filter(Boolean).join(" "),
+    );
+  const avatarUrl = employer
+    ? cleanText(
+      data.companyLogo || data.companyLogoUrl || data.companyAvatarUrl ||
+      data.logo || data.avatarUrl || data.photo,
+    )
+    : cleanText(
+      data.photo || data.avatarUrl || data.photoUrl || data.profilePhotoUrl,
+    );
+  return {
+    uid,
+    role,
+    displayName: displayName || (employer ? "Company" : "Worker"),
+    avatarUrl,
+    username: cleanText(data.username || data.userName || data.handle),
+  };
+}
+
+function assertLinkableUser(snapshot) {
+  if (!snapshot.exists) {
+    throw new HttpsError("not-found", "STROYKA account was not found.");
+  }
+  const data = snapshot.data() || {};
+  if (data.accountDeleted === true || data.deleted === true) {
+    throw new HttpsError("failed-precondition", "This account is unavailable.");
+  }
+  if (cleanText(data.role).toLowerCase() === "admin") {
+    throw new HttpsError(
+      "permission-denied",
+      "Administrator accounts cannot be linked.",
+    );
+  }
+}
+
+async function linkAccountUids(transaction, sourceUid, targetUid) {
+  const db = admin.firestore();
+  const sourceMemberRef = db.collection("account_link_members").doc(sourceUid);
+  const targetMemberRef = db.collection("account_link_members").doc(targetUid);
+  const [sourceMember, targetMember] = await Promise.all([
+    transaction.get(sourceMemberRef),
+    transaction.get(targetMemberRef),
+  ]);
+  const sourceGroupId = cleanText(sourceMember.data()?.groupId);
+  const targetGroupId = cleanText(targetMember.data()?.groupId);
+  const groupIds = [...new Set([sourceGroupId, targetGroupId].filter(Boolean))];
+  const groupSnapshots = new Map();
+  for (const groupId of groupIds) {
+    const ref = db.collection("account_link_groups").doc(groupId);
+    groupSnapshots.set(groupId, await transaction.get(ref));
+  }
+
+  if (sourceGroupId && sourceGroupId === targetGroupId) {
+    return sourceGroupId;
+  }
+
+  const sourceMembers = sourceGroupId
+    ? (groupSnapshots.get(sourceGroupId)?.data()?.memberIds || [])
+    : [sourceUid];
+  const targetMembers = targetGroupId
+    ? (groupSnapshots.get(targetGroupId)?.data()?.memberIds || [])
+    : [targetUid];
+  const memberIds = [...new Set([
+    ...sourceMembers.map(String),
+    ...targetMembers.map(String),
+    sourceUid,
+    targetUid,
+  ])];
+  if (memberIds.length > ACCOUNT_LINK_MAX_MEMBERS) {
+    throw new HttpsError(
+      "resource-exhausted",
+      `A maximum of ${ACCOUNT_LINK_MAX_MEMBERS} accounts can be linked.`,
+    );
+  }
+
+  const groupId = sourceGroupId || targetGroupId ||
+    db.collection("account_link_groups").doc().id;
+  const groupRef = db.collection("account_link_groups").doc(groupId);
+  transaction.set(groupRef, {
+    memberIds,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    ...(sourceGroupId || targetGroupId ? {} : {
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }),
+  }, { merge: true });
+  for (const memberUid of memberIds) {
+    transaction.set(db.collection("account_link_members").doc(memberUid), {
+      groupId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+  for (const oldGroupId of groupIds) {
+    if (oldGroupId !== groupId) {
+      transaction.delete(db.collection("account_link_groups").doc(oldGroupId));
+    }
+  }
+  return groupId;
+}
+
+exports.listLinkedAccounts = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication is required.");
+  }
+  const db = admin.firestore();
+  const uid = request.auth.uid;
+  const member = await db.collection("account_link_members").doc(uid).get();
+  let memberIds = [uid];
+  if (member.exists) {
+    const groupId = cleanText(member.data()?.groupId);
+    const group = groupId
+      ? await db.collection("account_link_groups").doc(groupId).get()
+      : null;
+    const storedMembers = group?.data()?.memberIds;
+    if (Array.isArray(storedMembers) && storedMembers.includes(uid)) {
+      memberIds = [...new Set(storedMembers.map(String))];
+    }
+  }
+  const snapshots = await Promise.all(
+    memberIds.map((memberUid) => db.collection("users").doc(memberUid).get()),
+  );
+  return {
+    accounts: snapshots
+      .filter((snapshot) => snapshot.exists)
+      .map((snapshot) => accountIdentity(snapshot.id, snapshot.data() || {})),
+  };
+});
+
+exports.linkAuthenticatedAccount = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication is required.");
+  }
+  const secondaryIdToken = cleanText(request.data?.secondaryIdToken);
+  if (!secondaryIdToken) {
+    throw new HttpsError("invalid-argument", "Account proof is required.");
+  }
+  let verified;
+  try {
+    verified = await admin.auth().verifyIdToken(secondaryIdToken, true);
+  } catch (_) {
+    throw new HttpsError("permission-denied", "Account proof is invalid.");
+  }
+  const sourceUid = request.auth.uid;
+  const targetUid = cleanText(verified.uid);
+  if (!targetUid || sourceUid === targetUid) {
+    throw new HttpsError("already-exists", "This is already the current account.");
+  }
+  const db = admin.firestore();
+  const [sourceUser, targetUser] = await Promise.all([
+    db.collection("users").doc(sourceUid).get(),
+    db.collection("users").doc(targetUid).get(),
+  ]);
+  assertLinkableUser(sourceUser);
+  assertLinkableUser(targetUser);
+  await db.runTransaction(
+    (transaction) => linkAccountUids(transaction, sourceUid, targetUid),
+  );
+  return { linked: true, target: accountIdentity(targetUid, targetUser.data()) };
+});
+
+exports.createLinkedAccountSwitchToken = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication is required.");
+  }
+  const sourceUid = request.auth.uid;
+  const targetUid = cleanText(request.data?.targetUid);
+  if (!targetUid || targetUid === sourceUid) {
+    throw new HttpsError("invalid-argument", "Choose another linked account.");
+  }
+  const db = admin.firestore();
+  const [sourceMember, targetMember, targetUser] = await Promise.all([
+    db.collection("account_link_members").doc(sourceUid).get(),
+    db.collection("account_link_members").doc(targetUid).get(),
+    db.collection("users").doc(targetUid).get(),
+  ]);
+  assertLinkableUser(targetUser);
+  const sourceGroupId = cleanText(sourceMember.data()?.groupId);
+  const targetGroupId = cleanText(targetMember.data()?.groupId);
+  if (!sourceGroupId || sourceGroupId !== targetGroupId) {
+    throw new HttpsError("permission-denied", "That account is not linked.");
+  }
+  const group = await db.collection("account_link_groups").doc(sourceGroupId).get();
+  const memberIds = group.data()?.memberIds;
+  if (!Array.isArray(memberIds) ||
+      !memberIds.includes(sourceUid) ||
+      !memberIds.includes(targetUid)) {
+    throw new HttpsError("permission-denied", "That account is not linked.");
+  }
+  const token = await admin.auth().createCustomToken(targetUid, {
+    stroykaAccountSwitch: true,
+    sourceUid,
+  });
+  return { token };
+});
+
+exports.unlinkAccount = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication is required.");
+  }
+  const requesterUid = request.auth.uid;
+  const targetUid = cleanText(request.data?.targetUid);
+  if (!targetUid) {
+    throw new HttpsError("invalid-argument", "Account to unlink is required.");
+  }
+  const db = admin.firestore();
+  await db.runTransaction(async (transaction) => {
+    const requesterRef = db.collection("account_link_members").doc(requesterUid);
+    const targetRef = db.collection("account_link_members").doc(targetUid);
+    const [requester, target] = await Promise.all([
+      transaction.get(requesterRef),
+      transaction.get(targetRef),
+    ]);
+    const groupId = cleanText(requester.data()?.groupId);
+    if (!groupId || groupId !== cleanText(target.data()?.groupId)) {
+      throw new HttpsError("permission-denied", "That account is not linked.");
+    }
+    const groupRef = db.collection("account_link_groups").doc(groupId);
+    const group = await transaction.get(groupRef);
+    const members = Array.isArray(group.data()?.memberIds)
+      ? group.data().memberIds.map(String)
+      : [];
+    if (!members.includes(requesterUid) || !members.includes(targetUid)) {
+      throw new HttpsError("permission-denied", "That account is not linked.");
+    }
+    const detachedUid = targetUid === requesterUid ? requesterUid : targetUid;
+    const remaining = members.filter((memberUid) => memberUid !== detachedUid);
+    transaction.delete(db.collection("account_link_members").doc(detachedUid));
+    if (remaining.length < 2) {
+      transaction.delete(groupRef);
+      for (const memberUid of remaining) {
+        transaction.delete(db.collection("account_link_members").doc(memberUid));
+      }
+    } else {
+      transaction.update(groupRef, {
+        memberIds: remaining,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+  });
+  return { unlinked: true };
+});
+
+exports.createAccountLinkSession = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication is required.");
+  }
+  const sourceUid = request.auth.uid;
+  const sourceUser = await admin.firestore().collection("users").doc(sourceUid).get();
+  assertLinkableUser(sourceUser);
+  const token = crypto.randomBytes(32).toString("base64url");
+  const tokenHash = accountLinkTokenHash(token);
+  const expiresAt = admin.firestore.Timestamp.fromMillis(
+    Date.now() + ACCOUNT_LINK_SESSION_MINUTES * 60 * 1000,
+  );
+  await admin.firestore().collection("account_link_sessions").doc(tokenHash).set({
+    sourceUid,
+    expiresAt,
+    consumed: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return { sessionToken: token, expiresAt: expiresAt.toMillis() };
+});
+
+exports.redeemAccountLinkSession = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication is required.");
+  }
+  const sessionToken = cleanText(request.data?.sessionToken);
+  if (!sessionToken) {
+    throw new HttpsError("invalid-argument", "Link session is required.");
+  }
+  const tokenHash = accountLinkTokenHash(sessionToken);
+  const db = admin.firestore();
+  const sessionRef = db.collection("account_link_sessions").doc(tokenHash);
+  const targetUid = request.auth.uid;
+  await db.runTransaction(async (transaction) => {
+    const session = await transaction.get(sessionRef);
+    if (!session.exists) {
+      throw new HttpsError("not-found", "Link session was not found.");
+    }
+    const sessionData = session.data() || {};
+    const sourceUid = cleanText(sessionData.sourceUid);
+    const expiresAt = sessionData.expiresAt;
+    if (sessionData.consumed === true) {
+      throw new HttpsError("failed-precondition", "Link session was already used.");
+    }
+    if (!expiresAt || expiresAt.toMillis() <= Date.now()) {
+      throw new HttpsError("deadline-exceeded", "Link session has expired.");
+    }
+    if (!sourceUid || sourceUid === targetUid) {
+      throw new HttpsError("invalid-argument", "A different account is required.");
+    }
+    await linkAccountUids(transaction, sourceUid, targetUid);
+    transaction.update(sessionRef, {
+      consumed: true,
+      consumedBy: targetUid,
+      consumedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+  return { linked: true };
+});
+
 function normalizeUkPostcode(value) {
   const clean = String(value || "")
     .replace(/[^A-Za-z0-9]/g, "")

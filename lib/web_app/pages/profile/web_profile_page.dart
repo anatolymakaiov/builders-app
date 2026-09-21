@@ -1,4 +1,4 @@
-import 'package:firebase_auth/firebase_auth.dart' show User;
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -8,6 +8,8 @@ import '../../services/web_profile_data_service.dart';
 import '../../services/web_profile_edit_service.dart';
 import '../../services/web_profile_communication.dart';
 import '../../../services/moderation_hold_service.dart';
+import '../../../services/multi_account_service.dart';
+import '../../../widgets/account_switcher.dart';
 import '../../widgets/web_report_dialog.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
@@ -176,6 +178,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
                       : null,
                   onChangeAvatar: ownProfile && !held ? _changeAvatar : null,
                   onChangeHeader: ownProfile && !held ? _changeHeader : null,
+                  onSwitchAccount: ownProfile ? _showAccountSwitcher : null,
                   mediaBusy: mediaBusy,
                 ),
                 if (ownProfile && held)
@@ -311,6 +314,17 @@ class _WebProfilePageState extends State<WebProfilePage> {
       ),
     );
     if (saved == true) _loadDetails();
+  }
+
+  Future<void> _showAccountSwitcher() async {
+    await showAccountSwitcher(
+      context,
+      web: true,
+      onCreateNewAccount: () async {
+        await MultiAccountService().prepareCreateNewAccount();
+        await FirebaseAuth.instance.signOut();
+      },
+    );
   }
 
   Future<void> _changeAvatar() async {
@@ -460,6 +474,7 @@ class _ProfileHeader extends StatelessWidget {
     this.onEdit,
     this.onChangeAvatar,
     this.onChangeHeader,
+    this.onSwitchAccount,
   });
 
   final WebProfileData profile;
@@ -470,6 +485,7 @@ class _ProfileHeader extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onChangeAvatar;
   final VoidCallback? onChangeHeader;
+  final VoidCallback? onSwitchAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -552,6 +568,12 @@ class _ProfileHeader extends StatelessWidget {
                           icon: const Icon(Icons.edit_outlined),
                           label: const Text('Edit profile'),
                         ),
+                    if (onSwitchAccount != null)
+                      FilledButton.tonalIcon(
+                        onPressed: onSwitchAccount,
+                        icon: const Icon(Icons.swap_horiz),
+                        label: const Text('Switch Account'),
+                      ),
                   ],
                 ),
               ),

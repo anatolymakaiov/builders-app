@@ -20,6 +20,8 @@ import 'chat_screen.dart';
 import '../widgets/make_offer_dialog.dart';
 import '../widgets/phone_link.dart';
 import '../widgets/profile_hamburger_menu.dart';
+import '../widgets/account_switcher.dart';
+import '../services/multi_account_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/app_photo_grid_gallery.dart';
@@ -1877,6 +1879,21 @@ class WorkerProfileScreen extends StatelessWidget {
                               ),
                             ),
                           ],
+                        ),
+                      ),
+                    ),
+                  if (isMyProfile)
+                    Center(
+                      child: AccountIdentityButton(
+                        name: name.toString(),
+                        onPressed: () => showAccountSwitcher(
+                          context,
+                          web: false,
+                          onCreateNewAccount: () async {
+                            await MultiAccountService()
+                                .prepareCreateNewAccount();
+                            await FirebaseAuth.instance.signOut();
+                          },
                         ),
                       ),
                     ),

@@ -9,6 +9,7 @@ import 'firebase_options.dart';
 import 'services/app_navigation.dart';
 import 'services/auth_preferences_service.dart';
 import 'services/notification_service.dart';
+import 'services/multi_account_service.dart';
 import 'services/post_registration_refresh_service.dart';
 import 'services/registration_validation_service.dart';
 import 'screens/edit_profile_screen.dart';
@@ -290,6 +291,12 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
             final authMethod =
                 AuthPreferencesService().methodFromUserData(userData ?? {});
+
+            MultiAccountService()
+                .completePendingNewAccountLink()
+                .catchError((error) => debugPrint(
+                      'Pending account link could not be completed: $error',
+                    ));
             final requiresSessionGate =
                 authMethod == AuthPreferenceMethod.biometric ||
                     authMethod == AuthPreferenceMethod.simpleEnter;
@@ -340,7 +347,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
               );
             }
 
-            return const HomeScreen();
+            return HomeScreen(key: ValueKey('home:${user.uid}'));
           },
         );
       },

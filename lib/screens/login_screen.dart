@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_preferences_service.dart';
 import '../services/post_registration_refresh_service.dart';
+import '../services/multi_account_service.dart';
 import '../services/registration_validation_service.dart';
 import '../widgets/legal_documents.dart';
 import 'edit_profile_screen.dart';
@@ -15,11 +16,13 @@ import '../theme/stroyka_background.dart';
 class LoginScreen extends StatefulWidget {
   final String? sessionMode;
   final VoidCallback? onSessionUnlocked;
+  final WidgetBuilder? postRegistrationHomeBuilder;
 
   const LoginScreen({
     super.key,
     this.sessionMode,
     this.onSessionUnlocked,
+    this.postRegistrationHomeBuilder,
   });
 
   @override
@@ -612,8 +615,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   onProfileSaved: () async {
                     debugPrint("Next onboarding route: dashboard");
                     await postRegistrationRefresh.refreshAfterRegistration(uid);
+                    try {
+                      await MultiAccountService()
+                          .completePendingNewAccountLink();
+                    } catch (error) {
+                      debugPrint(
+                        "Pending account link could not be completed: $error",
+                      );
+                    }
                     navigator.pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const HomeScreen()),
+                      MaterialPageRoute(
+                        builder: widget.postRegistrationHomeBuilder ??
+                            (_) => const HomeScreen(),
+                      ),
                       (route) => false,
                     );
                   },

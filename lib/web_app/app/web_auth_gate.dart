@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../screens/login_screen.dart';
+import '../../services/multi_account_service.dart';
 import '../shell/web_shell.dart';
 import '../theme/web_theme.dart';
 import '../widgets/web_panel.dart';
@@ -34,8 +36,14 @@ class WebAuthGate extends StatelessWidget {
             }
 
             final profile = profileSnapshot.data?.data() ?? {};
+            if (profileSnapshot.data?.exists == true) {
+              MultiAccountService()
+                  .completePendingNewAccountLink()
+                  .catchError((_) {});
+            }
             final role = (profile['role'] ?? '').toString();
             return WebShell(
+              key: ValueKey('web-shell:${user.uid}'),
               user: user,
               role: role.isEmpty ? 'worker' : role,
               profile: profile,
@@ -155,6 +163,20 @@ class _WebLoginPageState extends State<WebLoginPage> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Text('Login'),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: loading
+                      ? null
+                      : () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => LoginScreen(
+                                postRegistrationHomeBuilder: (_) =>
+                                    const WebAuthGate(),
+                              ),
+                            ),
+                          ),
+                  child: const Text('Create account'),
                 ),
               ],
             ),

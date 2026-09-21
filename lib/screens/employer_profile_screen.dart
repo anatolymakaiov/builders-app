@@ -23,6 +23,8 @@ import '../theme/stroyka_background.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/company_profile_sections.dart';
 import '../widgets/profile_hamburger_menu.dart';
+import '../widgets/account_switcher.dart';
+import '../services/multi_account_service.dart';
 
 class EmployerProfileScreen extends StatefulWidget {
   final String userId;
@@ -586,6 +588,21 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                               ),
                             ),
                           ],
+                        ),
+                      ),
+                    ),
+                  if (isMyCompany)
+                    Center(
+                      child: AccountIdentityButton(
+                        name: name.isEmpty ? 'Company' : name,
+                        onPressed: () => showAccountSwitcher(
+                          context,
+                          web: false,
+                          onCreateNewAccount: () async {
+                            await MultiAccountService()
+                                .prepareCreateNewAccount();
+                            await FirebaseAuth.instance.signOut();
+                          },
                         ),
                       ),
                     ),

@@ -482,6 +482,20 @@ service cloud.firestore {
       }
     }
 
+    // Multi-account ownership and one-time link sessions are server-only.
+    // Clients receive only sanitized identity summaries through callable functions.
+    match /account_link_groups/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /account_link_members/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /account_link_sessions/{document=**} {
+      allow read, write: if false;
+    }
+
     match /pending_registrations/{userId} {
       allow create, read, update, delete: if isAdmin() || isSelf(userId);
 
