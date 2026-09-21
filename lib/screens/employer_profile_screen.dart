@@ -47,6 +47,31 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
   String viewerRole = "worker";
   bool uploadingCompanyPhotos = false;
 
+  String _firstProfileText(
+    Map<String, dynamic> data,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = data[key]?.toString().trim() ?? "";
+      if (value.isNotEmpty) return value;
+    }
+    return "";
+  }
+
+  String _companyAddress(Map<String, dynamic> data) {
+    final structured = [
+      _firstProfileText(data, const ["addressLine1"]),
+      _firstProfileText(data, const ["addressLine2"]),
+      _firstProfileText(data, const ["addressLine3"]),
+      _firstProfileText(data, const ["townCity", "city", "town"]),
+      _firstProfileText(data, const ["county"]),
+      _firstProfileText(data, const ["postcode", "postCode"]),
+      _firstProfileText(data, const ["country"]),
+    ].where((part) => part.isNotEmpty).join(", ");
+    if (structured.isNotEmpty) return structured;
+    return _firstProfileText(data, const ["location", "address"]);
+  }
+
   Stream<List<Job>> getJobs() {
     final viewerId = FirebaseAuth.instance.currentUser?.uid;
     final canViewAllJobs = viewerId == widget.userId || viewerRole == "admin";
@@ -426,13 +451,25 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
 
           final data = snapshot.data!.data() as Map<String, dynamic>;
 
-          final name = data["companyName"] ?? "Company";
-          final description = data["bio"] ?? "";
-          final address = data["location"] ?? "";
-          final phone = data["phone"] ?? "";
-          final contactPerson = data["contactPerson"] ?? "";
+          final name = _firstProfileText(data, const [
+            "companyName",
+            "businessName",
+            "displayName",
+            "name",
+          ]);
+          final description = _firstProfileText(
+            data,
+            const ["bio", "description", "about"],
+          );
+          final address = _companyAddress(data);
+          final phone = _firstProfileText(data, const ["phone", "phoneNumber"]);
+          final contactPerson = _firstProfileText(
+            data,
+            const ["contactPerson", "contactName"],
+          );
           final extraPhones = List<String>.from(data["phones"] ?? []);
-          final website = data["website"] ?? "";
+          final website =
+              _firstProfileText(data, const ["website", "websiteUrl"]);
           final email = data["email"] ?? "";
           final companyGoals = data["companyGoals"]?.toString() ?? "";
           final companyAdvantages = data["companyAdvantages"]?.toString() ?? "";
@@ -446,10 +483,30 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
               .map((e) => Map<String, dynamic>.from(e))
               .toList();
 
-          final logo = data["photo"];
-          final headerImage =
-              (data["profileHeaderImage"] ?? data["headerImage"])?.toString();
-          final photos = List<String>.from(data["companyPhotos"] ?? []);
+          final logo = _firstProfileText(data, const [
+            "companyLogo",
+            "companyLogoUrl",
+            "companyAvatarUrl",
+            "logo",
+            "avatarUrl",
+            "profilePhotoUrl",
+            "photoUrl",
+            "photo",
+          ]);
+          final headerImage = _firstProfileText(data, const [
+            "profileHeaderImage",
+            "headerImage",
+            "headerImageUrl",
+            "backgroundImageUrl",
+            "coverPhotoUrl",
+            "companyHeaderUrl",
+            "backgroundUrl",
+            "backgroundImage",
+          ]);
+          final photos = (data["companyPhotos"] as Iterable? ?? const [])
+              .map((value) => value?.toString().trim() ?? "")
+              .where((value) => value.isNotEmpty)
+              .toList();
           final showBilling = isMyCompany && role == "employer";
           final tabCount = showBilling ? 5 : 4;
           final initialTab = widget.initialTab.clamp(0, tabCount - 1).toInt();
@@ -533,9 +590,9 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                       ),
                     ),
                   StroykaProfileHeader(
-                    title: name,
-                    avatarUrl: logo is String ? logo : null,
-                    headerImageUrl: headerImage,
+                    title: name.isEmpty ? "Company" : name,
+                    avatarUrl: logo.isEmpty ? null : logo,
+                    headerImageUrl: headerImage.isEmpty ? null : headerImage,
                     fallbackIcon: Icons.business,
                     rightBottomAction: !isMyCompany
                         ? ProfileCommunicationService.circleAction(

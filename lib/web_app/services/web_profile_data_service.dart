@@ -102,7 +102,7 @@ class WebProfileData {
   String get addressLine1 => _firstText(data, const ['addressLine1'], '');
   String get addressLine2 => _firstText(data, const ['addressLine2'], '');
   String get addressLine3 => _firstText(data, const ['addressLine3'], '');
-  String get city => _firstText(data, const ['city', 'town'], '');
+  String get city => _firstText(data, const ['townCity', 'city', 'town'], '');
   String get county => _firstText(data, const ['county'], '');
   String get postcode => _firstText(data, const ['postcode', 'postCode'], '');
   String get country => _firstText(data, const ['country'], '');

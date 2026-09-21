@@ -523,9 +523,16 @@ class _ProfileScreenState extends State<ProfileScreen>
               data["registrationPosition"] ??
               "")
           .toString();
-      companyController.text = data["companyName"] ?? "";
+      companyController.text = (data["companyName"] ??
+              data["businessName"] ??
+              data["displayName"] ??
+              data["name"] ??
+              "")
+          .toString();
 
-      bioController.text = data["bio"] ?? "";
+      bioController.text =
+          (data["bio"] ?? data["description"] ?? data["about"] ?? "")
+              .toString();
       experienceController.text = data["experience"] ?? "";
       experienceYearsController.text =
           data["experienceYears"]?.toString() ?? "";
@@ -545,11 +552,15 @@ class _ProfileScreenState extends State<ProfileScreen>
         line1Key: "addressLine1",
         line2Key: "addressLine2",
         line3Key: "addressLine3",
-        townCityKey: "townCity",
+        townCityKey: (data["townCity"]?.toString().trim().isNotEmpty ?? false)
+            ? "townCity"
+            : (data["city"]?.toString().trim().isNotEmpty ?? false)
+                ? "city"
+                : "town",
         countyKey: "county",
         postcodeKey: "postcode",
         countryKey: "country",
-        fallbackLine1: data["location"]?.toString() ?? "",
+        fallbackLine1: (data["location"] ?? data["address"] ?? "").toString(),
       );
 
       websiteController.text = data["website"] ?? "";
@@ -653,9 +664,29 @@ class _ProfileScreenState extends State<ProfileScreen>
       rating = (data["rating"] ?? 0).toDouble();
       reviewsCount = data["reviewsCount"] ?? 0;
 
-      photoUrl = data["photo"];
-      headerImageUrl =
-          (data["profileHeaderImage"] ?? data["headerImage"])?.toString();
+      photoUrl = (role == "employer"
+              ? data["companyLogo"] ??
+                  data["companyLogoUrl"] ??
+                  data["companyAvatarUrl"] ??
+                  data["logo"] ??
+                  data["avatarUrl"] ??
+                  data["profilePhotoUrl"] ??
+                  data["photoUrl"] ??
+                  data["photo"]
+              : data["photo"] ??
+                  data["avatarUrl"] ??
+                  data["profilePhotoUrl"] ??
+                  data["photoUrl"])
+          ?.toString();
+      headerImageUrl = (data["profileHeaderImage"] ??
+              data["headerImage"] ??
+              data["headerImageUrl"] ??
+              data["backgroundImageUrl"] ??
+              data["coverPhotoUrl"] ??
+              data["companyHeaderUrl"] ??
+              data["backgroundUrl"] ??
+              data["backgroundImage"])
+          ?.toString();
       portfolio = portfolioUrls;
       companyPhotos = List<String>.from(data["companyPhotos"] ?? []);
     });
@@ -807,12 +838,17 @@ class _ProfileScreenState extends State<ProfileScreen>
       final url = await uploadProfileImage(
         XFile(cropped.path, name: cropped.uri.pathSegments.last),
         folder: "profile_photos",
-        fileName: "$userId.png",
+        fileName: "${userId}_${DateTime.now().millisecondsSinceEpoch}.png",
       );
 
       await setRegistrationState({
         "photo": url,
         "avatarUrl": url,
+        "photoUrl": url,
+        "profilePhotoUrl": url,
+        if (role == "employer") "companyLogo": url,
+        if (role == "employer") "companyLogoUrl": url,
+        if (role == "employer") "companyAvatarUrl": url,
         "updatedAt": FieldValue.serverTimestamp(),
       });
 
@@ -1607,8 +1643,9 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       var savedHeaderImageUrl = headerImageUrl;
       if (headerImageFile != null) {
-        final ref =
-            FirebaseStorage.instance.ref().child("profile_headers/$userId.jpg");
+        final ref = FirebaseStorage.instance.ref().child(
+              "profile_headers/${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg",
+            );
         await ref.putFile(headerImageFile!);
         savedHeaderImageUrl = await ref.getDownloadURL();
       }
@@ -1638,6 +1675,8 @@ class _ProfileScreenState extends State<ProfileScreen>
         "addressLine2": profileAddress.addressLine2,
         "addressLine3": profileAddress.addressLine3,
         "townCity": profileAddress.townCity,
+        "city": profileAddress.townCity,
+        "town": profileAddress.townCity,
         "county": profileAddress.county,
         "postcode": profileAddress.postcode,
         "country": profileAddress.country,
@@ -1671,8 +1710,12 @@ class _ProfileScreenState extends State<ProfileScreen>
       if (savedPhotoUrl != null && savedPhotoUrl.isNotEmpty) {
         profileData["photo"] = savedPhotoUrl;
         profileData["avatarUrl"] = savedPhotoUrl;
+        profileData["photoUrl"] = savedPhotoUrl;
+        profileData["profilePhotoUrl"] = savedPhotoUrl;
         if (role == "employer") {
           profileData["companyLogo"] = savedPhotoUrl;
+          profileData["companyLogoUrl"] = savedPhotoUrl;
+          profileData["companyAvatarUrl"] = savedPhotoUrl;
         }
       }
 
@@ -1747,6 +1790,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         profileData.addAll({
           "companyName": companyName,
           "name": companyName,
+          "displayName": companyName,
           "email": billingEmail,
           "billingEmail": billingEmail,
           "billingEmailProvided": true,
@@ -1785,6 +1829,8 @@ class _ProfileScreenState extends State<ProfileScreen>
         profileData["profileHeaderImage"] = savedHeaderImageUrl;
         profileData["headerImage"] = savedHeaderImageUrl;
         profileData["headerImageUrl"] = savedHeaderImageUrl;
+        profileData["backgroundImageUrl"] = savedHeaderImageUrl;
+        profileData["coverPhotoUrl"] = savedHeaderImageUrl;
       }
       if (portfolio.isNotEmpty) {
         profileData["portfolio"] = portfolio;

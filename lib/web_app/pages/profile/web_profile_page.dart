@@ -1412,20 +1412,35 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
   Future<void> _save() async {
     setState(() => saving = true);
     final isEmployer = widget.role == 'employer';
+    final addressParts = [
+      addressLine1.text.trim(),
+      addressLine2.text.trim(),
+      addressLine3.text.trim(),
+      city.text.trim(),
+      county.text.trim(),
+      postcode.text.trim(),
+      country.text.trim(),
+    ].where((part) => part.isNotEmpty).toList();
+    final singleLineAddress = addressParts.join(', ');
     final updates = <String, dynamic>{
       if (isEmployer) 'companyName': name.text.trim(),
+      if (isEmployer) 'name': name.text.trim(),
       if (!isEmployer) 'name': name.text.trim(),
       'displayName': name.text.trim(),
       'email': email.text.trim(),
       'phone': phone.text.trim(),
       if (isEmployer) 'description': bio.text.trim(),
+      if (isEmployer) 'bio': bio.text.trim(),
       if (!isEmployer) 'bio': bio.text.trim(),
       'trade': trade.text.trim(),
+      'location': singleLineAddress,
+      'address': singleLineAddress,
       'addressLine1': addressLine1.text.trim(),
       'addressLine2': addressLine2.text.trim(),
       'addressLine3': addressLine3.text.trim(),
       'city': city.text.trim(),
       'town': city.text.trim(),
+      'townCity': city.text.trim(),
       'county': county.text.trim(),
       'postcode': postcode.text.trim(),
       'country': country.text.trim(),
