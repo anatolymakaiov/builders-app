@@ -395,6 +395,8 @@ class _WebJobsPageState extends State<WebJobsPage> {
                       applicationStatuses: workerApplicationStatuses,
                       applicationStatusesResolved: workerApplicationsReady,
                       showApplicationStatus: isWorker,
+                      showVacancyLifecycleStatus:
+                          isEmployer && mode == WebJobsMode.owner,
                       onToggleSaved: isWorker ? _toggleSaved : null,
                       onViewVacancy: isWorker
                           ? (job) => setState(() {

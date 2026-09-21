@@ -5,6 +5,7 @@ import '../../theme/web_theme.dart';
 import '../../widgets/web_design_components.dart';
 import '../../widgets/web_remote_image.dart';
 import 'web_job_display.dart';
+import 'web_vacancy_lifecycle_status.dart';
 import 'web_worker_job_application_status.dart';
 
 class WebWorkerVacancyCard extends StatelessWidget {
@@ -17,6 +18,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
     this.applicationStatus,
     this.applicationStatusResolved = true,
     this.showApplicationStatus = true,
+    this.showVacancyLifecycleStatus = false,
     this.distanceMiles,
     this.onToggleSaved,
     this.onViewVacancy,
@@ -29,6 +31,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
   final WebWorkerJobApplicationStatus? applicationStatus;
   final bool applicationStatusResolved;
   final bool showApplicationStatus;
+  final bool showVacancyLifecycleStatus;
   final double? distanceMiles;
   final VoidCallback? onToggleSaved;
   final VoidCallback? onViewVacancy;
@@ -81,6 +84,10 @@ class WebWorkerVacancyCard extends StatelessWidget {
                               ),
                             ),
                           ),
+                          if (showVacancyLifecycleStatus) ...[
+                            const SizedBox(width: WebSpacing.xs),
+                            webVacancyLifecycleBadge(job),
+                          ],
                           if (onToggleSaved != null)
                             Transform.translate(
                               offset: const Offset(6, -8),

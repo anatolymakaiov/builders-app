@@ -5,8 +5,8 @@ import '../../services/web_job_management_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
-import '../../widgets/web_design_components.dart';
 import 'web_job_display.dart';
+import 'web_vacancy_lifecycle_status.dart';
 
 class WebJobDetailsPanel extends StatelessWidget {
   const WebJobDetailsPanel({
@@ -150,7 +150,8 @@ class WebJobDetailsPanel extends StatelessWidget {
                               if (isEmployerOwner)
                                 _DetailChip(
                                   icon: Icons.verified_outlined,
-                                  label: currentJob.moderationLabel,
+                                  label: webVacancyLifecycleStatus(currentJob)
+                                      .label,
                                 ),
                             ],
                           ),
@@ -287,7 +288,7 @@ class _Hero extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  job.moderationLabel,
+                  webVacancyLifecycleStatus(job).label,
                   style: const TextStyle(
                     color: WebTheme.ink,
                     fontWeight: FontWeight.w800,
@@ -666,14 +667,7 @@ class _OwnerStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = job.moderationStatus == 'pending_review'
-        ? 'PENDING REVIEW'
-        : job.moderationStatus == 'rejected'
-            ? 'REJECTED'
-            : job.status.trim().toLowerCase() == 'active'
-                ? 'ACTIVE'
-                : 'INACTIVE';
-    return WebStatusChip(label: label);
+    return webVacancyLifecycleBadge(job);
   }
 }
 

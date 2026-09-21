@@ -21,6 +21,7 @@ class WebJobListPanel extends StatelessWidget {
     this.applicationStatuses = const {},
     this.applicationStatusesResolved = true,
     this.showApplicationStatus = false,
+    this.showVacancyLifecycleStatus = false,
     this.onToggleSaved,
     this.onViewVacancy,
     this.showSearch = true,
@@ -36,6 +37,7 @@ class WebJobListPanel extends StatelessWidget {
   final Map<String, WebWorkerJobApplicationStatus> applicationStatuses;
   final bool applicationStatusesResolved;
   final bool showApplicationStatus;
+  final bool showVacancyLifecycleStatus;
   final ValueChanged<Job>? onToggleSaved;
   final ValueChanged<Job>? onViewVacancy;
   final bool showSearch;
@@ -87,6 +89,7 @@ class WebJobListPanel extends StatelessWidget {
                         applicationStatus: applicationStatuses[job.id],
                         applicationStatusResolved: applicationStatusesResolved,
                         showApplicationStatus: showApplicationStatus,
+                        showVacancyLifecycleStatus: showVacancyLifecycleStatus,
                         onTap: () => onSelected(job),
                         onViewVacancy: onViewVacancy == null
                             ? null
