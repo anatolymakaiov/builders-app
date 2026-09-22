@@ -46,17 +46,11 @@ class AppPhotoGridGallery extends StatelessWidget {
       itemBuilder: (context, index) {
         final imageUrl = photos[index];
         return GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ImageGalleryViewerScreen(
-                  imageUrls: photos,
-                  initialIndex: index,
-                ),
-              ),
-            );
-          },
+          onTap: () => showImageGallery(
+            context,
+            imageUrls: photos,
+            initialIndex: index,
+          ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(borderRadius),
             child: Stack(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../screens/image_gallery_viewer_screen.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_remote_image.dart';
 
@@ -36,12 +37,10 @@ class WebProfileGallery extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             InkWell(
-              onTap: () => showDialog<void>(
-                context: context,
-                builder: (_) => _WebGalleryDialog(
-                  urls: urls,
-                  initialIndex: index,
-                ),
+              onTap: () => showImageGallery(
+                context,
+                imageUrls: urls,
+                initialIndex: index,
               ),
               child: WebRemoteImage(
                 url: url,
@@ -66,85 +65,6 @@ class WebProfileGallery extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-class _WebGalleryDialog extends StatefulWidget {
-  const _WebGalleryDialog({
-    required this.urls,
-    required this.initialIndex,
-  });
-
-  final List<String> urls;
-  final int initialIndex;
-
-  @override
-  State<_WebGalleryDialog> createState() => _WebGalleryDialogState();
-}
-
-class _WebGalleryDialogState extends State<_WebGalleryDialog> {
-  late final PageController controller;
-  late int index;
-
-  @override
-  void initState() {
-    super.initState();
-    index = widget.initialIndex;
-    controller = PageController(initialPage: widget.initialIndex);
-  }
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog.fullscreen(
-      backgroundColor: Colors.black,
-      child: Stack(
-        children: [
-          PageView.builder(
-            controller: controller,
-            itemCount: widget.urls.length,
-            onPageChanged: (value) => setState(() => index = value),
-            itemBuilder: (context, pageIndex) {
-              return Center(
-                child: InteractiveViewer(
-                  minScale: 0.7,
-                  maxScale: 4,
-                  child: WebRemoteImage(
-                    url: widget.urls[pageIndex],
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              );
-            },
-          ),
-          Positioned(
-            left: 20,
-            top: 20,
-            child: Text(
-              '${index + 1} / ${widget.urls.length}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          Positioned(
-            right: 18,
-            top: 18,
-            child: IconButton.filled(
-              tooltip: 'Close',
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.close),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

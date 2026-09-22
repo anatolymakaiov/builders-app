@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../models/chat_image_gallery.dart';
+import '../../../screens/image_gallery_viewer_screen.dart';
 import '../../services/web_chat_media_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_remote_image.dart';
@@ -24,9 +26,13 @@ class WebChatAttachmentsView extends StatelessWidget {
       crossAxisAlignment:
           isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        for (final attachment in attachments) ...[
+        for (var index = 0; index < attachments.length; index++) ...[
           const SizedBox(height: 8),
-          _AttachmentTile(attachment: attachment),
+          _AttachmentTile(
+            attachment: attachments[index],
+            attachments: attachments,
+            index: index,
+          ),
         ],
       ],
     );
@@ -72,15 +78,26 @@ class WebPendingAttachmentsPreview extends StatelessWidget {
 }
 
 class _AttachmentTile extends StatelessWidget {
-  const _AttachmentTile({required this.attachment});
+  const _AttachmentTile({
+    required this.attachment,
+    required this.attachments,
+    required this.index,
+  });
 
   final WebChatAttachment attachment;
+  final List<WebChatAttachment> attachments;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
+    if (ChatImageGallery.isPreviewableImage(attachment.toMap())) {
+      return _ImageAttachment(
+        attachment: attachment,
+        attachments: attachments,
+        index: index,
+      );
+    }
     switch (attachment.type) {
-      case 'image':
-        return _ImageAttachment(attachment: attachment);
       case 'video':
         return _VideoAttachment(attachment: attachment);
       case 'audio':
@@ -92,39 +109,31 @@ class _AttachmentTile extends StatelessWidget {
 }
 
 class _ImageAttachment extends StatelessWidget {
-  const _ImageAttachment({required this.attachment});
+  const _ImageAttachment({
+    required this.attachment,
+    required this.attachments,
+    required this.index,
+  });
 
   final WebChatAttachment attachment;
+  final List<WebChatAttachment> attachments;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => showDialog<void>(
-        context: context,
-        builder: (_) => Dialog.fullscreen(
-          backgroundColor: Colors.black,
-          child: Stack(
-            children: [
-              Center(
-                child: InteractiveViewer(
-                  child: WebRemoteImage(
-                    url: attachment.url,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 18,
-                right: 18,
-                child: IconButton.filled(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      onTap: () {
+        final gallery = ChatImageGallery.fromAttachments(
+          attachments.map((item) => item.toMap()).toList(growable: false),
+          index,
+        );
+        if (gallery == null) return;
+        showImageGallery(
+          context,
+          imageUrls: gallery.urls,
+          initialIndex: gallery.initialIndex,
+        );
+      },
       child: SizedBox(
         width: 280,
         height: 190,

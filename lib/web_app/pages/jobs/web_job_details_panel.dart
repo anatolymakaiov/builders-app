@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/job.dart';
+import '../../../screens/image_gallery_viewer_screen.dart';
 import '../../../services/job_start_date.dart';
 import '../../services/web_job_management_service.dart';
 import '../../theme/web_theme.dart';
@@ -474,9 +475,10 @@ class _PhotoGrid extends StatelessWidget {
       ),
       itemBuilder: (context, index) {
         return InkWell(
-          onTap: () => showDialog<void>(
-            context: context,
-            builder: (_) => _PhotoDialog(photos: photos, initialIndex: index),
+          onTap: () => showImageGallery(
+            context,
+            imageUrls: photos,
+            initialIndex: index,
           ),
           child: WebRemoteImage(
             key: ValueKey<String>('job-photo:$jobId:${photos[index]}'),
@@ -632,68 +634,6 @@ class _OwnerStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return webVacancyLifecycleBadge(job);
-  }
-}
-
-class _PhotoDialog extends StatefulWidget {
-  const _PhotoDialog({
-    required this.photos,
-    required this.initialIndex,
-  });
-
-  final List<String> photos;
-  final int initialIndex;
-
-  @override
-  State<_PhotoDialog> createState() => _PhotoDialogState();
-}
-
-class _PhotoDialogState extends State<_PhotoDialog> {
-  late final PageController controller;
-
-  @override
-  void initState() {
-    super.initState();
-    controller = PageController(initialPage: widget.initialIndex);
-  }
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog.fullscreen(
-      backgroundColor: Colors.black,
-      child: Stack(
-        children: [
-          PageView.builder(
-            controller: controller,
-            itemCount: widget.photos.length,
-            itemBuilder: (context, index) {
-              return Center(
-                child: InteractiveViewer(
-                  child: WebRemoteImage(
-                    url: widget.photos[index],
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              );
-            },
-          ),
-          Positioned(
-            right: 18,
-            top: 18,
-            child: IconButton.filled(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.close),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 

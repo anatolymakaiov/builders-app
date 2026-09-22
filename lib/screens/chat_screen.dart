@@ -13,8 +13,9 @@ import 'package:video_player/video_player.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:io';
-import 'image_viewer_screen.dart';
+import 'image_gallery_viewer_screen.dart';
 import '../models/chat_attachment_data.dart';
+import '../models/chat_image_gallery.dart';
 import '../services/chat_profile_navigation_service.dart';
 import '../services/report_service.dart';
 import '../services/chat_service.dart';
@@ -2014,19 +2015,27 @@ class _ChatScreenState extends State<ChatScreen> {
     return "${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB";
   }
 
-  Widget buildAttachmentPreview(Map<String, dynamic> attachment) {
+  Widget buildAttachmentPreview(
+    Map<String, dynamic> attachment,
+    List<Map<String, dynamic>> messageAttachments,
+    int attachmentIndex,
+  ) {
     final type = attachment["type"]?.toString() ?? "file";
     final url = attachment["url"]?.toString() ?? "";
     final fileName = attachment["fileName"]?.toString() ?? "Attachment";
 
-    if (type == "image") {
+    if (ChatImageGallery.isPreviewableImage(attachment)) {
       return GestureDetector(
         onTap: () {
-          Navigator.push(
+          final gallery = ChatImageGallery.fromAttachments(
+            messageAttachments,
+            attachmentIndex,
+          );
+          if (gallery == null) return;
+          showImageGallery(
             context,
-            MaterialPageRoute(
-              builder: (_) => ImageViewerScreen(imageUrl: url),
-            ),
+            imageUrls: gallery.urls,
+            initialIndex: gallery.initialIndex,
           );
         },
         child: ClipRRect(
@@ -2107,7 +2116,7 @@ class _ChatScreenState extends State<ChatScreen> {
       children: [
         for (var i = 0; i < attachments.length; i++) ...[
           if (i > 0) const SizedBox(height: 8),
-          buildAttachmentPreview(attachments[i]),
+          buildAttachmentPreview(attachments[i], attachments, i),
         ],
       ],
     );
