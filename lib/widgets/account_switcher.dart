@@ -4,7 +4,6 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
 import '../services/multi_account_service.dart';
-import '../theme/app_theme.dart';
 import 'app_cached_image.dart';
 
 Future<void> showAccountSwitcher(
@@ -52,51 +51,44 @@ class AccountIdentityButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      key: const ValueKey('account-identity-switcher'),
-      constraints: const BoxConstraints(maxWidth: 190, minHeight: 44),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: AppColors.blueprintLine.withValues(alpha: 0.78),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AppCachedCircleAvatar(
-                  imageUrl: avatarUrl,
-                  fallbackIcon: isEmployer
-                      ? Icons.business_outlined
-                      : Icons.person_outline,
-                  radius: 14,
-                ),
-                const SizedBox(width: 7),
-                Flexible(
-                  child: Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.blueprintLine,
-                      fontWeight: FontWeight.w900,
+    final foregroundColor = Theme.of(context).appBarTheme.foregroundColor ??
+        IconTheme.of(context).color;
+    return Semantics(
+      button: true,
+      label: 'Switch account, $name',
+      child: ConstrainedBox(
+        key: const ValueKey('account-identity-switcher'),
+        constraints: const BoxConstraints(maxWidth: 190, minHeight: 44),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: foregroundColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 2),
-                const Icon(
-                  Icons.keyboard_arrow_down,
-                  color: AppColors.blueprintLine,
-                  size: 21,
-                ),
-              ],
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.keyboard_arrow_down,
+                    color: foregroundColor,
+                    size: 20,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -119,45 +111,38 @@ class CurrentAccountIdentityButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      return AccountIdentityButton(
-        name: fallbackName,
-        isEmployer: isEmployer,
-        onPressed: onPressed,
-      );
-    }
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream:
-          FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
-      builder: (context, snapshot) {
-        final data = snapshot.data?.data() ?? const <String, dynamic>{};
-        final name = _firstText(
-            data,
-            isEmployer
-                ? const ['companyName', 'name', 'displayName', 'username']
-                : const ['name', 'fullName', 'displayName', 'username']);
-        final avatar = _firstText(
-            data,
-            isEmployer
-                ? const [
-                    'companyLogo',
-                    'companyLogoUrl',
-                    'companyAvatarUrl',
-                    'avatarUrl',
-                    'photoUrl',
-                  ]
-                : const [
-                    'photo',
-                    'photoUrl',
-                    'profilePhotoUrl',
-                    'avatarUrl',
-                  ]);
-        return AccountIdentityButton(
-          name: name.isEmpty ? fallbackName : name,
-          avatarUrl: avatar,
-          isEmployer: isEmployer,
-          onPressed: onPressed,
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.userChanges(),
+      initialData: FirebaseAuth.instance.currentUser,
+      builder: (context, authSnapshot) {
+        final uid = authSnapshot.data?.uid;
+        if (uid == null) {
+          return AccountIdentityButton(
+            name: fallbackName,
+            isEmployer: isEmployer,
+            onPressed: onPressed,
+          );
+        }
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          key: ValueKey(uid),
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .snapshots(),
+          builder: (context, profileSnapshot) {
+            final data =
+                profileSnapshot.data?.data() ?? const <String, dynamic>{};
+            final name = _firstText(
+                data,
+                isEmployer
+                    ? const ['companyName', 'name', 'displayName', 'username']
+                    : const ['name', 'fullName', 'displayName', 'username']);
+            return AccountIdentityButton(
+              name: name.isEmpty ? fallbackName : name,
+              isEmployer: isEmployer,
+              onPressed: onPressed,
+            );
+          },
         );
       },
     );

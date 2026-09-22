@@ -31,7 +31,8 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Worker'), findsOneWidget);
-    expect(find.byIcon(Icons.person_outline), findsOneWidget);
+    expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+    expect(find.byIcon(Icons.person_outline), findsNothing);
   });
 
   testWidgets('mobile Employer header shows account identity control',
@@ -43,6 +44,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Company'), findsOneWidget);
-    expect(find.byIcon(Icons.business_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+    expect(find.byIcon(Icons.business_outlined), findsNothing);
   });
 }
