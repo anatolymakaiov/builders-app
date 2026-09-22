@@ -45,7 +45,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(WebRadii.card),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: selected ? WebTheme.accentSoft : WebTheme.surface,
           borderRadius: BorderRadius.circular(WebRadii.card),
@@ -138,7 +138,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
               ],
             ),
             if (job.fullAddress.trim().isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 5),
               Row(
                 children: [
                   const Icon(
@@ -159,7 +159,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
               ),
             ],
             if (posted != null || onViewVacancy != null) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: 3),
               Row(
                 children: [
                   if (posted != null)
@@ -186,10 +186,10 @@ class WebWorkerVacancyCard extends StatelessWidget {
                 ],
               ),
             ],
-            const SizedBox(height: 8),
+            const SizedBox(height: 5),
             Wrap(
               spacing: 8,
-              runSpacing: 8,
+              runSpacing: 5,
               children: [
                 _FactChip(label: webJobWorkFormat(job)),
                 if (rate != null) _FactChip(label: rate),
@@ -263,7 +263,7 @@ class _FactChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: WebTheme.surface,
         borderRadius: BorderRadius.circular(WebRadii.tag),
