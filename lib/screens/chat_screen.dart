@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:io';
 import 'image_viewer_screen.dart';
+import '../models/chat_attachment_data.dart';
 import '../services/chat_profile_navigation_service.dart';
 import '../services/report_service.dart';
 import '../services/chat_service.dart';
@@ -386,40 +387,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   List<Map<String, dynamic>> attachmentsFromMessage(Map<String, dynamic> data) {
-    final rawAttachments = data["attachments"];
-    if (rawAttachments is List) {
-      return rawAttachments
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .where((item) => (item["url"]?.toString().isNotEmpty ?? false))
-          .toList();
-    }
-
-    final type = data["type"]?.toString();
-    final url = (data["mediaUrl"] ?? data["imageUrl"] ?? data["videoUrl"])
-        ?.toString()
-        .trim();
-    if (url == null || url.isEmpty) return [];
-
-    if (type == "image" || data["imageUrl"] != null) {
-      return [
-        {
-          "type": "image",
-          "url": url,
-          "fileName": data["fileName"]?.toString() ?? "Photo",
-        }
-      ];
-    }
-    if (type == "video" || data["videoUrl"] != null) {
-      return [
-        {
-          "type": "video",
-          "url": url,
-          "fileName": data["fileName"]?.toString() ?? "Video",
-        }
-      ];
-    }
-    return [];
+    return chatAttachmentsFromMessage(data);
   }
 
   Future<void> refreshChatLastMessage() async {
@@ -1312,7 +1280,7 @@ class _ChatScreenState extends State<ChatScreen> {
         "participantIds=$chatMembers "
         "messageId=${messageRef.id}",
       );
-      await messageRef.set({
+      final messageData = <String, dynamic>{
         "messageId": messageRef.id,
         "chatId": widget.chatId,
         "type": messageType,
@@ -1328,22 +1296,11 @@ class _ChatScreenState extends State<ChatScreen> {
         "createdAt": FieldValue.serverTimestamp(),
         "readBy": [user.uid],
         if (activeReplyDraft != null) ...replyMetadata(activeReplyDraft),
-      });
+      };
 
-      debugPrint(
-        "CHAT MESSAGE FIRESTORE WRITE START "
-        "path=chats/${widget.chatId} "
-        "operation=update "
-        "authUid=${user.uid} "
-        "senderId=${user.uid} "
-        "chatId=${widget.chatId} "
-        "participantIds=$chatMembers "
-        "messageId=${messageRef.id}",
-      );
-      await FirebaseFirestore.instance
-          .collection("chats")
-          .doc(widget.chatId)
-          .update({
+      final chatRef =
+          FirebaseFirestore.instance.collection("chats").doc(widget.chatId);
+      final chatUpdate = <String, dynamic>{
         "lastMessage": preview,
         "lastMessageType": messageType,
         "updatedAt": FieldValue.serverTimestamp(),
@@ -1354,7 +1311,28 @@ class _ChatScreenState extends State<ChatScreen> {
           "unreadCount_worker": FieldValue.increment(1),
         "typing_worker": false,
         "typing_employer": false,
-      });
+      };
+
+      if (uploadedAttachments.isNotEmpty) {
+        final batch = FirebaseFirestore.instance.batch();
+        batch.set(messageRef, messageData);
+        batch.update(chatRef, chatUpdate);
+        await batch.commit();
+      } else {
+        await messageRef.set(messageData);
+
+        debugPrint(
+          "CHAT MESSAGE FIRESTORE WRITE START "
+          "path=chats/${widget.chatId} "
+          "operation=update "
+          "authUid=${user.uid} "
+          "senderId=${user.uid} "
+          "chatId=${widget.chatId} "
+          "participantIds=$chatMembers "
+          "messageId=${messageRef.id}",
+        );
+        await chatRef.update(chatUpdate);
+      }
 
       controller.clear();
       typingTimer?.cancel();
