@@ -240,6 +240,8 @@ class _WebJobsPageState extends State<WebJobsPage> {
         }
 
         return WebPageContainer(
+          topPadding: WebSpacing.md,
+          bottomPadding: WebSpacing.lg,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -256,6 +258,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
               ],
               WebPageHeader(
                 title: 'Jobs',
+                bottomSpacing: WebSpacing.sm,
                 subtitle: isEmployer
                     ? 'Manage your vacancies or explore the market.'
                     : 'Find active construction work across the UK.',
@@ -278,25 +281,23 @@ class _WebJobsPageState extends State<WebJobsPage> {
                   ),
                   child: Text('Could not refresh jobs: ${state!.error}'),
                 ),
-              if (isEmployer) ...[
-                _EmployerModeTabs(
-                  mode: mode,
-                  onChanged: (value) {
-                    setState(() {
-                      mode = value;
-                      targetJobId = null;
-                      selectedJobId = null;
-                      compactDetailVisible = false;
-                    });
-                  },
-                ),
-                const SizedBox(height: 14),
-              ],
               Wrap(
                 spacing: WebSpacing.sm,
                 runSpacing: WebSpacing.sm,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
+                  if (isEmployer)
+                    _EmployerModeTabs(
+                      mode: mode,
+                      onChanged: (value) {
+                        setState(() {
+                          mode = value;
+                          targetJobId = null;
+                          selectedJobId = null;
+                          compactDetailVisible = false;
+                        });
+                      },
+                    ),
                   SizedBox(
                     width: 320,
                     child: WebSmartJobSearchField(
@@ -371,7 +372,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: WebSpacing.xs),
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -859,24 +860,21 @@ class _EmployerModeTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: SegmentedButton<WebJobsMode>(
-        segments: const [
-          ButtonSegment(
-            value: WebJobsMode.owner,
-            label: Text('My vacancies'),
-            icon: Icon(Icons.business_center_outlined),
-          ),
-          ButtonSegment(
-            value: WebJobsMode.market,
-            label: Text('Market jobs'),
-            icon: Icon(Icons.public_outlined),
-          ),
-        ],
-        selected: {mode},
-        onSelectionChanged: (value) => onChanged(value.first),
-      ),
+    return SegmentedButton<WebJobsMode>(
+      segments: const [
+        ButtonSegment(
+          value: WebJobsMode.owner,
+          label: Text('My vacancies'),
+          icon: Icon(Icons.business_center_outlined),
+        ),
+        ButtonSegment(
+          value: WebJobsMode.market,
+          label: Text('Market jobs'),
+          icon: Icon(Icons.public_outlined),
+        ),
+      ],
+      selected: {mode},
+      onSelectionChanged: (value) => onChanged(value.first),
     );
   }
 }

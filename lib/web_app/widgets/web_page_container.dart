@@ -8,10 +8,14 @@ class WebPageContainer extends StatelessWidget {
     super.key,
     required this.child,
     this.padding,
+    this.topPadding = WebSpacing.xl,
+    this.bottomPadding = WebSpacing.xxl,
   });
 
   final Widget child;
   final EdgeInsetsGeometry? padding;
+  final double topPadding;
+  final double bottomPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -28,9 +32,9 @@ class WebPageContainer extends StatelessWidget {
               padding: padding ??
                   EdgeInsets.fromLTRB(
                     gutter,
-                    WebSpacing.xl,
+                    topPadding,
                     gutter,
-                    WebSpacing.xxl,
+                    bottomPadding,
                   ),
               child: child,
             ),

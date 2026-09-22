@@ -10,6 +10,7 @@ class WebPageHeader extends StatelessWidget {
     this.leading,
     this.actions = const [],
     this.bottom,
+    this.bottomSpacing = WebSpacing.lg,
   });
 
   final String title;
@@ -17,6 +18,7 @@ class WebPageHeader extends StatelessWidget {
   final Widget? leading;
   final List<Widget> actions;
   final Widget? bottom;
+  final double bottomSpacing;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +36,7 @@ class WebPageHeader extends StatelessWidget {
           ],
         );
         return Padding(
-          padding: const EdgeInsets.only(bottom: WebSpacing.lg),
+          padding: EdgeInsets.only(bottom: bottomSpacing),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
