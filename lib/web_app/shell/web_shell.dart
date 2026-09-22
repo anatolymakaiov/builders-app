@@ -14,9 +14,11 @@ import '../../services/multi_account_service.dart';
 import '../services/web_account_data_service.dart';
 import '../services/web_data_state.dart';
 import '../pages/profile/web_profile_page.dart';
+import '../pages/profile/web_admin_profile_page.dart';
 import '../pages/profile/web_team_page.dart';
 import '../theme/web_theme.dart';
 import 'web_profile_menu.dart';
+import 'web_profile_destination.dart';
 import 'web_top_navigation.dart';
 
 class WebShell extends StatefulWidget {
@@ -259,6 +261,24 @@ class _WebShellState extends State<WebShell> {
         onProfile: _openProfile,
         onChat: _openChat,
       );
+    }
+    final destination = resolveWebProfileDestination(
+      viewerUid: widget.user.uid,
+      viewerRole: widget.role,
+      profileUid: route.userId,
+      profileRole: route.role,
+    );
+    if (destination == WebProfileDestination.admin) {
+      return WebAdminProfilePage(
+        key: ValueKey('web-admin-profile:${widget.user.uid}'),
+        uid: widget.user.uid,
+        profile: liveProfile,
+        onClose: _closeProfile,
+        onOpenProfile: _openProfile,
+      );
+    }
+    if (destination == WebProfileDestination.unavailable) {
+      return const Center(child: Text('Profile unavailable.'));
     }
     return WebProfilePage(
       user: widget.user,
