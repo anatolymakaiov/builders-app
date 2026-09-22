@@ -83,8 +83,6 @@ class WebJobDetailsPanel extends StatelessWidget {
                   children: [
                     _Hero(
                       job: currentJob,
-                      showCompanyAvatar: isWorker,
-                      showModeration: isEmployerOwner,
                     ),
                     Padding(
                       padding: const EdgeInsets.all(28),
@@ -147,12 +145,6 @@ class WebJobDetailsPanel extends StatelessWidget {
                                 label:
                                     'Expected start: ${formatJobStartDate(currentJob.startDate)}',
                               ),
-                              if (isEmployerOwner)
-                                _DetailChip(
-                                  icon: Icons.verified_outlined,
-                                  label: webVacancyLifecycleStatus(currentJob)
-                                      .label,
-                                ),
                             ],
                           ),
                           if (isEmployerOwner) ...[
@@ -211,88 +203,73 @@ class WebJobDetailsPanel extends StatelessWidget {
 }
 
 class _Hero extends StatelessWidget {
-  const _Hero({
-    required this.job,
-    required this.showCompanyAvatar,
-    required this.showModeration,
-  });
+  const _Hero({required this.job});
 
   final Job job;
-  final bool showCompanyAvatar;
-  final bool showModeration;
 
   @override
   Widget build(BuildContext context) {
     final photo = job.photos.isNotEmpty ? job.photos.first.trim() : '';
-    return Container(
-      height: 210,
-      color: WebTheme.deep,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (photo.isNotEmpty)
-            WebRemoteImage(
-              key: ValueKey<String>('job-hero:${job.id}:$photo'),
-              url: photo,
-              fit: BoxFit.cover,
-              fallbackIcon: Icons.image_outlined,
-            ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  WebTheme.deep.withValues(alpha: 0.18),
-                  WebTheme.deep.withValues(alpha: 0.72),
-                ],
-              ),
-            ),
-          ),
-          if (showCompanyAvatar)
-            Positioned(
-              left: 28,
-              bottom: 20,
-              child: Container(
-                width: 160,
-                height: 160,
-                padding: const EdgeInsets.all(5),
-                decoration: const BoxDecoration(
-                  color: WebTheme.surface,
-                  shape: BoxShape.circle,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 420;
+        final avatarFrameSize = compact ? 120.0 : 160.0;
+        final avatarSize = avatarFrameSize - 10;
+        return Container(
+          height: 210,
+          color: WebTheme.deep,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (photo.isNotEmpty)
+                WebRemoteImage(
+                  key: ValueKey<String>('job-hero:${job.id}:$photo'),
+                  url: photo,
+                  fit: BoxFit.cover,
+                  fallbackIcon: Icons.image_outlined,
                 ),
-                child: WebCircleImage(
-                  key: ValueKey<String>(
-                    'job-company-logo:${job.id}:${job.ownerId}',
-                  ),
-                  url: job.companyLogo,
-                  size: 150,
-                  fallbackIcon: Icons.business_outlined,
-                ),
-              ),
-            ),
-          if (showModeration)
-            Positioned(
-              left: 28,
-              bottom: 24,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              DecoratedBox(
                 decoration: BoxDecoration(
-                  color: WebTheme.surface.withValues(alpha: 0.92),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  webVacancyLifecycleStatus(job).label,
-                  style: const TextStyle(
-                    color: WebTheme.ink,
-                    fontWeight: FontWeight.w800,
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      WebTheme.deep.withValues(alpha: 0.18),
+                      WebTheme.deep.withValues(alpha: 0.72),
+                    ],
                   ),
                 ),
               ),
-            ),
-        ],
-      ),
+              Positioned(
+                left: compact ? 20 : 28,
+                bottom: 20,
+                child: Container(
+                  width: avatarFrameSize,
+                  height: avatarFrameSize,
+                  padding: const EdgeInsets.all(5),
+                  decoration: const BoxDecoration(
+                    color: WebTheme.surface,
+                    shape: BoxShape.circle,
+                  ),
+                  child: WebCircleImage(
+                    key: ValueKey<String>(
+                      'job-company-logo:${job.id}:${job.ownerId}',
+                    ),
+                    url: job.companyLogo,
+                    size: avatarSize,
+                    fallbackIcon: Icons.business_outlined,
+                  ),
+                ),
+              ),
+              Positioned(
+                right: compact ? 16 : 20,
+                bottom: 20,
+                child: webVacancyLifecycleBadge(job),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -335,14 +312,6 @@ class _IdentityRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!isWorker) ...[
-          WebCircleImage(
-            url: job.companyLogo,
-            size: 58,
-            fallbackIcon: Icons.business_outlined,
-          ),
-          const SizedBox(width: 14),
-        ],
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
