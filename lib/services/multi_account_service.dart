@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -79,18 +81,40 @@ class MultiAccountState {
   MultiAccountState._();
 
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
-  static String? pendingSwitchTargetUid;
+  static final ValueNotifier<String?> switchTargetUid =
+      ValueNotifier<String?>(null);
+  static Completer<void>? _shellQuiesced;
+
+  static String? get pendingSwitchTargetUid => switchTargetUid.value;
 
   static void invalidate() {
     revision.value++;
   }
 
   static void beginSwitch(String targetUid) {
-    pendingSwitchTargetUid = targetUid;
+    _shellQuiesced = Completer<void>();
+    switchTargetUid.value = targetUid;
   }
 
   static void cancelSwitch(String targetUid) {
-    if (pendingSwitchTargetUid == targetUid) pendingSwitchTargetUid = null;
+    if (pendingSwitchTargetUid != targetUid) return;
+    final completer = _shellQuiesced;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete();
+    }
+    _shellQuiesced = null;
+    switchTargetUid.value = null;
+  }
+
+  static Future<void> waitForShellQuiesced(String targetUid) {
+    if (pendingSwitchTargetUid != targetUid) return Future<void>.value();
+    return _shellQuiesced?.future ?? Future<void>.value();
+  }
+
+  static void markShellQuiesced(String targetUid) {
+    if (pendingSwitchTargetUid != targetUid) return;
+    final completer = _shellQuiesced;
+    if (completer != null && !completer.isCompleted) completer.complete();
   }
 
   static void markShellRefreshed(String authenticatedUid) {
@@ -100,7 +124,14 @@ class MultiAccountState {
         'MULTI_ACCOUNT_SWITCH_SHELL_REFRESH authenticatedUid=$authenticatedUid',
       );
     }
-    pendingSwitchTargetUid = null;
+    _shellQuiesced = null;
+    switchTargetUid.value = null;
+  }
+
+  @visibleForTesting
+  static void resetForTesting() {
+    final targetUid = pendingSwitchTargetUid;
+    if (targetUid != null) cancelSwitch(targetUid);
   }
 }
 
@@ -262,6 +293,10 @@ class MultiAccountService {
       throw error;
     }
     if (kDebugMode) debugPrint('MULTI_ACCOUNT_SWITCH_TOKEN_OK');
+
+    if (!kIsWeb) {
+      await MultiAccountState.waitForShellQuiesced(targetUid);
+    }
 
     UserCredential credential;
     try {

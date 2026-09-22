@@ -56,6 +56,10 @@ class _HomeScreenState extends State<HomeScreen> {
   int _lastApplicationCount = 0;
   int employerJobsRefreshTick = 0;
   late int employerProfileInitialTab;
+  Stream<int>? _unreadNotificationsStream;
+  Stream<int>? _unreadChatsStream;
+  Stream<int>? _unreadApplicationsStream;
+  Stream<int>? _unreadProfileNoticesStream;
 
   @override
   void initState() {
@@ -172,6 +176,11 @@ class _HomeScreenState extends State<HomeScreen> {
         currentIndex = firstTourStep.tabIndex;
       }
     }
+
+    _unreadNotificationsStream = getUnreadNotifications();
+    _unreadChatsStream = getUnreadChats();
+    _unreadApplicationsStream = getUnreadApplications();
+    _unreadProfileNoticesStream = getUnreadProfileNotices();
 
     setState(() {
       loading = false;
@@ -345,12 +354,16 @@ class _HomeScreenState extends State<HomeScreen> {
           status != "deleted";
     }
 
-    void clearTeamApplicationSubscriptions() {
-      for (final sub in teamApplicationSubs) {
-        unawaited(sub.cancel());
-      }
+    var cancelled = false;
+    var teamGeneration = 0;
+
+    Future<void> clearTeamApplicationSubscriptions() async {
+      final subscriptions =
+          List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>.from(
+              teamApplicationSubs);
       teamApplicationSubs.clear();
       teamDocsByTeam.clear();
+      await Future.wait(subscriptions.map((sub) => sub.cancel()));
     }
 
     void emit() {
@@ -381,14 +394,18 @@ class _HomeScreenState extends State<HomeScreen> {
     teamsSub = FirebaseFirestore.instance
         .collection("teams")
         .snapshots()
-        .listen((snapshot) {
+        .listen((snapshot) async {
+      final generation = ++teamGeneration;
       final teamIds = snapshot.docs
           .where((doc) => isWorkerTeam(doc.data()))
           .map((doc) => doc.id)
           .toSet()
           .toList();
 
-      clearTeamApplicationSubscriptions();
+      await clearTeamApplicationSubscriptions();
+      if (cancelled || controller.isClosed || generation != teamGeneration) {
+        return;
+      }
 
       if (teamIds.isEmpty) {
         hasTeamSnapshot = true;
@@ -404,6 +421,7 @@ class _HomeScreenState extends State<HomeScreen> {
             .where("teamId", isEqualTo: teamId)
             .snapshots()
             .listen((snapshot) {
+          if (cancelled || generation != teamGeneration) return;
           received++;
           teamDocsByTeam[teamId] = snapshot.docs
               .where((doc) => isRelevantTeamApplication(doc.data(), teamId))
@@ -416,9 +434,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }, onError: controller.addError);
 
     controller.onCancel = () async {
+      cancelled = true;
+      teamGeneration++;
       await workerSub.cancel();
       await teamsSub.cancel();
-      clearTeamApplicationSubscriptions();
+      await clearTeamApplicationSubscriptions();
     };
 
     return controller.stream;
@@ -1016,25 +1036,25 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return StreamBuilder<int>(
-      stream: getUnreadNotifications(),
+      stream: _unreadNotificationsStream,
       builder: (context, notifSnap) {
         if (notifSnap.hasData) _lastNotificationCount = notifSnap.data ?? 0;
         final notifCount = _lastNotificationCount;
 
         return StreamBuilder<int>(
-          stream: getUnreadChats(),
+          stream: _unreadChatsStream,
           builder: (context, chatSnap) {
             if (chatSnap.hasData) _lastChatCount = chatSnap.data ?? 0;
             final chatCount = _lastChatCount;
 
             return StreamBuilder<int>(
-              stream: getUnreadApplications(),
+              stream: _unreadApplicationsStream,
               builder: (context, appSnap) {
                 if (appSnap.hasData) _lastApplicationCount = appSnap.data ?? 0;
                 final applicationCount = _lastApplicationCount;
 
                 return StreamBuilder<int>(
-                  stream: getUnreadProfileNotices(),
+                  stream: _unreadProfileNoticesStream,
                   builder: (context, profileSnap) {
                     final profileCount = profileSnap.data ?? 0;
 

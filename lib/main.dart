@@ -18,6 +18,7 @@ import 'screens/login_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/stroyka_background.dart';
 import 'widgets/legal_documents.dart';
+import 'widgets/account_switch_shell_gate.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -187,167 +188,201 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        if (!snapshot.hasData) {
-          sessionUnlocked = false;
-          return LoginScreen(
-            onSessionUnlocked: () {
-              if (!mounted) return;
-              setState(() => sessionUnlocked = true);
-            },
-          );
-        }
-
-        final user = snapshot.data!;
-        updateStatus(true);
-
-        return FutureBuilder<DocumentSnapshot>(
-          future: FirebaseFirestore.instance
-              .collection("users")
-              .doc(user.uid)
-              .get(),
-          builder: (context, userSnapshot) {
-            if (userSnapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
-            }
-
-            if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
-              return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                future: FirebaseFirestore.instance
-                    .collection("pending_registrations")
-                    .doc(user.uid)
-                    .get(),
-                builder: (context, draftSnapshot) {
-                  if (draftSnapshot.connectionState ==
-                      ConnectionState.waiting) {
+        return ValueListenableBuilder<String?>(
+          valueListenable: MultiAccountState.switchTargetUid,
+          builder: (context, switchTargetUid, _) {
+            return AccountSwitchShellGate(
+              authenticatedUid: snapshot.data?.uid,
+              switchTargetUid: switchTargetUid,
+              onShellQuiesced: MultiAccountState.markShellQuiesced,
+              child: Builder(
+                builder: (context) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Scaffold(
                       body: Center(child: CircularProgressIndicator()),
                     );
                   }
 
-                  if (!draftSnapshot.hasData || !draftSnapshot.data!.exists) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      ensureRegistrationDocument(user).then((_) {
-                        RegistrationValidationService.clearPending(
-                          user.email ?? "",
-                        );
-                        if (mounted) setState(() {});
-                      }).catchError((_) {
-                        if (mounted) setState(() {});
-                      });
-                    });
-                    return const Scaffold(
-                      body: Center(child: CircularProgressIndicator()),
-                    );
-                  }
-
-                  final draftData = draftSnapshot.data!.data();
-                  final role = draftData?["role"]?.toString() == "employer"
-                      ? "employer"
-                      : "worker";
-                  if (!LegalDocuments.hasAcceptedCurrentVersion(
-                    draftData,
-                    role,
-                  )) {
-                    return LegalAcceptanceScreen(
-                      role: role,
-                      userId: user.uid,
-                      onAccepted: (_) async {
-                        debugPrint("LEGALS ACCEPTED: uid=${user.uid}");
+                  if (!snapshot.hasData) {
+                    sessionUnlocked = false;
+                    return LoginScreen(
+                      onSessionUnlocked: () {
                         if (!mounted) return;
-                        setState(() {});
+                        setState(() => sessionUnlocked = true);
                       },
                     );
                   }
 
-                  return ProfileScreen(
-                    onProfileSaved: () async {
-                      await postRegistrationRefresh.refreshAfterRegistration(
-                        user.uid,
-                      );
-                      if (!mounted) return;
-                      setState(() {});
+                  final user = snapshot.data!;
+                  updateStatus(true);
+
+                  return FutureBuilder<DocumentSnapshot>(
+                    future: FirebaseFirestore.instance
+                        .collection("users")
+                        .doc(user.uid)
+                        .get(),
+                    builder: (context, userSnapshot) {
+                      if (userSnapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Scaffold(
+                          body: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
+                        return FutureBuilder<
+                            DocumentSnapshot<Map<String, dynamic>>>(
+                          future: FirebaseFirestore.instance
+                              .collection("pending_registrations")
+                              .doc(user.uid)
+                              .get(),
+                          builder: (context, draftSnapshot) {
+                            if (draftSnapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const Scaffold(
+                                body:
+                                    Center(child: CircularProgressIndicator()),
+                              );
+                            }
+
+                            if (!draftSnapshot.hasData ||
+                                !draftSnapshot.data!.exists) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                ensureRegistrationDocument(user).then((_) {
+                                  RegistrationValidationService.clearPending(
+                                    user.email ?? "",
+                                  );
+                                  if (mounted) setState(() {});
+                                }).catchError((_) {
+                                  if (mounted) setState(() {});
+                                });
+                              });
+                              return const Scaffold(
+                                body:
+                                    Center(child: CircularProgressIndicator()),
+                              );
+                            }
+
+                            final draftData = draftSnapshot.data!.data();
+                            final role =
+                                draftData?["role"]?.toString() == "employer"
+                                    ? "employer"
+                                    : "worker";
+                            if (!LegalDocuments.hasAcceptedCurrentVersion(
+                              draftData,
+                              role,
+                            )) {
+                              return LegalAcceptanceScreen(
+                                role: role,
+                                userId: user.uid,
+                                onAccepted: (_) async {
+                                  debugPrint(
+                                      "LEGALS ACCEPTED: uid=${user.uid}");
+                                  if (!mounted) return;
+                                  setState(() {});
+                                },
+                              );
+                            }
+
+                            return ProfileScreen(
+                              onProfileSaved: () async {
+                                await postRegistrationRefresh
+                                    .refreshAfterRegistration(
+                                  user.uid,
+                                );
+                                if (!mounted) return;
+                                setState(() {});
+                              },
+                            );
+                          },
+                        );
+                      }
+
+                      final userData =
+                          userSnapshot.data!.data() as Map<String, dynamic>?;
+                      if (userData?["accountDeleted"] == true) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          FirebaseAuth.instance.signOut();
+                        });
+                        return const LoginScreen();
+                      }
+
+                      final authMethod = AuthPreferencesService()
+                          .methodFromUserData(userData ?? {});
+
+                      MultiAccountService()
+                          .completePendingNewAccountLink()
+                          .catchError((error) => debugPrint(
+                                'Pending account link could not be completed: $error',
+                              ));
+                      final requiresSessionGate =
+                          authMethod == AuthPreferenceMethod.biometric ||
+                              authMethod == AuthPreferenceMethod.simpleEnter;
+                      if (requiresSessionGate && !sessionUnlocked) {
+                        return LoginScreen(
+                          onSessionUnlocked: () {
+                            if (!mounted) return;
+                            setState(() => sessionUnlocked = true);
+                          },
+                        );
+                      }
+
+                      final role = userData?["role"]?.toString() == "admin" ||
+                              userData?["role"]?.toString() == "employer"
+                          ? userData!["role"].toString()
+                          : "worker";
+
+                      if (role != "admin" &&
+                          !LegalDocuments.hasAcceptedCurrentVersion(
+                              userData, role)) {
+                        return LegalAcceptanceScreen(
+                          role: role,
+                          userId: user.uid,
+                          onAccepted: (_) async {
+                            if (!mounted) return;
+                            setState(() {});
+                          },
+                        );
+                      }
+
+                      final hasCompletedProfile =
+                          userData?["profileComplete"] == true ||
+                              userData?["onboardingComplete"] == true ||
+                              userData?["profileCreated"] == true ||
+                              (role == "worker" &&
+                                  (userData?["name"]?.toString().trim() ?? "")
+                                      .isNotEmpty) ||
+                              (role == "employer" &&
+                                  (userData?["companyName"]
+                                              ?.toString()
+                                              .trim() ??
+                                          "")
+                                      .isNotEmpty);
+
+                      if (role != "admin" && !hasCompletedProfile) {
+                        return ProfileScreen(
+                          onProfileSaved: () async {
+                            await postRegistrationRefresh
+                                .refreshAfterRegistration(
+                              user.uid,
+                            );
+                            if (!mounted) return;
+                            setState(() {});
+                          },
+                        );
+                      }
+
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          MultiAccountState.markShellRefreshed(user.uid);
+                        }
+                      });
+                      return HomeScreen(key: ValueKey('home:${user.uid}'));
                     },
                   );
                 },
-              );
-            }
-
-            final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
-            if (userData?["accountDeleted"] == true) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                FirebaseAuth.instance.signOut();
-              });
-              return const LoginScreen();
-            }
-
-            final authMethod =
-                AuthPreferencesService().methodFromUserData(userData ?? {});
-
-            MultiAccountService()
-                .completePendingNewAccountLink()
-                .catchError((error) => debugPrint(
-                      'Pending account link could not be completed: $error',
-                    ));
-            final requiresSessionGate =
-                authMethod == AuthPreferenceMethod.biometric ||
-                    authMethod == AuthPreferenceMethod.simpleEnter;
-            if (requiresSessionGate && !sessionUnlocked) {
-              return LoginScreen(
-                onSessionUnlocked: () {
-                  if (!mounted) return;
-                  setState(() => sessionUnlocked = true);
-                },
-              );
-            }
-
-            final role = userData?["role"]?.toString() == "admin" ||
-                    userData?["role"]?.toString() == "employer"
-                ? userData!["role"].toString()
-                : "worker";
-
-            if (role != "admin" &&
-                !LegalDocuments.hasAcceptedCurrentVersion(userData, role)) {
-              return LegalAcceptanceScreen(
-                role: role,
-                userId: user.uid,
-                onAccepted: (_) async {
-                  if (!mounted) return;
-                  setState(() {});
-                },
-              );
-            }
-
-            final hasCompletedProfile = userData?["profileComplete"] == true ||
-                userData?["onboardingComplete"] == true ||
-                userData?["profileCreated"] == true ||
-                (role == "worker" &&
-                    (userData?["name"]?.toString().trim() ?? "").isNotEmpty) ||
-                (role == "employer" &&
-                    (userData?["companyName"]?.toString().trim() ?? "")
-                        .isNotEmpty);
-
-            if (role != "admin" && !hasCompletedProfile) {
-              return ProfileScreen(
-                onProfileSaved: () async {
-                  await postRegistrationRefresh.refreshAfterRegistration(
-                    user.uid,
-                  );
-                  if (!mounted) return;
-                  setState(() {});
-                },
-              );
-            }
-
-            MultiAccountState.markShellRefreshed(user.uid);
-            return HomeScreen(key: ValueKey('home:${user.uid}'));
+              ),
+            );
           },
         );
       },

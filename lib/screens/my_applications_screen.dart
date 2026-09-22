@@ -24,6 +24,9 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   String applicationSection = "single";
   int refreshTick = 0;
   final Map<String, String> employerLogoCache = {};
+  Stream<List<QueryDocumentSnapshot>>? _applicationsStream;
+  String? _applicationsStreamUid;
+  int? _applicationsStreamRefreshTick;
 
   Future<void> refreshApplications() async {
     setState(() => refreshTick++);
@@ -416,24 +419,32 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       emit();
     });
 
-    void clearTeamApplicationSubscriptions() {
-      for (final sub in teamApplicationSubs) {
-        sub.cancel();
-      }
+    var cancelled = false;
+    var teamGeneration = 0;
+
+    Future<void> clearTeamApplicationSubscriptions() async {
+      final subscriptions =
+          List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>.from(
+              teamApplicationSubs);
       teamApplicationSubs.clear();
       teamDocsByTeam.clear();
+      await Future.wait(subscriptions.map((sub) => sub.cancel()));
     }
 
     teamsSub =
         FirebaseFirestore.instance.collection("teams").snapshots().listen(
-      (snapshot) {
+      (snapshot) async {
+        final generation = ++teamGeneration;
         final teamIds = snapshot.docs
             .where((doc) => isUserTeam(doc.data()))
             .map((doc) => doc.id)
             .toSet()
             .toList();
 
-        clearTeamApplicationSubscriptions();
+        await clearTeamApplicationSubscriptions();
+        if (cancelled || controller.isClosed || generation != teamGeneration) {
+          return;
+        }
 
         if (teamIds.isEmpty) {
           hasTeamSnapshot = true;
@@ -450,6 +461,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
               .where("teamId", isEqualTo: teamId)
               .snapshots(includeMetadataChanges: true)
               .listen((appSnapshot) {
+            if (cancelled || generation != teamGeneration) return;
             received++;
             teamDocsByTeam[teamId] = appSnapshot.docs.where((doc) {
               return isRelevantTeamApplication(doc.data(), teamId);
@@ -465,20 +477,37 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
           teamApplicationSubs.add(sub);
         }
       },
-      onError: (_) {
-        clearTeamApplicationSubscriptions();
+      onError: (_) async {
+        final generation = ++teamGeneration;
+        await clearTeamApplicationSubscriptions();
+        if (cancelled || controller.isClosed || generation != teamGeneration) {
+          return;
+        }
         hasTeamSnapshot = true;
         emit();
       },
     );
 
     controller.onCancel = () async {
+      cancelled = true;
+      teamGeneration++;
       await singleSub.cancel();
       await teamsSub.cancel();
-      clearTeamApplicationSubscriptions();
+      await clearTeamApplicationSubscriptions();
     };
 
     return controller.stream;
+  }
+
+  Stream<List<QueryDocumentSnapshot>> applicationsStreamFor(String userId) {
+    if (_applicationsStream == null ||
+        _applicationsStreamUid != userId ||
+        _applicationsStreamRefreshTick != refreshTick) {
+      _applicationsStream = getApplicationsStream(userId);
+      _applicationsStreamUid = userId;
+      _applicationsStreamRefreshTick = refreshTick;
+    }
+    return _applicationsStream!;
   }
 
   @override
@@ -506,7 +535,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
             Expanded(
               child: StreamBuilder<List<QueryDocumentSnapshot>>(
                 key: ValueKey("applications-$refreshTick"),
-                stream: getApplicationsStream(user.uid),
+                stream: applicationsStreamFor(user.uid),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());

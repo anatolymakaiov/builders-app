@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/services/multi_account_service.dart';
 
 void main() {
+  setUp(MultiAccountState.resetForTesting);
+
   test('linked employer identity keeps only safe display fields', () {
     final identity = LinkedAccountIdentity.fromMap({
       'uid': 'employer-a',
@@ -110,6 +112,34 @@ void main() {
     MultiAccountState.invalidate();
 
     expect(MultiAccountState.revision.value, before + 1);
+  });
+
+  test('auth transition waits until the old shell confirms teardown', () async {
+    MultiAccountState.beginSwitch('employer-b');
+    var authTransitionReleased = false;
+    final wait = MultiAccountState.waitForShellQuiesced('employer-b').then((_) {
+      authTransitionReleased = true;
+    });
+
+    await Future<void>.delayed(Duration.zero);
+    expect(authTransitionReleased, isFalse);
+    expect(MultiAccountState.switchTargetUid.value, 'employer-b');
+
+    MultiAccountState.markShellQuiesced('employer-b');
+    await wait;
+
+    expect(authTransitionReleased, isTrue);
+  });
+
+  test('shell refresh clears only the matching authenticated target', () {
+    MultiAccountState.beginSwitch('worker-a');
+    MultiAccountState.markShellQuiesced('worker-a');
+
+    MultiAccountState.markShellRefreshed('employer-b');
+    expect(MultiAccountState.switchTargetUid.value, 'worker-a');
+
+    MultiAccountState.markShellRefreshed('worker-a');
+    expect(MultiAccountState.switchTargetUid.value, isNull);
   });
 
   test('own-profile visibility follows the active authenticated uid', () {
