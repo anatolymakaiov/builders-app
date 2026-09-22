@@ -1,7 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
 import '../services/multi_account_service.dart';
+import '../theme/app_theme.dart';
 import 'app_cached_image.dart';
 
 Future<void> showAccountSwitcher(
@@ -38,24 +41,127 @@ class AccountIdentityButton extends StatelessWidget {
     super.key,
     required this.name,
     required this.onPressed,
+    this.avatarUrl = '',
+    this.isEmployer = false,
   });
 
   final String name;
+  final String avatarUrl;
+  final bool isEmployer;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return TextButton.icon(
-      onPressed: onPressed,
-      iconAlignment: IconAlignment.end,
-      icon: const Icon(Icons.keyboard_arrow_down),
-      label: Text(
-        name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontWeight: FontWeight.w900),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 230, minHeight: 44),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: AppColors.blueprintLine.withValues(alpha: 0.78),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppCachedCircleAvatar(
+                  imageUrl: avatarUrl,
+                  fallbackIcon: isEmployer
+                      ? Icons.business_outlined
+                      : Icons.person_outline,
+                  radius: 14,
+                ),
+                const SizedBox(width: 7),
+                Flexible(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.blueprintLine,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                const Icon(
+                  Icons.keyboard_arrow_down,
+                  color: AppColors.blueprintLine,
+                  size: 21,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
+  }
+}
+
+class CurrentAccountIdentityButton extends StatelessWidget {
+  const CurrentAccountIdentityButton({
+    super.key,
+    required this.fallbackName,
+    required this.isEmployer,
+    required this.onPressed,
+  });
+
+  final String fallbackName;
+  final bool isEmployer;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return const SizedBox.shrink();
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream:
+          FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() ?? const <String, dynamic>{};
+        final name = _firstText(
+            data,
+            isEmployer
+                ? const ['companyName', 'name', 'displayName', 'username']
+                : const ['name', 'fullName', 'displayName', 'username']);
+        final avatar = _firstText(
+            data,
+            isEmployer
+                ? const [
+                    'companyLogo',
+                    'companyLogoUrl',
+                    'companyAvatarUrl',
+                    'avatarUrl',
+                    'photoUrl',
+                  ]
+                : const [
+                    'photo',
+                    'photoUrl',
+                    'profilePhotoUrl',
+                    'avatarUrl',
+                  ]);
+        return AccountIdentityButton(
+          name: name.isEmpty ? fallbackName : name,
+          avatarUrl: avatar,
+          isEmployer: isEmployer,
+          onPressed: onPressed,
+        );
+      },
+    );
+  }
+
+  String _firstText(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return '';
   }
 }
 
@@ -77,11 +183,30 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
   late Future<List<LinkedAccountIdentity>> accounts;
   bool busy = false;
   String? error;
+  List<LinkedAccountIdentity> loadedAccounts = const [];
 
   @override
   void initState() {
     super.initState();
-    accounts = service.linkedAccounts();
+    accounts = _loadAccounts();
+    MultiAccountState.revision.addListener(_handleAccountStateChange);
+  }
+
+  @override
+  void dispose() {
+    MultiAccountState.revision.removeListener(_handleAccountStateChange);
+    super.dispose();
+  }
+
+  void _handleAccountStateChange() {
+    if (!mounted || busy) return;
+    setState(() => accounts = _loadAccounts());
+  }
+
+  Future<List<LinkedAccountIdentity>> _loadAccounts() async {
+    final loaded = await service.linkedAccounts();
+    loadedAccounts = loaded;
+    return loaded;
   }
 
   @override
@@ -118,9 +243,8 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
                 if (snapshot.hasError) {
                   return Center(
                     child: TextButton.icon(
-                      onPressed: () => setState(
-                        () => accounts = service.linkedAccounts(),
-                      ),
+                      onPressed: () =>
+                          setState(() => accounts = _loadAccounts()),
                       icon: const Icon(Icons.refresh),
                       label: const Text('Could not load accounts. Retry'),
                     ),
@@ -133,8 +257,10 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final account = items[index];
-                    final current =
-                        FirebaseAuth.instance.currentUser?.uid == account.uid;
+                    final current = isCurrentLinkedAccount(
+                      FirebaseAuth.instance.currentUser?.uid,
+                      account.uid,
+                    );
                     return ListTile(
                       enabled: !busy,
                       onTap: current ? null : () => _switch(account.uid),
@@ -180,6 +306,7 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
   }
 
   Future<void> _switch(String uid) async {
+    if (busy) return;
     setState(() {
       busy = true;
       error = null;
@@ -187,17 +314,18 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
     try {
       await service.switchTo(uid);
       if (mounted) Navigator.pop(context);
-    } catch (_) {
+    } catch (switchError) {
       if (mounted) {
         setState(() {
           busy = false;
-          error = 'Could not switch account. Please try again.';
+          error = _switchErrorMessage(switchError);
         });
       }
     }
   }
 
   Future<void> _showAddAccount() async {
+    if (busy) return;
     final choice = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -241,7 +369,7 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
     final password = TextEditingController();
     String? dialogError;
     var submitting = false;
-    final linked = await showDialog<bool>(
+    final linked = await showDialog<LinkedAccountIdentity>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
@@ -279,8 +407,7 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
           ),
           actions: [
             TextButton(
-              onPressed:
-                  submitting ? null : () => Navigator.pop(dialogContext, false),
+              onPressed: submitting ? null : () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
             FilledButton(
@@ -292,12 +419,12 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
                         dialogError = null;
                       });
                       try {
-                        await service.linkExistingAccount(
+                        final identity = await service.linkExistingAccount(
                           email: email.text,
                           password: password.text,
                         );
                         if (dialogContext.mounted) {
-                          Navigator.pop(dialogContext, true);
+                          Navigator.pop(dialogContext, identity);
                         }
                       } on FirebaseAuthException catch (authError) {
                         setDialogState(() {
@@ -330,8 +457,45 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
     );
     email.dispose();
     password.dispose();
-    if (linked == true && mounted) {
-      setState(() => accounts = service.linkedAccounts());
+    if (linked != null && mounted) {
+      final merged = mergeLinkedAccountIdentity(loadedAccounts, linked);
+      setState(() {
+        loadedAccounts = merged;
+        accounts = Future.value(merged);
+        error = null;
+      });
+      try {
+        final refreshed = await _loadAccounts();
+        if (mounted) {
+          setState(() => accounts = Future.value(refreshed));
+        }
+      } catch (_) {
+        // The authoritative link succeeded; retain its returned safe identity.
+      }
     }
+  }
+
+  String _switchErrorMessage(Object error) {
+    final code = error is FirebaseFunctionsException
+        ? error.code
+        : error is FirebaseAuthException
+            ? error.code
+            : '';
+    return switch (code) {
+      'permission-denied' =>
+        'This account is no longer linked to your current account.',
+      'unauthenticated' ||
+      'user-token-expired' =>
+        'Your session expired. Please sign in again.',
+      'user-disabled' ||
+      'failed-precondition' =>
+        'This account is currently unavailable.',
+      'network-request-failed' ||
+      'unavailable' =>
+        'Check your internet connection and try again.',
+      'account-switch-target-mismatch' =>
+        'The requested account could not be activated.',
+      _ => 'Could not switch account. Please try again.',
+    };
   }
 }

@@ -391,7 +391,20 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                     builder: (context) => const ProfileHamburgerButton(),
                   )
             : null,
-        title: const Text("Company Profile"),
+        title: isMyCompany
+            ? CurrentAccountIdentityButton(
+                fallbackName: 'Company',
+                isEmployer: true,
+                onPressed: () => showAccountSwitcher(
+                  context,
+                  web: false,
+                  onCreateNewAccount: () async {
+                    await MultiAccountService().prepareCreateNewAccount();
+                    await FirebaseAuth.instance.signOut();
+                  },
+                ),
+              )
+            : const Text("Company Profile"),
         actions: [
           if (isMyCompany) ...[
             IconButton(
@@ -588,21 +601,6 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                               ),
                             ),
                           ],
-                        ),
-                      ),
-                    ),
-                  if (isMyCompany)
-                    Center(
-                      child: AccountIdentityButton(
-                        name: name.isEmpty ? 'Company' : name,
-                        onPressed: () => showAccountSwitcher(
-                          context,
-                          web: false,
-                          onCreateNewAccount: () async {
-                            await MultiAccountService()
-                                .prepareCreateNewAccount();
-                            await FirebaseAuth.instance.signOut();
-                          },
                         ),
                       ),
                     ),

@@ -32,6 +32,45 @@ class LinkedAccountIdentity {
   }
 }
 
+List<LinkedAccountIdentity> mergeLinkedAccountIdentity(
+  List<LinkedAccountIdentity> current,
+  LinkedAccountIdentity linked,
+) {
+  final merged = <LinkedAccountIdentity>[
+    for (final account in current)
+      if (account.uid != linked.uid) account,
+    linked,
+  ];
+  return List<LinkedAccountIdentity>.unmodifiable(merged);
+}
+
+@visibleForTesting
+void verifyLinkedAccountSwitchTarget({
+  required String expectedUid,
+  required String? authenticatedUid,
+}) {
+  if (authenticatedUid != expectedUid) {
+    throw FirebaseAuthException(
+      code: 'account-switch-target-mismatch',
+      message: 'The requested account could not be activated.',
+    );
+  }
+}
+
+bool isCurrentLinkedAccount(String? currentUid, String accountUid) {
+  return currentUid != null && currentUid == accountUid;
+}
+
+class MultiAccountState {
+  MultiAccountState._();
+
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
+  static void invalidate() {
+    revision.value++;
+  }
+}
+
 class MultiAccountService {
   MultiAccountService({
     FirebaseAuth? auth,
@@ -63,7 +102,7 @@ class MultiAccountService {
         .toList(growable: false);
   }
 
-  Future<void> linkExistingAccount({
+  Future<LinkedAccountIdentity> linkExistingAccount({
     required String email,
     required String password,
   }) async {
@@ -95,16 +134,48 @@ class MultiAccountService {
           message: 'Could not verify the account.',
         );
       }
-      await _functions.httpsCallable('linkAuthenticatedAccount').call({
+      final result =
+          await _functions.httpsCallable('linkAuthenticatedAccount').call({
         'secondaryIdToken': idToken,
       });
+      final payload = Map<String, dynamic>.from(result.data as Map);
+      final target = payload['target'];
+      if (target is! Map) {
+        throw FirebaseAuthException(
+          code: 'missing-linked-account',
+          message: 'The linked account could not be loaded.',
+        );
+      }
+      final linked = LinkedAccountIdentity.fromMap(
+        Map<String, dynamic>.from(target),
+      );
+      if (linked.uid.isEmpty) {
+        throw FirebaseAuthException(
+          code: 'missing-linked-account',
+          message: 'The linked account could not be loaded.',
+        );
+      }
+      MultiAccountState.invalidate();
+      return linked;
     } finally {
-      await secondaryAuth.signOut();
-      await secondaryApp.delete();
+      try {
+        await secondaryAuth.signOut();
+      } catch (error) {
+        if (kDebugMode) {
+          debugPrint('MULTI_ACCOUNT_SECONDARY_SIGN_OUT_FAILED: $error');
+        }
+      }
+      try {
+        await secondaryApp.delete();
+      } catch (error) {
+        if (kDebugMode) {
+          debugPrint('MULTI_ACCOUNT_SECONDARY_APP_DELETE_FAILED: $error');
+        }
+      }
     }
   }
 
-  Future<void> switchTo(String targetUid) async {
+  Future<User> switchTo(String targetUid) async {
     final currentUid = _auth.currentUser?.uid;
     if (currentUid == null) {
       throw FirebaseAuthException(
@@ -112,21 +183,62 @@ class MultiAccountService {
         message: 'Sign in before switching accounts.',
       );
     }
-    if (currentUid == targetUid) return;
+    if (currentUid == targetUid) return _auth.currentUser!;
 
-    final result = await _functions
-        .httpsCallable('createLinkedAccountSwitchToken')
-        .call({'targetUid': targetUid});
-    final payload = Map<String, dynamic>.from(result.data as Map);
-    final token = (payload['token'] ?? '').toString();
-    if (token.isEmpty) {
-      throw FirebaseAuthException(
-        code: 'missing-custom-token',
-        message: 'Could not authorize the account switch.',
+    if (kDebugMode) {
+      debugPrint(
+        'MULTI_ACCOUNT_SWITCH_START sourceUid=$currentUid '
+        'targetUid=$targetUid platform=${kIsWeb ? 'web' : 'mobile'}',
       );
     }
-    await _auth.signInWithCustomToken(token);
-    await _auth.currentUser?.getIdToken(true);
+
+    try {
+      final result = await _functions
+          .httpsCallable('createLinkedAccountSwitchToken')
+          .call({'targetUid': targetUid});
+      final payload = Map<String, dynamic>.from(result.data as Map);
+      final token = (payload['token'] ?? '').toString();
+      if (token.isEmpty) {
+        throw FirebaseAuthException(
+          code: 'missing-custom-token',
+          message: 'Could not authorize the account switch.',
+        );
+      }
+      final credential = await _auth.signInWithCustomToken(token);
+      final switchedUser = credential.user ?? _auth.currentUser;
+      verifyLinkedAccountSwitchTarget(
+        expectedUid: targetUid,
+        authenticatedUid: switchedUser?.uid,
+      );
+      MultiAccountState.invalidate();
+      if (kDebugMode) {
+        debugPrint(
+          'MULTI_ACCOUNT_SWITCH_SUCCESS sourceUid=$currentUid '
+          'targetUid=$targetUid',
+        );
+      }
+      return switchedUser!;
+    } catch (error) {
+      if (kDebugMode) {
+        final code = error is FirebaseFunctionsException
+            ? error.code
+            : error is FirebaseAuthException
+                ? error.code
+                : error.runtimeType.toString();
+        debugPrint(
+          'MULTI_ACCOUNT_SWITCH_FAILED sourceUid=$currentUid '
+          'targetUid=$targetUid code=$code',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> unlinkAccount(String targetUid) async {
+    await _functions.httpsCallable('unlinkAccount').call({
+      'targetUid': targetUid,
+    });
+    MultiAccountState.invalidate();
   }
 
   Future<void> prepareCreateNewAccount() async {
@@ -152,6 +264,7 @@ class MultiAccountService {
         'sessionToken': token,
       });
       await _secureStorage.delete(key: _pendingLinkSessionKey);
+      MultiAccountState.invalidate();
     } on FirebaseFunctionsException catch (error) {
       if (error.code == 'invalid-argument' ||
           error.code == 'not-found' ||

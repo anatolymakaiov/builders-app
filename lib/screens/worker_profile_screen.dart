@@ -1571,7 +1571,20 @@ class WorkerProfileScreen extends StatelessWidget {
                     builder: (context) => const ProfileHamburgerButton(),
                   )
                 : null,
-        title: Text(showOwnProfileControls ? "Profile" : "Worker Profile"),
+        title: showOwnProfileControls
+            ? CurrentAccountIdentityButton(
+                fallbackName: 'Worker',
+                isEmployer: false,
+                onPressed: () => showAccountSwitcher(
+                  context,
+                  web: false,
+                  onCreateNewAccount: () async {
+                    await MultiAccountService().prepareCreateNewAccount();
+                    await FirebaseAuth.instance.signOut();
+                  },
+                ),
+              )
+            : const Text("Worker Profile"),
         actions: [
           if (showOwnProfileControls) ...[
             IconButton(
@@ -1783,21 +1796,6 @@ class WorkerProfileScreen extends StatelessWidget {
                               ),
                             ),
                           ],
-                        ),
-                      ),
-                    ),
-                  if (isMyProfile)
-                    Center(
-                      child: AccountIdentityButton(
-                        name: name.toString(),
-                        onPressed: () => showAccountSwitcher(
-                          context,
-                          web: false,
-                          onCreateNewAccount: () async {
-                            await MultiAccountService()
-                                .prepareCreateNewAccount();
-                            await FirebaseAuth.instance.signOut();
-                          },
                         ),
                       ),
                     ),
