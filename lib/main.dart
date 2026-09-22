@@ -185,7 +185,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.userChanges(),
+      stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -204,7 +204,6 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
         }
 
         final user = snapshot.data!;
-
         updateStatus(true);
 
         return FutureBuilder<DocumentSnapshot>(
@@ -347,6 +346,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
               );
             }
 
+            MultiAccountState.markShellRefreshed(user.uid);
             return HomeScreen(key: ValueKey('home:${user.uid}'));
           },
         );

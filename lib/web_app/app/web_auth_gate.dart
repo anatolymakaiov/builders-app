@@ -14,7 +14,7 @@ class WebAuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.userChanges(),
+      stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnapshot) {
         if (authSnapshot.connectionState == ConnectionState.waiting) {
           return const _WebAuthLoading();
@@ -24,7 +24,6 @@ class WebAuthGate extends StatelessWidget {
         if (user == null) {
           return const WebLoginPage();
         }
-
         return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           future: FirebaseFirestore.instance
               .collection('users')
@@ -42,6 +41,7 @@ class WebAuthGate extends StatelessWidget {
                   .catchError((_) {});
             }
             final role = (profile['role'] ?? '').toString();
+            MultiAccountState.markShellRefreshed(user.uid);
             return WebShell(
               key: ValueKey('web-shell:${user.uid}'),
               user: user,

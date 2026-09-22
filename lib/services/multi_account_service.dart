@@ -61,13 +61,46 @@ bool isCurrentLinkedAccount(String? currentUid, String accountUid) {
   return currentUid != null && currentUid == accountUid;
 }
 
+bool isAuthenticatedOwnProfile(String? authenticatedUid, String profileUid) {
+  return authenticatedUid != null && authenticatedUid == profileUid;
+}
+
+String rebaseOwnProfileUidAfterAuthChange({
+  required String previousAuthenticatedUid,
+  required String authenticatedUid,
+  required String viewedProfileUid,
+}) {
+  return viewedProfileUid == previousAuthenticatedUid
+      ? authenticatedUid
+      : viewedProfileUid;
+}
+
 class MultiAccountState {
   MultiAccountState._();
 
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
+  static String? pendingSwitchTargetUid;
 
   static void invalidate() {
     revision.value++;
+  }
+
+  static void beginSwitch(String targetUid) {
+    pendingSwitchTargetUid = targetUid;
+  }
+
+  static void cancelSwitch(String targetUid) {
+    if (pendingSwitchTargetUid == targetUid) pendingSwitchTargetUid = null;
+  }
+
+  static void markShellRefreshed(String authenticatedUid) {
+    if (pendingSwitchTargetUid != authenticatedUid) return;
+    if (kDebugMode) {
+      debugPrint(
+        'MULTI_ACCOUNT_SWITCH_SHELL_REFRESH authenticatedUid=$authenticatedUid',
+      );
+    }
+    pendingSwitchTargetUid = null;
   }
 }
 
@@ -192,46 +225,99 @@ class MultiAccountService {
       );
     }
 
+    MultiAccountState.beginSwitch(targetUid);
+    HttpsCallableResult<dynamic> result;
     try {
-      final result = await _functions
+      result = await _functions
           .httpsCallable('createLinkedAccountSwitchToken')
           .call({'targetUid': targetUid});
-      final payload = Map<String, dynamic>.from(result.data as Map);
-      final token = (payload['token'] ?? '').toString();
-      if (token.isEmpty) {
-        throw FirebaseAuthException(
-          code: 'missing-custom-token',
-          message: 'Could not authorize the account switch.',
-        );
-      }
-      final credential = await _auth.signInWithCustomToken(token);
-      final switchedUser = credential.user ?? _auth.currentUser;
+    } catch (error) {
+      _logSwitchFailure(
+        sourceUid: currentUid,
+        targetUid: targetUid,
+        stage: 'callable',
+        error: error,
+      );
+      MultiAccountState.cancelSwitch(targetUid);
+      rethrow;
+    }
+    final payload = Map<String, dynamic>.from(result.data as Map);
+    final token = (payload['token'] ?? '').toString();
+    final authorizedTargetUid = (payload['targetUid'] ?? '').toString();
+    if (token.isEmpty ||
+        (authorizedTargetUid.isNotEmpty && authorizedTargetUid != targetUid)) {
+      final error = FirebaseAuthException(
+        code: token.isEmpty
+            ? 'missing-custom-token'
+            : 'account-switch-target-mismatch',
+        message: 'Could not authorize the account switch.',
+      );
+      _logSwitchFailure(
+        sourceUid: currentUid,
+        targetUid: targetUid,
+        stage: 'callable',
+        error: error,
+      );
+      MultiAccountState.cancelSwitch(targetUid);
+      throw error;
+    }
+    if (kDebugMode) debugPrint('MULTI_ACCOUNT_SWITCH_TOKEN_OK');
+
+    UserCredential credential;
+    try {
+      credential = await _auth.signInWithCustomToken(token);
+    } catch (error) {
+      _logSwitchFailure(
+        sourceUid: currentUid,
+        targetUid: targetUid,
+        stage: 'custom-token-auth',
+        error: error,
+      );
+      MultiAccountState.cancelSwitch(targetUid);
+      rethrow;
+    }
+    final switchedUser = credential.user ?? _auth.currentUser;
+    if (kDebugMode) {
+      debugPrint(
+        'MULTI_ACCOUNT_SWITCH_AUTH_OK authenticatedUid=${switchedUser?.uid}',
+      );
+    }
+    try {
       verifyLinkedAccountSwitchTarget(
         expectedUid: targetUid,
         authenticatedUid: switchedUser?.uid,
       );
-      MultiAccountState.invalidate();
-      if (kDebugMode) {
-        debugPrint(
-          'MULTI_ACCOUNT_SWITCH_SUCCESS sourceUid=$currentUid '
-          'targetUid=$targetUid',
-        );
-      }
-      return switchedUser!;
     } catch (error) {
-      if (kDebugMode) {
-        final code = error is FirebaseFunctionsException
-            ? error.code
-            : error is FirebaseAuthException
-                ? error.code
-                : error.runtimeType.toString();
-        debugPrint(
-          'MULTI_ACCOUNT_SWITCH_FAILED sourceUid=$currentUid '
-          'targetUid=$targetUid code=$code',
-        );
-      }
+      _logSwitchFailure(
+        sourceUid: currentUid,
+        targetUid: targetUid,
+        stage: 'target-validation',
+        error: error,
+      );
+      MultiAccountState.cancelSwitch(targetUid);
       rethrow;
     }
+    MultiAccountState.invalidate();
+    if (kDebugMode) debugPrint('MULTI_ACCOUNT_SWITCH_SUCCESS');
+    return switchedUser!;
+  }
+
+  void _logSwitchFailure({
+    required String sourceUid,
+    required String targetUid,
+    required String stage,
+    required Object error,
+  }) {
+    if (!kDebugMode) return;
+    final code = error is FirebaseFunctionsException
+        ? error.code
+        : error is FirebaseAuthException
+            ? error.code
+            : error.runtimeType.toString();
+    debugPrint(
+      'MULTI_ACCOUNT_SWITCH_FAILED sourceUid=$sourceUid targetUid=$targetUid '
+      'stage=$stage code=$code',
+    );
   }
 
   Future<void> unlinkAccount(String targetUid) async {

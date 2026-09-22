@@ -68,7 +68,8 @@ class _WebProfilePageState extends State<WebProfilePage> {
   final localProfileUpdates = <String, dynamic>{};
   Map<String, dynamic> latestProfileData = const <String, dynamic>{};
 
-  bool get ownProfile => widget.user.uid == viewedUserId;
+  bool get ownProfile =>
+      isAuthenticatedOwnProfile(widget.user.uid, viewedUserId);
   bool get isEmployer => viewedRole == 'employer';
   bool get isWorker => viewedRole == 'worker';
 

@@ -8,6 +8,10 @@ const sharp = require("sharp");
 const {
   hasAcceptedWorkRelationship,
 } = require("./review_eligibility");
+const {
+  normalizedMemberIds,
+  selectAuthorizedAccountLinkGroup,
+} = require("./account_linking");
 
 admin.initializeApp();
 
@@ -134,15 +138,19 @@ async function linkAccountUids(transaction, sourceUid, targetUid) {
     groupSnapshots.set(groupId, await transaction.get(ref));
   }
 
-  if (sourceGroupId && sourceGroupId === targetGroupId) {
-    return sourceGroupId;
-  }
-
-  const sourceMembers = sourceGroupId
-    ? (groupSnapshots.get(sourceGroupId)?.data()?.memberIds || [])
+  const sourceGroup = sourceGroupId ? groupSnapshots.get(sourceGroupId) : null;
+  const targetGroup = targetGroupId ? groupSnapshots.get(targetGroupId) : null;
+  const storedSourceMembers = normalizedMemberIds(sourceGroup?.data()?.memberIds);
+  const storedTargetMembers = normalizedMemberIds(targetGroup?.data()?.memberIds);
+  const sourceGroupIsValid = sourceGroup?.exists &&
+    storedSourceMembers.includes(sourceUid);
+  const targetGroupIsValid = targetGroup?.exists &&
+    storedTargetMembers.includes(targetUid);
+  const sourceMembers = sourceGroupIsValid
+    ? storedSourceMembers
     : [sourceUid];
-  const targetMembers = targetGroupId
-    ? (groupSnapshots.get(targetGroupId)?.data()?.memberIds || [])
+  const targetMembers = targetGroupIsValid
+    ? storedTargetMembers
     : [targetUid];
   const memberIds = [...new Set([
     ...sourceMembers.map(String),
@@ -157,13 +165,14 @@ async function linkAccountUids(transaction, sourceUid, targetUid) {
     );
   }
 
-  const groupId = sourceGroupId || targetGroupId ||
+  const groupId = (sourceGroupIsValid ? sourceGroupId : "") ||
+    (targetGroupIsValid ? targetGroupId : "") ||
     db.collection("account_link_groups").doc().id;
   const groupRef = db.collection("account_link_groups").doc(groupId);
   transaction.set(groupRef, {
     memberIds,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    ...(sourceGroupId || targetGroupId ? {} : {
+    ...(groupSnapshots.get(groupId)?.exists ? {} : {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     }),
   }, { merge: true });
@@ -259,21 +268,71 @@ exports.createLinkedAccountSwitchToken = onCall(async (request) => {
   assertLinkableUser(targetUser);
   const sourceGroupId = cleanText(sourceMember.data()?.groupId);
   const targetGroupId = cleanText(targetMember.data()?.groupId);
-  if (!sourceGroupId || sourceGroupId !== targetGroupId) {
-    throw new HttpsError("permission-denied", "That account is not linked.");
-  }
-  const group = await db.collection("account_link_groups").doc(sourceGroupId).get();
-  const memberIds = group.data()?.memberIds;
-  if (!Array.isArray(memberIds) ||
-      !memberIds.includes(sourceUid) ||
-      !memberIds.includes(targetUid)) {
-    throw new HttpsError("permission-denied", "That account is not linked.");
-  }
-  const token = await admin.auth().createCustomToken(targetUid, {
-    stroykaAccountSwitch: true,
+  const candidateGroupIds = [...new Set(
+    [sourceGroupId, targetGroupId].filter(Boolean),
+  )];
+  const candidateGroups = await Promise.all(candidateGroupIds.map(async (groupId) => {
+    const snapshot = await db.collection("account_link_groups").doc(groupId).get();
+    return {
+      groupId,
+      exists: snapshot.exists,
+      memberIds: snapshot.data()?.memberIds,
+    };
+  }));
+  const authorizedGroupId = selectAuthorizedAccountLinkGroup(
     sourceUid,
+    targetUid,
+    candidateGroups,
+  );
+  console.info("MULTI_ACCOUNT_SWITCH_TOKEN_AUTH", {
+    sourceUid,
+    targetUid,
+    sourceGroupExists: candidateGroups.some(
+      (group) => group.groupId === sourceGroupId && group.exists,
+    ),
+    targetGroupExists: candidateGroups.some(
+      (group) => group.groupId === targetGroupId && group.exists,
+    ),
+    candidateGroupCount: candidateGroups.filter((group) => group.exists).length,
+    authorized: Boolean(authorizedGroupId && authorizedGroupId !== "ambiguous"),
   });
-  return { token };
+  if (authorizedGroupId === "ambiguous") {
+    throw new HttpsError(
+      "failed-precondition",
+      "Linked account membership is inconsistent. Re-link the account.",
+    );
+  }
+  if (!authorizedGroupId) {
+    throw new HttpsError("permission-denied", "That account is not linked.");
+  }
+  if (sourceGroupId !== authorizedGroupId || targetGroupId !== authorizedGroupId) {
+    const batch = db.batch();
+    for (const uid of [sourceUid, targetUid]) {
+      batch.set(db.collection("account_link_members").doc(uid), {
+        groupId: authorizedGroupId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+    await batch.commit();
+  }
+  let token;
+  try {
+    token = await admin.auth().createCustomToken(targetUid, {
+      stroykaAccountSwitch: true,
+      sourceUid,
+    });
+  } catch (error) {
+    console.error("MULTI_ACCOUNT_SWITCH_TOKEN_CREATE_FAILED", {
+      sourceUid,
+      targetUid,
+      code: cleanText(error?.code) || "unknown",
+    });
+    throw new HttpsError(
+      "failed-precondition",
+      "Account switching is temporarily unavailable. Please contact support.",
+    );
+  }
+  return { token, targetUid };
 });
 
 exports.unlinkAccount = onCall(async (request) => {

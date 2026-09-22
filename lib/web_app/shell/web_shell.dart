@@ -10,6 +10,7 @@ import '../pages/jobs/web_jobs_page.dart';
 import '../pages/jobs/web_post_job_page.dart';
 import '../pages/map/web_map_page.dart';
 import '../../services/application_status_utils.dart';
+import '../../services/multi_account_service.dart';
 import '../services/web_account_data_service.dart';
 import '../services/web_data_state.dart';
 import '../pages/profile/web_profile_page.dart';
@@ -74,6 +75,23 @@ class _WebShellState extends State<WebShell> {
     }
     if (oldWidget.user.uid != widget.user.uid ||
         oldWidget.role != widget.role) {
+      final wasShowingOwnProfile = profileRoute?.userId == oldWidget.user.uid;
+      profileHistory.clear();
+      if (wasShowingOwnProfile) {
+        profileRoute = _WebProfileRoute(
+          userId: rebaseOwnProfileUidAfterAuthChange(
+            previousAuthenticatedUid: oldWidget.user.uid,
+            authenticatedUid: widget.user.uid,
+            viewedProfileUid: profileRoute!.userId,
+          ),
+          role: widget.role,
+        );
+      }
+      initialChatId = null;
+      applicationsRoute = null;
+      initialJobId = null;
+      initialMapJobId = null;
+      secondaryRoute = null;
       badgesStream = WebAccountDataService().badges(
         uid: widget.user.uid,
         role: widget.role,

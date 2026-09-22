@@ -378,12 +378,17 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isMyCompany = FirebaseAuth.instance.currentUser?.uid == widget.userId;
+    final isMyCompany = isAuthenticatedOwnProfile(
+      FirebaseAuth.instance.currentUser?.uid,
+      widget.userId,
+    );
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
       drawer: isMyCompany ? const ProfileHamburgerMenu(role: "employer") : null,
       appBar: AppBar(
+        centerTitle: !isMyCompany,
+        titleSpacing: isMyCompany ? 0 : null,
         leading: isMyCompany
             ? widget.showBackButton
                 ? const BackButton()

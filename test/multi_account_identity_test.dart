@@ -111,4 +111,29 @@ void main() {
 
     expect(MultiAccountState.revision.value, before + 1);
   });
+
+  test('own-profile visibility follows the active authenticated uid', () {
+    expect(isAuthenticatedOwnProfile('worker-a', 'worker-a'), isTrue);
+    expect(isAuthenticatedOwnProfile('worker-a', 'worker-b'), isFalse);
+    expect(isAuthenticatedOwnProfile(null, 'worker-a'), isFalse);
+  });
+
+  test('auth uid change rebases an open own profile to the new identity', () {
+    expect(
+      rebaseOwnProfileUidAfterAuthChange(
+        previousAuthenticatedUid: 'worker-a',
+        authenticatedUid: 'employer-b',
+        viewedProfileUid: 'worker-a',
+      ),
+      'employer-b',
+    );
+    expect(
+      rebaseOwnProfileUidAfterAuthChange(
+        previousAuthenticatedUid: 'worker-a',
+        authenticatedUid: 'employer-b',
+        viewedProfileUid: 'public-worker',
+      ),
+      'public-worker',
+    );
+  });
 }

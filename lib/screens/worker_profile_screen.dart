@@ -1550,7 +1550,7 @@ class WorkerProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
-    final isMyProfile = currentUser?.uid == userId;
+    final isMyProfile = isAuthenticatedOwnProfile(currentUser?.uid, userId);
     final useTeamReturn = openedFromTeam;
     final showOwnProfileControls = isMyProfile && !useTeamReturn;
 
@@ -1560,6 +1560,8 @@ class WorkerProfileScreen extends StatelessWidget {
           ? const ProfileHamburgerMenu(role: "worker")
           : null,
       appBar: AppBar(
+        centerTitle: !showOwnProfileControls,
+        titleSpacing: showOwnProfileControls ? 0 : null,
         leading: useTeamReturn
             ? IconButton(
                 tooltip: "Back to team",

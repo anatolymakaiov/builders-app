@@ -53,7 +53,8 @@ class AccountIdentityButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 230, minHeight: 44),
+      key: const ValueKey('account-identity-switcher'),
+      constraints: const BoxConstraints(maxWidth: 190, minHeight: 44),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -119,7 +120,13 @@ class CurrentAccountIdentityButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return const SizedBox.shrink();
+    if (uid == null) {
+      return AccountIdentityButton(
+        name: fallbackName,
+        isEmployer: isEmployer,
+        onPressed: onPressed,
+      );
+    }
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream:
           FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
@@ -184,6 +191,7 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
   bool busy = false;
   String? error;
   List<LinkedAccountIdentity> loadedAccounts = const [];
+  int loadGeneration = 0;
 
   @override
   void initState() {
@@ -204,8 +212,9 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
   }
 
   Future<List<LinkedAccountIdentity>> _loadAccounts() async {
+    final generation = ++loadGeneration;
     final loaded = await service.linkedAccounts();
-    loadedAccounts = loaded;
+    if (generation == loadGeneration) loadedAccounts = loaded;
     return loaded;
   }
 
@@ -347,7 +356,12 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
     );
     if (!mounted || choice == null) return;
     if (choice == 'existing') {
-      await _linkExisting();
+      setState(() => busy = true);
+      try {
+        await _linkExisting();
+      } finally {
+        if (mounted) setState(() => busy = false);
+      }
       return;
     }
     setState(() => busy = true);
@@ -458,6 +472,7 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
     email.dispose();
     password.dispose();
     if (linked != null && mounted) {
+      loadGeneration++;
       final merged = mergeLinkedAccountIdentity(loadedAccounts, linked);
       setState(() {
         loadedAccounts = merged;
@@ -481,15 +496,16 @@ class _AccountSwitcherState extends State<_AccountSwitcher> {
         : error is FirebaseAuthException
             ? error.code
             : '';
+    final serverMessage =
+        error is FirebaseFunctionsException ? error.message?.trim() ?? '' : '';
     return switch (code) {
       'permission-denied' =>
         'This account is no longer linked to your current account.',
       'unauthenticated' ||
       'user-token-expired' =>
         'Your session expired. Please sign in again.',
-      'user-disabled' ||
-      'failed-precondition' =>
-        'This account is currently unavailable.',
+      'failed-precondition' when serverMessage.isNotEmpty => serverMessage,
+      'user-disabled' => 'This account is currently unavailable.',
       'network-request-failed' ||
       'unavailable' =>
         'Check your internet connection and try again.',
