@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/job.dart';
 import '../screens/job_details_screen.dart';
 import '../services/application_activity_service.dart';
+import '../services/application_job_data_policy.dart';
 import '../services/application_status_utils.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -198,38 +199,6 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     return logo.isEmpty ? null : logo;
   }
 
-  String snapshotJobType(Map<String, dynamic> data) {
-    final raw = firstNonEmpty([
-      data["jobType"],
-      data["payType"],
-      data["workFormat"],
-      data["paymentType"],
-    ]).toLowerCase();
-    if (raw.isEmpty) return "";
-    if (raw.contains("negoti")) return "negotiable";
-    if (raw.contains("price") || raw.contains("fixed")) return "price";
-    if (raw.contains("day") || raw.contains("hour")) return "hourly";
-    return raw;
-  }
-
-  double snapshotRate(Map<String, dynamic> data) {
-    for (final value in [
-      data["rate"],
-      data["jobRate"],
-      data["payAmount"],
-      data["salary"],
-      data["amount"],
-    ]) {
-      if (value is num) return value.toDouble();
-      if (value is String) {
-        final parsed =
-            double.tryParse(value.replaceAll(RegExp(r"[^0-9.]"), ""));
-        if (parsed != null) return parsed;
-      }
-    }
-    return 0;
-  }
-
   Job stableApplicationJob(Job job, Map<String, dynamic>? applicationData) {
     final deletedCompany = applicationCompanyDeleted(applicationData, job);
     final companyName = deletedCompany
@@ -290,50 +259,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
   }
 
   Job fallbackJobFromApplication(String id, Map<String, dynamic> data) {
-    return Job.fromFirestore(id, {
-      "title": data["jobTitle"] ?? data["title"] ?? data["trade"] ?? "Job",
-      "trade": data["jobTrade"] ?? data["trade"] ?? data["jobTitle"] ?? "Job",
-      "site": data["jobSite"] ?? data["site"] ?? "",
-      "location": data["jobLocation"] ??
-          data["siteAddress"] ??
-          data["jobAddress"] ??
-          data["location"] ??
-          "",
-      "street": data["siteStreet"] ?? data["street"] ?? "",
-      "city": data["siteCity"] ?? data["city"] ?? "",
-      "postcode": data["sitePostcode"] ?? data["postcode"] ?? "",
-      "county": data["siteCounty"] ?? data["county"] ?? "",
-      "rate": snapshotRate(data),
-      "companyName": data["companyName"] ??
-          data["employerName"] ??
-          data["ownerName"] ??
-          "",
-      "companyLogo": firstNonEmpty([
-        data["companyLogoUrl"],
-        data["companyLogo"],
-        data["companyAvatarUrl"],
-        data["employerAvatarUrl"],
-        data["employerLogo"],
-        data["ownerAvatarUrl"],
-        data["ownerLogo"],
-        data["logo"],
-        data["photo"],
-        data["avatarUrl"],
-      ]),
-      "photos": data["jobPhotos"] ?? data["photos"] ?? const [],
-      "jobType": snapshotJobType(data),
-      "duration": firstNonEmpty([
-        data["duration"],
-        data["jobDuration"],
-        data["workPeriod"],
-      ]),
-      "weeklyHours": data["weeklyHours"] ?? "",
-      "employmentType": data["employmentType"] ?? "",
-      "ownerId": data["ownerId"] ?? data["employerId"] ?? "",
-      "createdAt": data["createdAt"],
-      "status": "active",
-      "moderationStatus": "approved",
-    });
+    return ApplicationJobDataPolicy.fallbackJob(id, data);
   }
 
   /// 🔥 ПРАВИЛЬНЫЙ STREAM
@@ -614,8 +540,11 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                                 data,
                               );
                               final isTeam = isTeamApplication(data);
+                              final shouldListenToLiveJob =
+                                  ApplicationJobDataPolicy
+                                      .shouldListenToLiveJob(data);
 
-                              if (jobDocId.isEmpty) {
+                              if (jobDocId.isEmpty || !shouldListenToLiveJob) {
                                 return buildCard(
                                   fallbackJob,
                                   status,
