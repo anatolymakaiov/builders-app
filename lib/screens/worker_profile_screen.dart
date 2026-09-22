@@ -25,8 +25,9 @@ import '../services/multi_account_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/app_photo_grid_gallery.dart';
-import '../widgets/app_cached_image.dart';
 import '../widgets/worker_review_workflow.dart';
+import '../models/worker_review.dart';
+import '../widgets/worker_rating_reviews.dart';
 
 class WorkerProfileScreen extends StatelessWidget {
   final String userId;
@@ -830,15 +831,16 @@ class WorkerProfileScreen extends StatelessWidget {
   }
 
   Widget buildReviewsSection(bool ownProfile) {
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection("users")
           .doc(userId)
           .collection("reviews")
-          .orderBy("createdAt", descending: true)
           .snapshots(),
       builder: (context, snapshot) {
-        final docs = snapshot.data?.docs ?? [];
+        final reviews = (snapshot.data?.docs ?? const [])
+            .map((doc) => WorkerReview.fromMap(doc.id, doc.data()))
+            .toList(growable: false);
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 24),
@@ -860,66 +862,16 @@ class WorkerProfileScreen extends StatelessWidget {
                 const WorkerReviewRequestsPanel(),
               ],
               const SizedBox(height: 8),
-              if (!snapshot.hasData)
+              if (snapshot.hasError)
+                const Text("Could not load reviews")
+              else if (!snapshot.hasData)
                 const LinearProgressIndicator()
-              else if (docs.isEmpty)
-                const Text("No reviews yet")
               else
-                ...docs.map((doc) {
-                  final review = doc.data() as Map<String, dynamic>;
-                  final rating = review["rating"] ?? 0;
-                  final text = review["review"]?.toString().trim() ?? "";
-                  final employerName =
-                      review["employerName"]?.toString() ?? "Employer";
-                  final employerLogo =
-                      review["employerLogoUrl"]?.toString() ?? "";
-                  final jobTitle = review["jobTitle"]?.toString().trim() ?? "";
-
-                  return Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            AppCachedCircleAvatar(
-                              imageUrl: employerLogo,
-                              fallbackIcon: Icons.business_outlined,
-                              radius: 18,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                employerName,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Icon(Icons.star,
-                                color: Colors.orange, size: 18),
-                            Text(rating.toString()),
-                          ],
-                        ),
-                        if (jobTitle.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(jobTitle,
-                              style: const TextStyle(color: AppColors.muted)),
-                        ],
-                        if (text.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(text),
-                        ],
-                      ],
-                    ),
-                  );
-                }),
+                WorkerRatingSummary(
+                  reviews: reviews,
+                  onViewReviews: () =>
+                      showWorkerReviewsViewer(context, reviews),
+                ),
             ],
           ),
         );
