@@ -7,19 +7,17 @@ import 'package:flutter/foundation.dart';
 
 import 'firebase_options.dart';
 import 'services/app_navigation.dart';
-import 'services/auth_preferences_service.dart';
 import 'services/notification_service.dart';
 import 'services/multi_account_service.dart';
 import 'services/post_registration_refresh_service.dart';
-import 'services/registration_validation_service.dart';
-import 'services/social_auth_service.dart';
+import 'services/auth_session_resolver.dart';
 import 'screens/edit_profile_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/stroyka_background.dart';
 import 'widgets/legal_documents.dart';
-import 'widgets/account_switch_shell_gate.dart';
+import 'widgets/auth_session_gate.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -105,8 +103,8 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
-  bool sessionUnlocked = false;
   final postRegistrationRefresh = PostRegistrationRefreshService();
+  String? _lastReadyUid;
 
   @override
   void initState() {
@@ -138,47 +136,6 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> ensureRegistrationDocument(User user) async {
-    final userRef =
-        FirebaseFirestore.instance.collection("users").doc(user.uid);
-    final snapshot = await userRef.get();
-    if (snapshot.exists) return;
-
-    final draftRef = FirebaseFirestore.instance
-        .collection("pending_registrations")
-        .doc(user.uid);
-    final draftSnapshot = await draftRef.get();
-    if (draftSnapshot.exists) return;
-
-    final pending = RegistrationValidationService.pendingForEmail(user.email);
-    final email =
-        RegistrationValidationService.normalizeEmail(user.email ?? "");
-    final fallback = PendingRegistrationDetails(
-      email: email,
-      role: "worker",
-      registrationName: user.displayName?.trim() ?? "",
-      phone: "",
-      normalizedPhone: "",
-    );
-    final socialProvider = SocialAuthService.providerFromIds(
-      user.providerData.map((identity) => identity.providerId),
-    );
-    debugPrint(
-        "REGISTRATION STAGE START: pending_registration uid=${user.uid}");
-    await draftRef.set(
-      {
-        ...(pending ?? fallback).toUserDocument(),
-        if (socialProvider != null) 'authMethod': socialProvider.name,
-        "uid": user.uid,
-        "active": false,
-        "draft": true,
-        "pendingRegistration": true,
-        'registrationFormComplete': pending != null,
-      },
-      SetOptions(merge: true),
-    );
-  }
-
   /// 🔥 lifecycle
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -191,215 +148,59 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        return ValueListenableBuilder<String?>(
-          valueListenable: MultiAccountState.switchTargetUid,
-          builder: (context, switchTargetUid, _) {
-            return AccountSwitchShellGate(
-              authenticatedUid: snapshot.data?.uid,
-              switchTargetUid: switchTargetUid,
-              onShellQuiesced: MultiAccountState.markShellQuiesced,
-              child: Builder(
-                builder: (context) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Scaffold(
-                      body: Center(child: CircularProgressIndicator()),
-                    );
-                  }
-
-                  if (!snapshot.hasData) {
-                    sessionUnlocked = false;
-                    return LoginScreen(
-                      onSessionUnlocked: () {
-                        if (!mounted) return;
-                        setState(() => sessionUnlocked = true);
-                      },
-                    );
-                  }
-
-                  final user = snapshot.data!;
-                  updateStatus(true);
-
-                  return FutureBuilder<DocumentSnapshot>(
-                    future: FirebaseFirestore.instance
-                        .collection("users")
-                        .doc(user.uid)
-                        .get(),
-                    builder: (context, userSnapshot) {
-                      if (userSnapshot.connectionState ==
-                          ConnectionState.waiting) {
-                        return const Scaffold(
-                          body: Center(child: CircularProgressIndicator()),
-                        );
-                      }
-
-                      if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
-                        return FutureBuilder<
-                            DocumentSnapshot<Map<String, dynamic>>>(
-                          future: FirebaseFirestore.instance
-                              .collection("pending_registrations")
-                              .doc(user.uid)
-                              .get(),
-                          builder: (context, draftSnapshot) {
-                            if (draftSnapshot.connectionState ==
-                                ConnectionState.waiting) {
-                              return const Scaffold(
-                                body:
-                                    Center(child: CircularProgressIndicator()),
-                              );
-                            }
-
-                            if (!draftSnapshot.hasData ||
-                                !draftSnapshot.data!.exists) {
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                ensureRegistrationDocument(user).then((_) {
-                                  RegistrationValidationService.clearPending(
-                                    user.email ?? "",
-                                  );
-                                  if (mounted) setState(() {});
-                                }).catchError((_) {
-                                  if (mounted) setState(() {});
-                                });
-                              });
-                              return const Scaffold(
-                                body:
-                                    Center(child: CircularProgressIndicator()),
-                              );
-                            }
-
-                            final draftData = draftSnapshot.data!.data();
-                            final role =
-                                draftData?["role"]?.toString() == "employer"
-                                    ? "employer"
-                                    : "worker";
-                            if (draftData?['registrationFormComplete'] ==
-                                false) {
-                              return LoginScreen(
-                                key: ValueKey('registration:${user.uid}'),
-                                initialRegistration: true,
-                                resumeRegistration: true,
-                              );
-                            }
-                            if (!LegalDocuments.hasAcceptedCurrentVersion(
-                              draftData,
-                              role,
-                            )) {
-                              return LegalAcceptanceScreen(
-                                role: role,
-                                userId: user.uid,
-                                onAccepted: (_) async {
-                                  debugPrint(
-                                      "LEGALS ACCEPTED: uid=${user.uid}");
-                                  if (!mounted) return;
-                                  setState(() {});
-                                },
-                              );
-                            }
-
-                            return ProfileScreen(
-                              onProfileSaved: () async {
-                                await postRegistrationRefresh
-                                    .refreshAfterRegistration(
-                                  user.uid,
-                                );
-                                if (!mounted) return;
-                                setState(() {});
-                              },
-                            );
-                          },
-                        );
-                      }
-
-                      final userData =
-                          userSnapshot.data!.data() as Map<String, dynamic>?;
-                      if (userData?["accountDeleted"] == true) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          FirebaseAuth.instance.signOut();
-                        });
-                        return const LoginScreen();
-                      }
-
-                      final authMethod = AuthPreferencesService()
-                          .methodFromUserData(userData ?? {});
-
-                      MultiAccountService()
-                          .completePendingNewAccountLink()
-                          .catchError((error) => debugPrint(
-                                'Pending account link could not be completed: $error',
-                              ));
-                      final requiresSessionGate =
-                          authMethod == AuthPreferenceMethod.biometric ||
-                              authMethod == AuthPreferenceMethod.simpleEnter;
-                      if (requiresSessionGate && !sessionUnlocked) {
-                        return LoginScreen(
-                          sessionMode: authMethod,
-                          onSessionUnlocked: () {
-                            if (!mounted) return;
-                            setState(() => sessionUnlocked = true);
-                          },
-                        );
-                      }
-
-                      final role = userData?["role"]?.toString() == "admin" ||
-                              userData?["role"]?.toString() == "employer"
-                          ? userData!["role"].toString()
-                          : "worker";
-
-                      if (role != "admin" &&
-                          !LegalDocuments.hasAcceptedCurrentVersion(
-                              userData, role)) {
-                        return LegalAcceptanceScreen(
-                          role: role,
-                          userId: user.uid,
-                          onAccepted: (_) async {
-                            if (!mounted) return;
-                            setState(() {});
-                          },
-                        );
-                      }
-
-                      final hasCompletedProfile =
-                          userData?["profileComplete"] == true ||
-                              userData?["onboardingComplete"] == true ||
-                              userData?["profileCreated"] == true ||
-                              (role == "worker" &&
-                                  (userData?["name"]?.toString().trim() ?? "")
-                                      .isNotEmpty) ||
-                              (role == "employer" &&
-                                  (userData?["companyName"]
-                                              ?.toString()
-                                              .trim() ??
-                                          "")
-                                      .isNotEmpty);
-
-                      if (role != "admin" && !hasCompletedProfile) {
-                        return ProfileScreen(
-                          onProfileSaved: () async {
-                            await postRegistrationRefresh
-                                .refreshAfterRegistration(
-                              user.uid,
-                            );
-                            if (!mounted) return;
-                            setState(() {});
-                          },
-                        );
-                      }
-
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) {
-                          MultiAccountState.markShellRefreshed(user.uid);
-                        }
-                      });
-                      return HomeScreen(key: ValueKey('home:${user.uid}'));
-                    },
-                  );
-                },
-              ),
-            );
-          },
+    return AuthSessionGate(
+      signedOut: (_) {
+        _lastReadyUid = null;
+        return LoginScreen(
+          postRegistrationHomeBuilder: (_) => const AuthGate(),
         );
+      },
+      resolved: (context, user, resolution, refresh) {
+        switch (resolution.destination) {
+          case AuthSessionDestination.registration:
+            return LoginScreen(
+              key: ValueKey('registration:${user.uid}'),
+              initialRegistration: true,
+              resumeRegistration: true,
+              postRegistrationHomeBuilder: (_) => const AuthGate(),
+            );
+          case AuthSessionDestination.legal:
+            return LegalAcceptanceScreen(
+              role: resolution.role,
+              userId: user.uid,
+              onAccepted: (_) async => refresh(),
+            );
+          case AuthSessionDestination.profile:
+            return ProfileScreen(
+              onProfileSaved: () async {
+                await postRegistrationRefresh
+                    .refreshAfterRegistration(user.uid);
+                refresh();
+              },
+            );
+          case AuthSessionDestination.home:
+            if (_lastReadyUid != user.uid) {
+              _lastReadyUid = user.uid;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted ||
+                    FirebaseAuth.instance.currentUser?.uid != user.uid) {
+                  return;
+                }
+                updateStatus(true);
+                MultiAccountState.markShellRefreshed(user.uid);
+                MultiAccountService()
+                    .completePendingNewAccountLink()
+                    .catchError((error) => debugPrint(
+                          'Pending account link could not be completed: $error',
+                        ));
+              });
+            }
+            return HomeScreen(key: ValueKey('home:${user.uid}'));
+          case AuthSessionDestination.deleted:
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+        }
       },
     );
   }

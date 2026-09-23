@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -6,121 +5,72 @@ import '../../screens/login_screen.dart';
 import '../../screens/edit_profile_screen.dart';
 import '../../screens/password_recovery_screen.dart';
 import '../../services/multi_account_service.dart';
+import '../../services/auth_session_resolver.dart';
 import '../../services/social_auth_service.dart';
+import '../../widgets/auth_session_gate.dart';
 import '../../widgets/legal_documents.dart';
 import '../shell/web_shell.dart';
 import '../theme/web_theme.dart';
 import '../widgets/web_panel.dart';
 
-class WebAuthGate extends StatelessWidget {
+class WebAuthGate extends StatefulWidget {
   const WebAuthGate({super.key});
 
   @override
+  State<WebAuthGate> createState() => _WebAuthGateState();
+}
+
+class _WebAuthGateState extends State<WebAuthGate> {
+  String? _lastReadyUid;
+
+  @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, authSnapshot) {
-        if (authSnapshot.connectionState == ConnectionState.waiting) {
-          return const _WebAuthLoading();
-        }
-
-        final user = authSnapshot.data;
-        if (user == null) {
-          return const WebLoginPage();
-        }
-        return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          future: FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .get(),
-          builder: (context, profileSnapshot) {
-            if (profileSnapshot.connectionState == ConnectionState.waiting) {
-              return const _WebAuthLoading();
+    return AuthSessionGate(
+      loading: const _WebAuthLoading(),
+      signedOut: (_) {
+        _lastReadyUid = null;
+        return const WebLoginPage();
+      },
+      resolved: (context, user, resolution, refresh) {
+        switch (resolution.destination) {
+          case AuthSessionDestination.registration:
+            return LoginScreen(
+              key: ValueKey('web-registration:${user.uid}'),
+              initialRegistration: true,
+              resumeRegistration: true,
+              postRegistrationHomeBuilder: (_) => const WebAuthGate(),
+            );
+          case AuthSessionDestination.legal:
+            return LegalAcceptanceScreen(
+              role: resolution.role,
+              userId: user.uid,
+              onAccepted: (_) async => refresh(),
+            );
+          case AuthSessionDestination.profile:
+            return ProfileScreen(onProfileSaved: () async => refresh());
+          case AuthSessionDestination.home:
+            if (_lastReadyUid != user.uid) {
+              _lastReadyUid = user.uid;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted ||
+                    FirebaseAuth.instance.currentUser?.uid != user.uid) {
+                  return;
+                }
+                MultiAccountState.markShellRefreshed(user.uid);
+                MultiAccountService()
+                    .completePendingNewAccountLink()
+                    .catchError((_) {});
+              });
             }
-
-            if (profileSnapshot.data?.exists != true) {
-              return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                future: FirebaseFirestore.instance
-                    .collection('pending_registrations')
-                    .doc(user.uid)
-                    .get(),
-                builder: (context, draftSnapshot) {
-                  if (draftSnapshot.connectionState ==
-                      ConnectionState.waiting) {
-                    return const _WebAuthLoading();
-                  }
-                  final draft = draftSnapshot.data?.data();
-                  if (draft == null) {
-                    final socialProvider = SocialAuthService.providerFromIds(
-                      user.providerData.map((identity) => identity.providerId),
-                    );
-                    return LoginScreen(
-                      initialRegistration: true,
-                      resumeRegistration: socialProvider != null,
-                      postRegistrationHomeBuilder: (_) => const WebAuthGate(),
-                    );
-                  }
-                  final role =
-                      draft['role'] == 'employer' ? 'employer' : 'worker';
-                  if (draft['registrationFormComplete'] == false) {
-                    return LoginScreen(
-                      key: ValueKey('registration:${user.uid}'),
-                      initialRegistration: true,
-                      resumeRegistration: true,
-                      postRegistrationHomeBuilder: (_) => const WebAuthGate(),
-                    );
-                  }
-                  void openProfile() {
-                    final navigator = Navigator.of(context);
-                    navigator.pushReplacement(MaterialPageRoute(
-                      builder: (_) => ProfileScreen(
-                        onProfileSaved: () async {
-                          navigator.pushAndRemoveUntil(
-                            MaterialPageRoute(
-                                builder: (_) => const WebAuthGate()),
-                            (_) => false,
-                          );
-                        },
-                      ),
-                    ));
-                  }
-
-                  if (!LegalDocuments.hasAcceptedCurrentVersion(draft, role)) {
-                    return LegalAcceptanceScreen(
-                      role: role,
-                      userId: user.uid,
-                      onAccepted: (_) async => openProfile(),
-                    );
-                  }
-                  final navigator = Navigator.of(context);
-                  return ProfileScreen(
-                    onProfileSaved: () async {
-                      navigator.pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (_) => const WebAuthGate()),
-                        (_) => false,
-                      );
-                    },
-                  );
-                },
-              );
-            }
-
-            final profile = profileSnapshot.data?.data() ?? {};
-            if (profileSnapshot.data?.exists == true) {
-              MultiAccountService()
-                  .completePendingNewAccountLink()
-                  .catchError((_) {});
-            }
-            final role = (profile['role'] ?? '').toString();
-            MultiAccountState.markShellRefreshed(user.uid);
             return WebShell(
               key: ValueKey('web-shell:${user.uid}'),
               user: user,
-              role: role.isEmpty ? 'worker' : role,
-              profile: profile,
+              role: resolution.role,
+              profile: resolution.profile,
             );
-          },
-        );
+          case AuthSessionDestination.deleted:
+            return const _WebAuthLoading();
+        }
       },
     );
   }
