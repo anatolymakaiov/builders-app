@@ -1722,6 +1722,26 @@ class _ProfileScreenState extends State<ProfileScreen>
         "country": profileAddress.country,
         "updatedAt": FieldValue.serverTimestamp(),
       };
+      if (firstProfileCreation) {
+        final draft = await FirebaseFirestore.instance
+            .collection('pending_registrations')
+            .doc(userId)
+            .get();
+        final draftData = draft.data();
+        if (draftData != null &&
+            const {'google', 'apple', 'facebook'}
+                .contains(draftData['authMethod'])) {
+          profileData['authMethod'] = draftData['authMethod'];
+          if (draftData['authPreferences'] is Map) {
+            profileData['authPreferences'] =
+                Map<String, dynamic>.from(draftData['authPreferences'] as Map);
+          }
+          if (draftData['settings'] is Map) {
+            profileData['settings'] =
+                Map<String, dynamic>.from(draftData['settings'] as Map);
+          }
+        }
+      }
       if (!emailChanged && emailIsVerified) {
         final currentEmail = currentProfileEmail();
         profileData["emailVerified"] = true;

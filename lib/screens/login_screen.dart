@@ -21,6 +21,7 @@ class LoginScreen extends StatefulWidget {
   final VoidCallback? onSessionUnlocked;
   final WidgetBuilder? postRegistrationHomeBuilder;
   final bool initialRegistration;
+  final bool resumeRegistration;
 
   const LoginScreen({
     super.key,
@@ -28,6 +29,7 @@ class LoginScreen extends StatefulWidget {
     this.onSessionUnlocked,
     this.postRegistrationHomeBuilder,
     this.initialRegistration = false,
+    this.resumeRegistration = false,
   });
 
   @override
@@ -60,6 +62,11 @@ class _LoginScreenState extends State<LoginScreen> {
   bool loading = false;
   bool usePasswordFallback = false;
   int registrationStep = 0;
+  bool registrationMethodSelected = false;
+  bool registrationDraftLoading = false;
+  SocialProvider? registrationProvider;
+  bool providerEmailVerified = false;
+  String registrationPhotoUrl = '';
   final socialAuth = SocialAuthService();
 
   bool get hasValidSession => FirebaseAuth.instance.currentUser != null;
@@ -106,6 +113,15 @@ class _LoginScreenState extends State<LoginScreen> {
       trade: registrationTradeController.text.trim(),
       companyName: registrationCompanyController.text.trim(),
       address: registrationAddressControllers().value(),
+      emailVerified: providerEmailVerified &&
+          authPreferences.normalizeEmail(emailController.text) ==
+              authPreferences.normalizeEmail(
+                  FirebaseAuth.instance.currentUser?.email ?? ''),
+      phoneVerified: phoneController.text.trim().isNotEmpty &&
+          RegistrationValidationService.normalizePhone(phoneController.text) ==
+              RegistrationValidationService.normalizePhone(
+                  FirebaseAuth.instance.currentUser?.phoneNumber ?? ''),
+      photoUrl: registrationPhotoUrl,
     );
   }
 
@@ -128,7 +144,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String? validateRegistrationDetails({bool requirePassword = true}) {
     for (final step in RegistrationWizardStep.values) {
-      if (!requirePassword && step == RegistrationWizardStep.credentials) {
+      if ((!requirePassword || registrationProvider != null) &&
+          step == RegistrationWizardStep.credentials) {
         continue;
       }
       final error = validateRegistrationStep(step);
@@ -140,7 +157,10 @@ class _LoginScreenState extends State<LoginScreen> {
   void nextRegistrationStep() {
     if (loading) return;
     final step = RegistrationWizardStep.values[registrationStep];
-    final error = validateRegistrationStep(step);
+    final error = registrationProvider != null &&
+            step == RegistrationWizardStep.credentials
+        ? null
+        : validateRegistrationStep(step);
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error)),
@@ -182,6 +202,78 @@ class _LoginScreenState extends State<LoginScreen> {
     if (widget.initialRegistration) {
       isLogin = false;
       selectedAction = 'register';
+      registrationMethodSelected = widget.resumeRegistration;
+      if (widget.resumeRegistration) {
+        registrationDraftLoading = true;
+        loadRegistrationDraft();
+      }
+    }
+  }
+
+  Future<void> loadRegistrationDraft() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final snapshot = await FirebaseFirestore.instance
+          .collection('pending_registrations')
+          .doc(user.uid)
+          .get();
+      final data = snapshot.data() ?? <String, dynamic>{};
+      final provider = SocialProvider.values.where(
+        (candidate) => candidate.name == data['authMethod'],
+      );
+      final storedName = (data['registrationName'] ?? '').toString().trim();
+      final name =
+          storedName.isEmpty ? (user.displayName ?? '').trim() : storedName;
+      final parts = name.split(RegExp(r'\s+'));
+      if (!mounted) return;
+      setState(() {
+        role = data['role'] == 'employer' ? 'employer' : 'worker';
+        registrationProvider = provider.isEmpty
+            ? SocialAuthService.providerFromIds(
+                user.providerData.map((identity) => identity.providerId))
+            : provider.first;
+        providerEmailVerified = user.emailVerified;
+        registrationNameController.text =
+            (data['registrationFirstName'] ?? parts.first).toString();
+        registrationLastNameController.text = (data['registrationLastName'] ??
+                (parts.length > 1 ? parts.skip(1).join(' ') : ''))
+            .toString();
+        registrationTradeController.text =
+            (data['registrationPosition'] ?? '').toString();
+        registrationCompanyController.text =
+            (data['registrationCompanyName'] ?? '').toString();
+        registrationAddressLine1Controller.text =
+            (data['addressLine1'] ?? '').toString();
+        registrationAddressLine2Controller.text =
+            (data['addressLine2'] ?? '').toString();
+        registrationAddressLine3Controller.text =
+            (data['addressLine3'] ?? '').toString();
+        registrationTownCityController.text =
+            (data['townCity'] ?? '').toString();
+        registrationCountyController.text = (data['county'] ?? '').toString();
+        registrationPostcodeController.text =
+            (data['postcode'] ?? '').toString();
+        registrationCountryController.text =
+            (data['country'] ?? 'United Kingdom').toString();
+        final storedEmail = (data['email'] ?? '').toString().trim();
+        emailController.text =
+            storedEmail.isEmpty ? user.email ?? '' : storedEmail;
+        final storedPhone = (data['phone'] ?? '').toString().trim();
+        phoneController.text =
+            storedPhone.isEmpty ? user.phoneNumber ?? '' : storedPhone;
+        final storedPhoto = (data['photo'] ?? '').toString().trim();
+        registrationPhotoUrl =
+            storedPhoto.isEmpty ? user.photoURL ?? '' : storedPhoto;
+      });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not restore registration. Please try again.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => registrationDraftLoading = false);
     }
   }
 
@@ -294,58 +386,27 @@ class _LoginScreenState extends State<LoginScreen> {
   ) async {
     if (!mounted) return;
 
-    if (result.cancelled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.message)),
-      );
-      returnToAuthenticationMethods();
-      return;
-    }
-
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text("Biometric authentication failed."),
-          content: Text(result.message),
-          actions: [
-            if (result.canRetry)
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  enterWithBiometric();
-                },
-                child: const Text("Try Again"),
-              ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                returnToAuthenticationMethods();
-              },
-              child: const Text("Back"),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                openPasswordLogin();
-              },
-              child: const Text("Use Login"),
-            ),
-          ],
-        );
-      },
+      builder: (dialogContext) => BiometricFallbackDialog(
+        result: result,
+        onRetry: () {
+          Navigator.pop(dialogContext);
+          enterWithBiometric();
+        },
+        onBack: () {
+          Navigator.pop(dialogContext);
+          returnToAuthenticationMethods();
+        },
+        onPassword: () {
+          Navigator.pop(dialogContext);
+          openPasswordLogin();
+        },
+      ),
     );
   }
 
   Future<void> enterWithBiometric() async {
-    void showStartBiometricFailure(String message) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-        ),
-      );
-    }
-
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       setState(() => loading = true);
@@ -357,19 +418,18 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         if (!mounted) return;
 
-        setState(() {
-          selectedAction = null;
-          usePasswordFallback = false;
-        });
         if (result.needsPasswordLogin) {
           await openPasswordLogin();
           return;
         }
-        showStartBiometricFailure(
-          result.needsPasswordLogin
-              ? "Biometric login is not configured for this account. Please sign in using Login."
-              : "Biometric login unsuccessful. Please sign in using Login.",
-        );
+        await showBiometricFailureDialog(result);
+      } catch (_) {
+        if (!mounted) return;
+        await showBiometricFailureDialog(const BiometricLoginResult(
+          success: false,
+          message:
+              'Could not restore your secure session. Sign in with email and password.',
+        ));
       } finally {
         if (mounted) setState(() => loading = false);
       }
@@ -385,13 +445,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await user.reload();
         final refreshedUser = FirebaseAuth.instance.currentUser;
         if (refreshedUser == null) {
-          setState(() {
-            selectedAction = null;
-            usePasswordFallback = false;
-          });
-          showStartBiometricFailure(
-            "Biometric login unsuccessful. Please sign in using Login.",
-          );
+          await openPasswordLogin();
           return;
         }
 
@@ -407,39 +461,20 @@ class _LoginScreenState extends State<LoginScreen> {
         if (staleDeletedSession) {
           await FirebaseAuth.instance.signOut();
           if (!mounted) return;
-          setState(() {
-            selectedAction = null;
-            usePasswordFallback = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                "Saved biometric session is no longer valid. Please sign in with Login.",
-              ),
-            ),
-          );
+          await openPasswordLogin();
           return;
         }
 
         widget.onSessionUnlocked?.call();
       } else {
-        setState(() {
-          selectedAction = null;
-          usePasswordFallback = false;
-        });
-        showStartBiometricFailure(
-          "Biometric login unsuccessful. Please sign in using Login.",
-        );
+        await showBiometricFailureDialog(result);
       }
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      setState(() {
-        selectedAction = null;
-        usePasswordFallback = false;
-      });
-      showStartBiometricFailure(
-        "Biometric login unsuccessful. Please sign in using Login.",
-      );
+      await showBiometricFailureDialog(const BiometricLoginResult(
+        success: false,
+        message: 'Biometric sign-in could not be completed. Try your password.',
+      ));
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -447,12 +482,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> returnToAuthenticationMethods() async {
     if (!isLogin && hasRegistrationDraft) {
+      final hasSocialDraft = registrationProvider != null;
       final leave = await showDialog<bool>(
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
             title: const Text("Leave registration?"),
-            content: const Text("Your entered information will not be saved."),
+            content: Text(hasSocialDraft
+                ? 'You can return to this registration by signing in with the same provider.'
+                : 'Your entered information will not be saved.'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
@@ -483,6 +521,10 @@ class _LoginScreenState extends State<LoginScreen> {
       RegistrationValidationService.clearPending(emailController.text);
     }
 
+    if (registrationProvider != null) {
+      await FirebaseAuth.instance.signOut();
+    }
+
     if (!mounted) return;
     setState(() {
       selectedAction = null;
@@ -490,6 +532,10 @@ class _LoginScreenState extends State<LoginScreen> {
       usePasswordFallback = false;
       loading = false;
       registrationStep = 0;
+      registrationMethodSelected = false;
+      registrationProvider = null;
+      providerEmailVerified = false;
+      registrationPhotoUrl = '';
     });
   }
 
@@ -497,13 +543,14 @@ class _LoginScreenState extends State<LoginScreen> {
     required User user,
     required PendingRegistrationDetails details,
     SocialProvider? socialProvider,
+    bool formComplete = true,
   }) async {
     debugPrint(
         "REGISTRATION STAGE START: pending_registration uid=${user.uid}");
     final document = details.toUserDocument();
     if (socialProvider != null) {
       document['authMethod'] = socialProvider.name;
-      document['emailVerified'] = user.emailVerified;
+      document['emailVerified'] = details.emailVerified;
       document['settings'] = {
         ...Map<String, dynamic>.from(document['settings'] as Map),
         'authMethod': socialProvider.name,
@@ -512,7 +559,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ...Map<String, dynamic>.from(document['authPreferences'] as Map),
         'activeMethod': socialProvider.name,
         'passwordLoginEnabled': false,
-        'emailVerified': user.emailVerified,
+        'emailVerified': details.emailVerified,
       };
     }
     await FirebaseFirestore.instance
@@ -524,6 +571,7 @@ class _LoginScreenState extends State<LoginScreen> {
       "active": false,
       "draft": true,
       "pendingRegistration": true,
+      'registrationFormComplete': formComplete,
       "deleted": false,
       "accountDeleted": false,
       "anonymised": false,
@@ -599,6 +647,21 @@ class _LoginScreenState extends State<LoginScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(validation.message)),
           );
+          return;
+        }
+
+        if (registrationProvider != null) {
+          final user = FirebaseAuth.instance.currentUser;
+          if (user == null) {
+            throw StateError(
+                'Your provider session has expired. Sign in again.');
+          }
+          await createPendingRegistration(
+            user: user,
+            details: details,
+            socialProvider: registrationProvider,
+          );
+          await continueRegistrationOnboarding(uid: user.uid, role: role);
           return;
         }
 
@@ -811,47 +874,88 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> signInSocial(SocialProvider provider) async {
     if (loading) return;
     setState(() => loading = true);
-    String? pendingEmail;
     try {
-      if (!isLogin) {
-        final email = authPreferences.normalizeEmail(emailController.text);
-        final phone = phoneController.text.trim();
-        final stepError = validateRegistrationDetails(requirePassword: false);
-        if (stepError != null) throw StateError(stepError);
-        final validation = await registrationValidation.validate(
-          email: email,
-          phone: phone,
-        );
-        if (validation.hasErrors) throw StateError(validation.message);
-        RegistrationValidationService.rememberPending(registrationDetails());
-        pendingEmail = email;
-      }
       final result = await socialAuth.signIn(provider);
       if (result.cancelled) return;
       final user = result.credential?.user;
       if (user == null) throw StateError('Sign-in did not return an account.');
-      if (!isLogin) {
-        final email = authPreferences.normalizeEmail(emailController.text);
-        if (authPreferences.normalizeEmail(user.email ?? '') != email) {
-          RegistrationValidationService.clearPending(email);
-          await FirebaseAuth.instance.signOut();
-          throw StateError('Use the same email as the selected provider.');
-        }
-        final existing = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
-        if (!existing.exists) {
-          final details = RegistrationValidationService.pendingForEmail(email)!;
-          await createPendingRegistration(
-              user: user, details: details, socialProvider: provider);
-          RegistrationValidationService.clearPending(email);
-          await continueRegistrationOnboarding(uid: user.uid, role: role);
-          return;
-        }
-        RegistrationValidationService.clearPending(email);
+      if (isLogin) {
+        widget.onSessionUnlocked?.call();
+        return;
       }
-      widget.onSessionUnlocked?.call();
+
+      final existing = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      if (existing.exists) {
+        widget.onSessionUnlocked?.call();
+        if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+        return;
+      }
+      if (user.emailVerified && (user.email ?? '').trim().isNotEmpty) {
+        try {
+          final availability =
+              await registrationValidation.checkEmailAvailability(user.email!);
+          if (!availability.available) {
+            final linkCredential = result.credential?.credential;
+            final verifiedEmail = user.email;
+            if (result.credential?.additionalUserInfo?.isNewUser == true) {
+              try {
+                await user.delete();
+              } catch (_) {
+                await FirebaseAuth.instance.signOut();
+                throw StateError(
+                  'This email already has an account. Sign in to the existing account before linking this provider.',
+                );
+              }
+              SocialAuthService.rememberVerifiedProviderForLink(
+                credential: linkCredential,
+                email: verifiedEmail,
+              );
+            } else {
+              await FirebaseAuth.instance.signOut();
+            }
+            throw StateError(
+              'This email already has an account. Sign in with its existing verified account to link this provider.',
+            );
+          }
+        } on FirebaseException catch (error) {
+          if (error.code != 'permission-denied') rethrow;
+        }
+      }
+      final draft = await FirebaseFirestore.instance
+          .collection('pending_registrations')
+          .doc(user.uid)
+          .get();
+      if (draft.exists && draft.data()?['registrationFormComplete'] != false) {
+        await continueRegistrationOnboarding(
+          uid: user.uid,
+          role: draft.data()?['role'] == 'employer' ? 'employer' : 'worker',
+        );
+        return;
+      }
+      if (!draft.exists) {
+        final prefill = PendingRegistrationDetails.fromSocialIdentity(
+          email: user.email,
+          displayName: user.displayName,
+          photoUrl: user.photoURL,
+          verifiedPhoneNumber: user.phoneNumber,
+          emailVerified: user.emailVerified,
+        );
+        await createPendingRegistration(
+          user: user,
+          details: prefill,
+          socialProvider: provider,
+          formComplete: false,
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        registrationProvider = provider;
+        registrationMethodSelected = true;
+      });
+      await loadRegistrationDraft();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -860,9 +964,6 @@ class _LoginScreenState extends State<LoginScreen> {
             : SocialAuthService.errorMessage(error)),
       ));
     } finally {
-      if (pendingEmail != null) {
-        RegistrationValidationService.clearPending(pendingEmail);
-      }
       if (mounted) setState(() => loading = false);
     }
   }
@@ -881,6 +982,34 @@ class _LoginScreenState extends State<LoginScreen> {
                   SocialProvider.facebook => 'Facebook',
                 }),
               ),
+        ],
+      );
+
+  Widget buildRegistrationMethodChoices() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Create your account',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 16),
+          for (final provider in SocialProvider.values)
+            if (SocialAuthService.available(provider)) ...[
+              OutlinedButton(
+                onPressed: loading ? null : () => signInSocial(provider),
+                child: Text(switch (provider) {
+                  SocialProvider.google => 'Continue with Google',
+                  SocialProvider.apple => 'Continue with Apple',
+                  SocialProvider.facebook => 'Continue with Facebook',
+                }),
+              ),
+              const SizedBox(height: 8),
+            ],
+          const SizedBox(height: 4),
+          OutlinedButton(
+            onPressed: loading
+                ? null
+                : () => setState(() => registrationMethodSelected = true),
+            child: const Text('Register with email'),
+          ),
         ],
       );
 
@@ -950,17 +1079,15 @@ class _LoginScreenState extends State<LoginScreen> {
               hintText: 'Phone number',
               prefixIcon: Icons.phone_outlined,
             ),
-          RegistrationWizardStep.credentials => Column(children: [
-              StroykaInputField(
-                controller: passwordController,
-                hintText: 'Password',
-                prefixIcon: Icons.lock_outline,
-                isPassword: true,
-              ),
-              const SizedBox(height: 8),
-              const Text('Or continue with a social account'),
-              socialActions(),
-            ]),
+          RegistrationWizardStep.credentials => registrationProvider != null
+              ? Text('Continue with your ${registrationProvider!.name} account.'
+                  ' No password is needed for this registration.')
+              : StroykaInputField(
+                  controller: passwordController,
+                  hintText: 'Password',
+                  prefixIcon: Icons.lock_outline,
+                  isPassword: true,
+                ),
         },
       ],
     );
@@ -1012,6 +1139,7 @@ class _LoginScreenState extends State<LoginScreen> {
               selectedAction = "register";
               isLogin = false;
               usePasswordFallback = true;
+              registrationMethodSelected = false;
             });
           },
         ),
@@ -1041,9 +1169,16 @@ class _LoginScreenState extends State<LoginScreen> {
               child: TextButton.icon(
                 onPressed: loading
                     ? null
-                    : !isLogin && registrationStep > 0
+                    : !isLogin &&
+                            registrationMethodSelected &&
+                            registrationStep > 0
                         ? () => setState(() => registrationStep--)
-                        : returnToAuthenticationMethods,
+                        : !isLogin &&
+                                registrationMethodSelected &&
+                                registrationProvider == null
+                            ? () => setState(
+                                () => registrationMethodSelected = false)
+                            : returnToAuthenticationMethods,
                 icon: const Icon(Icons.arrow_back),
                 label: const Text("Back"),
               ),
@@ -1075,7 +1210,11 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ] else if (!isStartChoice) ...[
             if (!isLogin)
-              buildRegistrationWizardFields()
+              registrationDraftLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : registrationMethodSelected
+                      ? buildRegistrationWizardFields()
+                      : buildRegistrationMethodChoices()
             else ...[
               StroykaInputField(
                 controller: emailController,
@@ -1091,7 +1230,10 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ],
           ],
-          if (selectedAction != null || showSessionGate) ...[
+          if ((selectedAction != null || showSessionGate) &&
+              (isLogin ||
+                  (registrationMethodSelected &&
+                      !registrationDraftLoading))) ...[
             const SizedBox(height: 22),
             SizedBox(
               width: double.infinity,
@@ -1137,7 +1279,7 @@ class _LoginScreenState extends State<LoginScreen> {
             if (showSessionGate)
               TextButton(
                 onPressed: openPasswordLogin,
-                child: const Text("Use password instead"),
+                child: const Text('Sign in with email and password'),
               ),
             if (isLogin && !showSessionGate) socialActions(),
           ],
@@ -1196,6 +1338,36 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
+
+class BiometricFallbackDialog extends StatelessWidget {
+  const BiometricFallbackDialog({
+    super.key,
+    required this.result,
+    required this.onRetry,
+    required this.onBack,
+    required this.onPassword,
+  });
+
+  final BiometricLoginResult result;
+  final VoidCallback onRetry;
+  final VoidCallback onBack;
+  final VoidCallback onPassword;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Biometric sign-in unavailable'),
+        content: Text(result.message),
+        actions: [
+          if (result.canRetry)
+            TextButton(onPressed: onRetry, child: const Text('Try again')),
+          TextButton(onPressed: onBack, child: const Text('Back')),
+          TextButton(
+            onPressed: onPassword,
+            child: const Text('Sign in with email and password'),
+          ),
+        ],
+      );
 }
 
 class PasswordLoginScreen extends StatefulWidget {

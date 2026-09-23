@@ -14,6 +14,9 @@ class PendingRegistrationDetails {
   final String trade;
   final String companyName;
   final PostalAddress? address;
+  final bool emailVerified;
+  final bool phoneVerified;
+  final String photoUrl;
 
   const PendingRegistrationDetails({
     required this.email,
@@ -26,7 +29,36 @@ class PendingRegistrationDetails {
     this.trade = '',
     this.companyName = '',
     this.address,
+    this.emailVerified = false,
+    this.phoneVerified = false,
+    this.photoUrl = '',
   });
+
+  factory PendingRegistrationDetails.fromSocialIdentity({
+    required String? email,
+    required String? displayName,
+    required String? photoUrl,
+    required String? verifiedPhoneNumber,
+    required bool emailVerified,
+  }) {
+    final nameParts = (displayName ?? '').trim().split(RegExp(r'\s+'));
+    final firstName = nameParts.first == '' ? '' : nameParts.first;
+    final lastName = nameParts.length > 1 ? nameParts.skip(1).join(' ') : '';
+    final phone = verifiedPhoneNumber?.trim() ?? '';
+    return PendingRegistrationDetails(
+      email: RegistrationIdentityService.normalizeEmail(email ?? ''),
+      role: 'worker',
+      registrationName:
+          [firstName, lastName].where((part) => part.isNotEmpty).join(' '),
+      phone: phone,
+      normalizedPhone: RegistrationIdentityService.normalizePhone(phone),
+      firstName: firstName,
+      lastName: lastName,
+      emailVerified: emailVerified && (email ?? '').trim().isNotEmpty,
+      phoneVerified: phone.isNotEmpty,
+      photoUrl: photoUrl?.trim() ?? '',
+    );
+  }
 
   Map<String, dynamic> toUserDocument() {
     final requiresPhoneVerification = role == "employer";
@@ -52,8 +84,22 @@ class PendingRegistrationDetails {
       },
       "phone": phone,
       "normalizedPhone": normalizedPhone,
-      "emailVerified": false,
-      "phoneVerified": false,
+      "emailVerified": emailVerified,
+      if (emailVerified) ...{
+        'verifiedEmail': email,
+        'verifiedNormalizedEmail':
+            RegistrationIdentityService.normalizeEmail(email),
+      },
+      "phoneVerified": phoneVerified,
+      if (phoneVerified) ...{
+        'verifiedPhone': phone,
+        'verifiedNormalizedPhone': normalizedPhone,
+      },
+      if (photoUrl.isNotEmpty) ...{
+        'photo': photoUrl,
+        'avatarUrl': photoUrl,
+        'photoUrl': photoUrl,
+      },
       "phoneVerificationRequired": requiresPhoneVerification,
       "phoneVerificationProviderConfigured": requiresPhoneVerification,
       "legalAccepted": false,

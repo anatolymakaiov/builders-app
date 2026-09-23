@@ -50,13 +50,25 @@ class WebAuthGate extends StatelessWidget {
                   }
                   final draft = draftSnapshot.data?.data();
                   if (draft == null) {
+                    final socialProvider = SocialAuthService.providerFromIds(
+                      user.providerData.map((identity) => identity.providerId),
+                    );
                     return LoginScreen(
                       initialRegistration: true,
+                      resumeRegistration: socialProvider != null,
                       postRegistrationHomeBuilder: (_) => const WebAuthGate(),
                     );
                   }
                   final role =
                       draft['role'] == 'employer' ? 'employer' : 'worker';
+                  if (draft['registrationFormComplete'] == false) {
+                    return LoginScreen(
+                      key: ValueKey('registration:${user.uid}'),
+                      initialRegistration: true,
+                      resumeRegistration: true,
+                      postRegistrationHomeBuilder: (_) => const WebAuthGate(),
+                    );
+                  }
                   void openProfile() {
                     final navigator = Navigator.of(context);
                     navigator.pushReplacement(MaterialPageRoute(

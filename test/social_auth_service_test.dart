@@ -52,4 +52,28 @@ void main() {
       isFalse,
     );
   });
+
+  test('provider-link request requires credential and email', () {
+    expect(
+      SocialAuthService.rememberVerifiedProviderForLink(
+        credential: null,
+        email: 'user@example.com',
+      ),
+      isFalse,
+    );
+    expect(
+      SocialAuthService.rememberVerifiedProviderForLink(
+        credential: GoogleAuthProvider.credential(idToken: 'test-id-token'),
+        email: '',
+      ),
+      isFalse,
+    );
+    expect(
+      SocialAuthService.rememberVerifiedProviderForLink(
+        credential: GoogleAuthProvider.credential(idToken: 'test-id-token'),
+        email: 'user@example.com',
+      ),
+      isTrue,
+    );
+  });
 }

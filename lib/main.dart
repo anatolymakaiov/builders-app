@@ -12,6 +12,7 @@ import 'services/notification_service.dart';
 import 'services/multi_account_service.dart';
 import 'services/post_registration_refresh_service.dart';
 import 'services/registration_validation_service.dart';
+import 'services/social_auth_service.dart';
 import 'screens/edit_profile_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -159,15 +160,20 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       phone: "",
       normalizedPhone: "",
     );
+    final socialProvider = SocialAuthService.providerFromIds(
+      user.providerData.map((identity) => identity.providerId),
+    );
     debugPrint(
         "REGISTRATION STAGE START: pending_registration uid=${user.uid}");
     await draftRef.set(
       {
         ...(pending ?? fallback).toUserDocument(),
+        if (socialProvider != null) 'authMethod': socialProvider.name,
         "uid": user.uid,
         "active": false,
         "draft": true,
         "pendingRegistration": true,
+        'registrationFormComplete': pending != null,
       },
       SetOptions(merge: true),
     );
@@ -268,6 +274,14 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
                                 draftData?["role"]?.toString() == "employer"
                                     ? "employer"
                                     : "worker";
+                            if (draftData?['registrationFormComplete'] ==
+                                false) {
+                              return LoginScreen(
+                                key: ValueKey('registration:${user.uid}'),
+                                initialRegistration: true,
+                                resumeRegistration: true,
+                              );
+                            }
                             if (!LegalDocuments.hasAcceptedCurrentVersion(
                               draftData,
                               role,

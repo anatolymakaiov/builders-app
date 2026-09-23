@@ -34,6 +34,16 @@ class SocialAuthService {
     return true;
   }
 
+  static bool rememberVerifiedProviderForLink({
+    required AuthCredential? credential,
+    required String? email,
+  }) {
+    if (credential == null || (email ?? '').trim().isEmpty) return false;
+    _pendingLink = credential;
+    _pendingEmail = email!.trim().toLowerCase();
+    return true;
+  }
+
   static Future<bool> linkAfterVerifiedPasswordSignIn(User user) async {
     final credential = _pendingLink;
     if (credential == null) {
@@ -71,6 +81,13 @@ class SocialAuthService {
       kIsWeb ||
       Platform.isIOS ||
       Platform.isMacOS;
+
+  static SocialProvider? providerFromIds(Iterable<String> providerIds) {
+    if (providerIds.contains('google.com')) return SocialProvider.google;
+    if (providerIds.contains('apple.com')) return SocialProvider.apple;
+    if (providerIds.contains('facebook.com')) return SocialProvider.facebook;
+    return null;
+  }
 
   Future<SocialSignInResult> signIn(SocialProvider provider) async {
     try {
