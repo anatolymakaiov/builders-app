@@ -22,6 +22,7 @@ import '../widgets/phone_link.dart';
 import '../widgets/profile_hamburger_menu.dart';
 import '../widgets/account_switcher.dart';
 import '../services/multi_account_service.dart';
+import '../services/worker_availability_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/app_photo_grid_gallery.dart';
@@ -1755,6 +1756,11 @@ class WorkerProfileScreen extends StatelessWidget {
                     ),
                   StroykaProfileHeader(
                     title: name.toString(),
+                    subtitle: isMyProfile
+                        ? null
+                        : WorkerAvailabilityService.label(
+                            WorkerAvailabilityService.fromProfile(data),
+                          ),
                     avatarUrl: photo is String ? photo : null,
                     headerImageUrl: headerImage,
                     fallbackIcon: Icons.person,
@@ -1806,7 +1812,52 @@ class WorkerProfileScreen extends StatelessWidget {
                                   ),
                                 ],
                               )
-                            : null,
+                            : isMyProfile
+                                ? Align(
+                                    alignment: Alignment.centerRight,
+                                    child: PopupMenuButton<WorkerAvailability>(
+                                      tooltip: 'Change availability',
+                                      enabled: !profileHeld,
+                                      onSelected: (value) async {
+                                        try {
+                                          await WorkerAvailabilityService()
+                                              .updateOwnStatus(userId, value);
+                                        } catch (_) {
+                                          if (!context.mounted) return;
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(const SnackBar(
+                                            content: Text(
+                                                'Could not update availability.'),
+                                          ));
+                                        }
+                                      },
+                                      itemBuilder: (_) =>
+                                          WorkerAvailability.values
+                                              .map((value) => PopupMenuItem(
+                                                    value: value,
+                                                    child: Text(
+                                                        WorkerAvailabilityService
+                                                            .label(value)),
+                                                  ))
+                                              .toList(),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(8),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                                WorkerAvailabilityService.label(
+                                              WorkerAvailabilityService
+                                                  .fromProfile(data),
+                                            )),
+                                            const SizedBox(width: 4),
+                                            const Icon(Icons.arrow_drop_down),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : null,
                   ),
                   const StroykaTabBar(
                     labels: ["Info", "Contacts", "Photos", "Teams"],

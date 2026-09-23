@@ -320,6 +320,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
                               authMethod == AuthPreferenceMethod.simpleEnter;
                       if (requiresSessionGate && !sessionUnlocked) {
                         return LoginScreen(
+                          sessionMode: authMethod,
                           onSessionUnlocked: () {
                             if (!mounted) return;
                             setState(() => sessionUnlocked = true);

@@ -9,6 +9,7 @@ import '../../services/web_profile_edit_service.dart';
 import '../../services/web_profile_communication.dart';
 import '../../../services/moderation_hold_service.dart';
 import '../../../services/multi_account_service.dart';
+import '../../../services/worker_availability_service.dart';
 import '../../../widgets/account_switcher.dart';
 import '../../widgets/web_report_dialog.dart';
 import '../../theme/web_breakpoints.dart';
@@ -180,6 +181,25 @@ class _WebProfilePageState extends State<WebProfilePage> {
                   onChangeAvatar: ownProfile && !held ? _changeAvatar : null,
                   onChangeHeader: ownProfile && !held ? _changeHeader : null,
                   onSwitchAccount: ownProfile ? _showAccountSwitcher : null,
+                  onAvailabilityChanged: ownProfile && isWorker && !held
+                      ? (availability) async {
+                          try {
+                            await WorkerAvailabilityService()
+                                .updateOwnStatus(viewedUserId, availability);
+                            if (!mounted) return;
+                            setState(() => localProfileUpdates[
+                                    WorkerAvailabilityService.field] =
+                                WorkerAvailabilityService.value(availability));
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content:
+                                      Text('Could not update availability.')),
+                            );
+                          }
+                        }
+                      : null,
                   mediaBusy: mediaBusy,
                 ),
                 if (ownProfile && held)
@@ -475,6 +495,7 @@ class _ProfileHeader extends StatelessWidget {
     this.onChangeAvatar,
     this.onChangeHeader,
     this.onSwitchAccount,
+    this.onAvailabilityChanged,
   });
 
   final WebProfileData profile;
@@ -486,6 +507,7 @@ class _ProfileHeader extends StatelessWidget {
   final VoidCallback? onChangeAvatar;
   final VoidCallback? onChangeHeader;
   final VoidCallback? onSwitchAccount;
+  final ValueChanged<WorkerAvailability>? onAvailabilityChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -640,6 +662,50 @@ class _ProfileHeader extends StatelessWidget {
                               fontWeight: FontWeight.w800,
                             ),
                           ),
+                          if (role == 'worker') ...[
+                            const SizedBox(height: 6),
+                            if (onAvailabilityChanged == null)
+                              Text(
+                                WorkerAvailabilityService.label(
+                                  WorkerAvailabilityService.fromProfile(
+                                      profile.data),
+                                ),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              )
+                            else
+                              PopupMenuButton<WorkerAvailability>(
+                                tooltip: 'Change availability',
+                                onSelected: onAvailabilityChanged,
+                                itemBuilder: (_) => WorkerAvailability.values
+                                    .map((value) => PopupMenuItem(
+                                          value: value,
+                                          child: Text(
+                                              WorkerAvailabilityService.label(
+                                                  value)),
+                                        ))
+                                    .toList(),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      WorkerAvailabilityService.label(
+                                        WorkerAvailabilityService.fromProfile(
+                                            profile.data),
+                                      ),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const Icon(Icons.arrow_drop_down,
+                                        color: Colors.white),
+                                  ],
+                                ),
+                              ),
+                          ],
                         ],
                       ),
                     ),

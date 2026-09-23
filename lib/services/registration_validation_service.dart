@@ -21,6 +21,7 @@ class PendingRegistrationDetails {
     final requiresPhoneVerification = role == "employer";
     return {
       "role": role,
+      if (role == 'worker') 'availabilityStatus': 'open_to_work',
       "email": email,
       "normalizedEmail": RegistrationIdentityService.normalizeEmail(email),
       "registrationName": registrationName,
