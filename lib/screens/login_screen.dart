@@ -855,7 +855,11 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> openPasswordRecovery() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const PasswordRecoveryScreen()),
+      MaterialPageRoute(
+        builder: (_) => PasswordRecoveryScreen(
+          initialEmail: emailController.text,
+        ),
+      ),
     );
   }
 
@@ -961,7 +965,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(error is StateError
             ? error.message.toString()
-            : SocialAuthService.errorMessage(error)),
+            : SocialAuthService.errorMessage(error, provider: provider)),
       ));
     } finally {
       if (mounted) setState(() => loading = false);
@@ -1403,7 +1407,9 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SocialAuthService.errorMessage(error))),
+        SnackBar(
+            content: Text(
+                SocialAuthService.errorMessage(error, provider: provider))),
       );
     } finally {
       if (mounted) setState(() => loading = false);
@@ -1486,7 +1492,11 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
   Future<void> openPasswordRecovery() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const PasswordRecoveryScreen()),
+      MaterialPageRoute(
+        builder: (_) => PasswordRecoveryScreen(
+          initialEmail: emailController.text,
+        ),
+      ),
     );
   }
 

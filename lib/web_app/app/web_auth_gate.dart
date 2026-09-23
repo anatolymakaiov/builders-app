@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../screens/login_screen.dart';
 import '../../screens/edit_profile_screen.dart';
+import '../../screens/password_recovery_screen.dart';
 import '../../services/multi_account_service.dart';
 import '../../services/social_auth_service.dart';
 import '../../widgets/legal_documents.dart';
@@ -189,7 +190,8 @@ class _WebLoginPageState extends State<WebLoginPage> {
       await SocialAuthService().signIn(provider);
     } catch (failure) {
       if (mounted) {
-        setState(() => error = SocialAuthService.errorMessage(failure));
+        setState(() => error =
+            SocialAuthService.errorMessage(failure, provider: provider));
       }
     } finally {
       if (mounted) setState(() => loading = false);
@@ -259,6 +261,18 @@ class _WebLoginPageState extends State<WebLoginPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Text('Sign in'),
+                  ),
+                  TextButton(
+                    onPressed: loading
+                        ? null
+                        : () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => PasswordRecoveryScreen(
+                                  initialEmail: emailController.text,
+                                ),
+                              ),
+                            ),
+                    child: const Text('Forgot password?'),
                   ),
                   const SizedBox(height: 12),
                   Wrap(

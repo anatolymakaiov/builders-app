@@ -164,13 +164,21 @@ class SocialAuthService {
       code == 'canceled' ||
       code == 'cancelled';
 
-  static String errorMessage(Object error) {
+  static String errorMessage(Object error, {SocialProvider? provider}) {
     if (error is FirebaseAuthException) {
       if (error.code == 'account-exists-with-different-credential') {
         return 'This email already has an account. Sign in with its existing verified account to link this provider.';
       }
       if (error.code == 'operation-not-allowed') {
-        return 'This sign-in provider is not enabled yet.';
+        final label = switch (provider) {
+          SocialProvider.google => 'Google',
+          SocialProvider.apple => 'Apple',
+          SocialProvider.facebook => 'Facebook',
+          null => 'This provider',
+        };
+        return '$label sign-in was rejected by Firebase Authentication '
+            '(operation-not-allowed). Ask the administrator to enable the '
+            'provider in Firebase Console and check its OAuth setup.';
       }
       return error.message ?? 'Could not sign in. Please try again.';
     }

@@ -18,11 +18,27 @@ void main() {
     expect(SocialAuthService.rememberLinkFromCollision(error), isFalse);
   });
 
-  test('disabled provider has actionable message', () {
+  test('Firebase provider refusal names the provider and setup action', () {
     expect(
       SocialAuthService.errorMessage(
-          FirebaseAuthException(code: 'operation-not-allowed')),
-      contains('not enabled'),
+        FirebaseAuthException(code: 'operation-not-allowed'),
+        provider: SocialProvider.google,
+      ),
+      allOf(contains('Google'), contains('Firebase Console')),
+    );
+    expect(
+      SocialAuthService.errorMessage(
+        FirebaseAuthException(code: 'operation-not-allowed'),
+        provider: SocialProvider.apple,
+      ),
+      contains('Apple'),
+    );
+    expect(
+      SocialAuthService.errorMessage(
+        FirebaseAuthException(code: 'operation-not-allowed'),
+        provider: SocialProvider.facebook,
+      ),
+      contains('Facebook'),
     );
   });
 

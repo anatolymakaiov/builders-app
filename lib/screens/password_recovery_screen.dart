@@ -5,7 +5,9 @@ import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
 class PasswordRecoveryScreen extends StatefulWidget {
-  const PasswordRecoveryScreen({super.key});
+  const PasswordRecoveryScreen({super.key, this.initialEmail = ''});
+
+  final String initialEmail;
 
   @override
   State<PasswordRecoveryScreen> createState() => _PasswordRecoveryScreenState();
@@ -15,6 +17,14 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
   final emailController = TextEditingController();
   bool loading = false;
   String channel = "email";
+
+  @override
+  void initState() {
+    super.initState();
+    emailController.text = widget.initialEmail;
+  }
+
+  void goBack() => Navigator.of(context).pop();
 
   @override
   void dispose() {
@@ -74,7 +84,7 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
         appBar: AppBar(
           leadingWidth: 96,
           leading: TextButton.icon(
-            onPressed: () => Navigator.pop(context),
+            onPressed: goBack,
             icon: const Icon(Icons.arrow_back),
             label: const Text("Back"),
           ),
@@ -150,6 +160,12 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
                               ),
                             )
                           : Text(isEmail ? "Send reset email" : "Send SMS"),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: loading ? null : goBack,
+                      icon: const Icon(Icons.arrow_back),
+                      label: const Text('Back to sign in'),
                     ),
                   ],
                 ),
