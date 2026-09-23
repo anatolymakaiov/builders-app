@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'address_lookup_service.dart';
 
 class PendingRegistrationDetails {
   final String email;
@@ -8,6 +9,11 @@ class PendingRegistrationDetails {
   final String registrationName;
   final String phone;
   final String normalizedPhone;
+  final String firstName;
+  final String lastName;
+  final String trade;
+  final String companyName;
+  final PostalAddress? address;
 
   const PendingRegistrationDetails({
     required this.email,
@@ -15,6 +21,11 @@ class PendingRegistrationDetails {
     required this.registrationName,
     required this.phone,
     required this.normalizedPhone,
+    this.firstName = '',
+    this.lastName = '',
+    this.trade = '',
+    this.companyName = '',
+    this.address,
   });
 
   Map<String, dynamic> toUserDocument() {
@@ -25,6 +36,20 @@ class PendingRegistrationDetails {
       "email": email,
       "normalizedEmail": RegistrationIdentityService.normalizeEmail(email),
       "registrationName": registrationName,
+      if (firstName.isNotEmpty) 'registrationFirstName': firstName,
+      if (lastName.isNotEmpty) 'registrationLastName': lastName,
+      if (trade.isNotEmpty) 'registrationPosition': trade,
+      if (companyName.isNotEmpty) 'registrationCompanyName': companyName,
+      if (address != null) ...{
+        'addressLine1': address!.addressLine1,
+        'addressLine2': address!.addressLine2,
+        'addressLine3': address!.addressLine3,
+        'townCity': address!.townCity,
+        'county': address!.county,
+        'postcode': address!.postcode,
+        'country': address!.country,
+        'location': address!.addressLine1,
+      },
       "phone": phone,
       "normalizedPhone": normalizedPhone,
       "emailVerified": false,

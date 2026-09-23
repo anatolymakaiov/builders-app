@@ -15,6 +15,7 @@ import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../services/moderation_hold_service.dart';
 import '../services/registration_validation_service.dart';
+import '../services/registration_wizard_steps.dart';
 import '../services/stroyka_action_feedback.dart';
 import '../widgets/app_cached_image.dart';
 import '../widgets/app_photo_grid_gallery.dart';
@@ -114,6 +115,8 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool uploadingAvatar = false;
   bool uploadingCompanyPhotos = false;
   bool firstProfileCreation = false;
+  bool profileLoaded = false;
+  int completionStep = 0;
   bool legalAcceptedForCurrentVersion = false;
   bool billingEmailVerified = false;
   bool emailVerified = false;
@@ -391,7 +394,9 @@ class _ProfileScreenState extends State<ProfileScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    loadProfile();
+    loadProfile().whenComplete(() {
+      if (mounted) setState(() => profileLoaded = true);
+    });
     startEmailVerificationWatcher();
   }
 
@@ -524,6 +529,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               "")
           .toString();
       companyController.text = (data["companyName"] ??
+              data['registrationCompanyName'] ??
               data["businessName"] ??
               data["displayName"] ??
               data["name"] ??
@@ -1480,6 +1486,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   /// SAVE PROFILE
   Future<void> saveProfile() async {
+    if (loading) return;
     if (!await ModerationHoldService().ensureCurrentUserNotHeld(context)) {
       return;
     }
@@ -1503,6 +1510,38 @@ class _ProfileScreenState extends State<ProfileScreen>
         const SnackBar(content: Text("Enter company name")),
       );
       return;
+    }
+
+    if (firstProfileCreation) {
+      final identity =
+          role == 'employer' ? contactPersonController.text.trim() : name;
+      if (identity.split(RegExp(r'\s+')).length < 2) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Enter your first and last name.'),
+        ));
+        return;
+      }
+      final professionError = RegistrationWizardSteps.validate(
+        RegistrationWizardStep.professionOrCompany,
+        role: role,
+        trade: tradeController.text,
+        companyName: companyName,
+      );
+      final addressError = RegistrationWizardSteps.validate(
+        RegistrationWizardStep.address,
+        role: role,
+        addressLine1: locationController.text,
+        townCity: locationTownCityController.text,
+        postcode: locationPostcodeController.text,
+        country: locationCountryController.text,
+      );
+      final error = professionError ?? addressError;
+      if (error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+        return;
+      }
     }
 
     if (phone.isEmpty) {
@@ -1546,7 +1585,8 @@ class _ProfileScreenState extends State<ProfileScreen>
     await refreshEmailVerification(silent: true);
     final authUser = FirebaseAuth.instance.currentUser;
     final emailIsVerified = isCurrentEmailVerified();
-    final requireSmsPhoneVerification = role == "employer";
+    final requireSmsPhoneVerification =
+        firstProfileCreation || role == "employer";
     var phoneIsVerified =
         requireSmsPhoneVerification && isCurrentPhoneVerified();
 
@@ -1951,6 +1991,23 @@ class _ProfileScreenState extends State<ProfileScreen>
             context,
             semanticLabel: "Registration completed",
           );
+          await showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('Your profile is ready'),
+              content: Text(role == 'employer'
+                  ? 'Completing your profile helps workers understand your company and reliability, and can improve your chances of finding suitable people.'
+                  : 'Completing your profile helps employers understand your experience and reliability, and can improve your chances of receiving suitable opportunities.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Continue'),
+                ),
+              ],
+            ),
+          );
+          if (!mounted) return;
         }
         await widget.onProfileSaved!.call();
       } else {
@@ -2418,6 +2475,145 @@ class _ProfileScreenState extends State<ProfileScreen>
     return const SizedBox.shrink();
   }
 
+  Future<void> nextProfileCompletionStep() async {
+    if (loading) return;
+    final step = ProfileCompletionStep.values[completionStep];
+    if (step == ProfileCompletionStep.emailVerification) {
+      final verified = await refreshEmailVerification(silent: true);
+      if (!mounted) return;
+      if (!verified) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Verify your email before continuing. Check Inbox and Spam or Junk.'),
+        ));
+        return;
+      }
+    } else if (!step.canContinue(
+      emailVerified: isCurrentEmailVerified(),
+      phoneVerified: isCurrentPhoneVerified(),
+    )) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Verify your phone number before continuing.'),
+      ));
+      return;
+    }
+    if (completionStep < ProfileCompletionStep.values.length - 1) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      setState(() => completionStep++);
+    } else {
+      await saveProfile();
+    }
+  }
+
+  Widget buildProfileCompletionWizard() {
+    final step = ProfileCompletionStep.values[completionStep];
+    final stepNumber = RegistrationWizardSteps.count + completionStep + 1;
+    final total =
+        RegistrationWizardSteps.count + ProfileCompletionStep.values.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Step $stepNumber of $total',
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        LinearProgressIndicator(value: stepNumber / total),
+        const SizedBox(height: 20),
+        switch (step) {
+          ProfileCompletionStep.emailVerification => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Verify your email',
+                    style:
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 10),
+                Text(currentProfileEmail()),
+                const SizedBox(height: 10),
+                const Text(
+                    'Open the verification link sent to your email. Check your Inbox and Spam or Junk folder, then return here.'),
+                buildInlineVerificationStatus(
+                  verified: isCurrentEmailVerified(),
+                  verifiedText: 'Email verified',
+                  unverifiedText: 'Awaiting verification',
+                ),
+                const SizedBox(height: 12),
+                Wrap(spacing: 8, children: [
+                  OutlinedButton(
+                    onPressed:
+                        sendingEmailVerification ? null : sendEmailVerification,
+                    child: const Text('Send verification link'),
+                  ),
+                  TextButton(
+                    onPressed: () => refreshEmailVerification(),
+                    child: const Text('Refresh status'),
+                  ),
+                ]),
+              ],
+            ),
+          ProfileCompletionStep.phoneVerification => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Verify your phone number',
+                    style:
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 10),
+                Text(phoneController.text.trim()),
+                const SizedBox(height: 10),
+                const Text('We will send a verification code by SMS.'),
+                buildInlineVerificationStatus(
+                  verified: isCurrentPhoneVerified(),
+                  verifiedText: 'Phone verified',
+                  unverifiedText: 'Awaiting verification',
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: verifyPhoneFromDialog,
+                  child: const Text('Send SMS code'),
+                ),
+              ],
+            ),
+          ProfileCompletionStep.optionalDetails => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Add more to your profile',
+                    style:
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                const Text(
+                    'These details are optional. You can add them later.'),
+                const SizedBox(height: 16),
+                if (role == 'worker') ...[
+                  TextField(
+                    controller: experienceController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(labelText: 'Experience'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: certificationsController,
+                    maxLines: 2,
+                    decoration:
+                        const InputDecoration(labelText: 'Certificates'),
+                  ),
+                ] else ...[
+                  TextField(
+                    controller: websiteController,
+                    decoration: const InputDecoration(labelText: 'Website'),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: bioController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(labelText: 'About'),
+                ),
+              ],
+            ),
+        },
+      ],
+    );
+  }
+
   Widget buildForm() {
     ensureReferenceControllerCount();
     final inlineEmailVerified = isCurrentEmailVerified();
@@ -2810,7 +3006,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        title: const Text("Profile"),
+        title: Text(firstProfileCreation ? 'Registration' : 'Profile'),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -2818,35 +3014,92 @@ class _ProfileScreenState extends State<ProfileScreen>
           )
         ],
       ),
-      body: StroykaScreenBody(
-        child: SingleChildScrollView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: EdgeInsets.fromLTRB(12, 12, 12, 110 + keyboardInset),
-          child: StroykaSurface(
-            padding: const EdgeInsets.all(18),
-            child: buildForm(),
-          ),
-        ),
-      ),
-      bottomNavigationBar: AnimatedPadding(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-        padding: EdgeInsets.only(bottom: keyboardInset),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: SizedBox(
-              height: 55,
-              child: ElevatedButton(
-                onPressed: loading ? null : saveProfile,
-                child: loading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Save profile"),
+      body: !profileLoaded
+          ? const Center(child: CircularProgressIndicator())
+          : StroykaScreenBody(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.fromLTRB(12, 12, 12, 110 + keyboardInset),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: firstProfileCreation ? 520 : double.infinity,
+                    ),
+                    child: StroykaSurface(
+                      padding: const EdgeInsets.all(18),
+                      child: firstProfileCreation
+                          ? buildProfileCompletionWizard()
+                          : buildForm(),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      ),
+      bottomNavigationBar: !profileLoaded
+          ? null
+          : AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(bottom: keyboardInset),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: firstProfileCreation
+                      ? Row(
+                          children: [
+                            if (completionStep > 0)
+                              TextButton(
+                                onPressed: loading
+                                    ? null
+                                    : () => setState(() => completionStep--),
+                                child: const Text('Back'),
+                              ),
+                            const Spacer(),
+                            if (ProfileCompletionStep
+                                .values[completionStep].optional)
+                              TextButton(
+                                onPressed: loading ? null : saveProfile,
+                                child: const Text('Skip'),
+                              ),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: ElevatedButton(
+                                onPressed:
+                                    loading ? null : nextProfileCompletionStep,
+                                child: loading
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      )
+                                    : Text(
+                                        completionStep ==
+                                                ProfileCompletionStep
+                                                        .values.length -
+                                                    1
+                                            ? 'Complete registration'
+                                            : 'Next',
+                                        textAlign: TextAlign.center,
+                                        maxLines: 2),
+                              ),
+                            ),
+                          ],
+                        )
+                      : SizedBox(
+                          height: 55,
+                          child: ElevatedButton(
+                            onPressed: loading ? null : saveProfile,
+                            child: loading
+                                ? const CircularProgressIndicator(
+                                    color: Colors.white)
+                                : const Text('Save profile'),
+                          ),
+                        ),
+                ),
+              ),
+            ),
     );
   }
 }
@@ -2867,6 +3120,8 @@ class _PhoneSmsVerificationDialogState
     extends State<_PhoneSmsVerificationDialog> {
   final codeController = TextEditingController();
   String? verificationId;
+  ConfirmationResult? webConfirmation;
+  String? verifyingUserId;
   String? errorMessage;
   int? resendToken;
   int resendSeconds = 0;
@@ -2918,6 +3173,24 @@ class _PhoneSmsVerificationDialogState
     startResendCooldown();
 
     try {
+      if (kIsWeb) {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) {
+          throw FirebaseAuthException(
+            code: 'user-signed-out',
+            message: 'Please sign in again before verifying your phone number.',
+          );
+        }
+        verifyingUserId = user.uid;
+        final confirmation = await user.linkWithPhoneNumber(widget.phoneNumber);
+        if (!mounted) return;
+        setState(() {
+          webConfirmation = confirmation;
+          sendingCode = false;
+          errorMessage = null;
+        });
+        return;
+      }
       await FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: widget.phoneNumber,
         forceResendingToken: resend ? resendToken : null,
@@ -2965,9 +3238,9 @@ class _PhoneSmsVerificationDialogState
   }
 
   Future<void> verifyCode() async {
-    final id = verificationId;
     final code = codeController.text.trim();
-    if (id == null || id.isEmpty) {
+    if ((!kIsWeb && (verificationId == null || verificationId!.isEmpty)) ||
+        (kIsWeb && webConfirmation == null)) {
       setState(() => errorMessage = "Wait for the SMS code to be sent.");
       return;
     }
@@ -2975,8 +3248,34 @@ class _PhoneSmsVerificationDialogState
       setState(() => errorMessage = "Enter the 6-digit verification code.");
       return;
     }
+    if (kIsWeb) {
+      if (verifyingCode) return;
+      setState(() => verifyingCode = true);
+      try {
+        final result = await webConfirmation!.confirm(code);
+        if (result.user?.uid != verifyingUserId) {
+          throw FirebaseAuthException(code: 'user-mismatch');
+        }
+        if (!mounted) return;
+        Navigator.pop(context, true);
+      } on FirebaseAuthException catch (error) {
+        if (!mounted) return;
+        setState(() {
+          verifyingCode = false;
+          errorMessage = phoneAuthErrorMessage(error);
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          verifyingCode = false;
+          errorMessage =
+              'Could not verify this phone number. Please try again.';
+        });
+      }
+      return;
+    }
     final credential = PhoneAuthProvider.credential(
-      verificationId: id,
+      verificationId: verificationId!,
       smsCode: code,
     );
     await verifyCredential(credential);

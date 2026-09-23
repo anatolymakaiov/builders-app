@@ -7,7 +7,9 @@ import '../services/post_registration_refresh_service.dart';
 import '../services/multi_account_service.dart';
 import '../services/registration_validation_service.dart';
 import '../services/social_auth_service.dart';
+import '../services/registration_wizard_steps.dart';
 import '../widgets/legal_documents.dart';
+import '../widgets/uk_postal_address_form.dart';
 import 'edit_profile_screen.dart';
 import 'home_screen.dart';
 import 'password_recovery_screen.dart';
@@ -36,6 +38,17 @@ class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final registrationNameController = TextEditingController();
+  final registrationLastNameController = TextEditingController();
+  final registrationTradeController = TextEditingController();
+  final registrationCompanyController = TextEditingController();
+  final registrationPostcodeController = TextEditingController();
+  final registrationAddressLine1Controller = TextEditingController();
+  final registrationAddressLine2Controller = TextEditingController();
+  final registrationAddressLine3Controller = TextEditingController();
+  final registrationTownCityController = TextEditingController();
+  final registrationCountyController = TextEditingController();
+  final registrationCountryController =
+      TextEditingController(text: 'United Kingdom');
   final phoneController = TextEditingController();
   final authPreferences = AuthPreferencesService();
   final registrationValidation = RegistrationValidationService();
@@ -46,12 +59,17 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isLogin = true;
   bool loading = false;
   bool usePasswordFallback = false;
+  int registrationStep = 0;
   final socialAuth = SocialAuthService();
 
   bool get hasValidSession => FirebaseAuth.instance.currentUser != null;
 
   bool get hasRegistrationDraft =>
       registrationNameController.text.trim().isNotEmpty ||
+      registrationLastNameController.text.trim().isNotEmpty ||
+      registrationTradeController.text.trim().isNotEmpty ||
+      registrationCompanyController.text.trim().isNotEmpty ||
+      registrationAddressLine1Controller.text.trim().isNotEmpty ||
       emailController.text.trim().isNotEmpty ||
       passwordController.text.trim().isNotEmpty ||
       phoneController.text.trim().isNotEmpty;
@@ -61,6 +79,81 @@ class _LoginScreenState extends State<LoginScreen> {
       !usePasswordFallback &&
       hasValidSession &&
       selectedAction == 'session';
+
+  UkPostalAddressControllers registrationAddressControllers() =>
+      UkPostalAddressControllers(
+        postcode: registrationPostcodeController,
+        addressLine1: registrationAddressLine1Controller,
+        addressLine2: registrationAddressLine2Controller,
+        addressLine3: registrationAddressLine3Controller,
+        townCity: registrationTownCityController,
+        county: registrationCountyController,
+        country: registrationCountryController,
+      );
+
+  PendingRegistrationDetails registrationDetails() {
+    final firstName = registrationNameController.text.trim();
+    final lastName = registrationLastNameController.text.trim();
+    final phone = phoneController.text.trim();
+    return PendingRegistrationDetails(
+      email: authPreferences.normalizeEmail(emailController.text),
+      role: role,
+      registrationName: '$firstName $lastName'.trim(),
+      phone: phone,
+      normalizedPhone: RegistrationValidationService.normalizePhone(phone),
+      firstName: firstName,
+      lastName: lastName,
+      trade: registrationTradeController.text.trim(),
+      companyName: registrationCompanyController.text.trim(),
+      address: registrationAddressControllers().value(),
+    );
+  }
+
+  String? validateRegistrationStep(RegistrationWizardStep step) =>
+      RegistrationWizardSteps.validate(
+        step,
+        role: role,
+        firstName: registrationNameController.text,
+        lastName: registrationLastNameController.text,
+        trade: registrationTradeController.text,
+        companyName: registrationCompanyController.text,
+        addressLine1: registrationAddressLine1Controller.text,
+        townCity: registrationTownCityController.text,
+        postcode: registrationPostcodeController.text,
+        country: registrationCountryController.text,
+        email: emailController.text,
+        phone: phoneController.text,
+        password: passwordController.text,
+      );
+
+  String? validateRegistrationDetails({bool requirePassword = true}) {
+    for (final step in RegistrationWizardStep.values) {
+      if (!requirePassword && step == RegistrationWizardStep.credentials) {
+        continue;
+      }
+      final error = validateRegistrationStep(step);
+      if (error != null) return error;
+    }
+    return null;
+  }
+
+  void nextRegistrationStep() {
+    if (loading) return;
+    final step = RegistrationWizardStep.values[registrationStep];
+    final error = validateRegistrationStep(step);
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+      return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (registrationStep < RegistrationWizardSteps.count - 1) {
+      setState(() => registrationStep++);
+    } else {
+      submit();
+    }
+  }
 
   Future<void> enrollBiometricAfterPasswordLogin({
     required User user,
@@ -97,6 +190,16 @@ class _LoginScreenState extends State<LoginScreen> {
     emailController.dispose();
     passwordController.dispose();
     registrationNameController.dispose();
+    registrationLastNameController.dispose();
+    registrationTradeController.dispose();
+    registrationCompanyController.dispose();
+    registrationPostcodeController.dispose();
+    registrationAddressLine1Controller.dispose();
+    registrationAddressLine2Controller.dispose();
+    registrationAddressLine3Controller.dispose();
+    registrationTownCityController.dispose();
+    registrationCountyController.dispose();
+    registrationCountryController.dispose();
     phoneController.dispose();
     super.dispose();
   }
@@ -365,8 +468,19 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (leave != true || !mounted) return;
       registrationNameController.clear();
+      registrationLastNameController.clear();
+      registrationTradeController.clear();
+      registrationCompanyController.clear();
+      registrationPostcodeController.clear();
+      registrationAddressLine1Controller.clear();
+      registrationAddressLine2Controller.clear();
+      registrationAddressLine3Controller.clear();
+      registrationTownCityController.clear();
+      registrationCountyController.clear();
+      registrationCountryController.text = 'United Kingdom';
       passwordController.clear();
       phoneController.clear();
+      RegistrationValidationService.clearPending(emailController.text);
     }
 
     if (!mounted) return;
@@ -375,6 +489,7 @@ class _LoginScreenState extends State<LoginScreen> {
       isLogin = true;
       usePasswordFallback = false;
       loading = false;
+      registrationStep = 0;
     });
   }
 
@@ -445,6 +560,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> submit() async {
+    if (loading) return;
     setState(() => loading = true);
 
     try {
@@ -457,21 +573,17 @@ class _LoginScreenState extends State<LoginScreen> {
         /// REGISTER
         final email = authPreferences.normalizeEmail(emailController.text);
         final password = passwordController.text.trim();
-        final registrationName = registrationNameController.text.trim();
-        final phone = phoneController.text.trim();
-        final normalizedPhone =
-            RegistrationValidationService.normalizePhone(phone);
+        final details = registrationDetails();
+        final phone = details.phone;
         debugPrint("Registration submit started");
 
-        if (registrationName.isEmpty ||
-            email.isEmpty ||
-            phone.isEmpty ||
-            password.isEmpty) {
+        final stepError = validateRegistrationDetails();
+        if (stepError != null) {
           if (!mounted) return;
           setState(() => loading = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Enter name, email, phone and password"),
+            SnackBar(
+              content: Text(stepError),
             ),
           );
           return;
@@ -490,13 +602,7 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        final pendingDetails = PendingRegistrationDetails(
-          email: email,
-          role: role,
-          registrationName: registrationName,
-          phone: phone,
-          normalizedPhone: normalizedPhone,
-        );
+        final pendingDetails = details;
         RegistrationValidationService.rememberPending(pendingDetails);
 
         UserCredential result;
@@ -709,25 +815,15 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       if (!isLogin) {
         final email = authPreferences.normalizeEmail(emailController.text);
-        final name = registrationNameController.text.trim();
         final phone = phoneController.text.trim();
-        if (email.isEmpty || name.isEmpty || phone.isEmpty) {
-          throw StateError(
-              'Enter name, email and phone before social registration.');
-        }
+        final stepError = validateRegistrationDetails(requirePassword: false);
+        if (stepError != null) throw StateError(stepError);
         final validation = await registrationValidation.validate(
           email: email,
           phone: phone,
         );
         if (validation.hasErrors) throw StateError(validation.message);
-        RegistrationValidationService.rememberPending(
-            PendingRegistrationDetails(
-          email: email,
-          role: role,
-          registrationName: name,
-          phone: phone,
-          normalizedPhone: RegistrationValidationService.normalizePhone(phone),
-        ));
+        RegistrationValidationService.rememberPending(registrationDetails());
         pendingEmail = email;
       }
       final result = await socialAuth.signIn(provider);
@@ -787,6 +883,88 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
         ],
       );
+
+  Widget buildRegistrationWizardFields() {
+    final step = RegistrationWizardStep.values[registrationStep];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Step ${registrationStep + 1} of ${RegistrationWizardSteps.count}',
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        LinearProgressIndicator(
+          value: (registrationStep + 1) / RegistrationWizardSteps.count,
+        ),
+        const SizedBox(height: 18),
+        Text(
+          RegistrationWizardSteps.title(step, role),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 16),
+        switch (step) {
+          RegistrationWizardStep.accountType => DropdownButtonFormField<String>(
+              initialValue: role,
+              decoration: const InputDecoration(labelText: 'Account type'),
+              items: const [
+                DropdownMenuItem(value: 'worker', child: Text('Worker')),
+                DropdownMenuItem(value: 'employer', child: Text('Employer')),
+              ],
+              onChanged: (value) {
+                if (value != null) setState(() => role = value);
+              },
+            ),
+          RegistrationWizardStep.identity => Column(children: [
+              StroykaInputField(
+                controller: registrationNameController,
+                hintText: 'First name',
+                prefixIcon: Icons.person_outline,
+              ),
+              const SizedBox(height: 12),
+              StroykaInputField(
+                controller: registrationLastNameController,
+                hintText: 'Last name',
+              ),
+            ]),
+          RegistrationWizardStep.professionOrCompany => StroykaInputField(
+              controller: role == 'employer'
+                  ? registrationCompanyController
+                  : registrationTradeController,
+              hintText:
+                  role == 'employer' ? 'Company name' : 'Profession or trade',
+              prefixIcon: role == 'employer'
+                  ? Icons.business_outlined
+                  : Icons.handyman_outlined,
+            ),
+          RegistrationWizardStep.address => UkPostalAddressForm(
+              controllers: registrationAddressControllers(),
+              postcodeLabel: 'Postcode',
+              addressLine1Label: 'Address Line 1',
+            ),
+          RegistrationWizardStep.email => StroykaInputField(
+              controller: emailController,
+              hintText: 'Email address',
+              prefixIcon: Icons.mail_outline,
+            ),
+          RegistrationWizardStep.phone => StroykaInputField(
+              controller: phoneController,
+              hintText: 'Phone number',
+              prefixIcon: Icons.phone_outlined,
+            ),
+          RegistrationWizardStep.credentials => Column(children: [
+              StroykaInputField(
+                controller: passwordController,
+                hintText: 'Password',
+                prefixIcon: Icons.lock_outline,
+                isPassword: true,
+              ),
+              const SizedBox(height: 8),
+              const Text('Or continue with a social account'),
+              socialActions(),
+            ]),
+        },
+      ],
+    );
+  }
 
   Widget buildStartChoices() {
     Widget actionButton({
@@ -861,7 +1039,11 @@ class _LoginScreenState extends State<LoginScreen> {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                onPressed: loading ? null : returnToAuthenticationMethods,
+                onPressed: loading
+                    ? null
+                    : !isLogin && registrationStep > 0
+                        ? () => setState(() => registrationStep--)
+                        : returnToAuthenticationMethods,
                 icon: const Icon(Icons.arrow_back),
                 label: const Text("Back"),
               ),
@@ -892,41 +1074,20 @@ class _LoginScreenState extends State<LoginScreen> {
               style: const TextStyle(color: AppColors.muted),
             ),
           ] else if (!isStartChoice) ...[
-            if (!isLogin) ...[
+            if (!isLogin)
+              buildRegistrationWizardFields()
+            else ...[
               StroykaInputField(
-                controller: registrationNameController,
-                hintText: "First name / contact name",
-                prefixIcon: Icons.person_outline,
+                controller: emailController,
+                hintText: "Email",
+                prefixIcon: Icons.mail_outline,
               ),
               const SizedBox(height: 12),
-            ],
-            StroykaInputField(
-              controller: emailController,
-              hintText: "Email",
-              prefixIcon: Icons.mail_outline,
-            ),
-            const SizedBox(height: 12),
-            StroykaInputField(
-              controller: passwordController,
-              hintText: "Password",
-              prefixIcon: Icons.lock_outline,
-              isPassword: true,
-            ),
-            if (!isLogin) ...[
-              const SizedBox(height: 12),
               StroykaInputField(
-                controller: phoneController,
-                hintText: "Phone",
-                prefixIcon: Icons.phone_outlined,
-              ),
-              const SizedBox(height: 12),
-              StroykaDropdown(
-                value: role,
-                items: const ["worker", "employer"],
-                onChanged: (value) {
-                  if (value == null) return;
-                  setState(() => role = value);
-                },
+                controller: passwordController,
+                hintText: "Password",
+                prefixIcon: Icons.lock_outline,
+                isPassword: true,
               ),
             ],
           ],
@@ -941,7 +1102,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? (widget.sessionMode == AuthPreferenceMethod.biometric
                             ? enterWithBiometric
                             : enterWithSession)
-                        : submit,
+                        : isLogin
+                            ? submit
+                            : nextRegistrationStep,
                 width: double.infinity,
                 child: loading
                     ? const SizedBox(
@@ -958,7 +1121,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             : "Enter")
                         : isLogin
                             ? "Sign in"
-                            : "Create account"),
+                            : registrationStep <
+                                    RegistrationWizardSteps.count - 1
+                                ? 'Next'
+                                : 'Create account'),
               ),
             ),
             const SizedBox(height: 8),
@@ -973,7 +1139,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 onPressed: openPasswordLogin,
                 child: const Text("Use password instead"),
               ),
-            if (!showSessionGate) socialActions(),
+            if (isLogin && !showSessionGate) socialActions(),
           ],
         ],
       );
@@ -1003,15 +1169,20 @@ class _LoginScreenState extends State<LoginScreen> {
                           translation: const Offset(0, 0.08),
                           child: FractionallySizedBox(
                             widthFactor: 0.88,
-                            child: isStartChoice
-                                ? authContent()
-                                : StroykaSurface(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        20, 24, 20, 20),
-                                    texture:
-                                        "assets/branding/texture_light_cloud.jpg",
-                                    child: authContent(),
-                                  ),
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: !isLogin ? 500 : double.infinity,
+                              ),
+                              child: isStartChoice
+                                  ? authContent()
+                                  : StroykaSurface(
+                                      padding: const EdgeInsets.fromLTRB(
+                                          20, 24, 20, 20),
+                                      texture:
+                                          "assets/branding/texture_light_cloud.jpg",
+                                      child: authContent(),
+                                    ),
+                            ),
                           ),
                         ),
                       ],
