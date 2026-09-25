@@ -15,6 +15,7 @@ import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../services/moderation_hold_service.dart';
 import '../services/registration_validation_service.dart';
+import '../services/registration_lifecycle.dart';
 import '../services/registration_wizard_steps.dart';
 import '../services/stroyka_action_feedback.dart';
 import '../widgets/app_cached_image.dart';
@@ -131,6 +132,24 @@ class _ProfileScreenState extends State<ProfileScreen>
   String verifiedNormalizedEmail = "";
   String verifiedPhone = "";
   String verifiedNormalizedPhone = "";
+  final identityRevision = RegistrationInputRevision();
+
+  List<ProfileCompletionStep> get completionSteps =>
+      RegistrationLifecycle.completionSteps(role);
+
+  void handleRegistrationPhoneChanged(String _) {
+    identityRevision.changed();
+    final current = normalizePhoneValue(phoneController.text);
+    if (current != normalizePhoneValue(verifiedNormalizedPhone)) {
+      setState(() {
+        phoneVerified = false;
+        verifiedPhone = '';
+        verifiedNormalizedPhone = '';
+      });
+    } else {
+      setState(() {});
+    }
+  }
 
   String get userId => FirebaseAuth.instance.currentUser!.uid;
 
@@ -209,6 +228,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   void handleRegistrationEmailChanged(String _) {
+    identityRevision.changed();
     final currentEmail = currentNormalizedProfileEmail();
     final verifiedEmailValue = normalizeEmailValue(
       verifiedNormalizedEmail.isNotEmpty
@@ -337,6 +357,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     final firebaseVerifiedForCurrent =
         FirebaseAuth.instance.currentUser?.emailVerified == true &&
             firebaseEmail == currentEmail;
+    if (firstProfileCreation) return firebaseVerifiedForCurrent;
     return (emailVerified && verifiedEmailValue == currentEmail) ||
         (role == "employer" &&
             billingEmailVerified &&
@@ -347,6 +368,12 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool isCurrentPhoneVerified() {
     final currentPhone = normalizePhoneValue(phoneController.text);
     if (currentPhone.isEmpty) return false;
+    if (firstProfileCreation) {
+      return normalizePhoneValue(
+            FirebaseAuth.instance.currentUser?.phoneNumber ?? '',
+          ) ==
+          currentPhone;
+    }
     final verifiedPhoneValue = normalizePhoneValue(
       verifiedNormalizedPhone.isNotEmpty
           ? verifiedNormalizedPhone
@@ -366,28 +393,6 @@ class _ProfileScreenState extends State<ProfileScreen>
   Future<void> setRegistrationState(Map<String, dynamic> data) async {
     final ref = await registrationStateRef();
     await ref.set(data, SetOptions(merge: true));
-  }
-
-  Future<void> finalizePendingRegistration() async {
-    final firestore = FirebaseFirestore.instance;
-    final pendingRef =
-        firestore.collection("pending_registrations").doc(userId);
-    final pendingSnapshot = await pendingRef.get();
-    if (!pendingSnapshot.exists) return;
-
-    final legalDocs = await pendingRef.collection("legalAcceptances").get();
-    final batch = firestore.batch();
-    final userRef = firestore.collection("users").doc(userId);
-    for (final doc in legalDocs.docs) {
-      batch.set(
-        userRef.collection("legalAcceptances").doc(doc.id),
-        doc.data(),
-        SetOptions(merge: true),
-      );
-      batch.delete(doc.reference);
-    }
-    batch.delete(pendingRef);
-    await batch.commit();
   }
 
   @override
@@ -487,31 +492,35 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   /// LOAD PROFILE
   Future<void> loadProfile() async {
-    var userDoc =
+    final userDoc =
         await FirebaseFirestore.instance.collection("users").doc(userId).get();
-    if (!userDoc.exists) {
-      userDoc = await FirebaseFirestore.instance
+    Map<String, dynamic>? loadedData = userDoc.data();
+    Map<String, dynamic>? draftData;
+    if (loadedData == null || !RegistrationLifecycle.isComplete(loadedData)) {
+      final draft = await FirebaseFirestore.instance
           .collection("pending_registrations")
           .doc(userId)
           .get();
+      if (draft.exists) {
+        draftData = draft.data();
+        loadedData = <String, dynamic>{...?loadedData, ...?draftData};
+      }
     }
-
-    if (!userDoc.exists) return;
-
-    final data = userDoc.data()!;
+    if (loadedData == null) return;
+    final data = loadedData;
 
     final portfolioUrls = await loadPortfolioUrls(userId);
 
     final existingRole = data["role"]?.toString() ?? "worker";
-    final hasWorkerProfile = (data["name"]?.toString().trim() ?? "").isNotEmpty;
-    final hasEmployerProfile =
-        (data["companyName"]?.toString().trim() ?? "").isNotEmpty;
     final acceptedCurrentVersion =
-        LegalDocuments.hasAcceptedCurrentVersion(data, existingRole);
+        LegalDocuments.hasAcceptedCurrentVersion(data, existingRole) ||
+            LegalDocuments.hasAcceptedCurrentVersion(
+                userDoc.data(), existingRole) ||
+            LegalDocuments.hasAcceptedCurrentVersion(draftData, existingRole);
 
     setState(() {
       role = existingRole;
-      firstProfileCreation = !hasWorkerProfile && !hasEmployerProfile;
+      firstProfileCreation = !RegistrationLifecycle.isComplete(data);
       legalAcceptedForCurrentVersion = acceptedCurrentVersion;
 
       final registrationName = data["registrationName"]?.toString() ?? "";
@@ -964,7 +973,10 @@ class _ProfileScreenState extends State<ProfileScreen>
       },
       "updatedAt": FieldValue.serverTimestamp(),
     });
-    if (!mounted) return;
+    if (!mounted ||
+        currentNormalizedProfileEmail() != normalizeEmailValue(email)) {
+      return;
+    }
     setState(() {
       emailVerified = false;
       billingEmailVerified = false;
@@ -976,8 +988,11 @@ class _ProfileScreenState extends State<ProfileScreen>
   Future<bool> ensureCurrentEmailAvailable(String email) async {
     final availability =
         await RegistrationValidationService().checkEmailAvailability(email);
+    if (!mounted ||
+        currentNormalizedProfileEmail() != normalizeEmailValue(email)) {
+      return false;
+    }
     if (availability.available) return true;
-    if (!mounted) return false;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -995,7 +1010,11 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     setState(() => sendingEmailVerification = true);
     try {
+      final requestedEmail = currentNormalizedProfileEmail();
       await user.reload();
+      if (!mounted || currentNormalizedProfileEmail() != requestedEmail) {
+        return false;
+      }
       final refreshed = FirebaseAuth.instance.currentUser ?? user;
       final desiredEmail = normalizeEmailValue(currentProfileEmail());
       final authEmail = refreshed.email?.trim() ?? "";
@@ -1009,8 +1028,17 @@ class _ProfileScreenState extends State<ProfileScreen>
       if (desiredEmail.isNotEmpty &&
           normalizeEmailValue(desiredEmail) != normalizeEmailValue(authEmail)) {
         if (!await ensureCurrentEmailAvailable(desiredEmail)) return false;
+        if (!mounted || currentNormalizedProfileEmail() != desiredEmail) {
+          return false;
+        }
         await resetRegistrationEmailVerificationState(desiredEmail);
+        if (!mounted || currentNormalizedProfileEmail() != desiredEmail) {
+          return false;
+        }
         await refreshed.verifyBeforeUpdateEmail(desiredEmail);
+        if (!mounted || currentNormalizedProfileEmail() != desiredEmail) {
+          return false;
+        }
         await setRegistrationState({
           "email": desiredEmail,
           "normalizedEmail": normalizeEmailValue(desiredEmail),
@@ -1076,7 +1104,13 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
 
       await resetRegistrationEmailVerificationState(desiredEmail);
+      if (!mounted || currentNormalizedProfileEmail() != desiredEmail) {
+        return false;
+      }
       await refreshed.sendEmailVerification();
+      if (!mounted || currentNormalizedProfileEmail() != desiredEmail) {
+        return false;
+      }
       await setRegistrationState({
         "email": desiredEmail,
         "normalizedEmail": normalizeEmailValue(desiredEmail),
@@ -1112,7 +1146,11 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     refreshingEmailVerification = true;
     try {
+      final requestedEmail = currentNormalizedProfileEmail();
       await user.reload();
+      if (!mounted || currentNormalizedProfileEmail() != requestedEmail) {
+        return false;
+      }
       final refreshed = FirebaseAuth.instance.currentUser ?? user;
       final verified = refreshed.emailVerified;
       final refreshedEmail = refreshed.email?.trim() ?? "";
@@ -1172,7 +1210,9 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
 
       final verifiedForCurrent = verified && normalizedEmail == currentEmail;
-      if (!mounted) return verifiedForCurrent;
+      if (!mounted || currentNormalizedProfileEmail() != requestedEmail) {
+        return false;
+      }
       setState(() {
         if (role == "employer") {
           billingEmailVerified = billingMatches && verifiedForCurrent;
@@ -1290,6 +1330,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   Future<bool> verifyPhoneFromDialog() async {
     final phone = phoneController.text.trim();
     final normalizedPhone = normalizePhoneValue(phone);
+    final revision = identityRevision.value;
     if (normalizedPhone.isEmpty) {
       if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1299,6 +1340,11 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
     final availability =
         await RegistrationValidationService().checkPhoneAvailability(phone);
+    if (!mounted ||
+        !identityRevision.isCurrent(revision) ||
+        normalizePhoneValue(phoneController.text) != normalizedPhone) {
+      return false;
+    }
     if (!availability.available) {
       if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1329,7 +1375,11 @@ class _ProfileScreenState extends State<ProfileScreen>
         ],
       ),
     );
-    if (confirmed != true || !mounted) return false;
+    if (confirmed != true ||
+        !mounted ||
+        normalizePhoneValue(phoneController.text) != normalizedPhone) {
+      return false;
+    }
 
     final verified = await showDialog<bool>(
       context: context,
@@ -1338,12 +1388,15 @@ class _ProfileScreenState extends State<ProfileScreen>
         phoneNumber: normalizedPhone,
       ),
     );
-    if (verified != true) return false;
+    if (verified != true ||
+        !mounted ||
+        normalizePhoneValue(phoneController.text) != normalizedPhone) {
+      return false;
+    }
 
     debugPrint("PHONE VERIFIED: uid=$userId");
-    final verifiedPhoneValue = phoneController.text.trim();
-    final verifiedNormalizedPhoneValue =
-        normalizePhoneValue(verifiedPhoneValue);
+    final verifiedPhoneValue = phone;
+    final verifiedNormalizedPhoneValue = normalizedPhone;
     await setRegistrationState({
       "phone": verifiedPhoneValue,
       "normalizedPhone": verifiedNormalizedPhoneValue,
@@ -1405,6 +1458,45 @@ class _ProfileScreenState extends State<ProfileScreen>
         ],
       ),
     );
+  }
+
+  Future<void> editRegistrationContact({required bool email}) async {
+    final controller = email
+        ? (role == 'employer' ? billingEmailController : emailController)
+        : phoneController;
+    final editing = TextEditingController(text: controller.text);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(email ? 'Change email' : 'Change phone number'),
+        content: TextField(
+          controller: editing,
+          keyboardType:
+              email ? TextInputType.emailAddress : TextInputType.phone,
+          autofocus: true,
+          decoration:
+              InputDecoration(labelText: email ? 'Email' : 'Phone number'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, editing.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    editing.dispose();
+    if (!mounted || value == null) return;
+    controller.text = value;
+    if (email) {
+      handleRegistrationEmailChanged(value);
+    } else {
+      handleRegistrationPhoneChanged(value);
+    }
   }
 
   Future<void> pickHeaderImage() async {
@@ -1583,10 +1675,15 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
 
     await refreshEmailVerification(silent: true);
+    if (!mounted ||
+        normalizePhoneValue(phoneController.text) != normalizedPhone ||
+        normalizeEmailValue(currentProfileEmail()) !=
+            normalizeEmailValue(profileEmail)) {
+      return;
+    }
     final authUser = FirebaseAuth.instance.currentUser;
     final emailIsVerified = isCurrentEmailVerified();
-    final requireSmsPhoneVerification =
-        firstProfileCreation || role == "employer";
+    final requireSmsPhoneVerification = role == "employer";
     var phoneIsVerified =
         requireSmsPhoneVerification && isCurrentPhoneVerified();
 
@@ -1595,6 +1692,11 @@ class _ProfileScreenState extends State<ProfileScreen>
           await RegistrationValidationService().checkEmailAvailability(
         profileEmail,
       );
+      if (!mounted ||
+          normalizeEmailValue(currentProfileEmail()) !=
+              normalizeEmailValue(profileEmail)) {
+        return;
+      }
       if (!emailAvailability.available) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1612,6 +1714,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     if (phoneChanged || firstProfileCreation) {
       final phoneAvailability =
           await RegistrationValidationService().checkPhoneAvailability(phone);
+      if (!mounted ||
+          normalizePhoneValue(phoneController.text) != normalizedPhone) {
+        return;
+      }
       if (!phoneAvailability.available) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1627,8 +1733,11 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
 
     if (firstProfileCreation &&
-        (!emailIsVerified ||
-            (requireSmsPhoneVerification && !phoneIsVerified))) {
+        !RegistrationLifecycle.canComplete(
+          role: role,
+          emailVerified: emailIsVerified,
+          phoneVerified: phoneIsVerified,
+        )) {
       if (emailIsVerified && requireSmsPhoneVerification && !phoneIsVerified) {
         final verified = await verifyPhoneFromDialog();
         if (!verified) return;
@@ -1938,11 +2047,6 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
 
       debugPrint("PROFILE CREATION START: uid=$userId");
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .set(profileData, SetOptions(merge: true));
-
       await RegistrationValidationService().updatePhoneIndexesForUser(
         uid: userId,
         phone: phone,
@@ -1954,7 +2058,15 @@ class _ProfileScreenState extends State<ProfileScreen>
         previousEmail: loadedProfileEmail,
       );
       if (wasFirstProfileCreation) {
-        await finalizePendingRegistration();
+        await RegistrationLifecycle.finalize(
+          uid: userId,
+          profileData: profileData,
+        );
+      } else {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .set(profileData, SetOptions(merge: true));
       }
       debugPrint("PROFILE CREATION SUCCESS: uid=$userId");
 
@@ -2109,6 +2221,39 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Future<void> logout() async {
     await FirebaseAuth.instance.signOut();
+  }
+
+  Future<void> cancelRegistration() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel registration?'),
+        content: const Text('Unfinished registration data will be lost. '
+            'Your sign-in identity will remain available.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep registering'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Discard registration'),
+          ),
+        ],
+      ),
+    );
+    if (discard != true || !mounted) return;
+    try {
+      await RegistrationLifecycle.cancel(
+          user: FirebaseAuth.instance.currentUser!);
+      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not discard registration. Try again.'),
+        ));
+      }
+    }
   }
 
   Widget buildAvatar() {
@@ -2497,7 +2642,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Future<void> nextProfileCompletionStep() async {
     if (loading) return;
-    final step = ProfileCompletionStep.values[completionStep];
+    final step = completionSteps[completionStep];
     if (step == ProfileCompletionStep.emailVerification) {
       final verified = await refreshEmailVerification(silent: true);
       if (!mounted) return;
@@ -2517,7 +2662,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       ));
       return;
     }
-    if (completionStep < ProfileCompletionStep.values.length - 1) {
+    if (completionStep < completionSteps.length - 1) {
       FocusManager.instance.primaryFocus?.unfocus();
       setState(() => completionStep++);
     } else {
@@ -2526,10 +2671,9 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget buildProfileCompletionWizard() {
-    final step = ProfileCompletionStep.values[completionStep];
+    final step = completionSteps[completionStep];
     final stepNumber = RegistrationWizardSteps.count + completionStep + 1;
-    final total =
-        RegistrationWizardSteps.count + ProfileCompletionStep.values.length;
+    final total = RegistrationWizardSteps.count + completionSteps.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -2547,6 +2691,14 @@ class _ProfileScreenState extends State<ProfileScreen>
                         TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 10),
                 Text(currentProfileEmail()),
+                TextButton(
+                  onPressed: loading ||
+                          sendingEmailVerification ||
+                          refreshingEmailVerification
+                      ? null
+                      : () => editRegistrationContact(email: true),
+                  child: const Text('Change email'),
+                ),
                 const SizedBox(height: 10),
                 const Text(
                     'Open the verification link sent to your email. Check your Inbox and Spam or Junk folder, then return here.'),
@@ -2577,6 +2729,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                         TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 10),
                 Text(phoneController.text.trim()),
+                TextButton(
+                  onPressed: loading
+                      ? null
+                      : () => editRegistrationContact(email: false),
+                  child: const Text('Change phone number'),
+                ),
                 const SizedBox(height: 10),
                 const Text('We will send a verification code by SMS.'),
                 buildInlineVerificationStatus(
@@ -2688,7 +2846,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           TextField(
             controller: phoneController,
             keyboardType: TextInputType.phone,
-            onChanged: (_) => setState(() {}),
+            onChanged: handleRegistrationPhoneChanged,
             decoration: const InputDecoration(labelText: "Phone"),
           ),
           buildInlineVerificationStatus(
@@ -2914,7 +3072,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           TextField(
             controller: phoneController,
             keyboardType: TextInputType.phone,
-            onChanged: (_) => setState(() {}),
+            onChanged: handleRegistrationPhoneChanged,
             decoration: const InputDecoration(labelText: "Main phone"),
           ),
           buildInlineVerificationStatus(
@@ -3028,9 +3186,14 @@ class _ProfileScreenState extends State<ProfileScreen>
       appBar: AppBar(
         title: Text(firstProfileCreation ? 'Registration' : 'Profile'),
         actions: [
+          if (firstProfileCreation)
+            TextButton(
+              onPressed: loading ? null : cancelRegistration,
+              child: const Text('Cancel'),
+            ),
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: logout,
+            onPressed: firstProfileCreation ? cancelRegistration : logout,
           )
         ],
       ),
@@ -3076,8 +3239,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                                 child: const Text('Back'),
                               ),
                             const Spacer(),
-                            if (ProfileCompletionStep
-                                .values[completionStep].optional)
+                            if (completionSteps[completionStep].optional)
                               TextButton(
                                 onPressed: loading ? null : saveProfile,
                                 child: const Text('Skip'),
@@ -3096,9 +3258,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                                       )
                                     : Text(
                                         completionStep ==
-                                                ProfileCompletionStep
-                                                        .values.length -
-                                                    1
+                                                completionSteps.length - 1
                                             ? 'Complete registration'
                                             : 'Next',
                                         textAlign: TextAlign.center,

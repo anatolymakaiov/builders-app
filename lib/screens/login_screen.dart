@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import '../services/auth_preferences_service.dart';
 import '../services/post_registration_refresh_service.dart';
 import '../services/multi_account_service.dart';
 import '../services/registration_validation_service.dart';
+import '../services/registration_lifecycle.dart';
 import '../services/social_auth_service.dart';
 import '../services/registration_wizard_steps.dart';
 import '../widgets/legal_documents.dart';
@@ -68,6 +70,70 @@ class _LoginScreenState extends State<LoginScreen> {
   bool providerEmailVerified = false;
   String registrationPhotoUrl = '';
   final socialAuth = SocialAuthService();
+  final identityRevision = RegistrationInputRevision();
+  Timer? draftSaveTimer;
+  Future<void> draftWrites = Future<void>.value();
+  bool restoringDraft = false;
+
+  void onRegistrationFieldChanged() {
+    identityRevision.changed();
+    if (restoringDraft ||
+        isLogin ||
+        FirebaseAuth.instance.currentUser == null) {
+      return;
+    }
+    draftSaveTimer?.cancel();
+    draftSaveTimer = Timer(const Duration(milliseconds: 500), () {
+      unawaited(persistRegistrationDraft().catchError((Object error) {
+        debugPrint('Registration draft save failed: $error');
+      }));
+    });
+  }
+
+  Future<void> persistRegistrationDraft() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || isLogin || loading || !mounted || restoringDraft) {
+      return;
+    }
+    final details = registrationDetails();
+    final address = details.address;
+    final draftData = <String, dynamic>{
+      'role': role,
+      'email': details.email,
+      'normalizedEmail': details.email,
+      'registrationName': details.registrationName,
+      'registrationFirstName': details.firstName,
+      'registrationLastName': details.lastName,
+      'registrationPosition': details.trade,
+      'registrationCompanyName': details.companyName,
+      'phone': details.phone,
+      'normalizedPhone': details.normalizedPhone,
+      if (address != null) ...{
+        'postcode': address.postcode,
+        'addressLine1': address.addressLine1,
+        'addressLine2': address.addressLine2,
+        'addressLine3': address.addressLine3,
+        'townCity': address.townCity,
+        'county': address.county,
+        'country': address.country,
+      },
+      if (registrationProvider != null)
+        'authMethod': registrationProvider!.name,
+      'uid': user.uid,
+      'draft': true,
+      'active': false,
+      'pendingRegistration': true,
+      'registrationFormComplete': false,
+      'registrationStep': registrationStep,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    draftWrites = draftWrites.catchError((Object _) {}).then((_) =>
+        FirebaseFirestore.instance
+            .collection('pending_registrations')
+            .doc(user.uid)
+            .set(draftData, SetOptions(merge: true)));
+    await draftWrites;
+  }
 
   bool get hasValidSession => FirebaseAuth.instance.currentUser != null;
 
@@ -154,7 +220,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return null;
   }
 
-  void nextRegistrationStep() {
+  Future<void> nextRegistrationStep() async {
     if (loading) return;
     final step = RegistrationWizardStep.values[registrationStep];
     final error = registrationProvider != null &&
@@ -170,6 +236,11 @@ class _LoginScreenState extends State<LoginScreen> {
     FocusManager.instance.primaryFocus?.unfocus();
     if (registrationStep < RegistrationWizardSteps.count - 1) {
       setState(() => registrationStep++);
+      try {
+        await persistRegistrationDraft();
+      } catch (error) {
+        debugPrint('Registration draft save failed: $error');
+      }
     } else {
       submit();
     }
@@ -195,6 +266,23 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    for (final controller in [
+      emailController,
+      registrationNameController,
+      registrationLastNameController,
+      registrationTradeController,
+      registrationCompanyController,
+      registrationPostcodeController,
+      registrationAddressLine1Controller,
+      registrationAddressLine2Controller,
+      registrationAddressLine3Controller,
+      registrationTownCityController,
+      registrationCountyController,
+      registrationCountryController,
+      phoneController,
+    ]) {
+      controller.addListener(onRegistrationFieldChanged);
+    }
     final user = FirebaseAuth.instance.currentUser;
     if (user != null && emailController.text.trim().isEmpty) {
       emailController.text = user.email ?? "";
@@ -218,7 +306,13 @@ class _LoginScreenState extends State<LoginScreen> {
           .collection('pending_registrations')
           .doc(user.uid)
           .get();
-      final data = snapshot.data() ?? <String, dynamic>{};
+      final legacy = snapshot.exists
+          ? null
+          : await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
+      final data = snapshot.data() ?? legacy?.data() ?? <String, dynamic>{};
       final provider = SocialProvider.values.where(
         (candidate) => candidate.name == data['authMethod'],
       );
@@ -227,6 +321,7 @@ class _LoginScreenState extends State<LoginScreen> {
           storedName.isEmpty ? (user.displayName ?? '').trim() : storedName;
       final parts = name.split(RegExp(r'\s+'));
       if (!mounted) return;
+      restoringDraft = true;
       setState(() {
         role = data['role'] == 'employer' ? 'employer' : 'worker';
         registrationProvider = provider.isEmpty
@@ -240,17 +335,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 (parts.length > 1 ? parts.skip(1).join(' ') : ''))
             .toString();
         registrationTradeController.text =
-            (data['registrationPosition'] ?? '').toString();
+            (data['registrationPosition'] ?? data['trade'] ?? '').toString();
         registrationCompanyController.text =
-            (data['registrationCompanyName'] ?? '').toString();
+            (data['registrationCompanyName'] ?? data['companyName'] ?? '')
+                .toString();
         registrationAddressLine1Controller.text =
-            (data['addressLine1'] ?? '').toString();
+            (data['addressLine1'] ?? data['location'] ?? '').toString();
         registrationAddressLine2Controller.text =
             (data['addressLine2'] ?? '').toString();
         registrationAddressLine3Controller.text =
             (data['addressLine3'] ?? '').toString();
         registrationTownCityController.text =
-            (data['townCity'] ?? '').toString();
+            (data['townCity'] ?? data['city'] ?? '').toString();
         registrationCountyController.text = (data['county'] ?? '').toString();
         registrationPostcodeController.text =
             (data['postcode'] ?? '').toString();
@@ -265,7 +361,9 @@ class _LoginScreenState extends State<LoginScreen> {
         final storedPhoto = (data['photo'] ?? '').toString().trim();
         registrationPhotoUrl =
             storedPhoto.isEmpty ? user.photoURL ?? '' : storedPhoto;
+        registrationStep = RegistrationLifecycle.resumeStep(data, role);
       });
+      restoringDraft = false;
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -273,12 +371,14 @@ class _LoginScreenState extends State<LoginScreen> {
         ));
       }
     } finally {
+      restoringDraft = false;
       if (mounted) setState(() => registrationDraftLoading = false);
     }
   }
 
   @override
   void dispose() {
+    draftSaveTimer?.cancel();
     emailController.dispose();
     passwordController.dispose();
     registrationNameController.dispose();
@@ -481,16 +581,14 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> returnToAuthenticationMethods() async {
-    if (!isLogin && hasRegistrationDraft) {
-      final hasSocialDraft = registrationProvider != null;
+    if (!isLogin) {
       final leave = await showDialog<bool>(
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
             title: const Text("Leave registration?"),
-            content: Text(hasSocialDraft
-                ? 'You can return to this registration by signing in with the same provider.'
-                : 'Your entered information will not be saved.'),
+            content: const Text('Unfinished registration data will be lost. '
+                'You can use the same sign-in identity to register again.'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
@@ -498,13 +596,33 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text("Leave"),
+                child: const Text("Discard registration"),
               ),
             ],
           );
         },
       );
       if (leave != true || !mounted) return;
+      draftSaveTimer?.cancel();
+      try {
+        await draftWrites;
+      } catch (_) {
+        // A failed autosave cannot prevent explicit draft deletion.
+      }
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        try {
+          await RegistrationLifecycle.cancel(user: user);
+        } catch (error) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text('Could not discard registration. Try again.')),
+            );
+          }
+          return;
+        }
+      }
       registrationNameController.clear();
       registrationLastNameController.clear();
       registrationTradeController.clear();
@@ -521,10 +639,6 @@ class _LoginScreenState extends State<LoginScreen> {
       RegistrationValidationService.clearPending(emailController.text);
     }
 
-    if (registrationProvider != null) {
-      await FirebaseAuth.instance.signOut();
-    }
-
     if (!mounted) return;
     setState(() {
       selectedAction = null;
@@ -537,6 +651,7 @@ class _LoginScreenState extends State<LoginScreen> {
       providerEmailVerified = false;
       registrationPhotoUrl = '';
     });
+    if (Navigator.of(context).canPop()) Navigator.of(context).pop();
   }
 
   Future<void> createPendingRegistration({
@@ -609,9 +724,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> submit() async {
     if (loading) return;
+    draftSaveTimer?.cancel();
     setState(() => loading = true);
 
     try {
+      try {
+        await draftWrites;
+      } catch (error) {
+        debugPrint('Registration autosave did not complete: $error');
+      }
       if (isLogin) {
         final credential = await handleLogin();
         if (credential != null) {
@@ -641,6 +762,14 @@ class _LoginScreenState extends State<LoginScreen> {
           email: email,
           phone: phone,
         );
+        if (!mounted ||
+            email != authPreferences.normalizeEmail(emailController.text) ||
+            RegistrationValidationService.normalizePhone(phone) !=
+                RegistrationValidationService.normalizePhone(
+                    phoneController.text)) {
+          if (mounted) setState(() => loading = false);
+          return;
+        }
         if (validation.hasErrors) {
           if (!mounted) return;
           setState(() => loading = false);
@@ -724,16 +853,16 @@ class _LoginScreenState extends State<LoginScreen> {
                 debugPrint(
                   "Firebase Auth orphan detected for email: $email. No active Firestore profile found.",
                 );
-                message =
-                    "This email is linked to an unfinished or deleted authentication record. Please contact support or run cleanup.";
+                message = 'This email already has a sign-in identity. '
+                    'Use Enter to sign in and resume registration.';
               }
             } on FirebaseException catch (lookupError) {
               debugPrint(
                 "Could not check active Firestore profile for duplicate email: ${lookupError.code}",
               );
               if (lookupError.code == "permission-denied") {
-                message =
-                    "This email is linked to an unfinished or deleted authentication record. Please contact support or run cleanup.";
+                message = 'This email already has a sign-in identity. '
+                    'Use Enter to sign in and resume registration.';
               }
             }
           }
@@ -1188,6 +1317,14 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             const SizedBox(height: 8),
+            if (!isLogin)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: loading ? null : returnToAuthenticationMethods,
+                  child: const Text('Cancel registration'),
+                ),
+              ),
           ],
           if (showSessionGate) ...[
             Icon(

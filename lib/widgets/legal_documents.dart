@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../services/registration_lifecycle.dart';
 
 class LegalDocument {
   final String key;
@@ -490,10 +492,54 @@ class _LegalAcceptanceScreenState extends State<LegalAcceptanceScreen> {
     );
   }
 
+  Future<void> cancelRegistration() async {
+    if (saving || widget.userId == null) return;
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel registration?'),
+        content: const Text('Unfinished registration data will be lost. '
+            'Your sign-in identity will remain available.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep registering'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Discard registration'),
+          ),
+        ],
+      ),
+    );
+    if (discard != true || !mounted) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.uid != widget.userId) return;
+    try {
+      await RegistrationLifecycle.cancel(user: user);
+      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not discard registration. Try again.'),
+        ));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Create account")),
+      appBar: AppBar(
+        title: const Text("Create account"),
+        actions: [
+          if (widget.userId != null)
+            TextButton(
+              onPressed: saving ? null : cancelRegistration,
+              child: const Text('Cancel'),
+            ),
+        ],
+      ),
       body: StroykaScreenBody(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/legal_documents.dart';
 import 'moderation_hold_service.dart';
 import 'registration_validation_service.dart';
+import 'registration_lifecycle.dart';
 import 'social_auth_service.dart';
 
 enum AuthSessionDestination { registration, legal, profile, home, deleted }
@@ -33,7 +34,11 @@ class AuthSessionResolver {
     Map<String, dynamic>? draft,
     bool Function(Map<String, dynamic>, String)? hasAcceptedLegal,
   }) {
-    final data = profile ?? draft ?? <String, dynamic>{};
+    final data = profile != null &&
+            draft != null &&
+            !RegistrationLifecycle.isComplete(profile)
+        ? <String, dynamic>{...profile, ...draft}
+        : profile ?? draft ?? <String, dynamic>{};
     final role = switch (data['role']?.toString()) {
       'admin' => 'admin',
       'employer' => 'employer',
@@ -51,7 +56,11 @@ class AuthSessionResolver {
         profile: data,
       );
     }
-    if (profile == null && draft?['registrationFormComplete'] == false) {
+    if ((profile == null && draft?['registrationFormComplete'] == false) ||
+        (profile != null &&
+            !RegistrationLifecycle.isComplete(profile) &&
+            (draft?['registrationFormComplete'] == false ||
+                profile['registrationFormComplete'] == false))) {
       return AuthSessionResolution(
         destination: AuthSessionDestination.registration,
         role: role,
@@ -66,7 +75,10 @@ class AuthSessionResolver {
         profile: data,
       );
     }
-    if (role != 'admin' && !acceptedLegal(data, role)) {
+    final legalAccepted = acceptedLegal(data, role) ||
+        (profile != null && acceptedLegal(profile, role)) ||
+        (draft != null && acceptedLegal(draft, role));
+    if (role != 'admin' && !legalAccepted) {
       return AuthSessionResolution(
         destination: AuthSessionDestination.legal,
         role: role,
@@ -74,23 +86,10 @@ class AuthSessionResolver {
         hasDraft: draft != null,
       );
     }
-    final hasCompletionFlags = profile != null &&
-        (profile.containsKey('profileComplete') ||
-            profile.containsKey('onboardingComplete') ||
-            profile.containsKey('profileCreated'));
-    final explicitlyComplete = profile != null &&
-        (profile['profileComplete'] == true ||
-            profile['onboardingComplete'] == true ||
-            profile['profileCreated'] == true);
-    final legacyComplete = profile != null &&
-        !hasCompletionFlags &&
-        ((role == 'worker' &&
-                (profile['name']?.toString().trim() ?? '').isNotEmpty) ||
-            (role == 'employer' &&
-                (profile['companyName']?.toString().trim() ?? '').isNotEmpty));
     final active = profile?['active'] != false ||
         ModerationHoldService.isProfileHeld(profile);
-    final complete = explicitlyComplete || legacyComplete;
+    final complete =
+        profile != null && RegistrationLifecycle.isComplete(profile);
     return AuthSessionResolution(
       destination: active && (complete || role == 'admin' && profile != null)
           ? AuthSessionDestination.home
@@ -105,7 +104,15 @@ class AuthSessionResolver {
     final profileSnapshot =
         await _firestore.collection('users').doc(user.uid).get();
     if (profileSnapshot.exists) {
-      return classify(profile: profileSnapshot.data());
+      final profile = profileSnapshot.data()!;
+      if (RegistrationLifecycle.isComplete(profile)) {
+        return classify(profile: profile);
+      }
+      final draft = await _firestore
+          .collection('pending_registrations')
+          .doc(user.uid)
+          .get();
+      return classify(profile: profile, draft: draft.data());
     }
 
     final draftRef =
