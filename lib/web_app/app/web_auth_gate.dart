@@ -87,7 +87,6 @@ class _WebLoginPageState extends State<WebLoginPage> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   bool loading = false;
-  bool entering = false;
   String? error;
 
   @override
@@ -131,23 +130,6 @@ class _WebLoginPageState extends State<WebLoginPage> {
     }
   }
 
-  Future<void> signInSocial(SocialProvider provider) async {
-    setState(() {
-      loading = true;
-      error = null;
-    });
-    try {
-      await SocialAuthService().signIn(provider);
-    } catch (failure) {
-      if (mounted) {
-        setState(() => error =
-            SocialAuthService.errorMessage(failure, provider: provider));
-      }
-    } finally {
-      if (mounted) setState(() => loading = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -175,87 +157,64 @@ class _WebLoginPageState extends State<WebLoginPage> {
                   style: TextStyle(color: WebTheme.muted),
                 ),
                 const SizedBox(height: 24),
-                if (entering) ...[
-                  TextField(
-                    controller: emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.email],
-                    decoration: const InputDecoration(labelText: 'Email'),
-                    onSubmitted: (_) => signIn(),
-                  ),
+                TextField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  autofillHints: const [AutofillHints.email],
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  onSubmitted: (_) => signIn(),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: passwordController,
+                  obscureText: true,
+                  autofillHints: const [AutofillHints.password],
+                  decoration: const InputDecoration(labelText: 'Password'),
+                  onSubmitted: (_) => signIn(),
+                ),
+                if (error != null) ...[
                   const SizedBox(height: 14),
-                  TextField(
-                    controller: passwordController,
-                    obscureText: true,
-                    autofillHints: const [AutofillHints.password],
-                    decoration: const InputDecoration(labelText: 'Password'),
-                    onSubmitted: (_) => signIn(),
-                  ),
-                  if (error != null) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      error!,
-                      style: const TextStyle(
-                        color: Colors.redAccent,
-                        fontWeight: FontWeight.w700,
-                      ),
+                  Text(
+                    error!,
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontWeight: FontWeight.w700,
                     ),
-                  ],
-                  const SizedBox(height: 22),
-                  FilledButton(
-                    onPressed: loading ? null : signIn,
-                    child: loading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Sign in'),
                   ),
-                  TextButton(
-                    onPressed: loading
-                        ? null
-                        : () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => PasswordRecoveryScreen(
-                                  initialEmail: emailController.text,
-                                ),
+                ],
+                const SizedBox(height: 22),
+                FilledButton(
+                  onPressed: loading ? null : signIn,
+                  child: loading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Sign in'),
+                ),
+                TextButton(
+                  onPressed: loading
+                      ? null
+                      : () {
+                          setState(() => error = null);
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => PasswordRecoveryScreen(
+                                initialEmail: emailController.text,
                               ),
                             ),
-                    child: const Text('Forgot password?'),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 8,
-                    children: [
-                      for (final provider in SocialProvider.values)
-                        TextButton(
-                          onPressed:
-                              loading ? null : () => signInSocial(provider),
-                          child: Text(switch (provider) {
-                            SocialProvider.google => 'Google',
-                            SocialProvider.apple => 'Apple ID',
-                            SocialProvider.facebook => 'Facebook',
-                          }),
-                        ),
-                    ],
-                  ),
-                  TextButton(
-                    onPressed:
-                        loading ? null : () => setState(() => entering = false),
-                    child: const Text('Back'),
-                  ),
-                ] else
-                  FilledButton(
-                    onPressed: () => setState(() => entering = true),
-                    child: const Text('Enter'),
-                  ),
+                          );
+                        },
+                  child: const Text('Forgot password?'),
+                ),
                 const SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: loading
                       ? null
-                      : () => Navigator.of(context).push(
+                      : () {
+                          setState(() => error = null);
+                          Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => LoginScreen(
                                 initialRegistration: true,
@@ -263,7 +222,8 @@ class _WebLoginPageState extends State<WebLoginPage> {
                                     const WebAuthGate(),
                               ),
                             ),
-                          ),
+                          );
+                        },
                   child: const Text('Registration'),
                 ),
               ],

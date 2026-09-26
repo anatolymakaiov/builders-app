@@ -11,6 +11,7 @@ import '../services/registration_lifecycle.dart';
 import '../services/social_auth_service.dart';
 import '../services/registration_wizard_steps.dart';
 import '../widgets/legal_documents.dart';
+import '../widgets/mobile_social_auth_buttons.dart';
 import '../widgets/uk_postal_address_form.dart';
 import 'edit_profile_screen.dart';
 import 'home_screen.dart';
@@ -1101,21 +1102,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Widget socialActions() => Wrap(
-        alignment: WrapAlignment.center,
-        spacing: 8,
-        children: [
-          for (final provider in SocialProvider.values)
-            if (SocialAuthService.available(provider))
-              TextButton(
-                onPressed: loading ? null : () => signInSocial(provider),
-                child: Text(switch (provider) {
-                  SocialProvider.google => 'Google',
-                  SocialProvider.apple => 'Apple ID',
-                  SocialProvider.facebook => 'Facebook',
-                }),
-              ),
-        ],
+  Widget socialActions() => MobileSocialAuthButtons(
+        enabled: !loading,
+        onSelected: signInSocial,
       );
 
   Widget buildRegistrationMethodChoices() => Column(
@@ -1124,18 +1113,10 @@ class _LoginScreenState extends State<LoginScreen> {
           const Text('Create your account',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
           const SizedBox(height: 16),
-          for (final provider in SocialProvider.values)
-            if (SocialAuthService.available(provider)) ...[
-              OutlinedButton(
-                onPressed: loading ? null : () => signInSocial(provider),
-                child: Text(switch (provider) {
-                  SocialProvider.google => 'Continue with Google',
-                  SocialProvider.apple => 'Continue with Apple',
-                  SocialProvider.facebook => 'Continue with Facebook',
-                }),
-              ),
-              const SizedBox(height: 8),
-            ],
+          MobileSocialAuthButtons(
+            enabled: !loading,
+            onSelected: signInSocial,
+          ),
           const SizedBox(height: 4),
           OutlinedButton(
             onPressed: loading
@@ -1715,23 +1696,9 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
                                 onPressed: openPasswordRecovery,
                                 child: const Text("Forgot Password?"),
                               ),
-                              Wrap(
-                                alignment: WrapAlignment.center,
-                                spacing: 8,
-                                children: [
-                                  for (final provider in SocialProvider.values)
-                                    if (SocialAuthService.available(provider))
-                                      TextButton(
-                                        onPressed: loading
-                                            ? null
-                                            : () => signInSocial(provider),
-                                        child: Text(switch (provider) {
-                                          SocialProvider.google => 'Google',
-                                          SocialProvider.apple => 'Apple ID',
-                                          SocialProvider.facebook => 'Facebook',
-                                        }),
-                                      ),
-                                ],
+                              MobileSocialAuthButtons(
+                                enabled: !loading,
+                                onSelected: signInSocial,
                               ),
                             ],
                           ),
