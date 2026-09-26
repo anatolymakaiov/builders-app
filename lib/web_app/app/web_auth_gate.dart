@@ -189,103 +189,112 @@ class _WebLoginPageState extends State<WebLoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: WebPanel(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'STROYKA',
-                  style: TextStyle(
-                    color: WebTheme.deep,
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
+      body: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: WebPanel(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'STROYKA',
+                        style: TextStyle(
+                          color: WebTheme.deep,
+                          fontSize: 30,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Sign in to the Web workspace',
+                        style: TextStyle(color: WebTheme.muted),
+                      ),
+                      const SizedBox(height: 24),
+                      TextField(
+                        controller: emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                        decoration: const InputDecoration(labelText: 'Email'),
+                        onSubmitted: (_) => signIn(),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: passwordController,
+                        obscureText: true,
+                        autofillHints: const [AutofillHints.password],
+                        decoration:
+                            const InputDecoration(labelText: 'Password'),
+                        onSubmitted: (_) => signIn(),
+                      ),
+                      if (error != null) ...[
+                        const SizedBox(height: 14),
+                        Text(
+                          error!,
+                          style: const TextStyle(
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 22),
+                      FilledButton(
+                        onPressed: loading ? null : signIn,
+                        child: loading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Sign in'),
+                      ),
+                      TextButton(
+                        onPressed: loading
+                            ? null
+                            : () {
+                                setState(() => error = null);
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        _frameAuthPage(PasswordRecoveryScreen(
+                                      initialEmail: emailController.text,
+                                      webFramed: true,
+                                    )),
+                                  ),
+                                );
+                              },
+                        child: const Text('Forgot password?'),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        onPressed: loading
+                            ? null
+                            : () {
+                                setState(() => error = null);
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => _frameAuthPage(LoginScreen(
+                                      initialRegistration: true,
+                                      authPageBuilder: _frameAuthPage,
+                                      postRegistrationHomeBuilder: (_) =>
+                                          const WebAuthGate(),
+                                    )),
+                                  ),
+                                );
+                              },
+                        child: const Text('Registration'),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Sign in to the Web workspace',
-                  style: TextStyle(color: WebTheme.muted),
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  autofillHints: const [AutofillHints.email],
-                  decoration: const InputDecoration(labelText: 'Email'),
-                  onSubmitted: (_) => signIn(),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: passwordController,
-                  obscureText: true,
-                  autofillHints: const [AutofillHints.password],
-                  decoration: const InputDecoration(labelText: 'Password'),
-                  onSubmitted: (_) => signIn(),
-                ),
-                if (error != null) ...[
-                  const SizedBox(height: 14),
-                  Text(
-                    error!,
-                    style: const TextStyle(
-                      color: Colors.redAccent,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 22),
-                FilledButton(
-                  onPressed: loading ? null : signIn,
-                  child: loading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Sign in'),
-                ),
-                TextButton(
-                  onPressed: loading
-                      ? null
-                      : () {
-                          setState(() => error = null);
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  _frameAuthPage(PasswordRecoveryScreen(
-                                initialEmail: emailController.text,
-                                webFramed: true,
-                              )),
-                            ),
-                          );
-                        },
-                  child: const Text('Forgot password?'),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: loading
-                      ? null
-                      : () {
-                          setState(() => error = null);
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => _frameAuthPage(LoginScreen(
-                                initialRegistration: true,
-                                authPageBuilder: _frameAuthPage,
-                                postRegistrationHomeBuilder: (_) =>
-                                    const WebAuthGate(),
-                              )),
-                            ),
-                          );
-                        },
-                  child: const Text('Registration'),
-                ),
-              ],
+              ),
             ),
           ),
         ),

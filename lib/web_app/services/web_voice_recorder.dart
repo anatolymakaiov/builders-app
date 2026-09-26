@@ -1,10 +1,8 @@
-import 'dart:js_interop';
 import 'package:http/http.dart' as http;
 import 'package:record/record.dart';
 import 'web_chat_media_service.dart';
-
-@JS('URL.revokeObjectURL')
-external void _revokeObjectUrl(JSString url);
+import 'web_object_url_stub.dart'
+    if (dart.library.js_interop) 'web_object_url_browser.dart' as object_urls;
 
 class WebVoiceRecorder {
   final _recorder = AudioRecorder();
@@ -42,7 +40,7 @@ class WebVoiceRecorder {
           sizeBytes: response.bodyBytes.length,
           mimeType: mime);
     } finally {
-      if (url.startsWith('blob:')) _revokeObjectUrl(url.toJS);
+      if (url.startsWith('blob:')) object_urls.revokeObjectUrl(url);
     }
   }
 
