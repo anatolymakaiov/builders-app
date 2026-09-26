@@ -11,6 +11,7 @@ import '../../services/web_job_management_service.dart';
 import '../../services/web_jobs_data_service.dart';
 import '../../services/web_job_filters.dart';
 import '../../services/web_profile_communication.dart';
+import '../../portrait/portrait_worker_presentation.dart';
 import '../../widgets/web_job_filters_dialog.dart';
 import '../../widgets/web_apply_dialog.dart';
 import '../../theme/web_breakpoints.dart';
@@ -299,7 +300,10 @@ class _WebJobsPageState extends State<WebJobsPage> {
                       },
                     ),
                   SizedBox(
-                    width: 320,
+                    width: PortraitWorkerPresentation.enabled(context)
+                        ? (MediaQuery.sizeOf(context).width - 24)
+                            .clamp(0.0, 520.0)
+                        : 320,
                     child: WebSmartJobSearchField(
                       controller: searchController,
                       onChanged: (value) => setState(() {

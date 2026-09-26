@@ -5,6 +5,7 @@ import '../../../screens/image_gallery_viewer_screen.dart';
 import '../../../services/job_start_date.dart';
 import '../../services/web_job_management_service.dart';
 import '../../theme/web_theme.dart';
+import '../../portrait/portrait_worker_presentation.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
 import 'web_job_display.dart';
@@ -86,7 +87,11 @@ class WebJobDetailsPanel extends StatelessWidget {
                       job: currentJob,
                     ),
                     Padding(
-                      padding: const EdgeInsets.all(28),
+                      padding: EdgeInsets.all(
+                        isWorker && PortraitWorkerPresentation.enabled(context)
+                            ? 16
+                            : 28,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

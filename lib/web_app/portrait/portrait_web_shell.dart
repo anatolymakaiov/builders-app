@@ -1,6 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/multi_account_service.dart';
+import '../../widgets/account_switcher.dart';
+
 import '../pages/account/web_account_page.dart';
 import '../pages/account/web_notifications_page.dart';
 import '../pages/applications/web_applications_page.dart';
@@ -13,9 +16,11 @@ import '../pages/profile/web_profile_page.dart';
 import '../pages/profile/web_team_page.dart';
 import '../services/web_account_data_service.dart';
 import '../services/web_data_state.dart';
+import '../services/web_profile_data_service.dart';
 import '../theme/web_theme.dart';
 import 'portrait_web_navigation.dart';
 import 'portrait_web_section.dart';
+import 'portrait_worker_presentation.dart';
 
 enum _PortraitOverlay { notifications, account, postJob }
 
@@ -106,13 +111,39 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
       stream: badgesStream,
       builder: (context, snapshot) {
         final badges = snapshot.data?.data ?? const WebShellBadges();
-        return Scaffold(
+        final shell = Scaffold(
           key: const ValueKey('portrait-web-root'),
           backgroundColor: WebTheme.page,
           appBar: AppBar(
             backgroundColor: WebTheme.deep,
             foregroundColor: Colors.white,
-            title: Text(overlay == null ? 'STROYKA' : _title),
+            title: overlay == null &&
+                    widget.role == 'worker' &&
+                    selected == PortraitWebSection.profile &&
+                    viewedProfileId == null
+                ? InkWell(
+                    key: const ValueKey('portrait-worker-account-title'),
+                    onTap: _showAccountSwitcher,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            WebProfileData(
+                              id: widget.user.uid,
+                              data: liveProfile,
+                            ).displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Icon(Icons.keyboard_arrow_down, size: 22),
+                      ],
+                    ),
+                  )
+                : Text(widget.role == 'worker' || overlay != null
+                    ? _title
+                    : 'STROYKA'),
             leading: overlay != null || viewedProfileId != null
                 ? IconButton(
                     tooltip: 'Back',
@@ -130,20 +161,30 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                   onPressed: _openPostJob,
                   icon: const Icon(Icons.add),
                 ),
-              IconButton(
-                tooltip: 'Notifications',
-                onPressed: _openNotifications,
-                icon: Badge(
-                  isLabelVisible: badges.notifications > 0,
-                  label: Text('${badges.notifications}'),
-                  child: const Icon(Icons.notifications_none),
+              if (!(widget.role == 'worker' &&
+                  selected == PortraitWebSection.profile &&
+                  overlay == null))
+                IconButton(
+                  tooltip: 'Notifications',
+                  onPressed: _openNotifications,
+                  icon: Badge(
+                    isLabelVisible: badges.notifications > 0,
+                    label: Text('${badges.notifications}'),
+                    child: const Icon(Icons.notifications_none),
+                  ),
                 ),
-              ),
               PopupMenuButton<String>(
                 tooltip: 'Account menu',
-                icon: const Icon(Icons.more_vert),
+                icon: Icon(
+                    widget.role == 'worker' ? Icons.menu : Icons.more_vert),
                 onSelected: _selectMenuAction,
                 itemBuilder: (_) => [
+                  if (widget.role == 'worker') ...[
+                    const PopupMenuItem(
+                        value: 'switchAccount', child: Text('Switch account')),
+                    const PopupMenuItem(
+                        value: 'addAccount', child: Text('Add account')),
+                  ],
                   const PopupMenuItem(
                       value: 'account', child: Text('My Account')),
                   if (widget.role == 'employer')
@@ -187,6 +228,9 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                 )
               : null,
         );
+        return widget.role == 'worker'
+            ? PortraitWorkerPresentation(child: shell)
+            : shell;
       },
     );
   }
@@ -430,6 +474,14 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
   void _closeOverlay() => setState(() => overlay = null);
 
   void _selectMenuAction(String action) {
+    if (action == 'switchAccount') {
+      _showAccountSwitcher();
+      return;
+    }
+    if (action == 'addAccount') {
+      _addAccount();
+      return;
+    }
     if (action == 'signOut') {
       FirebaseAuth.instance.signOut();
       return;
@@ -439,6 +491,26 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
       orElse: () => WebAccountDestination.account,
     );
     _openAccount(destination);
+  }
+
+  Future<void> _showAccountSwitcher() async {
+    await showAccountSwitcher(
+      context,
+      web: false,
+      onCreateNewAccount: _addAccount,
+    );
+  }
+
+  Future<void> _addAccount() async {
+    try {
+      await MultiAccountService().prepareCreateNewAccount();
+      await FirebaseAuth.instance.signOut();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not add an account. Please try again.'),
+      ));
+    }
   }
 
   void _routeNotification(WebNotificationItem notification) {

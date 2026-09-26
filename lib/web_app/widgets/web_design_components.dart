@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/web_theme.dart';
+import '../portrait/portrait_worker_presentation.dart';
 
 class WebPageHeader extends StatelessWidget {
   const WebPageHeader({
@@ -22,6 +23,27 @@ class WebPageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (PortraitWorkerPresentation.enabled(context)) {
+      if (leading == null && actions.isEmpty && bottom == null) {
+        return const SizedBox.shrink();
+      }
+      return Padding(
+        padding: const EdgeInsets.only(bottom: WebSpacing.sm),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (leading != null) leading!,
+            if (actions.isNotEmpty)
+              Wrap(
+                spacing: WebSpacing.sm,
+                runSpacing: WebSpacing.xs,
+                children: actions,
+              ),
+            if (bottom != null) bottom!,
+          ],
+        ),
+      );
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         final stackActions = constraints.maxWidth < 760 && actions.isNotEmpty;

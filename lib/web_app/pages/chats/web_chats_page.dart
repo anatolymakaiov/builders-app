@@ -8,6 +8,7 @@ import '../../services/web_chat_recipient_search_service.dart';
 import '../../services/web_chats_data_service.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_voice_recorder.dart';
+import '../../portrait/portrait_worker_presentation.dart';
 import '../../widgets/web_report_dialog.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
@@ -138,7 +139,10 @@ class _WebChatsPageState extends State<WebChatsPage> {
                 subtitle: 'Conversations about work, teams and vacancies.',
                 actions: [
                   SizedBox(
-                    width: 300,
+                    width: PortraitWorkerPresentation.enabled(context)
+                        ? (MediaQuery.sizeOf(context).width - 24)
+                            .clamp(0.0, 520.0)
+                        : 300,
                     child: TextField(
                       controller: conversationSearchController,
                       onChanged: (_) => setState(() {}),
