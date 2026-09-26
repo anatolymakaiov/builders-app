@@ -6,6 +6,7 @@ import '../../services/web_profile_communication.dart';
 import '../../services/web_profile_data_service.dart';
 import '../../services/web_profile_edit_service.dart';
 import '../../services/web_team_actions.dart';
+import '../../portrait/portrait_employer_presentation.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_design_components.dart';
@@ -123,7 +124,7 @@ class _WebTeamPageState extends State<WebTeamPage> {
               const SizedBox(height: WebSpacing.lg),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final compact =
+                  final compact = isPortraitWebPresentation(context) ||
                       constraints.maxWidth < WebBreakpoints.compactWidth;
                   final main = Column(
                     children: [

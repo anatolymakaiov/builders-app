@@ -11,7 +11,7 @@ import '../../services/web_job_management_service.dart';
 import '../../services/web_jobs_data_service.dart';
 import '../../services/web_job_filters.dart';
 import '../../services/web_profile_communication.dart';
-import '../../portrait/portrait_worker_presentation.dart';
+import '../../portrait/portrait_employer_presentation.dart';
 import '../../widgets/web_job_filters_dialog.dart';
 import '../../widgets/web_apply_dialog.dart';
 import '../../theme/web_breakpoints.dart';
@@ -239,6 +239,10 @@ class _WebJobsPageState extends State<WebJobsPage> {
             break;
           }
         }
+        final employerPortraitDetail =
+            PortraitEmployerPresentation.enabled(context) &&
+                compactDetailVisible &&
+                selectedJob != null;
 
         return WebPageContainer(
           topPadding: WebSpacing.md,
@@ -264,7 +268,9 @@ class _WebJobsPageState extends State<WebJobsPage> {
                     ? 'Manage your vacancies or explore the market.'
                     : 'Find active construction work across the UK.',
                 actions: [
-                  if (isEmployer && widget.onPostJob != null)
+                  if (isEmployer &&
+                      widget.onPostJob != null &&
+                      !employerPortraitDetail)
                     FilledButton.icon(
                       onPressed: widget.onPostJob,
                       icon: const Icon(Icons.add),
@@ -282,105 +288,108 @@ class _WebJobsPageState extends State<WebJobsPage> {
                   ),
                   child: Text('Could not refresh jobs: ${state!.error}'),
                 ),
-              Wrap(
-                spacing: WebSpacing.sm,
-                runSpacing: WebSpacing.sm,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (isEmployer)
-                    _EmployerModeTabs(
-                      mode: mode,
-                      onChanged: (value) {
-                        setState(() {
-                          mode = value;
-                          targetJobId = null;
-                          selectedJobId = null;
-                          compactDetailVisible = false;
-                        });
-                      },
-                    ),
-                  SizedBox(
-                    width: PortraitWorkerPresentation.enabled(context)
-                        ? (MediaQuery.sizeOf(context).width - 24)
-                            .clamp(0.0, 520.0)
-                        : 320,
-                    child: WebSmartJobSearchField(
-                      controller: searchController,
-                      onChanged: (value) => setState(() {
-                        search = value;
-                        page = 1;
-                      }),
-                    ),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _openFilters,
-                    icon: const Icon(Icons.tune),
-                    label: const Text('Filters'),
-                  ),
-                  MenuAnchor(
-                    menuChildren: [
-                      for (final option in WebJobSort.values)
-                        MenuItemButton(
-                          leadingIcon: option == sort
-                              ? const Icon(Icons.check)
-                              : const SizedBox(width: 24),
-                          onPressed: () => _changeSort(option),
-                          child: Text(_sortLabel(option)),
-                        ),
-                    ],
-                    builder: (context, controller, child) =>
-                        OutlinedButton.icon(
-                      onPressed: controller.isOpen
-                          ? controller.close
-                          : controller.open,
-                      icon: const Icon(Icons.swap_vert),
-                      label: Text('Sort: ${_sortLabel(sort)}'),
-                    ),
-                  ),
-                  if (isWorker && widget.onOpenSubscriptions != null)
-                    OutlinedButton.icon(
-                      onPressed: widget.onOpenSubscriptions,
-                      icon: const Icon(Icons.work_history_outlined),
-                      label: const Text('Subscriptions'),
-                    ),
-                  if (isWorker)
-                    IconButton(
-                      tooltip: savedOnly ? 'Show all jobs' : 'Show saved jobs',
-                      icon: Icon(
-                        savedOnly ? Icons.favorite : Icons.favorite_border,
-                      ),
-                      onPressed: () async {
-                        await _loadSavedJobs();
-                        if (mounted) {
+              if (!employerPortraitDetail)
+                Wrap(
+                  spacing: WebSpacing.sm,
+                  runSpacing: WebSpacing.sm,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (isEmployer)
+                      _EmployerModeTabs(
+                        mode: mode,
+                        onChanged: (value) {
                           setState(() {
-                            savedOnly = !savedOnly;
-                            page = 1;
+                            mode = value;
+                            targetJobId = null;
+                            selectedJobId = null;
+                            compactDetailVisible = false;
                           });
-                        }
-                      },
+                        },
+                      ),
+                    SizedBox(
+                      width: isPortraitWebPresentation(context)
+                          ? (MediaQuery.sizeOf(context).width - 24)
+                              .clamp(0.0, 520.0)
+                          : 320,
+                      child: WebSmartJobSearchField(
+                        controller: searchController,
+                        onChanged: (value) => setState(() {
+                          search = value;
+                          page = 1;
+                        }),
+                      ),
                     ),
-                  IconButton(
-                    tooltip: 'Previous page',
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed: currentPage > 1
-                        ? () => setState(() => page = currentPage - 1)
-                        : null,
-                  ),
-                  Text('$currentPage / ${pages == 0 ? 1 : pages}'),
-                  IconButton(
-                    tooltip: 'Next page',
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: currentPage < pages
-                        ? () => setState(() => page = currentPage + 1)
-                        : null,
-                  ),
-                ],
-              ),
-              const SizedBox(height: WebSpacing.xs),
+                    OutlinedButton.icon(
+                      onPressed: _openFilters,
+                      icon: const Icon(Icons.tune),
+                      label: const Text('Filters'),
+                    ),
+                    MenuAnchor(
+                      menuChildren: [
+                        for (final option in WebJobSort.values)
+                          MenuItemButton(
+                            leadingIcon: option == sort
+                                ? const Icon(Icons.check)
+                                : const SizedBox(width: 24),
+                            onPressed: () => _changeSort(option),
+                            child: Text(_sortLabel(option)),
+                          ),
+                      ],
+                      builder: (context, controller, child) =>
+                          OutlinedButton.icon(
+                        onPressed: controller.isOpen
+                            ? controller.close
+                            : controller.open,
+                        icon: const Icon(Icons.swap_vert),
+                        label: Text('Sort: ${_sortLabel(sort)}'),
+                      ),
+                    ),
+                    if (isWorker && widget.onOpenSubscriptions != null)
+                      OutlinedButton.icon(
+                        onPressed: widget.onOpenSubscriptions,
+                        icon: const Icon(Icons.work_history_outlined),
+                        label: const Text('Subscriptions'),
+                      ),
+                    if (isWorker)
+                      IconButton(
+                        tooltip:
+                            savedOnly ? 'Show all jobs' : 'Show saved jobs',
+                        icon: Icon(
+                          savedOnly ? Icons.favorite : Icons.favorite_border,
+                        ),
+                        onPressed: () async {
+                          await _loadSavedJobs();
+                          if (mounted) {
+                            setState(() {
+                              savedOnly = !savedOnly;
+                              page = 1;
+                            });
+                          }
+                        },
+                      ),
+                    IconButton(
+                      tooltip: 'Previous page',
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: currentPage > 1
+                          ? () => setState(() => page = currentPage - 1)
+                          : null,
+                    ),
+                    Text('$currentPage / ${pages == 0 ? 1 : pages}'),
+                    IconButton(
+                      tooltip: 'Next page',
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: currentPage < pages
+                          ? () => setState(() => page = currentPage + 1)
+                          : null,
+                    ),
+                  ],
+                ),
+              if (!employerPortraitDetail)
+                const SizedBox(height: WebSpacing.xs),
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final compact =
+                    final compact = isPortraitWebPresentation(context) ||
                         constraints.maxWidth < WebBreakpoints.compactWidth;
                     final list = WebJobListPanel(
                       jobs: pageJobs,

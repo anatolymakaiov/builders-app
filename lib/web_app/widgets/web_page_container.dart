@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/web_breakpoints.dart';
 import '../theme/web_theme.dart';
-import '../portrait/portrait_worker_presentation.dart';
+import '../portrait/portrait_employer_presentation.dart';
 
 class WebPageContainer extends StatelessWidget {
   const WebPageContainer({
@@ -20,26 +20,24 @@ class WebPageContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final portraitWorker = PortraitWorkerPresentation.enabled(context);
+    final portraitWeb = isPortraitWebPresentation(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final gutter =
-            portraitWorker ? 12.0 : WebBreakpoints.gutter(constraints.maxWidth);
+            portraitWeb ? 12.0 : WebBreakpoints.gutter(constraints.maxWidth);
         return Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: portraitWorker
-                  ? double.infinity
-                  : WebBreakpoints.desktopMaxWidth,
+              maxWidth: portraitWeb ? 720 : WebBreakpoints.desktopMaxWidth,
             ),
             child: Padding(
               padding: padding ??
                   EdgeInsets.fromLTRB(
                     gutter,
-                    portraitWorker ? 8 : topPadding,
+                    portraitWeb ? 8 : topPadding,
                     gutter,
-                    portraitWorker ? 8 : bottomPadding,
+                    portraitWeb ? 8 : bottomPadding,
                   ),
               child: child,
             ),

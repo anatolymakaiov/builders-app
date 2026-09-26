@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/job.dart';
 import '../../theme/web_theme.dart';
-import '../../portrait/portrait_worker_presentation.dart';
+import '../../portrait/portrait_employer_presentation.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_design_components.dart';
 import '../../widgets/web_smart_job_search_field.dart';
@@ -45,13 +45,13 @@ class WebJobListPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final portraitWorker = PortraitWorkerPresentation.enabled(context);
+    final portraitWeb = isPortraitWebPresentation(context);
     return WebPanel(
       padding: EdgeInsets.zero,
       child: Column(
         children: [
           Padding(
-            padding: portraitWorker
+            padding: portraitWeb
                 ? const EdgeInsets.fromLTRB(12, 10, 12, 8)
                 : const EdgeInsets.fromLTRB(18, 18, 18, 12),
             child: Column(
@@ -80,7 +80,7 @@ class WebJobListPanel extends StatelessWidget {
                     message: 'Try adjusting your search or filters.',
                   )
                 : ListView.separated(
-                    padding: EdgeInsets.all(portraitWorker ? 8 : 12),
+                    padding: EdgeInsets.all(portraitWeb ? 8 : 12),
                     itemCount: jobs.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {

@@ -16,6 +16,7 @@ import '../../services/web_job_filters.dart';
 import '../../widgets/web_job_filters_dialog.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_jobs_data_service.dart';
+import '../../portrait/portrait_employer_presentation.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
@@ -192,7 +193,7 @@ class _WebMapPageState extends State<WebMapPage> {
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final compact =
+                    final compact = isPortraitWebPresentation(context) ||
                         constraints.maxWidth < WebBreakpoints.compactWidth;
                     final results = _MapResultsPanel(
                       jobs: mapJobs,

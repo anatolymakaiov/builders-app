@@ -8,7 +8,7 @@ import '../../services/web_chat_recipient_search_service.dart';
 import '../../services/web_chats_data_service.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_voice_recorder.dart';
-import '../../portrait/portrait_worker_presentation.dart';
+import '../../portrait/portrait_employer_presentation.dart';
 import '../../widgets/web_report_dialog.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
@@ -138,25 +138,29 @@ class _WebChatsPageState extends State<WebChatsPage> {
                 title: 'Chats',
                 subtitle: 'Conversations about work, teams and vacancies.',
                 actions: [
-                  SizedBox(
-                    width: PortraitWorkerPresentation.enabled(context)
-                        ? (MediaQuery.sizeOf(context).width - 24)
-                            .clamp(0.0, 520.0)
-                        : 300,
-                    child: TextField(
-                      controller: conversationSearchController,
-                      onChanged: (_) => setState(() {}),
-                      decoration: const InputDecoration(
-                        hintText: 'Search conversations........',
-                        prefixIcon: Icon(Icons.search),
+                  if (!(PortraitEmployerPresentation.enabled(context) &&
+                      compactThreadVisible &&
+                      selectedChatId != null)) ...[
+                    SizedBox(
+                      width: isPortraitWebPresentation(context)
+                          ? (MediaQuery.sizeOf(context).width - 24)
+                              .clamp(0.0, 520.0)
+                          : 300,
+                      child: TextField(
+                        controller: conversationSearchController,
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                          hintText: 'Search conversations........',
+                          prefixIcon: Icon(Icons.search),
+                        ),
                       ),
                     ),
-                  ),
-                  FilledButton.icon(
-                    onPressed: _openNewMessage,
-                    icon: const Icon(Icons.edit_square),
-                    label: const Text('New message'),
-                  ),
+                    FilledButton.icon(
+                      onPressed: _openNewMessage,
+                      icon: const Icon(Icons.edit_square),
+                      label: const Text('New message'),
+                    ),
+                  ],
                 ],
               ),
               if (state?.error != null)
@@ -165,7 +169,7 @@ class _WebChatsPageState extends State<WebChatsPage> {
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final compact =
+                    final compact = isPortraitWebPresentation(context) ||
                         constraints.maxWidth < WebBreakpoints.compactWidth;
                     final list = WebPanel(
                       padding: EdgeInsets.zero,

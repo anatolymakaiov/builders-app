@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/web_theme.dart';
-import '../portrait/portrait_worker_presentation.dart';
+import '../portrait/portrait_employer_presentation.dart';
 
 class WebPageHeader extends StatelessWidget {
   const WebPageHeader({
@@ -23,7 +23,7 @@ class WebPageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (PortraitWorkerPresentation.enabled(context)) {
+    if (isPortraitWebPresentation(context)) {
       if (leading == null && actions.isEmpty && bottom == null) {
         return const SizedBox.shrink();
       }

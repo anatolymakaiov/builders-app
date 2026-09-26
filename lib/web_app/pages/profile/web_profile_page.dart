@@ -7,8 +7,9 @@ import '../../services/web_data_state.dart';
 import '../../services/web_profile_data_service.dart';
 import '../../services/web_profile_edit_service.dart';
 import '../../services/web_profile_communication.dart';
-import '../../portrait/portrait_worker_presentation.dart';
 import '../../portrait/portrait_worker_profile_header.dart';
+import '../../portrait/portrait_employer_presentation.dart';
+import '../../portrait/portrait_employer_profile_header.dart';
 import '../../../services/moderation_hold_service.dart';
 import '../../../services/multi_account_service.dart';
 import '../../../services/worker_availability_service.dart';
@@ -262,7 +263,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
                       workerId: viewedUserId, ownProfile: ownProfile),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final compact =
+                    final compact = isPortraitWebPresentation(context) ||
                         constraints.maxWidth < WebBreakpoints.compactWidth;
                     final contact = _ContactPanel(profile: current);
                     final main = isEmployer
@@ -513,7 +514,7 @@ class _ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (role == 'worker' && PortraitWorkerPresentation.enabled(context)) {
+    if (role == 'worker' && isPortraitWebPresentation(context)) {
       return PortraitWorkerProfileHeader(
         profile: profile,
         ownProfile: ownProfile,
@@ -524,6 +525,18 @@ class _ProfileHeader extends StatelessWidget {
         onChangeHeader: onChangeHeader,
         onSwitchAccount: onSwitchAccount,
         onAvailabilityChanged: onAvailabilityChanged,
+      );
+    }
+    if (role == 'employer' && isPortraitWebPresentation(context)) {
+      return PortraitEmployerProfileHeader(
+        profile: profile,
+        ownProfile: ownProfile,
+        mediaBusy: mediaBusy,
+        onBack: onBack,
+        onEdit: onEdit,
+        onChangeAvatar: onChangeAvatar,
+        onChangeHeader: onChangeHeader,
+        onSwitchAccount: onSwitchAccount,
       );
     }
     final small = MediaQuery.sizeOf(context).width < WebBreakpoints.narrow;

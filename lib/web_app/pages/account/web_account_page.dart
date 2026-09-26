@@ -18,6 +18,7 @@ import '../../../services/job_taxonomy_service.dart';
 import '../../services/web_account_data_service.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_role_identity_service.dart';
+import '../../portrait/portrait_employer_presentation.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_panel.dart';
@@ -106,7 +107,7 @@ class _WebAccountPageState extends State<WebAccountPage> {
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final compact =
+                final compact = isPortraitWebPresentation(context) ||
                     constraints.maxWidth < WebBreakpoints.compactWidth;
                 final navigation = WebPanel(
                   padding: EdgeInsets.zero,
@@ -410,7 +411,9 @@ class _BillingViewState extends State<_BillingView> {
       children: [
         LayoutBuilder(builder: (context, constraints) {
           final title = Text('Billing / Subscription',
-              style: Theme.of(context).textTheme.headlineMedium);
+              style: PortraitEmployerPresentation.enabled(context)
+                  ? Theme.of(context).textTheme.titleLarge
+                  : Theme.of(context).textTheme.headlineMedium);
           final controls = Wrap(
             spacing: WebSpacing.sm,
             runSpacing: WebSpacing.sm,
@@ -522,19 +525,36 @@ class _BillingViewState extends State<_BillingView> {
         const SizedBox(height: 24),
         Text('Change plan', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 10),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            for (final plan in plans)
-              _PlanCard(
-                plan: plan,
-                selected: (plan['id'] ?? '').toString() == currentPlan,
-                busy: busy || changingPlan != null || !configured,
-                onTap: () => _changePlan((plan['id'] ?? '').toString()),
-              ),
-          ],
-        ),
+        if (PortraitEmployerPresentation.enabled(context))
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final plan in plans)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _PlanCard(
+                    plan: plan,
+                    selected: (plan['id'] ?? '').toString() == currentPlan,
+                    busy: busy || changingPlan != null || !configured,
+                    onTap: () => _changePlan((plan['id'] ?? '').toString()),
+                  ),
+                ),
+            ],
+          )
+        else
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final plan in plans)
+                _PlanCard(
+                  plan: plan,
+                  selected: (plan['id'] ?? '').toString() == currentPlan,
+                  busy: busy || changingPlan != null || !configured,
+                  onTap: () => _changePlan((plan['id'] ?? '').toString()),
+                ),
+            ],
+          ),
       ],
     );
   }
@@ -1604,6 +1624,23 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (PortraitEmployerPresentation.enabled(context)) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: const TextStyle(
+                  color: WebTheme.muted,
+                  fontWeight: FontWeight.w700,
+                )),
+            const SizedBox(height: 3),
+            Text(value.isEmpty ? 'Not set' : value),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
@@ -1644,7 +1681,9 @@ class _PlanCard extends StatelessWidget {
       onTap: busy || selected ? null : onTap,
       borderRadius: BorderRadius.circular(WebRadii.card),
       child: Container(
-        width: 210,
+        width: PortraitEmployerPresentation.enabled(context)
+            ? double.infinity
+            : 210,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(WebRadii.card),

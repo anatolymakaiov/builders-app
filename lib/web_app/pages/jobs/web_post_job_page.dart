@@ -8,6 +8,7 @@ import '../../../services/job_start_date.dart';
 import '../../../services/vacancy_import_service.dart';
 import '../../services/web_job_management_service.dart';
 import '../../services/web_vacancy_import_metadata.dart';
+import '../../portrait/portrait_employer_presentation.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
@@ -181,7 +182,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
             if (error != null) _ErrorBanner(message: error!),
             LayoutBuilder(
               builder: (context, constraints) {
-                final compact =
+                final compact = isPortraitWebPresentation(context) ||
                     constraints.maxWidth < WebBreakpoints.compactWidth;
                 final main = _mainForm();
                 final side = _sideForm();

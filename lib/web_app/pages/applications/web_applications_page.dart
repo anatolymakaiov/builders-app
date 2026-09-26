@@ -6,6 +6,8 @@ import '../../services/web_application_actions_service.dart';
 import '../../services/web_applications_data_service.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_profile_data_service.dart';
+import '../../portrait/portrait_employer_presentation.dart';
+import '../../portrait/portrait_employer_form_dialog.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
@@ -158,30 +160,34 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                 ),
                 const SizedBox(height: 14),
               ],
-              _ApplicationFilters(
-                role: widget.role,
-                statusFilter: statusFilter,
-                searchFilter: searchFilter,
-                onStatusChanged: (value) {
-                  setState(() {
-                    statusFilter = value;
-                    selectedApplicationId = null;
-                    compactDetailVisible = false;
-                  });
-                },
-                onSearchChanged: (value) {
-                  setState(() {
-                    searchFilter = value;
-                    selectedApplicationId = null;
-                    compactDetailVisible = false;
-                  });
-                },
-              ),
-              const SizedBox(height: 14),
+              if (!(PortraitEmployerPresentation.enabled(context) &&
+                  compactDetailVisible &&
+                  selected != null)) ...[
+                _ApplicationFilters(
+                  role: widget.role,
+                  statusFilter: statusFilter,
+                  searchFilter: searchFilter,
+                  onStatusChanged: (value) {
+                    setState(() {
+                      statusFilter = value;
+                      selectedApplicationId = null;
+                      compactDetailVisible = false;
+                    });
+                  },
+                  onSearchChanged: (value) {
+                    setState(() {
+                      searchFilter = value;
+                      selectedApplicationId = null;
+                      compactDetailVisible = false;
+                    });
+                  },
+                ),
+                const SizedBox(height: 14),
+              ],
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final compact =
+                    final compact = isPortraitWebPresentation(context) ||
                         constraints.maxWidth < WebBreakpoints.compactWidth;
                     final list = WebPanel(
                       padding: EdgeInsets.zero,
@@ -1408,18 +1414,24 @@ class _ApplicationActionsState extends State<_ApplicationActions> {
   }
 
   Future<void> _makeOffer() async {
+    final portraitEmployer = PortraitEmployerPresentation.enabled(context);
     final selected = application.isTeam
         ? await showDialog<List<String>>(
             context: context,
-            builder: (_) =>
-                _TeamWorkerSelectionDialog(application: application),
+            builder: (_) => _TeamWorkerSelectionDialog(
+              application: application,
+              portrait: portraitEmployer,
+            ),
           )
         : const <String>[];
     if (application.isTeam && (selected == null || selected.isEmpty)) return;
     if (!mounted) return;
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => _WebMakeOfferDialog(application: application),
+      builder: (_) => _WebMakeOfferDialog(
+        application: application,
+        portrait: portraitEmployer,
+      ),
     );
     if (result == null) return;
     final selectedIds = selected ?? const <String>[];
@@ -1603,9 +1615,13 @@ class _MembersBlock extends StatelessWidget {
 }
 
 class _TeamWorkerSelectionDialog extends StatefulWidget {
-  const _TeamWorkerSelectionDialog({required this.application});
+  const _TeamWorkerSelectionDialog({
+    required this.application,
+    required this.portrait,
+  });
 
   final WebApplicationSummary application;
+  final bool portrait;
 
   @override
   State<_TeamWorkerSelectionDialog> createState() =>
@@ -1625,61 +1641,74 @@ class _TeamWorkerSelectionDialogState
   @override
   Widget build(BuildContext context) {
     final ids = widget.application.memberIds;
+    final choices = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CheckboxListTile(
+          value: selected.length == ids.length && ids.isNotEmpty,
+          onChanged: (_) {
+            setState(() {
+              selected =
+                  selected.length == ids.length ? <String>{} : ids.toSet();
+            });
+          },
+          title: const Text('Select all'),
+        ),
+        const Divider(),
+        for (final id in ids)
+          CheckboxListTile(
+            value: selected.contains(id),
+            onChanged: (value) {
+              setState(() {
+                if (value == true) {
+                  selected.add(id);
+                } else {
+                  selected.remove(id);
+                }
+              });
+            },
+            title: Text(widget.application.memberName(id)),
+          ),
+      ],
+    );
+    final actions = [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: selected.isEmpty
+            ? null
+            : () => Navigator.of(context).pop(selected.toList()),
+        child: const Text('Continue'),
+      ),
+    ];
+    if (widget.portrait) {
+      return PortraitEmployerFormDialog(
+        title: 'Select workers',
+        body: ListView(children: [choices]),
+        actions: actions,
+      );
+    }
     return AlertDialog(
       title: const Text('Select workers'),
       content: WebDialogScrollArea(
         preferredWidth: 520,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CheckboxListTile(
-              value: selected.length == ids.length && ids.isNotEmpty,
-              onChanged: (_) {
-                setState(() {
-                  selected =
-                      selected.length == ids.length ? <String>{} : ids.toSet();
-                });
-              },
-              title: const Text('Select all'),
-            ),
-            const Divider(),
-            for (final id in ids)
-              CheckboxListTile(
-                value: selected.contains(id),
-                onChanged: (value) {
-                  setState(() {
-                    if (value == true) {
-                      selected.add(id);
-                    } else {
-                      selected.remove(id);
-                    }
-                  });
-                },
-                title: Text(widget.application.memberName(id)),
-              ),
-          ],
-        ),
+        child: choices,
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: selected.isEmpty
-              ? null
-              : () => Navigator.of(context).pop(selected.toList()),
-          child: const Text('Continue'),
-        ),
-      ],
+      actions: actions,
     );
   }
 }
 
 class _WebMakeOfferDialog extends StatefulWidget {
-  const _WebMakeOfferDialog({required this.application});
+  const _WebMakeOfferDialog({
+    required this.application,
+    required this.portrait,
+  });
 
   final WebApplicationSummary application;
+  final bool portrait;
 
   @override
   State<_WebMakeOfferDialog> createState() => _WebMakeOfferDialogState();
@@ -1748,63 +1777,71 @@ class _WebMakeOfferDialogState extends State<_WebMakeOfferDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final fields = <Widget>[
+      SizedBox(
+        width: _fieldWidth(context, 350),
+        child: DropdownButtonFormField<String>(
+          initialValue: jobType,
+          decoration: const InputDecoration(
+            labelText: 'Work format',
+            border: OutlineInputBorder(),
+          ),
+          items: const [
+            DropdownMenuItem(value: 'hourly', child: Text('Daywork')),
+            DropdownMenuItem(value: 'price', child: Text('Price')),
+            DropdownMenuItem(value: 'negotiable', child: Text('Negotiable')),
+          ],
+          onChanged: (value) {
+            if (value != null) setState(() => jobType = value);
+          },
+        ),
+      ),
+      _input(rate, jobType == 'price' ? 'Price (£)' : 'Rate (£)'),
+      _input(workPeriod, 'Work period'),
+      _input(weeklyHours, 'Hours per week'),
+      _input(schedule, 'Work schedule'),
+      _input(startDateTime, 'Start date and time'),
+      _input(siteAddress, 'Site Address Line 1'),
+      _input(siteLine2, 'Site Address Line 2'),
+      _input(siteLine3, 'Site Address Line 3'),
+      _input(siteCity, 'Town / City'),
+      _input(siteCounty, 'County'),
+      _input(sitePostcode, 'Postcode'),
+      _input(siteCountry, 'Country'),
+      _input(firstDayRequirements, 'Required on first day', width: 350),
+      _input(description, 'Offer description', width: 712, lines: 3),
+      _input(validUntil, 'Offer valid until'),
+    ];
+    final actions = <Widget>[
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(onPressed: _submit, child: const Text('Send offer')),
+    ];
+    if (widget.portrait) {
+      return PortraitEmployerFormDialog(
+        title: 'Make offer',
+        body: ListView(
+          children: [
+            const SizedBox(height: 12),
+            for (final field in fields)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: field,
+              ),
+          ],
+        ),
+        actions: actions,
+      );
+    }
     return AlertDialog(
       title: const Text('Make offer'),
       content: WebDialogScrollArea(
         preferredWidth: 760,
-        child: Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            SizedBox(
-              width: _fieldWidth(context, 350),
-              child: DropdownButtonFormField<String>(
-                initialValue: jobType,
-                decoration: const InputDecoration(
-                  labelText: 'Work format',
-                  border: OutlineInputBorder(),
-                ),
-                items: const [
-                  DropdownMenuItem(value: 'hourly', child: Text('Daywork')),
-                  DropdownMenuItem(value: 'price', child: Text('Price')),
-                  DropdownMenuItem(
-                    value: 'negotiable',
-                    child: Text('Negotiable'),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value != null) setState(() => jobType = value);
-                },
-              ),
-            ),
-            _input(rate, jobType == 'price' ? 'Price (£)' : 'Rate (£)'),
-            _input(workPeriod, 'Work period'),
-            _input(weeklyHours, 'Hours per week'),
-            _input(schedule, 'Work schedule'),
-            _input(startDateTime, 'Start date and time'),
-            _input(siteAddress, 'Site Address Line 1'),
-            _input(siteLine2, 'Site Address Line 2'),
-            _input(siteLine3, 'Site Address Line 3'),
-            _input(siteCity, 'Town / City'),
-            _input(siteCounty, 'County'),
-            _input(sitePostcode, 'Postcode'),
-            _input(siteCountry, 'Country'),
-            _input(firstDayRequirements, 'Required on first day', width: 350),
-            _input(description, 'Offer description', width: 712, lines: 3),
-            _input(validUntil, 'Offer valid until'),
-          ],
-        ),
+        child: Wrap(spacing: 12, runSpacing: 12, children: fields),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _submit,
-          child: const Text('Send offer'),
-        ),
-      ],
+      actions: actions,
     );
   }
 
@@ -1827,8 +1864,9 @@ class _WebMakeOfferDialogState extends State<_WebMakeOfferDialog> {
     );
   }
 
-  double _fieldWidth(BuildContext context, double preferred) =>
-      (MediaQuery.sizeOf(context).width - 112)
+  double _fieldWidth(BuildContext context, double preferred) => widget.portrait
+      ? double.infinity
+      : (MediaQuery.sizeOf(context).width - 112)
           .clamp(240.0, preferred)
           .toDouble();
 

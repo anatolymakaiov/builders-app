@@ -20,6 +20,7 @@ import '../services/web_profile_data_service.dart';
 import '../theme/web_theme.dart';
 import 'portrait_web_navigation.dart';
 import 'portrait_web_section.dart';
+import 'portrait_employer_presentation.dart';
 import 'portrait_worker_presentation.dart';
 
 enum _PortraitOverlay { notifications, account, postJob }
@@ -118,11 +119,11 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
             backgroundColor: WebTheme.deep,
             foregroundColor: Colors.white,
             title: overlay == null &&
-                    widget.role == 'worker' &&
+                    (widget.role == 'worker' || widget.role == 'employer') &&
                     selected == PortraitWebSection.profile &&
                     viewedProfileId == null
                 ? InkWell(
-                    key: const ValueKey('portrait-worker-account-title'),
+                    key: const ValueKey('portrait-account-title'),
                     onTap: _showAccountSwitcher,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -141,7 +142,9 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                       ],
                     ),
                   )
-                : Text(widget.role == 'worker' || overlay != null
+                : Text(widget.role == 'worker' ||
+                        widget.role == 'employer' ||
+                        overlay != null
                     ? _title
                     : 'STROYKA'),
             leading: overlay != null || viewedProfileId != null
@@ -161,7 +164,7 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                   onPressed: _openPostJob,
                   icon: const Icon(Icons.add),
                 ),
-              if (!(widget.role == 'worker' &&
+              if (!((widget.role == 'worker' || widget.role == 'employer') &&
                   selected == PortraitWebSection.profile &&
                   overlay == null))
                 IconButton(
@@ -175,11 +178,12 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                 ),
               PopupMenuButton<String>(
                 tooltip: 'Account menu',
-                icon: Icon(
-                    widget.role == 'worker' ? Icons.menu : Icons.more_vert),
+                icon: Icon(widget.role == 'worker' || widget.role == 'employer'
+                    ? Icons.menu
+                    : Icons.more_vert),
                 onSelected: _selectMenuAction,
                 itemBuilder: (_) => [
-                  if (widget.role == 'worker') ...[
+                  if (widget.role == 'worker' || widget.role == 'employer') ...[
                     const PopupMenuItem(
                         value: 'switchAccount', child: Text('Switch account')),
                     const PopupMenuItem(
@@ -228,9 +232,11 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                 )
               : null,
         );
-        return widget.role == 'worker'
-            ? PortraitWorkerPresentation(child: shell)
-            : shell;
+        return switch (widget.role) {
+          'worker' => PortraitWorkerPresentation(child: shell),
+          'employer' => PortraitEmployerPresentation(child: shell),
+          _ => shell,
+        };
       },
     );
   }
