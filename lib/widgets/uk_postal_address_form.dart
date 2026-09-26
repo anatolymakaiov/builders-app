@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/address_lookup_service.dart';
@@ -40,6 +42,8 @@ class UkPostalAddressForm extends StatefulWidget {
   final String postcodeLabel;
   final String addressLine1Label;
   final ValueChanged<PostalAddress>? onLookupResult;
+  final bool autoLookup;
+  final bool showManualEntryShortcut;
 
   const UkPostalAddressForm({
     super.key,
@@ -48,6 +52,8 @@ class UkPostalAddressForm extends StatefulWidget {
     this.postcodeLabel = "Postcode",
     this.addressLine1Label = "Address Line 1",
     this.onLookupResult,
+    this.autoLookup = false,
+    this.showManualEntryShortcut = false,
   });
 
   @override
@@ -55,24 +61,90 @@ class UkPostalAddressForm extends StatefulWidget {
 }
 
 class _UkPostalAddressFormState extends State<UkPostalAddressForm> {
-  late final AddressLookupService lookupService;
+  late AddressLookupService lookupService;
+  final addressLine1Focus = FocusNode();
+  Timer? lookupDebounce;
+  int lookupRevision = 0;
+  int? activeRevision;
+  String? activePostcode;
+  bool settingPostcode = false;
   bool lookingUp = false;
   String statusText = "";
+  bool statusIsError = false;
+  bool manualEntrySuggested = false;
 
   @override
   void initState() {
     super.initState();
     lookupService =
         widget.lookupService ?? IdealPostcodesAddressLookupService();
+    manualEntrySuggested = widget.showManualEntryShortcut;
+    widget.controllers.postcode.addListener(onPostcodeChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant UkPostalAddressForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.lookupService != widget.lookupService) {
+      lookupService =
+          widget.lookupService ?? IdealPostcodesAddressLookupService();
+      lookupRevision++;
+      lookupDebounce?.cancel();
+      lookingUp = false;
+    }
+    if (oldWidget.controllers.postcode != widget.controllers.postcode) {
+      oldWidget.controllers.postcode.removeListener(onPostcodeChanged);
+      widget.controllers.postcode.addListener(onPostcodeChanged);
+      lookupRevision++;
+      lookupDebounce?.cancel();
+      lookingUp = false;
+      statusText = '';
+      manualEntrySuggested = widget.showManualEntryShortcut;
+    }
+  }
+
+  @override
+  void dispose() {
+    lookupDebounce?.cancel();
+    widget.controllers.postcode.removeListener(onPostcodeChanged);
+    addressLine1Focus.dispose();
+    super.dispose();
+  }
+
+  void onPostcodeChanged() {
+    if (settingPostcode) return;
+    lookupRevision++;
+    lookupDebounce?.cancel();
+    setState(() {
+      lookingUp = false;
+      statusText = '';
+      statusIsError = false;
+      manualEntrySuggested = widget.showManualEntryShortcut;
+    });
+    if (widget.autoLookup &&
+        lookupService.isValidPostcode(widget.controllers.postcode.text)) {
+      lookupDebounce = Timer(
+        const Duration(milliseconds: 500),
+        lookupPostcode,
+      );
+    }
   }
 
   void populateAddress(PostalAddress address) {
+    settingPostcode = true;
     widget.controllers.postcode.text = address.postcode;
-    widget.controllers.addressLine1.text = address.addressLine1;
-    widget.controllers.addressLine2.text = address.addressLine2;
-    widget.controllers.addressLine3.text = address.addressLine3;
-    widget.controllers.townCity.text = address.townCity;
-    widget.controllers.county.text = address.county;
+    settingPostcode = false;
+    if (address.addressLine1.isNotEmpty) {
+      widget.controllers.addressLine1.text = address.addressLine1;
+      widget.controllers.addressLine2.text = address.addressLine2;
+      widget.controllers.addressLine3.text = address.addressLine3;
+    }
+    if (address.townCity.isNotEmpty) {
+      widget.controllers.townCity.text = address.townCity;
+    }
+    if (address.county.isNotEmpty) {
+      widget.controllers.county.text = address.county;
+    }
     widget.controllers.country.text =
         address.country.isNotEmpty ? address.country : "United Kingdom";
     widget.onLookupResult?.call(address);
@@ -131,36 +203,68 @@ class _UkPostalAddressFormState extends State<UkPostalAddressForm> {
   }
 
   Future<void> lookupPostcode() async {
-    if (lookingUp) return;
+    lookupDebounce?.cancel();
     FocusManager.instance.primaryFocus?.unfocus();
 
     final normalized = lookupService.normalizePostcode(
       widget.controllers.postcode.text,
     );
+    settingPostcode = true;
     widget.controllers.postcode.text = normalized;
+    settingPostcode = false;
 
     if (!lookupService.isValidPostcode(normalized)) {
-      setState(() => statusText = "Invalid postcode. Enter address manually.");
+      setState(() {
+        statusText = 'Invalid UK postcode. Check it or enter address manually.';
+        statusIsError = true;
+      });
       return;
     }
 
+    if (activePostcode == normalized && activeRevision == lookupRevision) {
+      return;
+    }
+
+    final revision = ++lookupRevision;
+    activeRevision = revision;
+    activePostcode = normalized;
     setState(() {
       lookingUp = true;
       statusText = "";
+      statusIsError = false;
     });
 
-    List<PostalAddress> addresses;
+    List<PostalAddress> addresses = const [];
+    String? failure;
     try {
       addresses = await lookupService.lookupAddresses(normalized);
+    } on AddressLookupException catch (error) {
+      failure = error.message;
     } catch (_) {
-      addresses = const [];
+      failure = 'Address lookup is unavailable. Enter address manually.';
     }
-    if (!mounted) return;
+    if (activeRevision == revision) {
+      activeRevision = null;
+      activePostcode = null;
+    }
+    if (!mounted || lookupRevision != revision) return;
+
+    if (failure != null) {
+      setState(() {
+        lookingUp = false;
+        statusText = failure!;
+        statusIsError = true;
+        manualEntrySuggested = true;
+      });
+      return;
+    }
 
     if (addresses.isEmpty) {
       setState(() {
         lookingUp = false;
         statusText = "No address found. Enter address manually.";
+        statusIsError = true;
+        manualEntrySuggested = true;
       });
       return;
     }
@@ -172,13 +276,17 @@ class _UkPostalAddressFormState extends State<UkPostalAddressForm> {
     if (selected == null) {
       setState(() {
         statusText = "Enter address manually.";
+        manualEntrySuggested = true;
       });
       return;
     }
 
     setState(() {
       populateAddress(selected);
-      statusText = "Address selected.";
+      manualEntrySuggested = selected.addressLine1.isEmpty;
+      statusText = manualEntrySuggested
+          ? 'Postcode found. Enter Address Line 1 and confirm town/city.'
+          : 'Address selected.';
     });
   }
 
@@ -193,13 +301,15 @@ class _UkPostalAddressFormState extends State<UkPostalAddressForm> {
               child: TextField(
                 controller: widget.controllers.postcode,
                 textCapitalization: TextCapitalization.characters,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => lookupPostcode(),
                 decoration: InputDecoration(labelText: widget.postcodeLabel),
               ),
             ),
             const SizedBox(width: 8),
             IconButton(
               tooltip: "Search postcode",
-              onPressed: lookingUp ? null : lookupPostcode,
+              onPressed: lookupPostcode,
               icon: lookingUp
                   ? const SizedBox(
                       width: 20,
@@ -212,28 +322,37 @@ class _UkPostalAddressFormState extends State<UkPostalAddressForm> {
         ),
         if (statusText.isNotEmpty) ...[
           const SizedBox(height: 6),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                statusText,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              TextButton.icon(
-                onPressed: lookingUp
-                    ? null
-                    : () => setState(() {
-                          statusText = "Enter address manually.";
-                        }),
-                icon: const Icon(Icons.edit_location_alt_outlined),
-                label: const Text("Enter address manually"),
-              ),
-            ],
+          Text(
+            statusText,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: statusIsError
+                      ? Theme.of(context).colorScheme.error
+                      : null,
+                ),
           ),
         ],
+        if (manualEntrySuggested)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () {
+                lookupDebounce?.cancel();
+                lookupRevision++;
+                setState(() {
+                  lookingUp = false;
+                  statusText = 'Enter address manually.';
+                  statusIsError = false;
+                });
+                addressLine1Focus.requestFocus();
+              },
+              icon: const Icon(Icons.edit_location_alt_outlined),
+              label: const Text('Enter address manually'),
+            ),
+          ),
         const SizedBox(height: 12),
         TextField(
           controller: widget.controllers.addressLine1,
+          focusNode: addressLine1Focus,
           decoration: InputDecoration(labelText: widget.addressLine1Label),
         ),
         const SizedBox(height: 12),

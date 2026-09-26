@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 import '../services/auth_preferences_service.dart';
+import '../services/address_lookup_service.dart';
 import '../services/post_registration_refresh_service.dart';
 import '../services/multi_account_service.dart';
 import '../services/registration_validation_service.dart';
@@ -57,6 +58,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final phoneController = TextEditingController();
   final authPreferences = AuthPreferencesService();
   final registrationValidation = RegistrationValidationService();
+  final registrationAddressLookup = RegistrationAddressLookupService();
   final postRegistrationRefresh = PostRegistrationRefreshService();
 
   String role = "worker";
@@ -1180,6 +1182,9 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           RegistrationWizardStep.address => UkPostalAddressForm(
               controllers: registrationAddressControllers(),
+              lookupService: registrationAddressLookup,
+              autoLookup: true,
+              showManualEntryShortcut: true,
               postcodeLabel: 'Postcode',
               addressLine1Label: 'Address Line 1',
             ),
