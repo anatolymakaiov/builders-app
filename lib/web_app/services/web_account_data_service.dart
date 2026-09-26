@@ -500,8 +500,10 @@ class WebAccountDataService {
     return JobAlertService().deleteWorkerAlert(userId: uid, alertId: alertId);
   }
 
-  Future<Map<String, dynamic>> loadBillingStatus() {
-    return BillingService().getAuthoritativeCompanyBillingStatus();
+  Future<Map<String, dynamic>> loadBillingStatus({bool refresh = false}) {
+    return BillingService().getAuthoritativeCompanyBillingStatus(
+      refresh: refresh,
+    );
   }
 
   Future<void> submitSupportRequest({

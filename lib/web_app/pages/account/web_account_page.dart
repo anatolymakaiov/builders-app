@@ -378,7 +378,21 @@ class _BillingViewState extends State<_BillingView> {
 
   @override
   Widget build(BuildContext context) {
-    final configured = BillingService.isDirectDebitConfigured(billing);
+    final configured = billing.containsKey('directDebitConfigured')
+        ? billing['directDebitConfigured'] == true
+        : BillingService.isDirectDebitConfigured(billing);
+    final hasMandate =
+        (billing['goCardlessMandateId'] ?? '').toString().isNotEmpty;
+    final mandateStatus =
+        (billing['mandateStatus'] ?? '').toString().toLowerCase();
+    final subscriptionStatus = (billing['goCardlessSubscriptionStatus'] ?? '')
+        .toString()
+        .toLowerCase();
+    final mandateNeedsReplacement = hasMandate &&
+        ['cancelled', 'failed', 'expired', 'blocked'].contains(mandateStatus);
+    final subscriptionEnded = hasMandate &&
+        ['cancelled', 'finished', 'paused', 'customer_approval_denied']
+            .contains(subscriptionStatus);
     final plans = BillingService.plansFromBilling(billing);
     final currentPlan = BillingService.currentPlanId(billing);
     final totalSlots = BillingService.readInt(
@@ -394,24 +408,50 @@ class _BillingViewState extends State<_BillingView> {
     final availableSlots = (totalSlots - usedSlots).clamp(0, totalSlots);
     return ListView(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text('Billing / Subscription',
-                  style: Theme.of(context).textTheme.headlineMedium),
-            ),
-            WebStatusChip(
-              label: configured ? 'Direct Debit active' : 'Setup required',
-              tone: configured ? WebStatusTone.success : WebStatusTone.warning,
-            ),
-            const SizedBox(width: WebSpacing.sm),
-            OutlinedButton.icon(
-              onPressed: busy ? null : _refresh,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Refresh'),
-            ),
-          ],
-        ),
+        LayoutBuilder(builder: (context, constraints) {
+          final title = Text('Billing / Subscription',
+              style: Theme.of(context).textTheme.headlineMedium);
+          final controls = Wrap(
+            spacing: WebSpacing.sm,
+            runSpacing: WebSpacing.sm,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              WebStatusChip(
+                label: configured
+                    ? 'Direct Debit active'
+                    : mandateNeedsReplacement
+                        ? 'Direct Debit needs attention'
+                        : subscriptionEnded
+                            ? 'Subscription not active'
+                            : hasMandate
+                                ? 'Direct Debit pending'
+                                : 'Setup required',
+                tone:
+                    configured ? WebStatusTone.success : WebStatusTone.warning,
+              ),
+              OutlinedButton.icon(
+                onPressed: busy ? null : () => _refresh(refreshProvider: true),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy || !configured ? null : _choosePlan,
+                icon: const Icon(Icons.swap_horiz),
+                label: const Text('Change plan'),
+              ),
+            ],
+          );
+          if (constraints.maxWidth < 850) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [title, const SizedBox(height: 10), controls],
+            );
+          }
+          return Row(children: [
+            Expanded(child: title),
+            controls,
+          ]);
+        }),
         const SizedBox(height: 18),
         _InfoRow(
             'Current plan',
@@ -425,7 +465,17 @@ class _BillingViewState extends State<_BillingView> {
           'Vacancy slots',
           'Total: $totalSlots   Used: $usedSlots   Available: $availableSlots',
         ),
-        _InfoRow('Direct Debit', configured ? 'Active' : 'Set up'),
+        _InfoRow(
+            'Direct Debit',
+            configured
+                ? 'Active'
+                : mandateNeedsReplacement
+                    ? 'Needs replacement'
+                    : subscriptionEnded
+                        ? 'Subscription not active'
+                        : hasMandate
+                            ? 'Pending'
+                            : 'Set up'),
         _InfoRow(
           'Trial status',
           BillingService.formatLabel((billing['trialStatus'] ?? '').toString()),
@@ -436,32 +486,37 @@ class _BillingViewState extends State<_BillingView> {
                 billing['trialEndsAt'] ?? billing['trialEndDate'])),
         _InfoRow('First payment date',
             BillingService.formatDate(billing['firstPaymentDate'])),
+        _InfoRow('Next payment date',
+            BillingService.formatDate(billing['nextChargeDate'])),
         const SizedBox(height: 18),
-        if (!configured)
+        if (!configured && !hasMandate)
           FilledButton.icon(
             onPressed: busy ? null : () => _startSetup(currentPlan),
             icon: const Icon(Icons.account_balance_outlined),
             label: const Text('Set up Direct Debit'),
           )
-        else
+        else if (configured || mandateNeedsReplacement)
           Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
               OutlinedButton.icon(
-                onPressed: busy ? null : () => _startSetup(currentPlan),
+                onPressed: busy
+                    ? null
+                    : () => _startSetup(currentPlan, replacing: true),
                 icon: const Icon(Icons.swap_horiz),
                 label: const Text('Replace Direct Debit'),
               ),
-              OutlinedButton.icon(
-                onPressed: busy ? null : _cancelSubscription,
-                icon: const Icon(Icons.cancel_outlined),
-                label: const Text('Cancel Direct Debit'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: WebTheme.danger,
-                  side: const BorderSide(color: WebTheme.danger),
+              if (configured)
+                OutlinedButton.icon(
+                  onPressed: busy ? null : _cancelSubscription,
+                  icon: const Icon(Icons.cancel_outlined),
+                  label: const Text('Cancel Direct Debit'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: WebTheme.danger,
+                    side: const BorderSide(color: WebTheme.danger),
+                  ),
                 ),
-              ),
             ],
           ),
         const SizedBox(height: 24),
@@ -475,7 +530,7 @@ class _BillingViewState extends State<_BillingView> {
               _PlanCard(
                 plan: plan,
                 selected: (plan['id'] ?? '').toString() == currentPlan,
-                busy: busy || changingPlan != null,
+                busy: busy || changingPlan != null || !configured,
                 onTap: () => _changePlan((plan['id'] ?? '').toString()),
               ),
           ],
@@ -484,27 +539,38 @@ class _BillingViewState extends State<_BillingView> {
     );
   }
 
-  Future<void> _refresh({bool showBusy = true}) async {
+  Future<void> _refresh(
+      {bool showBusy = true, bool refreshProvider = false}) async {
     if (_refreshingBilling) return;
     _refreshingBilling = true;
     if (showBusy && mounted) setState(() => busy = true);
     try {
-      final latest = await service.loadBillingStatus();
+      final latest = await service.loadBillingStatus(refresh: refreshProvider);
       if (mounted) setState(() => overrideBilling = latest);
     } catch (error) {
       debugPrint('WEB BILLING STATUS REFRESH ERROR $error');
+      if (showBusy && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'Could not refresh Direct Debit status. Please try again.')),
+        );
+      }
     } finally {
       _refreshingBilling = false;
       if (showBusy && mounted) setState(() => busy = false);
     }
   }
 
-  Future<void> _startSetup(String planId) async {
+  Future<void> _startSetup(String planId, {bool replacing = false}) async {
     setState(() => busy = true);
     try {
       final result = await FirebaseFunctions.instance
           .httpsCallable('createGoCardlessDirectDebitSetup')
-          .call({'planId': planId.isEmpty ? 'starter' : planId});
+          .call({
+        'planId': planId.isEmpty ? 'starter' : planId,
+        'replaceMandate': replacing
+      });
       final data = result.data;
       final url = data is Map ? data['authorisationUrl']?.toString() : null;
       if (url == null || url.isEmpty) throw StateError('missing_url');
@@ -515,17 +581,76 @@ class _BillingViewState extends State<_BillingView> {
   }
 
   Future<void> _changePlan(String planId) async {
-    if (planId.isEmpty) return;
+    if (planId.isEmpty || busy || changingPlan != null) return;
+    final selected = BillingService.plansFromBilling(billing)
+        .where((plan) => plan['id'] == planId)
+        .firstOrNull;
+    if (selected == null) return;
+    final name = BillingService.planDisplayName(selected);
+    final price = BillingService.readInt(selected['amountPence']) / 100;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Change plan?'),
+        content: Text(
+            'Current: ${billing['planName'] ?? BillingService.currentPlanId(billing)}. '
+            'New: $name at GBP ${price.toStringAsFixed(0)}/month. '
+            'Your existing Direct Debit will be updated.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Confirm')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     setState(() => changingPlan = planId);
     try {
       final result = await FirebaseFunctions.instance
           .httpsCallable('changeGoCardlessPlan')
           .call({'planId': planId});
       if (result.data is Map) {
-        overrideBilling = Map<String, dynamic>.from(result.data as Map);
+        if (mounted) {
+          setState(() => overrideBilling =
+              BillingService.normalizeBillingDateFields(
+                  Map<String, dynamic>.from(result.data as Map)));
+        }
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not change plan: $error')),
+        );
       }
     } finally {
       if (mounted) setState(() => changingPlan = null);
+    }
+  }
+
+  Future<void> _choosePlan() async {
+    final current = BillingService.currentPlanId(billing);
+    final plans = BillingService.plansFromBilling(billing);
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('Change plan'),
+        children: [
+          for (final plan in plans)
+            SimpleDialogOption(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, plan['id'].toString()),
+              child: Text('${BillingService.planDisplayName(plan)}'
+                  ' - GBP ${(BillingService.readInt(plan['amountPence']) / 100).toStringAsFixed(0)}/month'
+                  '${plan['id'] == current ? ' (current)' : ''}'),
+            ),
+        ],
+      ),
+    );
+    if (selected != null && selected != current && mounted) {
+      await _changePlan(selected);
     }
   }
 

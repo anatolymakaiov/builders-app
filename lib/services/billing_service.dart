@@ -149,10 +149,12 @@ class BillingService {
     return plan["id"]?.toString() ?? "";
   }
 
-  Future<Map<String, dynamic>> getAuthoritativeCompanyBillingStatus() async {
+  Future<Map<String, dynamic>> getAuthoritativeCompanyBillingStatus({
+    bool refresh = false,
+  }) async {
     final result = await FirebaseFunctions.instance
         .httpsCallable("getCompanyBillingStatus")
-        .call();
+        .call({'refresh': refresh});
     final data = result.data;
     if (data is Map) {
       return normalizeBillingDateFields(Map<String, dynamic>.from(data));

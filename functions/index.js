@@ -6,6 +6,12 @@ const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const {convertHeicToJpeg} = require("./web_image_derivative");
 const {
+  SUCCESSFUL_PAYMENT_STATUSES,
+  PENDING_PAYMENT_STATUSES,
+  nextScheduledCharge,
+  latestConfirmedPayment,
+} = require("./gocardless_state");
+const {
   hasAcceptedWorkRelationship,
 } = require("./review_eligibility");
 const {
@@ -1437,6 +1443,28 @@ async function goCardlessPost(path, payload, accessToken, idempotencyKey) {
   return body;
 }
 
+async function goCardlessPut(path, payload, accessToken) {
+  const response = await fetch(`${GOCARDLESS_SANDBOX_API_BASE}${path}`, {
+    method: "PUT",
+    headers: gocardlessHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    const reason = body.error && body.error.errors && body.error.errors[0] &&
+      body.error.errors[0].reason;
+    console.error("GOCARDLESS SUBSCRIPTION UPDATE ERROR", JSON.stringify({
+      status: response.status,
+      reason,
+    }));
+    throw new HttpsError("failed-precondition",
+      reason === "mandate_payments_require_approval"
+        ? "GoCardless requires customer approval to change this Direct Debit amount. Please contact support."
+        : "Could not update the existing Direct Debit subscription.");
+  }
+  return body;
+}
+
 async function goCardlessGet(path, accessToken) {
   const response = await fetch(`${GOCARDLESS_SANDBOX_API_BASE}${path}`, {
     method: "GET",
@@ -1634,10 +1662,13 @@ async function safeBillingStatus(data, employerId) {
     goCardlessBillingRequestFlowId: billing.goCardlessBillingRequestFlowId || "",
     goCardlessMandateId: billing.goCardlessMandateId || "",
     goCardlessSubscriptionId: billing.goCardlessSubscriptionId || "",
+    goCardlessSubscriptionStatus: billing.goCardlessSubscriptionStatus || "",
+    mandateStatus: billing.mandateStatus || "",
     currentPeriodStart: billing.currentPeriodStart || null,
     currentPeriodEnd: billing.currentPeriodEnd || null,
     nextChargeDate: billing.nextChargeDate || billing.nextBillingDate || null,
     lastPaymentStatus: billing.lastPaymentStatus || "",
+    lastPaymentDate: billing.lastPaymentDate || null,
     lastPaymentAt: billing.lastPaymentAt || null,
     paymentActionRequired: billing.paymentActionRequired === true,
     paymentGraceStartedAt: billing.paymentGraceStartedAt || null,
@@ -2006,15 +2037,12 @@ async function ensureGoCardlessSubscription(
     );
   }
   if (existingSubscriptionId) {
-    await activateDirectDebitEntitlement(
-      employerRef,
-      mandateId,
-      existingSubscriptionId,
-      plan,
-      {},
-      mandateStatus,
-    );
+    await reconcileGoCardlessSubscription(employerRef, accessToken);
     return existingSubscriptionId;
+  }
+  if (await reconcileGoCardlessSubscription(employerRef, accessToken)) {
+    const recovered = (await employerRef.get()).data().billing.goCardlessSubscriptionId;
+    return recovered;
   }
   const trialWindow = trialWindowForBilling(billing);
 
@@ -2060,6 +2088,122 @@ async function ensureGoCardlessSubscription(
 	  );
 
   return subscriptionId;
+}
+
+async function reconcileGoCardlessSubscription(
+  employerRef, accessToken, observedPayment = null, confirmedAt = null,
+) {
+  const snapshot = await employerRef.get();
+  const billing = (snapshot.data() || {}).billing || {};
+  let subscriptionId = cleanText(billing.goCardlessSubscriptionId);
+  const mandateId = cleanText(billing.goCardlessMandateId || billing.directDebitMandateId);
+  if (!subscriptionId && mandateId) {
+    const list = await goCardlessGet(
+      `/subscriptions?mandate=${encodeURIComponent(mandateId)}`, accessToken,
+    );
+    const active = (list.subscriptions || []).filter((item) =>
+      ["active", "pending_customer_approval"].includes(item.status));
+    if (active.length > 1) {
+      throw new HttpsError("failed-precondition", "Multiple active Direct Debit subscriptions need manual review.");
+    }
+    subscriptionId = cleanText(active[0] && active[0].id);
+  }
+  if (!subscriptionId) return false;
+
+  const subscriptionResponse = await goCardlessGet(
+    `/subscriptions/${encodeURIComponent(subscriptionId)}`, accessToken,
+  );
+  const subscription = subscriptionResponse.subscriptions || {};
+  const ownerId = cleanText(subscription.metadata && subscription.metadata.employer_id);
+  if (ownerId && ownerId !== employerRef.id) {
+    throw new HttpsError("failed-precondition", "Subscription belongs to another account.");
+  }
+  const linkedMandateId = cleanText(subscription.links && subscription.links.mandate);
+  if (mandateId && linkedMandateId && mandateId !== linkedMandateId) {
+    throw new HttpsError("failed-precondition", "Subscription mandate does not match this account.");
+  }
+  const actualMandateId = linkedMandateId || mandateId;
+  if (!actualMandateId) return false;
+  const mandateResponse = await goCardlessGet(
+    `/mandates/${encodeURIComponent(actualMandateId)}`, accessToken,
+  );
+  const mandate = mandateResponse.mandates || {};
+  const mandateStatus = cleanText(mandate.status).toLowerCase();
+  const subscriptionStatus = cleanText(subscription.status).toLowerCase();
+  const validMandate = CONFIGURED_MANDATE_STATUSES.has(mandateStatus);
+  const activeSubscription = subscriptionStatus === "active";
+  const paymentResponse = await goCardlessGet(
+    `/payments?subscription=${encodeURIComponent(subscriptionId)}&limit=100`, accessToken,
+  );
+  const payments = paymentResponse.payments || [];
+  if (observedPayment && observedPayment.links &&
+      observedPayment.links.subscription === subscriptionId) {
+    const index = payments.findIndex((payment) => payment.id === observedPayment.id);
+    if (index >= 0) payments[index] = observedPayment;
+    else payments.push(observedPayment);
+  }
+  const successful = latestConfirmedPayment(payments);
+  const latest = payments.slice().sort((a, b) =>
+    String(b.charge_date || b.created_at || "")
+      .localeCompare(String(a.charge_date || a.created_at || "")))[0];
+  const lastSuccessfulCharge = successful && successful.charge_date || "";
+  const pendingCharges = payments
+    .filter((payment) =>
+      (PENDING_PAYMENT_STATUSES.has(payment.status) || payment.status === "created") &&
+      payment.charge_date && payment.charge_date > lastSuccessfulCharge)
+    .map((payment) => payment.charge_date).sort();
+  const nextChargeDate = activeSubscription
+    ? nextScheduledCharge(subscription, lastSuccessfulCharge) || pendingCharges[0] || null
+    : null;
+  const updates = {
+    goCardlessSubscriptionId: subscriptionId,
+    goCardlessMandateId: actualMandateId,
+    directDebitMandateId: actualMandateId,
+    mandateStatus,
+    directDebitStatus: mandateStatus,
+    directDebitConfigured: validMandate && activeSubscription,
+    directDebitEnabled: validMandate && activeSubscription,
+    goCardlessSubscriptionStatus: subscriptionStatus,
+    lastProviderSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  updates.nextChargeDate = nextChargeDate;
+  if (successful) {
+    updates.lastPaymentId = successful.id;
+    updates.lastPaymentStatus = successful.status;
+    updates.lastPaymentDate = successful.charge_date || null;
+    const confirmationTime = timestampToDate(confirmedAt);
+    if (confirmationTime && observedPayment && successful.id === observedPayment.id) {
+      updates.lastPaymentAt = admin.firestore.Timestamp.fromDate(confirmationTime);
+    }
+  }
+  const pendingPlan = planForId(cleanText(billing.pendingPlanId));
+  const pendingAt = timestampToDate(billing.pendingPlanEffectiveAt);
+  if (pendingPlan && pendingAt && successful && successful.charge_date >= dateOnly(pendingAt)) {
+    Object.assign(updates, {
+      planId: pendingPlan.id,
+      planName: pendingPlan.name,
+      activePlanId: pendingPlan.id,
+      activePlanName: pendingPlan.name,
+      currentPlan: pendingPlan.id,
+      currentPlanId: pendingPlan.id,
+      planAmountPence: pendingPlan.amountPence,
+      monthlyPrice: pendingPlan.amountPence / 100,
+      vacancySlotLimit: pendingPlan.vacancySlotLimit,
+      pendingPlan: "",
+      pendingPlanId: "",
+      pendingPlanEffectiveAt: admin.firestore.FieldValue.delete(),
+    });
+  }
+  if (latest) updates.paymentStatus = latest.status;
+  if (validMandate && activeSubscription && !billing.paymentActionRequired) {
+    const trial = trialWindowForBilling(billing);
+    updates.billingStatus = "active";
+    updates.subscriptionStatus = trial.isActive && !successful ? "trial" : "active";
+  } else if (!activeSubscription && ["cancelled", "finished"].includes(subscriptionStatus)) {
+    updates.subscriptionStatus = subscriptionStatus;
+  }
+  await updateEmployerBilling(employerRef, updates);
+  return true;
 }
 
 async function reconcileBillingRequest(employerRef, billingRequestId, accessToken) {
@@ -2151,6 +2295,11 @@ async function processGoCardlessEvent(event, accessToken) {
       return "billing_request_fulfilled";
     }
     if (["cancelled", "failed"].includes(action)) {
+      const current = (await employerRef.get()).data() || {};
+      if (cleanText((current.billing || {}).goCardlessSubscriptionId)) {
+        await reconcileGoCardlessSubscription(employerRef, accessToken);
+        return "billing_request_superseded";
+      }
       await updateEmployerBilling(employerRef, {
         billingStatus: "failed",
         subscriptionStatus: "setup_required",
@@ -2241,25 +2390,55 @@ async function processGoCardlessEvent(event, accessToken) {
 
   if (resourceType === "payments") {
     const paymentId = cleanText(links.payment);
-    const subscriptionId = cleanText(links.subscription);
+    let subscriptionId = cleanText(links.subscription);
+    if (!subscriptionId && paymentId) {
+      const paymentResponse = await goCardlessGet(
+        `/payments/${encodeURIComponent(paymentId)}`, accessToken,
+      );
+      subscriptionId = cleanText(
+        paymentResponse.payments && paymentResponse.payments.links &&
+        paymentResponse.payments.links.subscription,
+      );
+    }
     const employerRef = await employerRefByBillingField(
       "goCardlessSubscriptionId",
       subscriptionId,
     );
     if (!employerRef) return "payment_unmatched";
-	    if (["failed", "cancelled"].includes(action)) {
+	    if (["failed", "cancelled", "charged_back"].includes(action)) {
+	      const paymentResponse = await goCardlessGet(
+        `/payments/${encodeURIComponent(paymentId)}`, accessToken,
+      );
+	      const payment = paymentResponse.payments || {};
+	      const currentBilling = ((await employerRef.get()).data() || {}).billing || {};
+	      if (SUCCESSFUL_PAYMENT_STATUSES.has(payment.status) ||
+          (currentBilling.lastPaymentDate && payment.charge_date &&
+            currentBilling.lastPaymentDate > payment.charge_date)) {
+	        return "payment_failure_superseded";
+	      }
 	      await startPaymentGrace(employerRef, `payment_${action}`, event.id);
-	    } else {
-	      await updateEmployerBilling(employerRef, {
-	        billingStatus: "active",
-	        subscriptionStatus: "active",
-	        lastPaymentStatus: action,
-	        lastPaymentId: paymentId,
-	        lastPaymentAt: admin.firestore.FieldValue.serverTimestamp(),
-	      });
-	      await clearPaymentGrace(employerRef);
+	      return "payment_failed";
 	    }
-	    return "payment_recorded";
+	    if (SUCCESSFUL_PAYMENT_STATUSES.has(action)) {
+      const paymentResponse = await goCardlessGet(
+        `/payments/${encodeURIComponent(paymentId)}`, accessToken,
+      );
+      if (!SUCCESSFUL_PAYMENT_STATUSES.has(
+        paymentResponse.payments && paymentResponse.payments.status,
+      )) {
+        throw new HttpsError("unavailable", "Payment confirmation is not yet available from GoCardless.");
+      }
+      await clearPaymentGrace(employerRef);
+	      await reconcileGoCardlessSubscription(
+        employerRef, accessToken, paymentResponse.payments, event.created_at,
+      );
+	      return "payment_confirmed";
+	    }
+	    if (PENDING_PAYMENT_STATUSES.has(action) || action === "created") {
+	      await reconcileGoCardlessSubscription(employerRef, accessToken);
+	      return "payment_pending";
+	    }
+	    return "payment_ignored";
 	  }
 
   return "ignored";
@@ -2335,6 +2514,32 @@ exports.createGoCardlessDirectDebitSetup = onCall(
         "invalid-argument",
         "Choose a valid STROYKA subscription plan.",
       );
+    }
+
+    if (request.data && request.data.replaceMandate !== true) {
+      const billing = user.billing || {};
+      const existingRequestId = cleanText(billing.goCardlessBillingRequestId);
+      if (existingRequestId) {
+        const existingRequest = await goCardlessGet(
+          `/billing_requests/${encodeURIComponent(existingRequestId)}`, accessToken,
+        );
+        const requestStatus = cleanText(
+          existingRequest.billing_requests && existingRequest.billing_requests.status,
+        );
+        if (!["cancelled", "failed"].includes(requestStatus)) {
+          await reconcileBillingRequest(userRef, existingRequestId, accessToken);
+          throw new HttpsError("failed-precondition",
+            "Direct Debit setup is already in progress or complete. Refresh its status first.");
+        }
+      }
+      if (billing.goCardlessMandateId || billing.goCardlessSubscriptionId) {
+        await reconcileGoCardlessSubscription(userRef, accessToken);
+        const latest = (await userRef.get()).data().billing || {};
+        if (latest.goCardlessMandateId || latest.goCardlessSubscriptionId) {
+          throw new HttpsError("failed-precondition",
+            "Direct Debit already exists. Refresh its status or choose Replace Direct Debit.");
+        }
+      }
     }
 
     const billingRequestResponse = await goCardlessPost(
@@ -2460,7 +2665,8 @@ exports.createGoCardlessDirectDebitSetup = onCall(
 
 exports.changeGoCardlessPlan = onCall(
   {
-    timeoutSeconds: 15,
+    secrets: [goCardlessAccessToken],
+    timeoutSeconds: 30,
     memory: "256MiB",
   },
   async (request) => {
@@ -2490,7 +2696,13 @@ exports.changeGoCardlessPlan = onCall(
       );
     }
 
-    const billing = user.billing || {};
+    const accessToken = goCardlessAccessToken.value();
+    if (!accessToken) {
+      throw new HttpsError("failed-precondition", "GoCardless Sandbox is not configured.");
+    }
+    await reconcileGoCardlessSubscription(userRef, accessToken);
+    const currentUser = (await userRef.get()).data() || {};
+    const billing = currentUser.billing || {};
     if (!directDebitConfigured(billing)) {
       throw new HttpsError(
         "failed-precondition",
@@ -2499,8 +2711,32 @@ exports.changeGoCardlessPlan = onCall(
     }
 
     const currentPlan = billingPlan(billing);
-    if (currentPlan && currentPlan.id === newPlan.id) {
-      return await safeBillingStatus(user, uid);
+    const subscriptionId = cleanText(billing.goCardlessSubscriptionId);
+    if (!subscriptionId || billing.goCardlessSubscriptionStatus !== "active") {
+      throw new HttpsError("failed-precondition", "An active Direct Debit subscription is required to change plan.");
+    }
+    const providerResponse = await goCardlessGet(
+      `/subscriptions/${encodeURIComponent(subscriptionId)}`, accessToken,
+    );
+    const providerSubscription = providerResponse.subscriptions || {};
+    if (currentPlan && currentPlan.id === newPlan.id &&
+        Number(providerSubscription.amount) === newPlan.amountPence) {
+      return await safeBillingStatus(currentUser, uid);
+    }
+    const updatedSubscription = Number(providerSubscription.amount) === newPlan.amountPence
+      ? providerSubscription
+      : (await goCardlessPut(
+        `/subscriptions/${encodeURIComponent(subscriptionId)}`,
+        {subscriptions: {
+          amount: newPlan.amountPence,
+          name: `${newPlan.name} STROYKA company subscription`,
+          metadata: {employer_id: uid, plan_id: newPlan.id, environment: "sandbox"},
+        }},
+        accessToken,
+      )).subscriptions || {};
+    if (Number(updatedSubscription.amount) !== newPlan.amountPence ||
+        updatedSubscription.id !== subscriptionId) {
+      throw new HttpsError("unavailable", "GoCardless did not confirm the plan change.");
     }
 
     const trialWindow = trialWindowForBilling(billing);
@@ -2508,6 +2744,7 @@ exports.changeGoCardlessPlan = onCall(
       cleanText(billing.subscriptionStatus).toLowerCase() === "trial";
     const currentAmount = currentPlan ? currentPlan.amountPence : 0;
     const now = admin.firestore.FieldValue.serverTimestamp();
+    const nextChargeDate = nextScheduledCharge(updatedSubscription);
 
     if (trialActive || newPlan.amountPence >= currentAmount) {
       await updateEmployerBilling(userRef, {
@@ -2529,6 +2766,7 @@ exports.changeGoCardlessPlan = onCall(
         billingInterval: newPlan.interval,
         vacancySlotLimit: newPlan.vacancySlotLimit,
         planChangedAt: now,
+        ...(nextChargeDate ? {nextChargeDate} : {}),
         planChangeDirection: !currentPlan || newPlan.amountPence >= currentAmount
           ? "upgrade"
           : "trial_downgrade",
@@ -2551,6 +2789,7 @@ exports.changeGoCardlessPlan = onCall(
         pendingPlanEffectiveAt: admin.firestore.Timestamp.fromDate(effectiveAt),
         planChangeDirection: "downgrade",
         planChangeRequestedAt: now,
+        ...(nextChargeDate ? {nextChargeDate} : {}),
       });
     }
 
@@ -2774,6 +3013,22 @@ exports.getCompanyBillingStatus = onCall(
     }
 
     const billing = user.billing || {};
+    const explicitRefresh = request.data && request.data.refresh === true;
+    const lastSync = timestampToDate(billing.lastProviderSyncAt);
+    const syncDue = !lastSync || Date.now() - lastSync.getTime() > 60000;
+    const chargeDate = timestampToDate(billing.nextChargeDate);
+    const staleCharge = !chargeDate || chargeDate.getTime() < Date.now() - 86400000;
+    const accessToken = goCardlessAccessToken.value();
+    if (accessToken && (explicitRefresh || syncDue &&
+        (!directDebitConfigured(billing) || staleCharge))) {
+      if (billing.goCardlessSubscriptionId || billing.goCardlessMandateId) {
+        const reconciled = await reconcileGoCardlessSubscription(userRef, accessToken);
+        if (reconciled) {
+          const refreshed = await userRef.get();
+          return await safeBillingStatus(refreshed.data() || {}, uid);
+        }
+      }
+    }
     const billingRequestId = cleanText(billing.goCardlessBillingRequestId);
     const billingLifecycleState = cleanText(
       billing.billingStatus || billing.subscriptionStatus,
@@ -2784,8 +3039,7 @@ exports.getCompanyBillingStatus = onCall(
       "setup_required",
     ].includes(billingLifecycleState) || !directDebitConfigured(billing);
 
-    if (pending && billingRequestId) {
-      const accessToken = goCardlessAccessToken.value();
+    if (pending && billingRequestId && (explicitRefresh || syncDue)) {
       if (accessToken) {
         await reconcileBillingRequest(userRef, billingRequestId, accessToken);
       }
@@ -3021,30 +3275,53 @@ exports.goCardlessWebhook = onRequest(
       .firestore()
       .collection("gocardless_processed_events")
       .doc(eventId);
-    try {
-      await eventRef.create({
+    const claimed = await admin.firestore().runTransaction(async (transaction) => {
+      const existing = await transaction.get(eventRef);
+      const state = existing.data() || {};
+      const started = timestampToDate(state.processingStartedAt);
+      if (state.status === "processed") return "processed";
+      if (state.status === "processing" && started &&
+          Date.now() - started.getTime() < 120000) return "processing";
+      transaction.set(eventRef, {
         provider: "gocardless",
         environment: "sandbox",
         resourceType: cleanText(event.resource_type),
         action: cleanText(event.action),
         receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        processingStartedAt: admin.firestore.FieldValue.serverTimestamp(),
         status: "processing",
-      });
-    } catch (error) {
+      }, {merge: true});
+      return "claimed";
+    });
+    if (claimed === "processing") {
+      response.status(503).send("Webhook event is still processing");
+      return;
+    }
+    if (claimed === "processed") {
       skipped.push(eventId);
       continue;
     }
 
-    const result = await processGoCardlessEvent(event, accessToken);
-    await eventRef.set(
-      {
+    try {
+      const result = await processGoCardlessEvent(event, accessToken);
+      await eventRef.set({
         status: "processed",
         result,
         processedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
-    processed.push(eventId);
+      }, {merge: true});
+      processed.push(eventId);
+    } catch (error) {
+      await eventRef.set({
+        status: "failed",
+        failedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      console.error("GOCARDLESS WEBHOOK EVENT FAILED", JSON.stringify({
+        eventId, resourceType: cleanText(event.resource_type),
+        action: cleanText(event.action),
+      }));
+      response.status(500).send("Webhook event processing failed");
+      return;
+    }
   }
 
   response.status(200).json({
