@@ -24,6 +24,7 @@ class LoginScreen extends StatefulWidget {
   final String? sessionMode;
   final VoidCallback? onSessionUnlocked;
   final WidgetBuilder? postRegistrationHomeBuilder;
+  final Widget Function(Widget)? authPageBuilder;
   final bool initialRegistration;
   final bool resumeRegistration;
 
@@ -32,6 +33,7 @@ class LoginScreen extends StatefulWidget {
     this.sessionMode,
     this.onSessionUnlocked,
     this.postRegistrationHomeBuilder,
+    this.authPageBuilder,
     this.initialRegistration = false,
     this.resumeRegistration = false,
   });
@@ -41,6 +43,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  Widget authPage(Widget page) => widget.authPageBuilder?.call(page) ?? page;
+
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final registrationNameController = TextEditingController();
@@ -946,37 +950,42 @@ class _LoginScreenState extends State<LoginScreen> {
     widget.onSessionUnlocked?.call();
     await navigator.pushAndRemoveUntil(
       MaterialPageRoute(
-        builder: (_) => LegalAcceptanceScreen(
-          role: role,
-          userId: uid,
-          onAccepted: (_) async {
-            debugPrint("Next onboarding route: profile_creation");
-            await navigator.pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => ProfileScreen(
-                  onProfileSaved: () async {
-                    debugPrint("Next onboarding route: dashboard");
-                    await postRegistrationRefresh.refreshAfterRegistration(uid);
-                    try {
-                      await MultiAccountService()
-                          .completePendingNewAccountLink();
-                    } catch (error) {
-                      debugPrint(
-                        "Pending account link could not be completed: $error",
-                      );
-                    }
-                    navigator.pushAndRemoveUntil(
-                      MaterialPageRoute(
-                        builder: widget.postRegistrationHomeBuilder ??
-                            (_) => const HomeScreen(),
-                      ),
-                      (route) => false,
-                    );
-                  },
+        builder: (_) => authPage(
+          LegalAcceptanceScreen(
+            role: role,
+            userId: uid,
+            onAccepted: (_) async {
+              debugPrint("Next onboarding route: profile_creation");
+              await navigator.pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => authPage(
+                    ProfileScreen(
+                      onProfileSaved: () async {
+                        debugPrint("Next onboarding route: dashboard");
+                        await postRegistrationRefresh
+                            .refreshAfterRegistration(uid);
+                        try {
+                          await MultiAccountService()
+                              .completePendingNewAccountLink();
+                        } catch (error) {
+                          debugPrint(
+                            "Pending account link could not be completed: $error",
+                          );
+                        }
+                        navigator.pushAndRemoveUntil(
+                          MaterialPageRoute(
+                            builder: widget.postRegistrationHomeBuilder ??
+                                (_) => const HomeScreen(),
+                          ),
+                          (route) => false,
+                        );
+                      },
+                    ),
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
       (route) => false,
@@ -988,8 +997,10 @@ class _LoginScreenState extends State<LoginScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => PasswordRecoveryScreen(
-          initialEmail: emailController.text,
+        builder: (_) => authPage(
+          PasswordRecoveryScreen(
+            initialEmail: emailController.text,
+          ),
         ),
       ),
     );
@@ -999,9 +1010,11 @@ class _LoginScreenState extends State<LoginScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => PasswordLoginScreen(
-          initialEmail: emailController.text,
-          onSessionUnlocked: widget.onSessionUnlocked,
+        builder: (_) => authPage(
+          PasswordLoginScreen(
+            initialEmail: emailController.text,
+            onSessionUnlocked: widget.onSessionUnlocked,
+          ),
         ),
       ),
     );

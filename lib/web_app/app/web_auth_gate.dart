@@ -12,6 +12,28 @@ import '../../widgets/legal_documents.dart';
 import '../shell/web_shell.dart';
 import '../theme/web_theme.dart';
 import '../widgets/web_panel.dart';
+import '../widgets/web_auth_page_frame.dart';
+
+Widget _frameAuthPage(Widget page) {
+  if (page is LoginScreen || page is PasswordLoginScreen) {
+    return WebAuthPageFrame(
+      maxWidth: 640,
+      backdrop: WebAuthBackdrop.login,
+      child: page,
+    );
+  }
+  if (page is PasswordRecoveryScreen) {
+    return WebAuthPageFrame(
+      maxWidth: 600,
+      backdrop: WebAuthBackdrop.recovery,
+      child: page,
+    );
+  }
+  return WebAuthPageFrame(
+    maxWidth: page is LegalAcceptanceScreen ? 680 : 640,
+    child: page,
+  );
+}
 
 class WebAuthGate extends StatefulWidget {
   const WebAuthGate({super.key});
@@ -34,20 +56,23 @@ class _WebAuthGateState extends State<WebAuthGate> {
       resolved: (context, user, resolution, refresh) {
         switch (resolution.destination) {
           case AuthSessionDestination.registration:
-            return LoginScreen(
+            return _frameAuthPage(LoginScreen(
               key: ValueKey('web-registration:${user.uid}'),
               initialRegistration: true,
               resumeRegistration: true,
+              authPageBuilder: _frameAuthPage,
               postRegistrationHomeBuilder: (_) => const WebAuthGate(),
-            );
+            ));
           case AuthSessionDestination.legal:
-            return LegalAcceptanceScreen(
+            return _frameAuthPage(LegalAcceptanceScreen(
               role: resolution.role,
               userId: user.uid,
               onAccepted: (_) async => refresh(),
-            );
+            ));
           case AuthSessionDestination.profile:
-            return ProfileScreen(onProfileSaved: () async => refresh());
+            return _frameAuthPage(
+              ProfileScreen(onProfileSaved: () async => refresh()),
+            );
           case AuthSessionDestination.home:
             if (_lastReadyUid != user.uid) {
               _lastReadyUid = user.uid;
@@ -200,9 +225,10 @@ class _WebLoginPageState extends State<WebLoginPage> {
                           setState(() => error = null);
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => PasswordRecoveryScreen(
+                              builder: (_) =>
+                                  _frameAuthPage(PasswordRecoveryScreen(
                                 initialEmail: emailController.text,
-                              ),
+                              )),
                             ),
                           );
                         },
@@ -216,11 +242,12 @@ class _WebLoginPageState extends State<WebLoginPage> {
                           setState(() => error = null);
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => LoginScreen(
+                              builder: (_) => _frameAuthPage(LoginScreen(
                                 initialRegistration: true,
+                                authPageBuilder: _frameAuthPage,
                                 postRegistrationHomeBuilder: (_) =>
                                     const WebAuthGate(),
-                              ),
+                              )),
                             ),
                           );
                         },
