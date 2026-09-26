@@ -6,10 +6,11 @@ import '../../screens/edit_profile_screen.dart';
 import '../../screens/password_recovery_screen.dart';
 import '../../services/multi_account_service.dart';
 import '../../services/auth_session_resolver.dart';
-import '../../services/social_auth_service.dart';
 import '../../widgets/auth_session_gate.dart';
 import '../../widgets/legal_documents.dart';
+import '../services/web_password_sign_in.dart';
 import '../shell/web_shell.dart';
+import '../portrait/portrait_web_auth.dart';
 import '../portrait/portrait_web_layout.dart';
 import '../portrait/portrait_web_shell.dart';
 import '../theme/web_theme.dart';
@@ -50,30 +51,57 @@ class _WebAuthGateState extends State<WebAuthGate> {
   @override
   Widget build(BuildContext context) {
     return AuthSessionGate(
-      loading: const _WebAuthLoading(),
+      loading: WebPresentationDispatcher(
+        desktop: const _WebAuthLoading(),
+        portrait: portraitWebAuthPage(const _WebAuthLoading()),
+      ),
       signedOut: (_) {
         _lastReadyUid = null;
-        return const WebLoginPage();
+        return WebPresentationDispatcher(
+          desktop: const WebLoginPage(),
+          portrait: PortraitWebLanding(
+            homeBuilder: (_) => const WebAuthGate(),
+          ),
+        );
       },
       resolved: (context, user, resolution, refresh) {
         switch (resolution.destination) {
           case AuthSessionDestination.registration:
-            return _frameAuthPage(LoginScreen(
-              key: ValueKey('web-registration:${user.uid}'),
-              initialRegistration: true,
-              resumeRegistration: true,
-              authPageBuilder: _frameAuthPage,
-              postRegistrationHomeBuilder: (_) => const WebAuthGate(),
-            ));
+            return WebPresentationDispatcher(
+              desktop: _frameAuthPage(LoginScreen(
+                key: ValueKey('web-registration:${user.uid}'),
+                initialRegistration: true,
+                resumeRegistration: true,
+                authPageBuilder: _frameAuthPage,
+                postRegistrationHomeBuilder: (_) => const WebAuthGate(),
+              )),
+              portrait: PortraitWebRegistration(
+                key: ValueKey('portrait-registration:${user.uid}'),
+                resume: true,
+                homeBuilder: (_) => const WebAuthGate(),
+              ),
+            );
           case AuthSessionDestination.legal:
-            return _frameAuthPage(LegalAcceptanceScreen(
-              role: resolution.role,
-              userId: user.uid,
-              onAccepted: (_) async => refresh(),
-            ));
+            return WebPresentationDispatcher(
+              desktop: _frameAuthPage(LegalAcceptanceScreen(
+                role: resolution.role,
+                userId: user.uid,
+                onAccepted: (_) async => refresh(),
+              )),
+              portrait: portraitWebAuthPage(LegalAcceptanceScreen(
+                role: resolution.role,
+                userId: user.uid,
+                onAccepted: (_) async => refresh(),
+              )),
+            );
           case AuthSessionDestination.profile:
-            return _frameAuthPage(
-              ProfileScreen(onProfileSaved: () async => refresh()),
+            return WebPresentationDispatcher(
+              desktop: _frameAuthPage(
+                ProfileScreen(onProfileSaved: () async => refresh()),
+              ),
+              portrait: portraitWebAuthPage(
+                ProfileScreen(onProfileSaved: () async => refresh()),
+              ),
             );
           case AuthSessionDestination.home:
             if (_lastReadyUid != user.uid) {
@@ -139,18 +167,10 @@ class _WebLoginPageState extends State<WebLoginPage> {
     });
 
     try {
-      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+      await const WebPasswordSignIn()(
         email: emailController.text.trim(),
         password: passwordController.text,
       );
-      if (credential.user != null) {
-        try {
-          await SocialAuthService.linkAfterVerifiedPasswordSignIn(
-              credential.user!);
-        } catch (_) {
-          // Optional linking cannot turn a successful password login into failure.
-        }
-      }
     } on FirebaseAuthException catch (e) {
       setState(() {
         error = e.message ?? e.code;
