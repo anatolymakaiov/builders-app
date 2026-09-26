@@ -9,6 +9,43 @@ import '../../services/web_chat_media_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_remote_image.dart';
 
+class WebChatMessageColors {
+  static const incoming = Color(0xFFE5F2EA);
+  static const incomingInk = Color(0xFF18442E);
+  static const incomingAttachment = Color(0xFF286D4E);
+  static const outgoingAttachment = WebTheme.accentSoft;
+}
+
+class WebChatAttachMenu extends StatelessWidget {
+  const WebChatAttachMenu({
+    super.key,
+    required this.enabled,
+    required this.onSelected,
+  });
+
+  final bool enabled;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      enabled: enabled,
+      tooltip: 'Attach',
+      icon: const Icon(Icons.attach_file),
+      position: PopupMenuPosition.over,
+      style: IconButton.styleFrom(
+        side: const BorderSide(color: WebTheme.borderStrong),
+      ),
+      onSelected: onSelected,
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'photo', child: Text('Photo')),
+        PopupMenuItem(value: 'video', child: Text('Video')),
+        PopupMenuItem(value: 'file', child: Text('File')),
+      ],
+    );
+  }
+}
+
 class WebChatAttachmentsView extends StatelessWidget {
   const WebChatAttachmentsView({
     super.key,
@@ -32,6 +69,7 @@ class WebChatAttachmentsView extends StatelessWidget {
             attachment: attachments[index],
             attachments: attachments,
             index: index,
+            isMine: isMine,
           ),
         ],
       ],
@@ -82,11 +120,13 @@ class _AttachmentTile extends StatelessWidget {
     required this.attachment,
     required this.attachments,
     required this.index,
+    required this.isMine,
   });
 
   final WebChatAttachment attachment;
   final List<WebChatAttachment> attachments;
   final int index;
+  final bool isMine;
 
   @override
   Widget build(BuildContext context) {
@@ -95,15 +135,16 @@ class _AttachmentTile extends StatelessWidget {
         attachment: attachment,
         attachments: attachments,
         index: index,
+        isMine: isMine,
       );
     }
     switch (attachment.type) {
       case 'video':
-        return _VideoAttachment(attachment: attachment);
+        return _VideoAttachment(attachment: attachment, isMine: isMine);
       case 'audio':
-        return _AudioAttachment(attachment: attachment);
+        return _AudioAttachment(attachment: attachment, isMine: isMine);
       default:
-        return _FileAttachment(attachment: attachment);
+        return _FileAttachment(attachment: attachment, isMine: isMine);
     }
   }
 }
@@ -113,11 +154,13 @@ class _ImageAttachment extends StatelessWidget {
     required this.attachment,
     required this.attachments,
     required this.index,
+    required this.isMine,
   });
 
   final WebChatAttachment attachment;
   final List<WebChatAttachment> attachments;
   final int index;
+  final bool isMine;
 
   @override
   Widget build(BuildContext context) {
@@ -134,13 +177,24 @@ class _ImageAttachment extends StatelessWidget {
           initialIndex: gallery.initialIndex,
         );
       },
-      child: SizedBox(
+      child: Container(
         width: 280,
         height: 190,
-        child: WebRemoteImage(
-          url: attachment.url,
-          fit: BoxFit.cover,
-          borderRadius: 12,
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isMine
+                ? WebTheme.accentBorder
+                : WebChatMessageColors.incomingAttachment,
+            width: 2,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: WebRemoteImage(
+            url: attachment.url,
+            fit: BoxFit.cover,
+          ),
         ),
       ),
     );
@@ -148,9 +202,10 @@ class _ImageAttachment extends StatelessWidget {
 }
 
 class _VideoAttachment extends StatefulWidget {
-  const _VideoAttachment({required this.attachment});
+  const _VideoAttachment({required this.attachment, required this.isMine});
 
   final WebChatAttachment attachment;
+  final bool isMine;
 
   @override
   State<_VideoAttachment> createState() => _VideoAttachmentState();
@@ -202,6 +257,7 @@ class _VideoAttachmentState extends State<_VideoAttachment> {
     if (error != null) {
       return _OpenAttachmentRow(
         attachment: widget.attachment,
+        isMine: widget.isMine,
         icon: Icons.movie_outlined,
         subtitle: 'Video cannot be previewed here',
       );
@@ -209,15 +265,19 @@ class _VideoAttachmentState extends State<_VideoAttachment> {
     if (video == null) {
       return _OpenAttachmentRow(
         attachment: widget.attachment,
+        isMine: widget.isMine,
         icon: Icons.movie_outlined,
         subtitle: loading ? 'Loading video preview...' : 'Load video preview',
         onTap: loading ? null : _load,
         openExternally: false,
         trailing: loading
-            ? const SizedBox(
+            ? SizedBox(
                 width: 18,
                 height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: widget.isMine ? WebTheme.accent : Colors.white,
+                ),
               )
             : const Icon(Icons.play_circle_outline, size: 20),
       );
@@ -233,6 +293,7 @@ class _VideoAttachmentState extends State<_VideoAttachment> {
           ),
           const SizedBox(height: 6),
           OutlinedButton.icon(
+            style: _attachmentButtonStyle(widget.isMine),
             onPressed: () {
               setState(() {
                 video.value.isPlaying ? video.pause() : video.play();
@@ -248,9 +309,10 @@ class _VideoAttachmentState extends State<_VideoAttachment> {
 }
 
 class _AudioAttachment extends StatefulWidget {
-  const _AudioAttachment({required this.attachment});
+  const _AudioAttachment({required this.attachment, required this.isMine});
 
   final WebChatAttachment attachment;
+  final bool isMine;
 
   @override
   State<_AudioAttachment> createState() => _AudioAttachmentState();
@@ -277,6 +339,7 @@ class _AudioAttachmentState extends State<_AudioAttachment> {
   @override
   Widget build(BuildContext context) {
     return OutlinedButton.icon(
+      style: _attachmentButtonStyle(widget.isMine),
       onPressed: () async {
         if (playing) {
           await player.pause();
@@ -292,14 +355,16 @@ class _AudioAttachmentState extends State<_AudioAttachment> {
 }
 
 class _FileAttachment extends StatelessWidget {
-  const _FileAttachment({required this.attachment});
+  const _FileAttachment({required this.attachment, required this.isMine});
 
   final WebChatAttachment attachment;
+  final bool isMine;
 
   @override
   Widget build(BuildContext context) {
     return _OpenAttachmentRow(
       attachment: attachment,
+      isMine: isMine,
       icon: Icons.insert_drive_file_outlined,
       subtitle: attachment.mimeType ?? 'File attachment',
     );
@@ -309,6 +374,7 @@ class _FileAttachment extends StatelessWidget {
 class _OpenAttachmentRow extends StatelessWidget {
   const _OpenAttachmentRow({
     required this.attachment,
+    required this.isMine,
     required this.icon,
     required this.subtitle,
     this.onTap,
@@ -317,6 +383,7 @@ class _OpenAttachmentRow extends StatelessWidget {
   });
 
   final WebChatAttachment attachment;
+  final bool isMine;
   final IconData icon;
   final String subtitle;
   final VoidCallback? onTap;
@@ -338,13 +405,19 @@ class _OpenAttachmentRow extends StatelessWidget {
         width: 300,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: WebTheme.surface,
+          color: isMine
+              ? WebChatMessageColors.outgoingAttachment
+              : WebChatMessageColors.incomingAttachment,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: WebTheme.border),
+          border: Border.all(
+            color: isMine
+                ? WebTheme.accentBorder
+                : WebChatMessageColors.incomingAttachment,
+          ),
         ),
         child: Row(
           children: [
-            Icon(icon, color: WebTheme.accent),
+            Icon(icon, color: isMine ? WebTheme.accent : Colors.white),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -354,24 +427,46 @@ class _OpenAttachmentRow extends StatelessWidget {
                     attachment.fileName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: isMine ? WebTheme.deep : Colors.white,
+                    ),
                   ),
                   Text(
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: WebTheme.muted),
+                    style: TextStyle(
+                      color: isMine ? WebTheme.muted : Colors.white70,
+                    ),
                   ),
                 ],
               ),
             ),
-            trailing ?? const Icon(Icons.open_in_new, size: 18),
+            IconTheme(
+              data: IconThemeData(
+                color: isMine ? WebTheme.accent : Colors.white,
+              ),
+              child: trailing ?? const Icon(Icons.open_in_new, size: 18),
+            ),
           ],
         ),
       ),
     );
   }
 }
+
+ButtonStyle _attachmentButtonStyle(bool isMine) => OutlinedButton.styleFrom(
+      backgroundColor: isMine
+          ? WebChatMessageColors.outgoingAttachment
+          : WebChatMessageColors.incomingAttachment,
+      foregroundColor: isMine ? WebTheme.deep : Colors.white,
+      side: BorderSide(
+        color: isMine
+            ? WebTheme.accentBorder
+            : WebChatMessageColors.incomingAttachment,
+      ),
+    );
 
 IconData _iconForType(String type) {
   switch (type) {

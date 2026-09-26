@@ -16,6 +16,7 @@ import '../../widgets/web_design_components.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
 import 'web_chat_media_widgets.dart';
+import 'web_chat_timeline.dart';
 
 class WebChatsPage extends StatefulWidget {
   const WebChatsPage({
@@ -536,17 +537,7 @@ class _WebChatsPageState extends State<WebChatsPage> {
     }
   }
 
-  Future<void> _openAttachmentMenu() async {
-    final action = await showMenu<String>(
-      context: context,
-      position: const RelativeRect.fromLTRB(32, 500, 32, 0),
-      items: const [
-        PopupMenuItem(value: 'photo', child: Text('Photo')),
-        PopupMenuItem(value: 'video', child: Text('Video')),
-        PopupMenuItem(value: 'file', child: Text('File')),
-      ],
-    );
-    if (action == null) return;
+  Future<void> _openAttachmentMenu(String action) async {
     try {
       final picked = switch (action) {
         'photo' => await mediaService.pickImages(),
@@ -894,7 +885,7 @@ class _ThreadStreamView extends StatelessWidget {
   final List<WebPendingChatAttachment> pendingAttachments;
   final ValueChanged<WebChatThread?> onThreadUpdated;
   final Future<void> Function() onSend;
-  final VoidCallback onAttach;
+  final ValueChanged<String> onAttach;
   final ValueChanged<int> onRemoveAttachment;
   final void Function(WebMessageItem, String) onMessageAction;
   final VoidCallback onOpenProfile;
@@ -933,6 +924,11 @@ class _ThreadStreamView extends StatelessWidget {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           onThreadUpdated(thread);
         });
+        final sentAt = [
+          for (final message in thread.messages)
+            webChatLocalTime(message.data['createdAt']),
+        ];
+        final dateHeadings = webChatDateHeadings(sentAt);
         return Column(
           children: [
             _ThreadHeader(
@@ -958,11 +954,29 @@ class _ThreadStreamView extends StatelessWidget {
                 itemCount: thread.messages.length,
                 itemBuilder: (context, index) {
                   final message = thread.messages[index];
-                  return _MessageBubble(
-                      key: ValueKey(message.id),
-                      message: message,
-                      userId: userId,
-                      onAction: (action) => onMessageAction(message, action));
+                  final date = sentAt[index];
+                  return Column(
+                    key: ValueKey(message.id),
+                    children: [
+                      if (dateHeadings[index] && date != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Text(
+                            webChatDateLabel(date),
+                            style: const TextStyle(
+                              color: WebTheme.muted,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      _MessageBubble(
+                        message: message,
+                        userId: userId,
+                        sentAt: date,
+                        onAction: (action) => onMessageAction(message, action),
+                      ),
+                    ],
+                  );
                 },
               ),
             ),
@@ -1087,14 +1101,15 @@ class _ThreadHeader extends StatelessWidget {
 
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
-    super.key,
     required this.message,
     required this.userId,
+    required this.sentAt,
     required this.onAction,
   });
 
   final WebMessageItem message;
   final String userId;
+  final DateTime? sentAt;
   final ValueChanged<String> onAction;
 
   @override
@@ -1109,7 +1124,7 @@ class _MessageBubble extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: isMine ? WebTheme.accent : const Color(0xFFF4F6F8),
+          color: isMine ? WebTheme.accent : WebChatMessageColors.incoming,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
@@ -1118,6 +1133,11 @@ class _MessageBubble extends StatelessWidget {
           children: [
             PopupMenuButton<String>(
                 tooltip: 'Message actions',
+                icon: Icon(
+                  Icons.more_horiz,
+                  color:
+                      isMine ? Colors.white : WebChatMessageColors.incomingInk,
+                ),
                 onSelected: onAction,
                 itemBuilder: (_) => [
                       if (!deleted)
@@ -1138,8 +1158,17 @@ class _MessageBubble extends StatelessWidget {
                             child: Text('Delete for everyone')),
                     ]),
             if (message.data['forwarded'] == true)
-              const Text('Forwarded', style: TextStyle(fontSize: 11)),
-            if (_hasReply(message.data)) _ReplyPreview(data: message.data),
+              Text(
+                'Forwarded',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isMine
+                      ? Colors.white70
+                      : WebChatMessageColors.incomingInk,
+                ),
+              ),
+            if (_hasReply(message.data))
+              _ReplyPreview(data: message.data, isMine: isMine),
             if (deleted)
               Text(
                 'Message deleted',
@@ -1151,7 +1180,9 @@ class _MessageBubble extends StatelessWidget {
                 Text(
                   message.text,
                   style: TextStyle(
-                    color: isMine ? Colors.white : WebTheme.ink,
+                    color: isMine
+                        ? Colors.white
+                        : WebChatMessageColors.incomingInk,
                   ),
                 ),
               WebChatAttachmentsView(attachments: attachments, isMine: isMine),
@@ -1162,11 +1193,26 @@ class _MessageBubble extends StatelessWidget {
                     'edited',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isMine ? Colors.white70 : WebTheme.muted,
+                      color: isMine
+                          ? Colors.white70
+                          : WebChatMessageColors.incomingInk,
                     ),
                   ),
                 ),
             ],
+            if (sentAt != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  webChatTimeLabel(sentAt!),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isMine
+                        ? Colors.white70
+                        : WebChatMessageColors.incomingInk,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -1182,9 +1228,10 @@ class _MessageBubble extends StatelessWidget {
 }
 
 class _ReplyPreview extends StatelessWidget {
-  const _ReplyPreview({required this.data});
+  const _ReplyPreview({required this.data, required this.isMine});
 
   final Map<String, dynamic> data;
+  final bool isMine;
 
   @override
   Widget build(BuildContext context) {
@@ -1203,7 +1250,10 @@ class _ReplyPreview extends StatelessWidget {
         [sender, text].where((part) => part.isNotEmpty).join(': '),
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 12),
+        style: TextStyle(
+          fontSize: 12,
+          color: isMine ? Colors.white : WebChatMessageColors.incomingInk,
+        ),
       ),
     );
   }
@@ -1221,7 +1271,7 @@ class _Composer extends StatelessWidget {
   final TextEditingController controller;
   final bool sending;
   final Future<void> Function() onSend;
-  final VoidCallback onAttach;
+  final ValueChanged<String> onAttach;
   final ValueChanged<String> onTyping;
 
   @override
@@ -1230,10 +1280,9 @@ class _Composer extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       child: Row(
         children: [
-          IconButton.outlined(
-            onPressed: sending ? null : onAttach,
-            icon: const Icon(Icons.attach_file),
-            tooltip: 'Attach',
+          WebChatAttachMenu(
+            enabled: !sending,
+            onSelected: onAttach,
           ),
           const SizedBox(width: 10),
           Expanded(
