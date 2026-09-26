@@ -1000,6 +1000,7 @@ class _LoginScreenState extends State<LoginScreen> {
         builder: (_) => authPage(
           PasswordRecoveryScreen(
             initialEmail: emailController.text,
+            webFramed: widget.authPageBuilder != null,
           ),
         ),
       ),
@@ -1014,6 +1015,7 @@ class _LoginScreenState extends State<LoginScreen> {
           PasswordLoginScreen(
             initialEmail: emailController.text,
             onSessionUnlocked: widget.onSessionUnlocked,
+            webFramed: widget.authPageBuilder != null,
           ),
         ),
       ),
@@ -1296,27 +1298,36 @@ class _LoginScreenState extends State<LoginScreen> {
           if (isStartChoice) ...[
             buildStartChoices(),
           ] else ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: loading
-                    ? null
-                    : !isLogin &&
-                            registrationMethodSelected &&
-                            registrationStep > 0
-                        ? () => setState(() => registrationStep--)
-                        : !isLogin &&
-                                registrationMethodSelected &&
-                                registrationProvider == null
-                            ? () => setState(
-                                () => registrationMethodSelected = false)
-                            : returnToAuthenticationMethods,
-                icon: const Icon(Icons.arrow_back),
-                label: const Text("Back"),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton.icon(
+                  onPressed: loading
+                      ? null
+                      : !isLogin &&
+                              registrationMethodSelected &&
+                              registrationStep > 0
+                          ? () => setState(() => registrationStep--)
+                          : !isLogin &&
+                                  registrationMethodSelected &&
+                                  registrationProvider == null
+                              ? () => setState(
+                                  () => registrationMethodSelected = false)
+                              : returnToAuthenticationMethods,
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text("Back"),
+                ),
+                if (!isLogin && widget.authPageBuilder != null)
+                  Flexible(
+                    child: TextButton(
+                      onPressed: loading ? null : returnToAuthenticationMethods,
+                      child: const Text('Cancel registration'),
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(height: 8),
-            if (!isLogin)
+            if (widget.authPageBuilder == null) const SizedBox(height: 8),
+            if (!isLogin && widget.authPageBuilder == null) ...[
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
@@ -1324,6 +1335,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: const Text('Cancel registration'),
                 ),
               ),
+            ],
           ],
           if (showSessionGate) ...[
             Icon(
@@ -1428,13 +1440,16 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     return Scaffold(
+      backgroundColor:
+          widget.authPageBuilder == null ? null : Colors.transparent,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Image.asset(
-            "assets/branding/login_background_stroyka.png",
-            fit: BoxFit.cover,
-          ),
+          if (widget.authPageBuilder == null)
+            Image.asset(
+              "assets/branding/login_background_stroyka.png",
+              fit: BoxFit.cover,
+            ),
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -1448,12 +1463,19 @@ class _LoginScreenState extends State<LoginScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         FractionalTranslation(
-                          translation: const Offset(0, 0.08),
+                          translation: Offset(
+                            0,
+                            widget.authPageBuilder == null ? 0.08 : 0,
+                          ),
                           child: FractionallySizedBox(
-                            widthFactor: 0.88,
+                            widthFactor:
+                                widget.authPageBuilder == null ? 0.88 : 1,
                             child: ConstrainedBox(
                               constraints: BoxConstraints(
-                                maxWidth: !isLogin ? 500 : double.infinity,
+                                maxWidth:
+                                    widget.authPageBuilder == null && !isLogin
+                                        ? 500
+                                        : double.infinity,
                               ),
                               child: isStartChoice
                                   ? authContent()
@@ -1513,11 +1535,13 @@ class BiometricFallbackDialog extends StatelessWidget {
 class PasswordLoginScreen extends StatefulWidget {
   final String initialEmail;
   final VoidCallback? onSessionUnlocked;
+  final bool webFramed;
 
   const PasswordLoginScreen({
     super.key,
     this.initialEmail = "",
     this.onSessionUnlocked,
+    this.webFramed = false,
   });
 
   @override
@@ -1650,13 +1674,15 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: widget.webFramed ? Colors.transparent : null,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Image.asset(
-            "assets/branding/login_background_stroyka.png",
-            fit: BoxFit.cover,
-          ),
+          if (!widget.webFramed)
+            Image.asset(
+              "assets/branding/login_background_stroyka.png",
+              fit: BoxFit.cover,
+            ),
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -1675,7 +1701,7 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
                     ),
                     child: Center(
                       child: FractionallySizedBox(
-                        widthFactor: 0.88,
+                        widthFactor: widget.webFramed ? 1 : 0.88,
                         child: StroykaSurface(
                           padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
                           texture: "assets/branding/texture_light_cloud.jpg",

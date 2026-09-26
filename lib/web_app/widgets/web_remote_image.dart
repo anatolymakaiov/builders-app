@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/web_image_service.dart';
 import '../theme/web_theme.dart';
@@ -61,7 +62,7 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
         ? _Fallback(icon: widget.fallbackIcon)
         : cached != null
             ? (cached.unsupported
-                ? _Fallback(icon: widget.fallbackIcon)
+                ? _originalFallback(clean)
                 : _resolvedImage(cached))
             : FutureBuilder<WebImageResolution>(
                 future: resolution,
@@ -78,7 +79,7 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
                         : _resolvedImage(previous);
                   }
                   if (resolved.unsupported) {
-                    return _Fallback(icon: widget.fallbackIcon);
+                    return _originalFallback(resolved.originalUrl);
                   }
                   displayedResolution = resolved;
                   return _resolvedImage(resolved);
@@ -107,8 +108,23 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
               : _LoadingPlaceholder(icon: widget.fallbackIcon),
       errorBuilder: (_, error, __) {
         WebImageService.logFailure(resolved.url, error);
-        return _Fallback(icon: widget.fallbackIcon);
+        return resolved.usedDerivative
+            ? _originalFallback(resolved.originalUrl)
+            : _Fallback(icon: widget.fallbackIcon);
       },
+    );
+  }
+
+  Widget _originalFallback(String url) {
+    return Tooltip(
+      message: 'Preview unavailable. Open original image',
+      child: InkWell(
+        onTap: () => launchUrl(
+          Uri.parse(url),
+          mode: LaunchMode.externalApplication,
+        ),
+        child: _Fallback(icon: widget.fallbackIcon),
+      ),
     );
   }
 }

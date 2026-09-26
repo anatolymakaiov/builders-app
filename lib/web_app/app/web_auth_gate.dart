@@ -228,6 +228,7 @@ class _WebLoginPageState extends State<WebLoginPage> {
                               builder: (_) =>
                                   _frameAuthPage(PasswordRecoveryScreen(
                                 initialEmail: emailController.text,
+                                webFramed: true,
                               )),
                             ),
                           );

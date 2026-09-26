@@ -5,9 +5,14 @@ import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 
 class PasswordRecoveryScreen extends StatefulWidget {
-  const PasswordRecoveryScreen({super.key, this.initialEmail = ''});
+  const PasswordRecoveryScreen({
+    super.key,
+    this.initialEmail = '',
+    this.webFramed = false,
+  });
 
   final String initialEmail;
+  final bool webFramed;
 
   @override
   State<PasswordRecoveryScreen> createState() => _PasswordRecoveryScreenState();
@@ -78,102 +83,106 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StroykaBackground(
-      asset: AppAssets.backgroundWorkersCity,
-      child: Scaffold(
-        appBar: AppBar(
-          leadingWidth: 96,
-          leading: TextButton.icon(
-            onPressed: goBack,
-            icon: const Icon(Icons.arrow_back),
-            label: const Text("Back"),
-          ),
-          title: const Text("Password recovery"),
+    final content = Scaffold(
+      backgroundColor: widget.webFramed ? Colors.transparent : null,
+      appBar: AppBar(
+        leadingWidth: 96,
+        leading: TextButton.icon(
+          onPressed: goBack,
+          icon: const Icon(Icons.arrow_back),
+          label: const Text("Back"),
         ),
-        body: StroykaScreenBody(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-            children: [
-              StroykaSurface(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      "Restore access",
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
+        title: const Text("Password recovery"),
+      ),
+      body: StroykaScreenBody(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          children: [
+            StroykaSurface(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    "Restore access",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "Email recovery uses Firebase secure password reset. SMS recovery will be enabled when a phone verification provider is configured.",
+                    style: TextStyle(color: AppColors.muted),
+                  ),
+                  const SizedBox(height: 18),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: "email",
+                        icon: Icon(Icons.mail_outline),
+                        label: Text("Email"),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      "Email recovery uses Firebase secure password reset. SMS recovery will be enabled when a phone verification provider is configured.",
-                      style: TextStyle(color: AppColors.muted),
-                    ),
-                    const SizedBox(height: 18),
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(
-                          value: "email",
-                          icon: Icon(Icons.mail_outline),
-                          label: Text("Email"),
-                        ),
-                        ButtonSegment(
-                          value: "phone",
-                          icon: Icon(Icons.sms_outlined),
-                          label: Text("SMS"),
-                        ),
-                      ],
-                      selected: {channel},
-                      onSelectionChanged: (value) {
-                        setState(() => channel = value.first);
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    StroykaInputField(
-                      controller: emailController,
-                      hintText: isEmail ? "Email" : "Phone",
-                      prefixIcon:
-                          isEmail ? Icons.mail_outline : Icons.phone_outlined,
-                    ),
-                    if (!isEmail) ...[
-                      const SizedBox(height: 8),
-                      const Text(
-                        "SMS verification provider is not configured yet.",
-                        style: TextStyle(
-                          color: AppColors.warning,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      ButtonSegment(
+                        value: "phone",
+                        icon: Icon(Icons.sms_outlined),
+                        label: Text("SMS"),
                       ),
                     ],
-                    const SizedBox(height: 20),
-                    StroykaButton(
-                      onPressed: loading ? null : sendReset,
-                      child: loading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Text(isEmail ? "Send reset email" : "Send SMS"),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton.icon(
-                      onPressed: loading ? null : goBack,
-                      icon: const Icon(Icons.arrow_back),
-                      label: const Text('Back to sign in'),
+                    selected: {channel},
+                    onSelectionChanged: (value) {
+                      setState(() => channel = value.first);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  StroykaInputField(
+                    controller: emailController,
+                    hintText: isEmail ? "Email" : "Phone",
+                    prefixIcon:
+                        isEmail ? Icons.mail_outline : Icons.phone_outlined,
+                  ),
+                  if (!isEmail) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      "SMS verification provider is not configured yet.",
+                      style: TextStyle(
+                        color: AppColors.warning,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ],
-                ),
+                  const SizedBox(height: 20),
+                  StroykaButton(
+                    onPressed: loading ? null : sendReset,
+                    child: loading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(isEmail ? "Send reset email" : "Send SMS"),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    onPressed: loading ? null : goBack,
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Back to sign in'),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
+    return widget.webFramed
+        ? content
+        : StroykaBackground(
+            asset: AppAssets.backgroundWorkersCity,
+            child: content,
+          );
   }
 }

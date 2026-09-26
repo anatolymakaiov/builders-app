@@ -193,7 +193,7 @@ class WebImageService {
 
   static bool _isHeic(String? extension, String? contentType) {
     final ext = extension?.toLowerCase();
-    final type = contentType?.toLowerCase();
+    final type = contentType?.toLowerCase().split(';').first.trim();
     return ext == "heic" ||
         ext == "heif" ||
         type == "image/heic" ||

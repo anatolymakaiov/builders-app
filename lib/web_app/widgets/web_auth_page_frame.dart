@@ -31,6 +31,9 @@ class WebAuthPageFrame extends StatelessWidget {
               WebAuthBackdrop.login => Image.asset(
                   'assets/branding/login_background_stroyka.png',
                   fit: BoxFit.cover,
+                  alignment: constraints.maxWidth < 700
+                      ? const Alignment(0, -0.5)
+                      : Alignment.center,
                 ),
               WebAuthBackdrop.recovery => const StroykaBackground(
                   asset: AppAssets.backgroundWorkersCity,

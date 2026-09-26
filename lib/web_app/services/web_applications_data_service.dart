@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../services/application_job_data_policy.dart';
 import 'web_data_state.dart';
 
 class WebApplicationSummary {
@@ -398,8 +399,9 @@ class WebApplicationsDataService {
     }
 
     final applications = <WebApplicationSummary>[];
+    final reads = WebApplicationEnrichmentReads(_safeGet);
     for (final doc in docsById.values) {
-      applications.add(await _summary(doc.id, doc.data()));
+      applications.add(await _summary(doc.id, doc.data(), reads.get));
     }
     applications.sort((a, b) {
       final aTime = a.activityAt;
@@ -537,22 +539,23 @@ class WebApplicationsDataService {
   Future<WebApplicationSummary> _summary(
     String id,
     Map<String, dynamic> data,
+    Future<Map<String, dynamic>?> Function(String collection, String id) read,
   ) async {
     final jobId = data['jobId']?.toString() ?? '';
     final workerId =
         (data['workerId'] ?? data['applicantId'])?.toString() ?? '';
     final teamId = data['teamId']?.toString() ?? '';
-    final jobData = await _safeGet('jobs', jobId);
-    final profileData = await _safeGet('users', workerId);
+    final loadLiveJob = shouldEnrichLiveApplicationJob(data);
+    final jobData = loadLiveJob ? await read('jobs', jobId) : null;
+    final profileData = await read('users', workerId);
     final employerId = (jobData?['ownerId'] ??
             jobData?['employerId'] ??
             data['employerId'] ??
             data['ownerId'])
         ?.toString()
         .trim();
-    var companyData = await _safeGet('users', employerId ?? '');
-    companyData ??= await _safeGet('companies', employerId ?? '');
-    final teamData = await _safeGet('teams', teamId);
+    final companyData = await read('users', employerId ?? '');
+    final teamData = await read('teams', teamId);
     final memberProfiles = <String, Map<String, dynamic>>{};
     final isTeam =
         (data['applicationType'] ?? data['type'] ?? '').toString() == 'team' ||
@@ -562,7 +565,7 @@ class WebApplicationsDataService {
         ...?teamData,
         ...data,
       })) {
-        final memberData = await _safeGet('users', memberId);
+        final memberData = await read('users', memberId);
         if (memberData != null) memberProfiles[memberId] = memberData;
       }
     }
@@ -596,6 +599,8 @@ class WebApplicationsDataService {
     } on FirebaseException catch (error) {
       if (error.code == 'permission-denied' || error.code == 'not-found') {
         _negativeEnrichmentCache[cacheKey] = DateTime.now();
+        // Historical references may outlive their private/deleted source.
+        return null;
       }
       debugPrint(
         'WEB APPLICATION ENRICH ERROR $collection/$id code=${error.code}',
@@ -642,6 +647,22 @@ class WebApplicationsDataService {
     controller.onCancel = () => timer?.cancel();
     return controller.stream;
   }
+}
+
+bool shouldEnrichLiveApplicationJob(Map<String, dynamic> data) =>
+    ApplicationJobDataPolicy.shouldListenToLiveJob(data) &&
+    data['jobDeleted'] != true &&
+    data['vacancyDeleted'] != true;
+
+class WebApplicationEnrichmentReads {
+  WebApplicationEnrichmentReads(this._read);
+
+  final Future<Map<String, dynamic>?> Function(String collection, String id)
+      _read;
+  final Map<String, Future<Map<String, dynamic>?>> _inFlight = {};
+
+  Future<Map<String, dynamic>?> get(String collection, String id) =>
+      _inFlight.putIfAbsent('$collection/$id', () => _read(collection, id));
 }
 
 List<String> _idsFromListValue(dynamic value) {

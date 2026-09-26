@@ -4,7 +4,7 @@ const { HttpsError, onCall, onRequest } = require("firebase-functions/v2/https")
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
-const sharp = require("sharp");
+const {convertHeicToJpeg} = require("./web_image_derivative");
 const {
   hasAcceptedWorkRelationship,
 } = require("./review_eligibility");
@@ -1058,7 +1058,7 @@ function extensionForStoragePath(path) {
 
 function isHeicLike(path, contentType) {
   const extension = extensionForStoragePath(path);
-  const type = cleanText(contentType).toLowerCase();
+  const type = cleanText(contentType).toLowerCase().split(";")[0].trim();
   return extension === "heic" ||
     extension === "heif" ||
     type === "image/heic" ||
@@ -1254,7 +1254,9 @@ exports.getWebCompatibleImage = onCall(
       };
     }
 
-    const hash = crypto.createHash("sha256").update(sourcePath).digest("hex");
+    const hash = crypto.createHash("sha256")
+      .update(`${sourcePath}:${sourceMetadata.generation || ""}`)
+      .digest("hex");
     const derivativePath = `web_image_derivatives/${hash}.jpg`;
     const derivativeFile = bucket.file(derivativePath);
     const [derivativeExists] = await derivativeFile.exists();
@@ -1276,25 +1278,54 @@ exports.getWebCompatibleImage = onCall(
       }
     }
 
-    const [sourceBuffer] = await sourceFile.download();
-    const jpegBuffer = await sharp(sourceBuffer)
-      .rotate()
-      .jpeg({ quality: 88, mozjpeg: true })
-      .toBuffer();
+    if (Number(sourceMetadata.size) > 25 * 1024 * 1024) {
+      throw new HttpsError("resource-exhausted", "Image is too large to convert.");
+    }
+    let jpegBuffer;
+    try {
+      const [sourceBuffer] = await sourceFile.download();
+      jpegBuffer = await convertHeicToJpeg(sourceBuffer);
+    } catch (error) {
+      console.error("WEB IMAGE DERIVATIVE CONVERSION FAILED", {
+        sourceHash: hash,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new HttpsError(
+        "failed-precondition",
+        "This image could not be converted for web display.",
+      );
+    }
     const token = crypto.randomUUID();
 
-    await derivativeFile.save(jpegBuffer, {
-      resumable: false,
-      metadata: {
-        contentType: "image/jpeg",
-        cacheControl: "public, max-age=31536000, immutable",
+    try {
+      await derivativeFile.save(jpegBuffer, {
+        resumable: false,
+        preconditionOpts: {ifGenerationMatch: 0},
         metadata: {
-          firebaseStorageDownloadTokens: token,
-          sourcePath,
-          generatedFor: "flutter-web",
+          contentType: "image/jpeg",
+          cacheControl: "public, max-age=31536000, immutable",
+          metadata: {
+            firebaseStorageDownloadTokens: token,
+            sourcePath,
+            generatedFor: "flutter-web",
+          },
         },
-      },
-    });
+      });
+    } catch (error) {
+      if (Number(error.code) !== 412) throw error;
+      const [metadata] = await derivativeFile.getMetadata();
+      const existingToken = cleanText(
+        metadata.metadata && metadata.metadata.firebaseStorageDownloadTokens,
+      ).split(",").map((item) => item.trim()).find(Boolean);
+      if (!existingToken) throw error;
+      return {
+        url: firebaseDownloadUrl(bucket.name, derivativePath, existingToken),
+        sourcePath,
+        derivativePath,
+        converted: true,
+        cached: true,
+      };
+    }
 
     return {
       url: firebaseDownloadUrl(bucket.name, derivativePath, token),
