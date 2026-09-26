@@ -10,6 +10,8 @@ import '../../services/social_auth_service.dart';
 import '../../widgets/auth_session_gate.dart';
 import '../../widgets/legal_documents.dart';
 import '../shell/web_shell.dart';
+import '../portrait/portrait_web_layout.dart';
+import '../portrait/portrait_web_shell.dart';
 import '../theme/web_theme.dart';
 import '../widgets/web_panel.dart';
 import '../widgets/web_auth_page_frame.dart';
@@ -87,11 +89,20 @@ class _WebAuthGateState extends State<WebAuthGate> {
                     .catchError((_) {});
               });
             }
-            return WebShell(
-              key: ValueKey('web-shell:${user.uid}'),
-              user: user,
-              role: resolution.role,
-              profile: resolution.profile,
+            return WebPresentationDispatcher(
+              key: ValueKey('web-presentation:${user.uid}'),
+              desktop: WebShell(
+                key: ValueKey('web-shell:${user.uid}'),
+                user: user,
+                role: resolution.role,
+                profile: resolution.profile,
+              ),
+              portrait: PortraitWebShell(
+                key: ValueKey('portrait-web-shell:${user.uid}'),
+                user: user,
+                role: resolution.role,
+                profile: resolution.profile,
+              ),
             );
           case AuthSessionDestination.deleted:
             return const _WebAuthLoading();
