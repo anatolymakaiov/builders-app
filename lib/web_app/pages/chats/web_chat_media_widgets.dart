@@ -1,4 +1,3 @@
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
@@ -6,6 +5,8 @@ import 'package:video_player/video_player.dart';
 import '../../../models/chat_image_gallery.dart';
 import '../../../screens/image_gallery_viewer_screen.dart';
 import '../../services/web_chat_media_service.dart';
+import '../../services/web_voice_playback_stub.dart'
+    if (dart.library.js_interop) '../../services/web_voice_playback_browser.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_remote_image.dart';
 
@@ -319,15 +320,21 @@ class _AudioAttachment extends StatefulWidget {
 }
 
 class _AudioAttachmentState extends State<_AudioAttachment> {
-  final player = AudioPlayer();
-  bool playing = false;
+  late WebVoicePlayback player = WebVoicePlayback(
+    onChanged: () {
+      if (mounted) setState(() {});
+    },
+  );
 
   @override
-  void initState() {
-    super.initState();
-    player.onPlayerComplete.listen((_) {
-      if (mounted) setState(() => playing = false);
-    });
+  void didUpdateWidget(covariant _AudioAttachment oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.attachment.url != widget.attachment.url) {
+      player.dispose();
+      player = WebVoicePlayback(onChanged: () {
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   @override
@@ -338,20 +345,91 @@ class _AudioAttachmentState extends State<_AudioAttachment> {
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      style: _attachmentButtonStyle(widget.isMine),
-      onPressed: () async {
-        if (playing) {
-          await player.pause();
-        } else {
-          await player.play(UrlSource(widget.attachment.url));
-        }
-        if (mounted) setState(() => playing = !playing);
-      },
-      icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-      label: Text(widget.attachment.fileName),
+    final duration = player.duration;
+    final progress = duration == null || duration.inMilliseconds == 0
+        ? null
+        : (player.position.inMilliseconds / duration.inMilliseconds)
+            .clamp(0.0, 1.0);
+    return Container(
+      width: 300,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: widget.isMine
+            ? WebChatMessageColors.outgoingAttachment
+            : WebChatMessageColors.incomingAttachment,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: widget.isMine
+              ? WebTheme.accentBorder
+              : WebChatMessageColors.incomingAttachment,
+        ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip:
+                player.playing ? 'Pause voice message' : 'Play voice message',
+            onPressed: player.loading
+                ? null
+                : () => player.toggle(widget.attachment.url),
+            icon: player.loading
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(player.playing ? Icons.pause : Icons.play_arrow),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.attachment.fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: widget.isMine ? WebTheme.deep : Colors.white,
+                  ),
+                ),
+                if (player.error != null)
+                  Text(player.error!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: widget.isMine ? WebTheme.deep : Colors.white,
+                      ))
+                else ...[
+                  const SizedBox(height: 4),
+                  LinearProgressIndicator(
+                    value: progress,
+                    color: widget.isMine ? WebTheme.accent : Colors.white,
+                    backgroundColor:
+                        widget.isMine ? WebTheme.border : Colors.white24,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${_voiceTime(player.position)} / '
+                    '${duration == null ? '--:--' : _voiceTime(duration)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: widget.isMine ? WebTheme.deep : Colors.white,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
+}
+
+String _voiceTime(Duration value) {
+  final minutes = value.inMinutes;
+  final seconds = value.inSeconds.remainder(60);
+  return '$minutes:${seconds.toString().padLeft(2, '0')}';
 }
 
 class _FileAttachment extends StatelessWidget {

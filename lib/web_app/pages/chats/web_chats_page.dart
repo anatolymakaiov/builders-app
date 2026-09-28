@@ -65,6 +65,7 @@ class _WebChatsPageState extends State<WebChatsPage> {
   Timer? typingTimer;
   bool typing = false;
   bool compactThreadVisible = false;
+  final hiddenChatIds = <String>{};
 
   @override
   void initState() {
@@ -84,6 +85,7 @@ class _WebChatsPageState extends State<WebChatsPage> {
         oldWidget.userId != widget.userId || oldWidget.role != widget.role;
     if (identityChanged) {
       chatsStream = service.chats(widget.userId);
+      hiddenChatIds.clear();
     }
     if (identityChanged ||
         oldWidget.navigationRequestId != widget.navigationRequestId ||
@@ -116,7 +118,9 @@ class _WebChatsPageState extends State<WebChatsPage> {
       stream: chatsStream,
       builder: (context, snapshot) {
         final state = snapshot.data;
-        final chats = state?.data ?? const <WebChatSummary>[];
+        final chats = (state?.data ?? const <WebChatSummary>[])
+            .where((chat) => !hiddenChatIds.contains(chat.id))
+            .toList();
         if ((state == null || state.loading) && chats.isEmpty) {
           return const WebLoadingState(label: 'Loading conversations');
         }
@@ -179,11 +183,13 @@ class _WebChatsPageState extends State<WebChatsPage> {
                         selectedChatId: selectedChatId,
                         userId: widget.userId,
                         onSelected: _selectChat,
+                        onDelete: _deleteConversation,
                       ),
                     );
                     final thread = WebPanel(
                       padding: EdgeInsets.zero,
                       child: _ThreadStreamView(
+                        key: ValueKey(selectedChatId),
                         stream: threadStream,
                         lastThread: lastThread,
                         userId: widget.userId,
@@ -211,6 +217,9 @@ class _WebChatsPageState extends State<WebChatsPage> {
                             widget.onOpenJob?.call(id);
                           }
                         },
+                        onDelete: selectedChatId == null
+                            ? null
+                            : () => _deleteConversation(selectedChatId!),
                         reply: reply,
                         onCancelReply: () => setState(() => reply = null),
                         recording: recording,
@@ -285,6 +294,51 @@ class _WebChatsPageState extends State<WebChatsPage> {
       _setSelectedChat(chatId);
       compactThreadVisible = true;
     });
+  }
+
+  Future<void> _deleteConversation(String chatId) async {
+    if (sending || uploading || recording || recorderBusy) return;
+    final uid = widget.userId;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete conversation?'),
+        content: const Text(
+          'This conversation will be removed from your chat list only. '
+          'The other participant can still see it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await service.hideChat(chatId, uid);
+      if (!mounted || widget.userId != uid) return;
+      setState(() {
+        hiddenChatIds.add(chatId);
+        if (selectedChatId == chatId) {
+          typingTimer?.cancel();
+          typing = false;
+          _setSelectedChat(null);
+          compactThreadVisible = false;
+        }
+      });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not delete conversation: $error')),
+        );
+      }
+    }
   }
 
   Future<void> _openNewMessage() async {
@@ -586,6 +640,7 @@ class _ChatList extends StatelessWidget {
     required this.selectedChatId,
     required this.userId,
     required this.onSelected,
+    required this.onDelete,
   });
 
   final List<WebChatSummary> chats;
@@ -593,6 +648,7 @@ class _ChatList extends StatelessWidget {
   final String? selectedChatId;
   final String userId;
   final ValueChanged<String> onSelected;
+  final ValueChanged<String> onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -664,6 +720,18 @@ class _ChatList extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                   ),
+                PopupMenuButton<String>(
+                  tooltip: 'Conversation actions',
+                  onSelected: (action) {
+                    if (action == 'delete') onDelete(chat.id);
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Delete conversation'),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -862,6 +930,7 @@ class _NewMessageDialogState extends State<_NewMessageDialog> {
 
 class _ThreadStreamView extends StatelessWidget {
   const _ThreadStreamView({
+    super.key,
     required this.stream,
     required this.lastThread,
     required this.userId,
@@ -876,6 +945,7 @@ class _ThreadStreamView extends StatelessWidget {
     required this.onMessageAction,
     required this.onOpenProfile,
     required this.onOpenJob,
+    required this.onDelete,
     required this.reply,
     required this.onCancelReply,
     required this.recording,
@@ -898,6 +968,7 @@ class _ThreadStreamView extends StatelessWidget {
   final void Function(WebMessageItem, String) onMessageAction;
   final VoidCallback onOpenProfile;
   final VoidCallback onOpenJob;
+  final VoidCallback? onDelete;
   final WebMessageItem? reply;
   final VoidCallback onCancelReply;
   final bool recording;
@@ -943,7 +1014,8 @@ class _ThreadStreamView extends StatelessWidget {
                 thread: thread,
                 userId: userId,
                 onOpenProfile: onOpenProfile,
-                onOpenJob: onOpenJob),
+                onOpenJob: onOpenJob,
+                onDelete: onDelete),
             if (thread.chat.data[thread.chat.data['workerId'] == userId
                     ? 'typing_employer'
                     : 'typing_worker'] ==
@@ -1033,12 +1105,14 @@ class _ThreadHeader extends StatelessWidget {
     required this.userId,
     required this.onOpenProfile,
     required this.onOpenJob,
+    required this.onDelete,
   });
 
   final WebChatThread thread;
   final String userId;
   final VoidCallback onOpenProfile;
   final VoidCallback onOpenJob;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -1101,6 +1175,18 @@ class _ThreadHeader extends StatelessWidget {
               onPressed: onOpenJob,
               icon: const Icon(Icons.work_outline),
             ),
+          PopupMenuButton<String>(
+            tooltip: 'Conversation actions',
+            onSelected: (action) {
+              if (action == 'delete') onDelete?.call();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'delete',
+                child: Text('Delete conversation'),
+              ),
+            ],
+          ),
         ],
       ),
     );

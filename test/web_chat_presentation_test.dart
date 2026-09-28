@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/web_app/pages/chats/web_chat_media_widgets.dart';
 import 'package:test_app/web_app/pages/chats/web_chat_timeline.dart';
 import 'package:test_app/web_app/services/web_chat_media_service.dart';
+import 'package:test_app/web_app/services/web_chats_data_service.dart';
 
 void main() {
   test('message timestamps use local time and day headings do not repeat', () {
@@ -113,13 +114,72 @@ void main() {
           ),
         ),
       ));
-      final button = tester.widget<OutlinedButton>(find.byType(OutlinedButton));
+      expect(find.byTooltip('Play voice message'), findsOneWidget);
       expect(
-        button.style!.backgroundColor!.resolve({}),
-        isMine
-            ? WebChatMessageColors.outgoingAttachment
-            : WebChatMessageColors.incomingAttachment,
+        tester.widgetList<Container>(find.byType(Container)).any(
+              (widget) =>
+                  widget.decoration is BoxDecoration &&
+                  (widget.decoration! as BoxDecoration).color ==
+                      (isMine
+                          ? WebChatMessageColors.outgoingAttachment
+                          : WebChatMessageColors.incomingAttachment),
+            ),
+        isTrue,
       );
     }
+  });
+
+  testWidgets('voice playback failure can be retried and URL change resets it',
+      (tester) async {
+    const voice = WebChatAttachment(
+      type: 'audio',
+      url: 'https://example.com/voice.m4a',
+      fileName: 'voice.m4a',
+    );
+    Future<void> showVoice(String url) => tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+            body: WebChatAttachmentsView(
+              attachments: [
+                WebChatAttachment(
+                  type: 'audio',
+                  url: url,
+                  fileName: voice.fileName,
+                )
+              ],
+              isMine: true,
+            ),
+          ),
+        ));
+
+    await showVoice(voice.url);
+    expect(find.text('0:00 / --:--'), findsOneWidget);
+    await tester.tap(find.byTooltip('Play voice message'));
+    await tester.pump();
+    expect(find.text('Voice playback is only available in a browser.'),
+        findsOneWidget);
+    await showVoice('https://example.com/another.m4a');
+    expect(find.text('0:00 / --:--'), findsOneWidget);
+  });
+
+  test('legacy Mobile voice URL is available to the Web attachment viewer', () {
+    final attachments = normalizeWebChatAttachments({
+      'type': 'audio',
+      'audioUrl': 'https://example.com/voice.m4a',
+    });
+    expect(attachments.single.type, 'audio');
+    expect(attachments.single.url, 'https://example.com/voice.m4a');
+  });
+
+  test('conversation deletion changes only the current user visibility', () {
+    final update = webChatHideUpdate('worker-1');
+    expect(
+        update.keys,
+        containsAll([
+          'hiddenForUsers',
+          'unreadFor',
+          'deletedAtForUser.worker-1',
+        ]));
+    expect(update.keys, isNot(contains('deletedForEveryone')));
+    expect(update.keys, isNot(contains('participants')));
   });
 }

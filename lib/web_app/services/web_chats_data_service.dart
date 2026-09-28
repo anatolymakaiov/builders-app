@@ -443,10 +443,12 @@ class WebChatsDataService {
     });
   }
 
-  Future<void> hideChat(String chatId, String uid) =>
-      _firestore.collection('chats').doc(chatId).update({
-        'hiddenForUsers': FieldValue.arrayUnion([uid])
-      });
+  Future<void> hideChat(String chatId, String uid) async {
+    await _firestore.collection('chats').doc(chatId).update(
+          webChatHideUpdate(uid),
+        );
+    _older.remove(chatId);
+  }
 
   Future<void> setTyping(String chatId, String uid, bool typing) async {
     final ref = _firestore.collection('chats').doc(chatId);
@@ -603,6 +605,12 @@ class WebChatsDataService {
     return controller.stream;
   }
 }
+
+Map<String, dynamic> webChatHideUpdate(String uid) => {
+      'hiddenForUsers': FieldValue.arrayUnion([uid]),
+      'unreadFor': FieldValue.arrayRemove([uid]),
+      'deletedAtForUser.$uid': FieldValue.serverTimestamp(),
+    };
 
 String _firstText(
   Map<String, dynamic>? data,
