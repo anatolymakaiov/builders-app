@@ -30,14 +30,26 @@ class WebJobsDataService {
       ownerJobs: <Job>[],
     );
     var loading = false;
+    var hasLoaded = false;
     final controller = StreamController<WebDataState<WebJobsResult>>();
 
     Future<void> refresh() async {
       if (loading || controller.isClosed) return;
       loading = true;
       try {
-        lastValue = await loadJobs(userId: userId, role: role);
+        lastValue = await loadJobs(
+          userId: userId,
+          role: role,
+          onPrimary: (value) {
+            if (hasLoaded) return;
+            if (!controller.isClosed) {
+              lastValue = value;
+              controller.add(WebDataState.data(value));
+            }
+          },
+        );
         if (!controller.isClosed) {
+          hasLoaded = true;
           controller.add(WebDataState.data(lastValue));
         }
       } catch (error) {
@@ -67,7 +79,15 @@ class WebJobsDataService {
   Future<WebJobsResult> loadJobs({
     required String userId,
     required String role,
+    void Function(WebJobsResult)? onPrimary,
   }) async {
+    const ownerFields = ['ownerId', 'employerId', 'createdBy', 'userId'];
+    final ownerSnapshots = role == 'employer'
+        ? Future.wait(ownerFields.map((field) => _firestore
+            .collection('jobs')
+            .where(field, isEqualTo: userId)
+            .get()))
+        : null;
     final publicDocsById =
         <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
     final publicSnapshot = await _firestore
@@ -82,22 +102,12 @@ class WebJobsDataService {
         .map(_jobFromDocument)
         .where(_isPublicWebJob)
         .toList();
-    await _enrichCompanyIdentity(publicJobs);
     _sortNewest(publicJobs);
 
     final ownerDocsById =
         <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
-    if (role == 'employer') {
-      for (final field in const [
-        'ownerId',
-        'employerId',
-        'createdBy',
-        'userId',
-      ]) {
-        final ownerSnapshot = await _firestore
-            .collection('jobs')
-            .where(field, isEqualTo: userId)
-            .get();
+    if (ownerSnapshots != null) {
+      for (final ownerSnapshot in await ownerSnapshots) {
         for (final doc in ownerSnapshot.docs) {
           ownerDocsById[doc.id] = doc;
         }
@@ -108,10 +118,18 @@ class WebJobsDataService {
         .map(_jobFromDocument)
         .where((job) => _isOwnerWebJob(job, userId))
         .toList();
-    await _enrichCompanyIdentity(ownerJobs);
     _sortNewest(ownerJobs);
-
-    return WebJobsResult(publicJobs: publicJobs, ownerJobs: ownerJobs);
+    onPrimary?.call(WebJobsResult(
+      publicJobs: List.of(publicJobs),
+      ownerJobs: List.of(ownerJobs),
+    ));
+    // Identity reads are presentation enrichment; vacancy documents are ready.
+    final allJobs = [...publicJobs, ...ownerJobs];
+    await _enrichCompanyIdentity(allJobs);
+    return WebJobsResult(
+      publicJobs: allJobs.take(publicJobs.length).toList(),
+      ownerJobs: allJobs.skip(publicJobs.length).toList(),
+    );
   }
 
   Future<List<Job>> loadCompanyJobs({

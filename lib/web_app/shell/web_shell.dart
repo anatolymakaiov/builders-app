@@ -39,6 +39,7 @@ class WebShell extends StatefulWidget {
 
 class _WebShellState extends State<WebShell> {
   WebSection selected = WebSection.jobs;
+  final visited = <WebSection>{WebSection.jobs};
   _WebProfileRoute? profileRoute;
   final profileHistory = <_WebProfileRoute>[];
   String? initialChatId;
@@ -77,6 +78,10 @@ class _WebShellState extends State<WebShell> {
     }
     if (oldWidget.user.uid != widget.user.uid ||
         oldWidget.role != widget.role) {
+      selected = WebSection.jobs;
+      visited
+        ..clear()
+        ..add(WebSection.jobs);
       final wasShowingOwnProfile = profileRoute?.userId == oldWidget.user.uid;
       profileHistory.clear();
       if (wasShowingOwnProfile) {
@@ -103,57 +108,67 @@ class _WebShellState extends State<WebShell> {
 
   @override
   Widget build(BuildContext context) {
+    visited.add(selected);
     final workspaces = <Widget>[
-      WebJobsPage(
-        key: ValueKey('web-jobs:${widget.user.uid}:${widget.role}'),
-        userId: widget.user.uid,
-        role: widget.role,
-        initialJobId: initialJobId,
-        initialOwnerMode: initialJobOwnerMode,
-        navigationRequestId: jobsNavigationRequestId,
-        refreshRequestId: jobsRefreshRequestId,
-        backLabel: jobReturnTarget?.label ?? 'Back',
-        onBackToMap: jobReturnTarget == null ? null : _closeTargetedJob,
-        onOpenProfile: _openProfile,
-        onPostJob: widget.role == 'employer' ? _openPostJob : null,
-        onOpenSubscriptions: widget.role == 'worker'
-            ? () => _openAccount(WebAccountDestination.subscriptions)
-            : null,
-        onOpenChat: _openChat,
-        onShowOnMap: _openJobOnMap,
-        onViewApplications: _openApplications,
-      ),
-      WebMapPage(
-        key: ValueKey('web-map:${widget.user.uid}:${widget.role}'),
-        userId: widget.user.uid,
-        role: widget.role,
-        initialJobId: initialMapJobId,
-        navigationRequestId: mapNavigationRequestId,
-        onOpenProfile: _openProfile,
-        onOpenJob: _openJobFromMap,
-        savedJobsRefreshToken: mapSavedJobsRefreshToken,
-      ),
-      WebApplicationsPage(
-        key: ValueKey('web-applications:${widget.user.uid}:${widget.role}'),
-        userId: widget.user.uid,
-        role: widget.role,
-        onOpenProfile: _openProfile,
-        onOpenChat: _openChat,
-        onOpenJob: _openJobFromApplications,
-        initialJobId: applicationsRoute?.jobId,
-        initialApplicationId: applicationsRoute?.applicationId,
-        initialStatusFilter: applicationsRoute?.statusFilter,
-        navigationRequestId: applicationsNavigationRequestId,
-      ),
-      WebChatsPage(
-        key: ValueKey('web-chats:${widget.user.uid}:${widget.role}'),
-        userId: widget.user.uid,
-        role: widget.role,
-        initialChatId: initialChatId,
-        navigationRequestId: chatsNavigationRequestId,
-        onOpenProfile: _openProfile,
-        onOpenJob: _openJobFromChats,
-      ),
+      visited.contains(WebSection.jobs)
+          ? WebJobsPage(
+              key: ValueKey('web-jobs:${widget.user.uid}:${widget.role}'),
+              userId: widget.user.uid,
+              role: widget.role,
+              initialJobId: initialJobId,
+              initialOwnerMode: initialJobOwnerMode,
+              navigationRequestId: jobsNavigationRequestId,
+              refreshRequestId: jobsRefreshRequestId,
+              backLabel: jobReturnTarget?.label ?? 'Back',
+              onBackToMap: jobReturnTarget == null ? null : _closeTargetedJob,
+              onOpenProfile: _openProfile,
+              onPostJob: widget.role == 'employer' ? _openPostJob : null,
+              onOpenSubscriptions: widget.role == 'worker'
+                  ? () => _openAccount(WebAccountDestination.subscriptions)
+                  : null,
+              onOpenChat: _openChat,
+              onShowOnMap: _openJobOnMap,
+              onViewApplications: _openApplications,
+            )
+          : const SizedBox.shrink(),
+      visited.contains(WebSection.map)
+          ? WebMapPage(
+              key: ValueKey('web-map:${widget.user.uid}:${widget.role}'),
+              userId: widget.user.uid,
+              role: widget.role,
+              initialJobId: initialMapJobId,
+              navigationRequestId: mapNavigationRequestId,
+              onOpenProfile: _openProfile,
+              onOpenJob: _openJobFromMap,
+              savedJobsRefreshToken: mapSavedJobsRefreshToken,
+            )
+          : const SizedBox.shrink(),
+      visited.contains(WebSection.applications)
+          ? WebApplicationsPage(
+              key: ValueKey(
+                  'web-applications:${widget.user.uid}:${widget.role}'),
+              userId: widget.user.uid,
+              role: widget.role,
+              onOpenProfile: _openProfile,
+              onOpenChat: _openChat,
+              onOpenJob: _openJobFromApplications,
+              initialJobId: applicationsRoute?.jobId,
+              initialApplicationId: applicationsRoute?.applicationId,
+              initialStatusFilter: applicationsRoute?.statusFilter,
+              navigationRequestId: applicationsNavigationRequestId,
+            )
+          : const SizedBox.shrink(),
+      visited.contains(WebSection.chats)
+          ? WebChatsPage(
+              key: ValueKey('web-chats:${widget.user.uid}:${widget.role}'),
+              userId: widget.user.uid,
+              role: widget.role,
+              initialChatId: initialChatId,
+              navigationRequestId: chatsNavigationRequestId,
+              onOpenProfile: _openProfile,
+              onOpenJob: _openJobFromChats,
+            )
+          : const SizedBox.shrink(),
     ];
     final profilePage = _profileStack();
     final postJobPage = postingJob

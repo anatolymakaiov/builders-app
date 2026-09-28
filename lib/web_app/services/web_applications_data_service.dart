@@ -298,35 +298,74 @@ class WebApplicationsDataService {
     );
   }
 
-  Future<List<WebApplicationSummary>> loadWorkerJobApplications(
-    String uid,
-  ) async {
+  Future<int> unreadCount({required String uid, required String role}) async {
+    if (role != 'employer') {
+      final applications = await loadWorkerJobApplications(
+        uid,
+        includeInactiveTeamStatuses: false,
+      );
+      return applications.where((item) => item.unreadFor(uid)).length;
+    }
+    final results = await Future.wait([
+      _runApplicationQuery(
+        source: 'employer_badge_primary',
+        query: _firestore
+            .collection('applications')
+            .where('employerId', isEqualTo: uid),
+      ),
+      _runApplicationQuery(
+        source: 'employer_badge_owner',
+        query: _firestore
+            .collection('applications')
+            .where('ownerId', isEqualTo: uid),
+      ),
+    ]);
+    final docsById = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    for (final result in results) {
+      _mergeDocs(docsById, result.docs);
+    }
+    if (docsById.isEmpty) {
+      for (final result in results) {
+        if (result.error != null) throw result.error!;
+      }
+    }
+    return docsById.values
+        .where((doc) =>
+            WebApplicationSummary(id: doc.id, data: doc.data()).unreadFor(uid))
+        .length;
+  }
+
+  Future<List<WebApplicationSummary>> loadWorkerJobApplications(String uid,
+      {bool includeInactiveTeamStatuses = true}) async {
     final docsById = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
     final queryErrors = <Object>[];
-    final single = await _runApplicationQuery(
+    final singleFuture = _runApplicationQuery(
       source: 'worker_job_presence_single',
       query: _firestore
           .collection('applications')
           .where('workerId', isEqualTo: uid),
     );
+    final teams = await _loadWorkerTeams(uid);
+    final teamResults =
+        await Future.wait(teams.map((team) => _runApplicationQuery(
+              source: 'worker_job_presence_team:${team.id}',
+              query: _firestore
+                  .collection('applications')
+                  .where('teamId', isEqualTo: team.id),
+            )));
+    final single = await singleFuture;
     _mergeDocs(docsById, single.docs);
     if (single.error != null) queryErrors.add(single.error!);
-
-    final teams = await _loadWorkerTeams(uid);
-    for (final team in teams) {
-      final result = await _runApplicationQuery(
-        source: 'worker_job_presence_team:${team.id}',
-        query: _firestore
-            .collection('applications')
-            .where('teamId', isEqualTo: team.id),
-      );
+    for (var index = 0; index < teams.length; index++) {
+      final team = teams[index];
+      final result = teamResults[index];
       _mergeDocs(
         docsById,
         result.docs.where(
           (doc) => _isRelevantTeamApplication(
             doc.data(),
             team.id,
-            includeInactiveStatuses: true,
+            includeInactiveStatuses: includeInactiveTeamStatuses,
           ),
         ),
       );
@@ -348,44 +387,48 @@ class WebApplicationsDataService {
     final queryErrors = <Object>[];
 
     if (role == 'employer') {
-      final primary = await _runApplicationQuery(
+      final primaryFuture = _runApplicationQuery(
         source: 'employer_primary',
         query: _firestore
             .collection('applications')
             .where('employerId', isEqualTo: uid),
       );
-      _mergeDocs(docsById, primary.docs);
-      if (primary.error != null) queryErrors.add(primary.error!);
-
-      final ownerFallback = await _runApplicationQuery(
+      final ownerFallbackFuture = _runApplicationQuery(
         source: 'employer_owner',
         query: _firestore
             .collection('applications')
             .where('ownerId', isEqualTo: uid),
       );
+      final primary = await primaryFuture;
+      final ownerFallback = await ownerFallbackFuture;
+      _mergeDocs(docsById, primary.docs);
+      if (primary.error != null) queryErrors.add(primary.error!);
       _mergeDocs(docsById, ownerFallback.docs);
       if (ownerFallback.error != null) {
         debugPrint('WEB APPLICATIONS ownerId fallback ignored after error');
         if (primary.docs.isEmpty) queryErrors.add(ownerFallback.error!);
       }
     } else {
-      final single = await _runApplicationQuery(
+      final singleFuture = _runApplicationQuery(
         source: 'worker_single',
         query: _firestore
             .collection('applications')
             .where('workerId', isEqualTo: uid),
       );
+      final teams = await _loadWorkerTeams(uid);
+      final teamResults =
+          await Future.wait(teams.map((team) => _runApplicationQuery(
+                source: 'team:${team.id}',
+                query: _firestore
+                    .collection('applications')
+                    .where('teamId', isEqualTo: team.id),
+              )));
+      final single = await singleFuture;
       _mergeDocs(docsById, single.docs);
       if (single.error != null) queryErrors.add(single.error!);
-
-      final teams = await _loadWorkerTeams(uid);
-      for (final team in teams) {
-        final result = await _runApplicationQuery(
-          source: 'team:${team.id}',
-          query: _firestore
-              .collection('applications')
-              .where('teamId', isEqualTo: team.id),
-        );
+      for (var index = 0; index < teams.length; index++) {
+        final team = teams[index];
+        final result = teamResults[index];
         final teamDocs = result.docs.where((doc) {
           return _isRelevantTeamApplication(doc.data(), team.id);
         }).toList();
@@ -400,8 +443,12 @@ class WebApplicationsDataService {
 
     final applications = <WebApplicationSummary>[];
     final reads = WebApplicationEnrichmentReads(_safeGet);
-    for (final doc in docsById.values) {
-      applications.add(await _summary(doc.id, doc.data(), reads.get));
+    final docs = docsById.values.toList();
+    for (var start = 0; start < docs.length; start += 4) {
+      applications.addAll(await Future.wait(docs
+          .skip(start)
+          .take(4)
+          .map((doc) => _summary(doc.id, doc.data(), reads.get))));
     }
     applications.sort((a, b) {
       final aTime = a.activityAt;
@@ -546,27 +593,38 @@ class WebApplicationsDataService {
         (data['workerId'] ?? data['applicantId'])?.toString() ?? '';
     final teamId = data['teamId']?.toString() ?? '';
     final loadLiveJob = shouldEnrichLiveApplicationJob(data);
-    final jobData = loadLiveJob ? await read('jobs', jobId) : null;
-    final profileData = await read('users', workerId);
+    final jobFuture = loadLiveJob
+        ? read('jobs', jobId)
+        : Future<Map<String, dynamic>?>.value();
+    final profileFuture = read('users', workerId);
+    final teamFuture = read('teams', teamId);
+    final jobData = await jobFuture;
     final employerId = (jobData?['ownerId'] ??
             jobData?['employerId'] ??
             data['employerId'] ??
             data['ownerId'])
         ?.toString()
         .trim();
-    final companyData = await read('users', employerId ?? '');
-    final teamData = await read('teams', teamId);
+    final companyFuture = read('users', employerId ?? '');
+    final profileData = await profileFuture;
+    final teamData = await teamFuture;
+    final companyData = await companyFuture;
     final memberProfiles = <String, Map<String, dynamic>>{};
     final isTeam =
         (data['applicationType'] ?? data['type'] ?? '').toString() == 'team' ||
             teamId.isNotEmpty;
     if (isTeam) {
-      for (final memberId in _teamMemberIds({
+      final memberIds = _teamMemberIds({
         ...?teamData,
         ...data,
-      })) {
-        final memberData = await read('users', memberId);
-        if (memberData != null) memberProfiles[memberId] = memberData;
+      });
+      final memberData = await Future.wait(
+        memberIds.map((memberId) => read('users', memberId)),
+      );
+      for (var index = 0; index < memberIds.length; index++) {
+        final memberId = memberIds[index];
+        final data = memberData[index];
+        if (data != null) memberProfiles[memberId] = data;
       }
     }
     return WebApplicationSummary(

@@ -8,7 +8,6 @@ import '../../models/job.dart';
 import '../../services/billing_service.dart';
 import '../../services/job_alert_service.dart';
 import 'web_applications_data_service.dart';
-import 'web_chats_data_service.dart';
 import 'web_data_state.dart';
 import 'web_jobs_data_service.dart';
 
@@ -115,7 +114,6 @@ class WebAccountDataService {
   final Duration pollInterval;
   final _jobsService = WebJobsDataService();
   final _applicationsService = WebApplicationsDataService();
-  final _chatsService = WebChatsDataService();
   WebShellBadges _lastBadges = const WebShellBadges();
 
   Stream<WebDataState<WebShellBadges>> badges({
@@ -161,8 +159,30 @@ class WebAccountDataService {
 
   Future<int> unreadChats(String uid) async {
     try {
-      final chats = await _chatsService.loadChats(uid);
-      return chats.where((chat) => chat.unreadFor(uid)).length;
+      final snapshot = await _firestore
+          .collection('chats')
+          .where('unreadFor', arrayContains: uid)
+          .get();
+      return snapshot.docs.where((doc) {
+        final data = doc.data();
+        final hidden = data['hiddenForUsers'];
+        if (hidden is List && hidden.contains(uid)) return false;
+        for (final key in const [
+          'workerId',
+          'employerId',
+          'senderId',
+          'receiverId',
+          'targetProfileId'
+        ]) {
+          if (data[key]?.toString() == uid) return true;
+        }
+        for (final key in const ['members', 'participants', 'participantIds']) {
+          final value = data[key];
+          if (value is List && value.contains(uid)) return true;
+          if (value is Map && value.containsKey(uid)) return true;
+        }
+        return false;
+      }).length;
     } catch (error) {
       debugPrint('WEB CHAT BADGE LOAD ERROR $error');
       return _lastBadges.chats;
@@ -174,9 +194,7 @@ class WebAccountDataService {
     required String role,
   }) async {
     try {
-      final applications =
-          await _applicationsService.loadApplications(uid: uid, role: role);
-      return applications.where((item) => item.unreadFor(uid)).length;
+      return await _applicationsService.unreadCount(uid: uid, role: role);
     } catch (error) {
       debugPrint('WEB APPLICATION BADGE LOAD ERROR $error');
       return _lastBadges.applications;
