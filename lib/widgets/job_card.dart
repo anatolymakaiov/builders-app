@@ -20,6 +20,7 @@ class JobCard extends StatelessWidget {
   final EdgeInsetsGeometry margin;
   final bool dense;
   final bool showPostedDate;
+  final bool compactWorkerLayout;
 
   const JobCard({
     super.key,
@@ -35,6 +36,7 @@ class JobCard extends StatelessWidget {
     this.margin = const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     this.dense = false,
     this.showPostedDate = true,
+    this.compactWorkerLayout = false,
   });
 
   @override
@@ -80,29 +82,38 @@ class JobCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      _CompanyLogo(job: job),
-                      if (statusText != null && statusText!.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        AppChip.status(
-                          statusText!,
-                          color: statusColor ?? AppColors.status(statusText!),
-                        ),
-                      ],
-                      if (trailingAction != null) ...[
-                        const SizedBox(height: 6),
+                  if (compactWorkerLayout && trailingAction != null)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         trailingAction!,
+                        _CompanyLogo(job: job),
                       ],
-                    ],
-                  ),
+                    )
+                  else
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        _CompanyLogo(job: job),
+                        if (statusText != null && statusText!.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          AppChip.status(
+                            statusText!,
+                            color: statusColor ?? AppColors.status(statusText!),
+                          ),
+                        ],
+                        if (trailingAction != null) ...[
+                          const SizedBox(height: 6),
+                          trailingAction!,
+                        ],
+                      ],
+                    ),
                 ],
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: compactWorkerLayout ? 4 : 10),
               Wrap(
                 spacing: 8,
-                runSpacing: 8,
+                runSpacing: compactWorkerLayout ? 6 : 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   if (job.workFormatText.trim().isNotEmpty)

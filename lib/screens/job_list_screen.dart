@@ -186,6 +186,7 @@ class _JobListScreenState extends State<JobListScreen> {
     final distance = calculateDistance(job.lat, job.lng);
     return JobCard(
       job: job,
+      compactWorkerLayout: true,
       detailText: distance == double.infinity
           ? null
           : "${distance.toStringAsFixed(1)} miles away",

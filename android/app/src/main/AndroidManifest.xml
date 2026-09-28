@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <application
-        android:label="test_app"
+        android:label="STROYKA"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
