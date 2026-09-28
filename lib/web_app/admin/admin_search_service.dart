@@ -22,6 +22,11 @@ class AdminSearchService {
       query.toLowerCase(),
       '${query[0].toUpperCase()}${query.substring(1)}',
     };
+    final firstTerm = query.split(RegExp(r'\s+')).first;
+    if (firstTerm != query) {
+      variants.add(firstTerm.toLowerCase());
+      variants.add('${firstTerm[0].toUpperCase()}${firstTerm.substring(1)}');
+    }
     final isEmail = query.contains('@');
     final isPhone = RegExp(r'^[+\d\s()-]+$').hasMatch(query);
     if (isPhone) {
@@ -100,6 +105,23 @@ class AdminSearchService {
     return doc.data() == null
         ? null
         : WebAdminRecord('users', doc.id, doc.data()!);
+  }
+
+  Future<List<WebAdminRecord>> publicPreviewJobs(String adminUid) async {
+    if (!await _admin.isAuthorized(adminUid)) {
+      throw StateError('Administrator access required.');
+    }
+    final snapshot = await _db
+        .collection('jobs')
+        .where('moderationStatus', isEqualTo: 'approved')
+        .where('status', whereIn: const ['active', 'published', 'open'])
+        .limit(60)
+        .get();
+    return snapshot.docs
+        .where((doc) =>
+            const {'active', 'published', 'open'}.contains(doc.data()['status']))
+        .map((doc) => WebAdminRecord('jobs', doc.id, doc.data()))
+        .toList(growable: false);
   }
 
   Future<List<WebAdminRecord>> previewRecords(

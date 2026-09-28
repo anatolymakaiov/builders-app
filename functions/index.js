@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { HttpsError, onCall, onRequest } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
@@ -18,6 +18,7 @@ const {
   normalizedMemberIds,
   selectAuthorizedAccountLinkGroup,
 } = require("./account_linking");
+const {report: adminAnalyticsReport} = require("./admin_analytics");
 
 admin.initializeApp();
 
@@ -1499,6 +1500,140 @@ async function goCardlessGet(path, accessToken) {
 
   return body;
 }
+
+const adminAnalyticsCache = new Map();
+
+exports.getAdminAnalytics = onCall({
+  secrets: [goCardlessAccessToken],
+  timeoutSeconds: 300,
+  memory: "512MiB",
+}, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const adminSnap = await admin.firestore().collection("users").doc(request.auth.uid).get();
+  if (cleanText((adminSnap.data() || {}).role).toLowerCase() !== "admin") {
+    throw new HttpsError("permission-denied", "Administrator access required.");
+  }
+  const tab = cleanText(request.data && request.data.tab);
+  const period = cleanText(request.data && request.data.period);
+  if (!["revenue", "vacancies", "hires", "users"].includes(tab) ||
+      !["month", "year"].includes(period)) {
+    throw new HttpsError("invalid-argument", "Choose an analytics tab and period.");
+  }
+  const now = new Date();
+  const key = `${tab}:${period}:${now.toISOString().slice(0, 13)}`;
+  const cached = adminAnalyticsCache.get(key);
+  if (cached && Date.now() - cached.time < 300000) return cached.data;
+
+  const londonToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(now);
+  const year = Number(londonToday.slice(0, 4));
+  const month = Number(londonToday.slice(5, 7)) - 1;
+  const start = new Date(Date.UTC(year, period === "year" ? 0 : month, 1));
+  const end = new Date(Date.UTC(year, period === "year" ? 12 : month + 1, 1));
+  start.setUTCDate(start.getUTCDate() - 1);
+  end.setUTCDate(end.getUTCDate() + 1);
+  const db = admin.firestore();
+  let complete = true;
+  let payments = [];
+  let retentionComplete = true;
+  let users = [];
+  let jobs = [];
+  let applications = [];
+  let closures = [];
+
+  if (tab === "revenue") {
+    const accessToken = goCardlessAccessToken.value();
+    if (!accessToken) {
+      throw new HttpsError("failed-precondition", "GoCardless is not configured.");
+    }
+    let after = "";
+    for (let page = 0; page < 50; page++) {
+      const suffix = after ? `&after=${encodeURIComponent(after)}` : "";
+      const response = await goCardlessGet(`/payments?limit=100${suffix}`, accessToken);
+      payments.push(...(response.payments || []));
+      after = cleanText(response.meta && response.meta.cursors &&
+        response.meta.cursors.after);
+      if (!after) break;
+      if (page === 49) complete = false;
+    }
+    if (complete) {
+      const customersByMandate = new Map();
+      after = "";
+      try {
+        for (let page = 0; page < 50; page++) {
+          const suffix = after ? `&after=${encodeURIComponent(after)}` : "";
+          const response = await goCardlessGet(`/mandates?limit=100${suffix}`, accessToken);
+          for (const mandate of response.mandates || []) {
+            const customer = mandate.links && mandate.links.customer;
+            if (customer) customersByMandate.set(mandate.id, customer);
+          }
+          after = cleanText(response.meta && response.meta.cursors &&
+            response.meta.cursors.after);
+          if (!after) break;
+          if (page === 49) retentionComplete = false;
+        }
+      } catch (error) {
+        console.warn("ADMIN ANALYTICS mandate history unavailable", error.code || "unavailable");
+        retentionComplete = false;
+      }
+      payments = payments.map((payment) => ({
+        ...payment,
+        analyticsCustomerId: customersByMandate.get(payment.links && payment.links.mandate),
+      }));
+      if (payments.some((payment) => SUCCESSFUL_PAYMENT_STATUSES.has(payment.status) &&
+          payment.currency === "GBP" && !payment.analyticsCustomerId)) {
+        retentionComplete = false;
+      }
+    }
+  } else if (tab === "users") {
+    const snapshot = await db.collection("users").limit(5001).get();
+    complete = snapshot.size <= 5000;
+    users = snapshot.docs.map((doc) => doc.data());
+  } else if (tab === "vacancies") {
+    const [snapshot, closeSnapshot] = await Promise.all([
+      db.collection("jobs").limit(5001).get(),
+      db.collection("admin_job_lifecycle_events")
+        .where("closedAt", ">=", admin.firestore.Timestamp.fromDate(start))
+        .where("closedAt", "<", admin.firestore.Timestamp.fromDate(end))
+        .limit(5001).get(),
+    ]);
+    complete = snapshot.size <= 5000 && closeSnapshot.size <= 5000;
+    jobs = snapshot.docs.map((doc) => doc.data());
+    closures = closeSnapshot.docs.map((doc) => doc.data());
+  } else {
+    const snapshot = await db.collection("applications")
+      .where("slotDecrementAppliedAt", ">=", admin.firestore.Timestamp.fromDate(start))
+      .where("slotDecrementAppliedAt", "<", admin.firestore.Timestamp.fromDate(end))
+      .limit(5001).get();
+    complete = snapshot.size <= 5000;
+    applications = snapshot.docs.map((doc) => doc.data());
+  }
+  const data = adminAnalyticsReport({tab, period, now, payments, users,
+    jobs, applications, closures, complete, retentionComplete});
+  adminAnalyticsCache.set(key, {time: Date.now(), data});
+  return data;
+});
+
+exports.trackAdminVacancyClosure = onDocumentUpdated("jobs/{jobId}", async (event) => {
+  const before = event.data && event.data.before.data() || {};
+  const after = event.data && event.data.after.data() || {};
+  const live = new Set(["active", "published", "open"]);
+  const closed = new Set(["closed", "inactive", "deactivated"]);
+  if (before.moderationStatus !== "approved" ||
+      !live.has(cleanText(before.status).toLowerCase()) ||
+      !closed.has(cleanText(after.status).toLowerCase())) return;
+  try {
+    await admin.firestore().collection("admin_job_lifecycle_events").doc(event.id).create({
+      jobId: event.params.jobId,
+      previousStatus: before.status,
+      status: after.status,
+      closedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    if (error.code !== 6 && error.code !== "already-exists") throw error;
+  }
+});
 
 function isSlotOccupyingJob(job) {
   const status = cleanText(job.status).toLowerCase();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/web_app/pages/profile/web_admin_profile_page.dart';
 import 'package:test_app/web_app/admin/admin_web_shell.dart';
+import 'package:test_app/web_app/admin/admin_analytics_service.dart';
 import 'package:test_app/web_app/admin/admin_overview_service.dart';
 import 'package:test_app/web_app/services/web_admin_profile_service.dart';
 import 'package:test_app/web_app/services/web_admin_report_summary.dart';
@@ -119,6 +120,26 @@ void main() {
     expect(webAdminSearchMatches(job, 'ceiling'), isTrue);
     expect(webAdminSearchMatches(job, 'sw1a1aa'), isTrue);
     expect(webAdminSearchMatches(job, 'unrelated'), isFalse);
+  });
+
+  test('admin search matches a full Worker name', () {
+    const worker = WebAdminRecord('users', 'worker-1', {
+      'firstName': 'Alex', 'lastName': 'Taylor', 'role': 'worker',
+    });
+    expect(webAdminSearchMatches(worker, 'Alex Taylor'), isTrue);
+  });
+
+  test('admin analytics parser retains exact series and unavailable values', () {
+    final result = AdminAnalyticsReport.fromMap({
+      'keys': ['2026-09-01'],
+      'series': {'Hires': [2]},
+      'kpis': {'Completed hires': 2, 'Retention percent': null},
+      'notes': ['Historical data unavailable'],
+    });
+    expect(result.keys, ['2026-09-01']);
+    expect(result.series['Hires'], [2]);
+    expect(result.kpis['Retention percent'], isNull);
+    expect(result.notes, hasLength(1));
   });
 
   test('financial summary deduplicates companies and excludes held accounts',

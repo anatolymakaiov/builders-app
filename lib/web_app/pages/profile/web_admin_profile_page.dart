@@ -351,11 +351,12 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
   Widget _record(WebAdminRecord item, {List<Widget> actions = const []}) {
     final heading = item.title.isNotEmpty ? item.title : item.id;
     final subtitle = item.text.isNotEmpty ? item.text : item.status;
-    final actor = (item.data['userId'] ??
+    final actor = (item.data['adminRequesterId'] ?? item.data['userId'] ??
             item.data['fromUserId'] ??
             item.data['employerId'] ??
             item.data['senderId'])
         ?.toString();
+    final requester = item.data['adminRequesterName']?.toString() ?? '';
     final metadata = [
       if (item.date.year > 1970)
         '${MaterialLocalizations.of(context).formatMediumDate(item.date.toLocal())} '
@@ -366,6 +367,14 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: WebSpacing.sm),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (requester.isNotEmpty || (actor != null && actor.isNotEmpty))
+          TextButton.icon(
+            onPressed: actor == null || actor.isEmpty
+                ? null
+                : () => widget.onOpenProfile(actor, ''),
+            icon: const Icon(Icons.person_outline, size: 18),
+            label: Text(requester.isEmpty ? actor! : requester),
+          ),
         Text(heading, style: WebTypography.cardTitle),
         if (subtitle.isNotEmpty)
           Text(subtitle, maxLines: 3, overflow: TextOverflow.ellipsis),

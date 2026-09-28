@@ -109,16 +109,62 @@ class WebAdminProfileService {
         .orderBy('createdAt', descending: true)
         .limit(limit)
         .get();
-    return snapshot.docs
+    final records = snapshot.docs
         .map((doc) => WebAdminRecord(collection, doc.id, doc.data()))
         .toList(growable: false);
+    return _withRequesters(records);
   }
 
   Future<List<WebAdminRecord>> loadRecentMany(List<String> collections) async {
-    final groups = await Future.wait(
-      collections.map((collection) => loadRecent(collection)),
-    );
-    return [for (final group in groups) ...group];
+    await _requireAdmin();
+    final groups = await Future.wait(collections.map((collection) async {
+      final snapshot = await _db.collection(collection)
+          .orderBy('createdAt', descending: true).limit(80).get();
+      return snapshot.docs.map((doc) =>
+          WebAdminRecord(collection, doc.id, doc.data())).toList();
+    }));
+    return _withRequesters([for (final group in groups) ...group]);
+  }
+
+  Future<List<WebAdminRecord>> _withRequesters(
+      List<WebAdminRecord> records) async {
+    String actorId(WebAdminRecord record) =>
+        ((record.data['direction'] == 'outgoing' ? record.data['receiverId'] : null) ??
+         record.data['userId'] ?? record.data['fromUserId'] ??
+         record.data['employerId'] ?? record.data['senderId'] ??
+         record.data['ownerId'])?.toString() ?? '';
+    final ids = records.map(actorId)
+        .where((id) => id.isNotEmpty && id != 'admin').toSet().toList();
+    final people = <String, Map<String, dynamic>>{};
+    for (var offset = 0; offset < ids.length; offset += 30) {
+      final end = offset + 30 < ids.length ? offset + 30 : ids.length;
+      final snapshot = await _db.collection('users')
+          .where(FieldPath.documentId, whereIn: ids.sublist(offset, end))
+          .get();
+      for (final doc in snapshot.docs) {
+        people[doc.id] = doc.data();
+      }
+    }
+    return records.map((record) {
+      final id = actorId(record);
+      final person = people[id];
+      final first = person?['firstName']?.toString() ?? '';
+      final last = person?['lastName']?.toString() ?? '';
+      final name = [first, last].where((part) => part.trim().isNotEmpty)
+          .join(' ').trim();
+      final display = (person?['companyName'] ?? person?['name'] ??
+          person?['displayName'] ??
+          (name.isEmpty ? null : name) ??
+          record.data['requesterName'] ??
+          (record.data['direction'] == 'outgoing'
+              ? record.data['receiverName'] : record.data['senderName']) ??
+          record.data['companyName'] ?? '').toString().trim();
+      return WebAdminRecord(record.collection, record.id, {
+        ...record.data,
+        'adminRequesterId': id,
+        'adminRequesterName': display,
+      });
+    }).toList(growable: false);
   }
 
   Future<List<WebAdminRecord>> loadPendingApprovals() async {
@@ -135,12 +181,12 @@ class WebAdminProfileService {
           .limit(100)
           .get(),
     ]);
-    return [
+    return _withRequesters([
       for (final doc in results[0].docs)
         WebAdminRecord('jobs', doc.id, doc.data()),
       for (final doc in results[1].docs)
         WebAdminRecord('vacancy_edit_reviews', doc.id, doc.data()),
-    ];
+    ]);
   }
 
   Future<void> holdUser(WebAdminRecord user, String reason) async {

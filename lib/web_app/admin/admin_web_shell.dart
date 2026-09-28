@@ -2,15 +2,20 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../models/job.dart';
+import '../../services/moderation_hold_service.dart';
 import '../pages/jobs/web_job_details_panel.dart';
+import '../pages/jobs/web_worker_vacancy_card.dart';
 import '../pages/profile/web_admin_profile_page.dart';
+import '../pages/profile/web_worker_reviews.dart';
 import '../services/web_admin_profile_service.dart';
 import '../services/web_profile_data_service.dart';
 import '../theme/web_theme.dart';
 import '../widgets/web_remote_image.dart';
-import 'admin_overview_service.dart';
+import 'admin_analytics_service.dart';
 import 'admin_search_service.dart';
 
 enum AdminWorkspace { overview, requests, search, view }
@@ -31,27 +36,28 @@ class AdminWebShell extends StatefulWidget {
 
 class _AdminWebShellState extends State<AdminWebShell> {
   final admin = WebAdminProfileService();
-  final overview = AdminOverviewService();
+  final analytics = AdminAnalyticsService();
   final searchService = AdminSearchService();
   late Future<bool> access;
-  late Future<Map<String, int?>> counts;
-  late Future<Map<String, List<int>>> trends;
+  late Future<AdminAnalyticsReport> analyticsResult;
   Future<List<WebAdminRecord>>? searchResults;
-  Future<List<WebAdminRecord>>? previewRecords;
+  late Future<List<WebAdminRecord>> previewJobs;
   Timer? searchDebounce;
   AdminWorkspace section = AdminWorkspace.overview;
   AdminRequestTab requestTab = AdminRequestTab.support;
   String searchText = '';
   String previewRole = 'worker';
-  String previewTab = 'Profile';
-  WebAdminRecord? previewTarget;
-  int days = 30;
+  String previewSection = 'Home';
+  String previewSearch = '';
+  String analyticsTab = 'revenue';
+  String analyticsPeriod = 'month';
 
   @override
   void initState() {
     super.initState();
     access = admin.isAuthorized(widget.user.uid);
     _refreshOverview();
+    previewJobs = searchService.publicPreviewJobs(widget.user.uid);
   }
 
   @override
@@ -61,8 +67,7 @@ class _AdminWebShellState extends State<AdminWebShell> {
   }
 
   void _refreshOverview() {
-    counts = overview.loadCounts(widget.user.uid);
-    trends = overview.loadTrends(widget.user.uid, days: days);
+    analyticsResult = analytics.load(analyticsTab, analyticsPeriod);
   }
 
   void _search(String value) {
@@ -86,17 +91,6 @@ class _AdminWebShellState extends State<AdminWebShell> {
       section = value;
       searchText = '';
       searchResults = null;
-    });
-  }
-
-  void _openPreview(WebAdminRecord record) {
-    final role = record.data['role']?.toString();
-    if (role != previewRole) return;
-    setState(() {
-      previewTarget = record;
-      previewTab = 'Profile';
-      previewRecords =
-          searchService.previewRecords(widget.user.uid, record.id, role!);
     });
   }
 
@@ -246,7 +240,7 @@ class _AdminWebShellState extends State<AdminWebShell> {
           Text(widget.user.email ?? 'Admin', style: WebTypography.metadata),
         ]),
       ),
-      if (section == AdminWorkspace.view && previewTarget != null)
+      if (section == AdminWorkspace.view)
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           color: WebTheme.accentSoft,
@@ -255,10 +249,7 @@ class _AdminWebShellState extends State<AdminWebShell> {
                 child: Text('ADMIN PREVIEW — READ ONLY',
                     style: TextStyle(fontWeight: FontWeight.bold))),
             TextButton.icon(
-              onPressed: () => setState(() {
-                previewTarget = null;
-                previewRecords = null;
-              }),
+              onPressed: () => _selectSection(AdminWorkspace.overview),
               icon: const Icon(Icons.close),
               label: const Text('Exit Preview'),
             ),
@@ -278,88 +269,64 @@ class _AdminWebShellState extends State<AdminWebShell> {
         padding: const EdgeInsets.all(24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            const Expanded(
-                child:
-                    Text('Platform activity', style: WebTypography.panelTitle)),
-            IconButton(
-              tooltip: 'Refresh',
-              onPressed: () => setState(_refreshOverview),
-              icon: const Icon(Icons.refresh),
-            ),
+            const Expanded(child: Text('Analytics', style: WebTypography.panelTitle)),
+            IconButton(tooltip: 'Refresh', onPressed: () => setState(_refreshOverview),
+                icon: const Icon(Icons.refresh)),
           ]),
           const SizedBox(height: 16),
-          FutureBuilder<Map<String, int?>>(
-            future: counts,
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'revenue', label: Text('Revenue')),
+                ButtonSegment(value: 'vacancies', label: Text('Vacancies')),
+                ButtonSegment(value: 'hires', label: Text('Hires')),
+                ButtonSegment(value: 'users', label: Text('Users')),
+              ],
+              selected: {analyticsTab},
+              onSelectionChanged: (value) => setState(() {
+                analyticsTab = value.first;
+                _refreshOverview();
+              }),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'month', label: Text('MONTH')),
+              ButtonSegment(value: 'year', label: Text('YEAR')),
+            ],
+            selected: {analyticsPeriod},
+            onSelectionChanged: (value) => setState(() {
+              analyticsPeriod = value.first;
+              _refreshOverview();
+            }),
+          ),
+          const SizedBox(height: 20),
+          FutureBuilder<AdminAnalyticsReport>(
+            future: analyticsResult,
             builder: (context, snapshot) {
               if (snapshot.hasError) {
-                return _error('Could not load metrics.',
+                return _error('Analytics are unavailable: ${snapshot.error}',
                     () => setState(_refreshOverview));
               }
               if (!snapshot.hasData) return const LinearProgressIndicator();
-              return LayoutBuilder(builder: (context, constraints) {
-                final width =
-                    constraints.maxWidth < 560 ? constraints.maxWidth : 190.0;
-                return Wrap(spacing: 10, runSpacing: 10, children: [
-                  for (final entry in snapshot.data!.entries)
-                    SizedBox(
-                        width: width,
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: WebTheme.surface,
-                            border: Border.all(color: WebTheme.border),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(entry.value?.toString() ?? 'Unavailable',
-                                    style: WebTypography.sectionTitle),
-                                const SizedBox(height: 4),
-                                Text(entry.key, style: WebTypography.metadata),
-                              ]),
-                        )),
-                ]);
-              });
-            },
-          ),
-          const SizedBox(height: 28),
-          Row(children: [
-            const Expanded(
-                child: Text('Recent trends', style: WebTypography.panelTitle)),
-            DropdownButton<int>(
-              value: days,
-              items: const [
-                DropdownMenuItem(value: 7, child: Text('7 days')),
-                DropdownMenuItem(value: 30, child: Text('30 days')),
-                DropdownMenuItem(value: 90, child: Text('90 days')),
-              ],
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() {
-                  days = value;
-                  trends = overview.loadTrends(widget.user.uid, days: days);
-                });
-              },
-            ),
-          ]),
-          const Text('Recent records only (up to 250 per series).',
-              style: WebTypography.metadata),
-          const SizedBox(height: 12),
-          FutureBuilder<Map<String, List<int>>>(
-            future: trends,
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return _error(
-                    'Could not load trends.', () => setState(_refreshOverview));
-              }
-              if (!snapshot.hasData) return const LinearProgressIndicator();
-              if (snapshot.data!.isEmpty) {
-                return const Text('Trend data is unavailable.');
-              }
-              return Column(children: [
-                for (final entry in snapshot.data!.entries)
-                  _TrendPanel(title: entry.key, values: entry.value),
+              final report = snapshot.data!;
+              final currency = analyticsTab == 'revenue';
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Wrap(spacing: 10, runSpacing: 10, children: [
+                  for (final entry in report.kpis.entries)
+                    _MetricTile(label: entry.key, value: entry.value,
+                        currency: currency && (entry.key.contains('revenue') ||
+                            entry.key.contains('Direct Debit')),
+                        percent: entry.key.contains('percent')),
+                ]),
+                const SizedBox(height: 22),
+                if (report.series.isNotEmpty)
+                  _AnalyticsChart(report: report, currency: currency),
+                for (final note in report.notes)
+                  Padding(padding: const EdgeInsets.only(top: 12),
+                    child: Text(note, style: WebTypography.metadata)),
               ]);
             },
           ),
@@ -406,7 +373,18 @@ class _AdminWebShellState extends State<AdminWebShell> {
         uid: widget.user.uid,
         profile: widget.profile,
         onClose: () {},
-        onOpenProfile: (id, role) {},
+        onOpenProfile: (id, role) async {
+          try {
+            final record = await searchService.user(widget.user.uid, id);
+            if (mounted && record != null) _showRecord(record);
+          } catch (error) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Could not open profile: $error')),
+              );
+            }
+          }
+        },
         initialSection: mode,
         embedded: true,
         requestCollections: collections,
@@ -457,7 +435,9 @@ class _AdminWebShellState extends State<AdminWebShell> {
           for (final item in items)
             ListTile(
               title: Text(item.title.isEmpty ? item.id : item.title),
-              subtitle: Text('${item.collection}  ${item.text}',
+              subtitle: Text('${item.collection == 'jobs' ? 'Vacancy' :
+                  item.data['role'] == 'employer' ? 'Employer / Company' :
+                  item.data['role'] == 'worker' ? 'Worker' : 'Account'}  ${item.text}',
                   maxLines: 2, overflow: TextOverflow.ellipsis),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => onSelect(item),
@@ -468,6 +448,10 @@ class _AdminWebShellState extends State<AdminWebShell> {
   }
 
   void _showRecord(WebAdminRecord record) {
+    if (record.collection == 'users') {
+      _showUserProfile(record);
+      return;
+    }
     const fields = [
       'role',
       'email',
@@ -509,6 +493,150 @@ class _AdminWebShellState extends State<AdminWebShell> {
             ));
   }
 
+  Future<void> _showUserProfile(WebAdminRecord initial) async {
+    var current = initial;
+    var saving = false;
+    final portfolio = initial.data['role'] == 'worker'
+        ? WebProfileDataService().loadWorkerPortfolio(initial.id)
+        : null;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, update) {
+          final profile = WebProfileData(id: current.id, data: current.data);
+          final held = ModerationHoldService.isProfileHeld(current.data);
+          return AlertDialog(
+            title: Text(profile.displayName),
+            content: SizedBox(
+              width: 620,
+              height: 540,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      height: 180,
+                      child: Stack(children: [
+                        Positioned.fill(child: profile.headerUrl.isEmpty
+                            ? const ColoredBox(color: WebTheme.deep)
+                            : WebRemoteImage(url: profile.headerUrl, fit: BoxFit.cover)),
+                        Positioned(left: 16, bottom: 12,
+                            child: WebCircleImage(url: profile.avatarUrl, size: 80,
+                                fallbackIcon: profile.role == 'worker'
+                                    ? Icons.person_outline : Icons.business_outlined)),
+                      ]),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(profile.displayName, style: WebTypography.sectionTitle),
+                    Text(profile.role == 'worker' ? 'Worker profile' : 'Company profile',
+                        style: WebTypography.metadata),
+                    if (profile.trade.isNotEmpty) Text(profile.trade),
+                    if (profile.bio.isNotEmpty) Padding(
+                      padding: const EdgeInsets.only(top: 12), child: Text(profile.bio)),
+                    if (profile.location.isNotEmpty) Text(profile.location),
+                    if (profile.city.isNotEmpty) Text(profile.city),
+                    if (profile.website.isNotEmpty) Text(profile.website),
+                    if (profile.role == 'worker') ...[
+                      const SizedBox(height: 18),
+                      WebWorkerReviews(workerId: current.id, ownProfile: false),
+                      const SizedBox(height: 18),
+                      const Text('Portfolio', style: WebTypography.cardTitle),
+                      FutureBuilder(
+                        future: portfolio,
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const Text('Portfolio unavailable.');
+                          }
+                          final items = snapshot.data!;
+                          if (items.isEmpty) return const Text('No portfolio photos.');
+                          return Wrap(spacing: 8, runSpacing: 8, children: [
+                            for (final item in items)
+                              SizedBox(width: 110, height: 90,
+                                child: WebRemoteImage(url: item.url, fit: BoxFit.cover)),
+                          ]);
+                        },
+                      ),
+                    ],
+                    if (profile.role == 'employer' && profile.companyPhotos.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      const Text('Company photos', style: WebTypography.cardTitle),
+                      Wrap(spacing: 8, runSpacing: 8, children: [
+                        for (final url in profile.companyPhotos.take(12))
+                          SizedBox(width: 110, height: 90,
+                            child: WebRemoteImage(url: url, fit: BoxFit.cover)),
+                      ]),
+                    ],
+                    const Divider(height: 30),
+                    const Text('Admin metadata', style: WebTypography.cardTitle),
+                    SelectableText('UID: ${current.id}'),
+                    if (profile.email.isNotEmpty) SelectableText('Email: ${profile.email}'),
+                    if (profile.phone.isNotEmpty) SelectableText('Phone: ${profile.phone}'),
+                    Text('Status: ${held ? 'Blocked' : 'Active'}'),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              if (current.id != widget.user.uid)
+                TextButton(
+                  onPressed: saving ? null : () async {
+                    final reason = TextEditingController();
+                    try {
+                      final confirmed = await showDialog<bool>(
+                        context: dialogContext,
+                        builder: (confirmContext) => AlertDialog(
+                          title: Text(held ? 'Unblock profile?' : 'Block profile?'),
+                          content: held
+                              ? Text('Restore ${profile.displayName} to active status?')
+                              : TextField(controller: reason,
+                                  decoration: const InputDecoration(labelText: 'Reason'),
+                                  maxLines: 2),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(confirmContext, false),
+                                child: const Text('Cancel')),
+                            FilledButton(onPressed: () {
+                              if (!held && reason.text.trim().isEmpty) return;
+                              Navigator.pop(confirmContext, true);
+                            }, child: Text(held ? 'Unblock' : 'Block')),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true || !dialogContext.mounted) return;
+                      update(() => saving = true);
+                      if (held) {
+                        await admin.restoreUser(current.id);
+                      } else {
+                        await admin.holdUser(current, reason.text.trim());
+                      }
+                      final refreshed = await searchService.user(widget.user.uid, current.id);
+                      if (dialogContext.mounted && refreshed != null) {
+                        update(() { current = refreshed; saving = false; });
+                        if (mounted && searchText.trim().length >= 2) {
+                          setState(() => searchResults =
+                              searchService.search(widget.user.uid, searchText));
+                        }
+                      }
+                    } catch (error) {
+                      if (dialogContext.mounted) {
+                        update(() => saving = false);
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(content: Text('Could not update profile: $error')));
+                      }
+                    } finally {
+                      reason.dispose();
+                    }
+                  },
+                  child: Text(held ? 'Unblock' : 'Block'),
+                ),
+              TextButton(onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Close')),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _showJobPreview(WebAdminRecord record) {
     final job = Job.fromFirestore(record.id, record.data);
     showDialog<void>(
@@ -529,7 +657,18 @@ class _AdminWebShellState extends State<AdminWebShell> {
                       icon: const Icon(Icons.close),
                     ),
                   ]),
-                  Expanded(child: WebJobDetailsPanel(job: job)),
+                  Container(
+                    width: double.infinity,
+                    color: WebTheme.accentSoft,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: const Text('ADMIN PREVIEW — READ ONLY',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  Expanded(child: WebJobDetailsPanel(
+                    job: job,
+                    isWorker: previewRole == 'worker',
+                    isEmployerOwner: previewRole == 'employer',
+                  )),
                 ]),
               ),
             ));
@@ -539,9 +678,9 @@ class _AdminWebShellState extends State<AdminWebShell> {
         padding: const EdgeInsets.all(24),
         child:
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('Admin preview', style: WebTypography.panelTitle),
+          const Text('Product preview', style: WebTypography.panelTitle),
           const SizedBox(height: 8),
-          const Text('Inspect account data without signing in as the user.'),
+          const Text('Inspect public vacancies without changing your Admin identity.'),
           const SizedBox(height: 16),
           SegmentedButton<String>(
             segments: const [
@@ -551,124 +690,77 @@ class _AdminWebShellState extends State<AdminWebShell> {
             selected: {previewRole},
             onSelectionChanged: (value) => setState(() {
               previewRole = value.first;
-              previewTarget = null;
-              previewRecords = null;
+              previewSection = 'Home';
             }),
           ),
           const SizedBox(height: 16),
-          if (previewTarget == null) ...[
-            TextField(
-              onChanged: _search,
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Find a Worker or Employer',
-              ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'Home', label: Text('Home')),
+                ButtonSegment(value: 'Jobs', label: Text('Jobs')),
+                ButtonSegment(value: 'Map', label: Text('Map')),
+              ],
+              selected: {previewSection},
+              onSelectionChanged: (value) => setState(() => previewSection = value.first),
             ),
-            const SizedBox(height: 12),
-            _searchResults(role: previewRole, onSelect: _openPreview),
-          ] else ...[
-            _previewIdentity(),
-            const SizedBox(height: 12),
-            Text(
-                previewTarget!.title.isEmpty
-                    ? previewTarget!.id
-                    : previewTarget!.title,
-                style: WebTypography.sectionTitle),
-            Text('$previewRole  •  ${previewTarget!.id}',
-                style: WebTypography.metadata),
-            const SizedBox(height: 12),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'Profile', label: Text('Profile')),
-                  ButtonSegment(value: 'Jobs', label: Text('Jobs')),
-                  ButtonSegment(
-                      value: 'Applications', label: Text('Applications')),
-                  ButtonSegment(value: 'Chats', label: Text('Chats')),
-                ],
-                selected: {previewTab},
-                onSelectionChanged: (value) =>
-                    setState(() => previewTab = value.first),
-              ),
+          ),
+          const SizedBox(height: 16),
+          Row(children: [
+            const Expanded(child: Text('Live public vacancies', style: WebTypography.sectionTitle)),
+            IconButton(
+              tooltip: 'Refresh preview',
+              onPressed: () => setState(() {
+                previewJobs = searchService.publicPreviewJobs(widget.user.uid);
+              }),
+              icon: const Icon(Icons.refresh),
             ),
-            const SizedBox(height: 18),
-            if (previewTab == 'Profile')
-              for (final field in const [
-                'email',
-                'phone',
-                'trade',
-                'companyName',
-                'status',
-                'addressLine1',
-                'townCity',
-                'postcode'
-              ])
-                if (previewTarget!.data[field]?.toString().isNotEmpty == true)
-                  Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Text('$field: ${previewTarget!.data[field]}')),
-            if (previewTab != 'Profile')
-              FutureBuilder<List<WebAdminRecord>>(
-                future: previewRecords,
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return const Text('Could not load preview records.');
-                  }
-                  if (!snapshot.hasData) return const LinearProgressIndicator();
-                  final collection = previewTab.toLowerCase();
-                  final items = snapshot.data!
-                      .where((item) => item.collection == collection)
-                      .toList();
-                  if (items.isEmpty) {
-                    return const Text('No recent records.');
-                  }
-                  return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (final item in items)
-                          ListTile(
-                            title:
-                                Text(item.title.isEmpty ? item.id : item.title),
-                            subtitle: Text(item.status.isNotEmpty
-                                ? item.status
-                                : (item.data['lastMessage'] ?? item.text)
-                                    .toString()),
-                            onTap: () => item.collection == 'jobs'
-                                ? _showJobPreview(item)
-                                : _showRecord(item),
-                          ),
-                      ]);
-                },
-              ),
-          ],
+          ]),
+          FutureBuilder<List<WebAdminRecord>>(
+            future: previewJobs,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) return const Text('Could not load public vacancies.');
+              if (!snapshot.hasData) return const LinearProgressIndicator();
+              if (snapshot.data!.isEmpty) return const Text('No live vacancies.');
+              final jobs = snapshot.data!.where((job) {
+                final text = previewSearch.trim().toLowerCase();
+                return text.isEmpty || [job.title, job.text, job.id]
+                    .join(' ').toLowerCase().contains(text);
+              }).toList();
+              if (previewSection == 'Map') {
+                return _AdminPreviewMap(jobs: jobs,
+                    onOpenJob: _showJobPreview);
+              }
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (previewSection == 'Home')
+                  Padding(padding: const EdgeInsets.only(bottom: 16),
+                    child: Text(previewRole == 'worker'
+                      ? 'Worker home · ${snapshot.data!.length} live vacancies'
+                      : 'Employer home · public vacancy activity',
+                      style: WebTypography.cardTitle)),
+                TextField(
+                  onChanged: (value) => setState(() => previewSearch = value),
+                  decoration: const InputDecoration(prefixIcon: Icon(Icons.search),
+                    hintText: 'Search visible vacancies'),
+                ),
+                const SizedBox(height: 16),
+                if (jobs.isEmpty) const Text('No matching vacancies.'),
+                for (final record in jobs)
+                  Padding(padding: const EdgeInsets.only(bottom: 10),
+                    child: WebWorkerVacancyCard(
+                      job: Job.fromFirestore(record.id, record.data),
+                      selected: false,
+                      saved: false,
+                      showApplicationStatus: false,
+                      showVacancyLifecycleStatus: previewRole == 'employer',
+                      onTap: () => _showJobPreview(record),
+                    )),
+              ]);
+            },
+          ),
         ]),
       );
-
-  Widget _previewIdentity() {
-    final profile = WebProfileData(
-      id: previewTarget!.id,
-      data: previewTarget!.data,
-    );
-    return SizedBox(
-        height: 135,
-        child: Stack(children: [
-          Positioned.fill(
-              child: profile.headerUrl.isEmpty
-                  ? const ColoredBox(color: WebTheme.deep)
-                  : WebRemoteImage(url: profile.headerUrl, fit: BoxFit.cover)),
-          Positioned(
-              left: 16,
-              bottom: 12,
-              child: WebCircleImage(
-                url: profile.avatarUrl,
-                size: 70,
-                fallbackIcon: previewRole == 'worker'
-                    ? Icons.person_outline
-                    : Icons.business_outlined,
-              )),
-        ]));
-  }
 
   Widget _error(String message, VoidCallback retry) => Row(children: [
         Expanded(child: Text(message)),
@@ -676,41 +768,138 @@ class _AdminWebShellState extends State<AdminWebShell> {
       ]);
 }
 
-class _TrendPanel extends StatelessWidget {
-  const _TrendPanel({required this.title, required this.values});
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({required this.label, required this.value,
+    required this.currency, required this.percent});
 
-  final String title;
-  final List<int> values;
+  final String label;
+  final num? value;
+  final bool currency;
+  final bool percent;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 190,
+    padding: const EdgeInsets.all(15),
+    decoration: BoxDecoration(color: WebTheme.surface,
+      border: Border.all(color: WebTheme.border), borderRadius: BorderRadius.circular(6)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(value == null ? 'Unavailable' : currency
+          ? '£${(value! / 100).toStringAsFixed(2)}'
+          : percent ? '$value%' : '$value',
+        style: WebTypography.sectionTitle),
+      const SizedBox(height: 4),
+      Text(label, style: WebTypography.metadata),
+    ]),
+  );
+}
+
+class _AnalyticsChart extends StatelessWidget {
+  const _AnalyticsChart({required this.report, required this.currency});
+
+  final AdminAnalyticsReport report;
+  final bool currency;
 
   @override
   Widget build(BuildContext context) {
-    final maxValue = values.fold<int>(
-        0, (current, value) => value > current ? value : current);
-    final total = values.fold<int>(0, (current, value) => current + value);
+    final maxValue = report.series.values.expand((values) => values)
+        .fold<num>(0, (current, value) => value > current ? value : current);
+    final entries = report.series.entries.toList();
+    const colors = [WebTheme.accent, Color(0xFFB46B2B), Color(0xFF7A6BAA)];
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-          color: WebTheme.surface,
-          border: Border.all(color: WebTheme.border),
-          borderRadius: BorderRadius.circular(6)),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(color: WebTheme.surface,
+        border: Border.all(color: WebTheme.border), borderRadius: BorderRadius.circular(6)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('$title  •  $total recent', style: WebTypography.cardTitle),
-        const SizedBox(height: 12),
-        SizedBox(
-            height: 94,
-            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              for (final value in values)
-                Expanded(
-                    child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 1),
-                  child: Container(
-                    height: maxValue == 0 ? 2 : 2 + 90 * value / maxValue,
-                    color: WebTheme.accent,
-                  ),
+        Wrap(spacing: 18, runSpacing: 8, children: [
+          for (var seriesIndex = 0; seriesIndex < entries.length; seriesIndex++)
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(width: 10, height: 10,
+                color: colors[seriesIndex % colors.length]),
+              const SizedBox(width: 6),
+              Text(entries[seriesIndex].key),
+            ]),
+        ]),
+        const SizedBox(height: 16),
+        SizedBox(height: 188,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            for (var index = 0; index < report.keys.length; index++)
+              Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                SizedBox(height: 158, child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    for (var seriesIndex = 0; seriesIndex < entries.length; seriesIndex++)
+                      Expanded(child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 1),
+                        child: Tooltip(
+                          message: '${report.keys[index]}  ${entries[seriesIndex].key}: '
+                              '${currency ? '£${(entries[seriesIndex].value[index] / 100).toStringAsFixed(2)}' : entries[seriesIndex].value[index]}',
+                          child: InkWell(
+                            onTap: () => showDialog<void>(context: context,
+                              builder: (dialogContext) => AlertDialog(
+                                title: Text(report.keys[index]),
+                                content: Text('${entries[seriesIndex].key}: '
+                                    '${currency ? '£${(entries[seriesIndex].value[index] / 100).toStringAsFixed(2)}' : entries[seriesIndex].value[index]}'),
+                                actions: [TextButton(onPressed: () => Navigator.pop(dialogContext),
+                                  child: const Text('Close'))],
+                              )),
+                            child: Container(
+                              height: maxValue == 0 ? 4 :
+                                4 + 150 * entries[seriesIndex].value[index] / maxValue,
+                              color: colors[seriesIndex % colors.length],
+                            ),
+                          ),
+                        ),
+                      )),
+                  ],
                 )),
-            ])),
+                const SizedBox(height: 7),
+                SizedBox(height: 20, child: Text(
+                  index % (report.keys.length > 12 ? 5 : 1) == 0
+                    ? report.keys[index].substring(report.keys[index].length - 2) : '',
+                  style: WebTypography.metadata)),
+              ])),
+          ]),
+        ),
       ]),
     );
+  }
+}
+
+class _AdminPreviewMap extends StatelessWidget {
+  const _AdminPreviewMap({required this.jobs, required this.onOpenJob});
+
+  final List<WebAdminRecord> jobs;
+  final ValueChanged<WebAdminRecord> onOpenJob;
+
+  @override
+  Widget build(BuildContext context) {
+    final located = jobs.map((record) => (
+      record, Job.fromFirestore(record.id, record.data)))
+      .where((entry) => entry.$2.lat != 0 && entry.$2.lng != 0).toList();
+    final center = located.isEmpty ? const LatLng(53.4808, -2.2426)
+        : LatLng(located.first.$2.lat, located.first.$2.lng);
+    return SizedBox(height: 520, child: FlutterMap(
+      options: MapOptions(initialCenter: center, initialZoom: located.isEmpty ? 6 : 9,
+        minZoom: 3, maxZoom: 18,
+        interactionOptions: const InteractionOptions(flags:
+          InteractiveFlag.drag | InteractiveFlag.pinchMove |
+          InteractiveFlag.pinchZoom | InteractiveFlag.scrollWheelZoom |
+          InteractiveFlag.doubleTapZoom)),
+      children: [
+        TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.makaiov.builderjob'),
+        MarkerLayer(markers: [
+          for (final entry in located)
+            Marker(point: LatLng(entry.$2.lat, entry.$2.lng),
+              width: 42, height: 42,
+              child: IconButton(
+                tooltip: entry.$2.displayTitle,
+                onPressed: () => onOpenJob(entry.$1),
+                icon: const Icon(Icons.location_on, color: WebTheme.accent),
+              )),
+        ]),
+      ],
+    ));
   }
 }
