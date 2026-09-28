@@ -42,6 +42,8 @@ class _AdminWebShellState extends State<AdminWebShell> {
   late Future<AdminAnalyticsReport> analyticsResult;
   Future<List<WebAdminRecord>>? searchResults;
   late Future<List<WebAdminRecord>> previewJobs;
+  late Future<List<WebAdminRecord>> previewProfiles;
+  late Future<List<WebAdminRecord>> previewApplications;
   Timer? searchDebounce;
   AdminWorkspace section = AdminWorkspace.overview;
   AdminRequestTab requestTab = AdminRequestTab.support;
@@ -58,6 +60,8 @@ class _AdminWebShellState extends State<AdminWebShell> {
     access = admin.isAuthorized(widget.user.uid);
     _refreshOverview();
     previewJobs = searchService.publicPreviewJobs(widget.user.uid);
+    previewProfiles = searchService.previewProfiles(widget.user.uid, previewRole);
+    previewApplications = searchService.previewApplications(widget.user.uid);
   }
 
   @override
@@ -476,6 +480,14 @@ class _AdminWebShellState extends State<AdminWebShell> {
                       child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (section == AdminWorkspace.view)
+                        Container(
+                          width: double.infinity,
+                          color: WebTheme.accentSoft,
+                          padding: const EdgeInsets.all(8),
+                          child: const Text('ADMIN PREVIEW — READ ONLY',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
                       SelectableText('${record.collection}/${record.id}'),
                       const SizedBox(height: 12),
                       for (final field in fields)
@@ -493,7 +505,8 @@ class _AdminWebShellState extends State<AdminWebShell> {
             ));
   }
 
-  Future<void> _showUserProfile(WebAdminRecord initial) async {
+  Future<void> _showUserProfile(WebAdminRecord initial,
+      {bool readOnly = false}) async {
     var current = initial;
     var saving = false;
     final portfolio = initial.data['role'] == 'worker'
@@ -514,6 +527,14 @@ class _AdminWebShellState extends State<AdminWebShell> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (readOnly)
+                      Container(
+                        width: double.infinity,
+                        color: WebTheme.accentSoft,
+                        padding: const EdgeInsets.all(8),
+                        child: const Text('ADMIN PREVIEW — READ ONLY',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
                     SizedBox(
                       height: 180,
                       child: Stack(children: [
@@ -577,7 +598,7 @@ class _AdminWebShellState extends State<AdminWebShell> {
               ),
             ),
             actions: [
-              if (current.id != widget.user.uid)
+              if (!readOnly && current.id != widget.user.uid)
                 TextButton(
                   onPressed: saving ? null : () async {
                     final reason = TextEditingController();
@@ -680,7 +701,7 @@ class _AdminWebShellState extends State<AdminWebShell> {
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const Text('Product preview', style: WebTypography.panelTitle),
           const SizedBox(height: 8),
-          const Text('Inspect public vacancies without changing your Admin identity.'),
+          const Text('Inspect live product content without changing your Admin identity.'),
           const SizedBox(height: 16),
           SegmentedButton<String>(
             segments: const [
@@ -691,6 +712,8 @@ class _AdminWebShellState extends State<AdminWebShell> {
             onSelectionChanged: (value) => setState(() {
               previewRole = value.first;
               previewSection = 'Home';
+              previewProfiles = searchService.previewProfiles(
+                  widget.user.uid, previewRole);
             }),
           ),
           const SizedBox(height: 16),
@@ -701,12 +724,58 @@ class _AdminWebShellState extends State<AdminWebShell> {
                 ButtonSegment(value: 'Home', label: Text('Home')),
                 ButtonSegment(value: 'Jobs', label: Text('Jobs')),
                 ButtonSegment(value: 'Map', label: Text('Map')),
+                ButtonSegment(value: 'Applications', label: Text('Applications')),
+                ButtonSegment(value: 'Profiles', label: Text('Profiles')),
               ],
               selected: {previewSection},
               onSelectionChanged: (value) => setState(() => previewSection = value.first),
             ),
           ),
           const SizedBox(height: 16),
+          if (previewSection == 'Profiles')
+            FutureBuilder<List<WebAdminRecord>>(
+              future: previewProfiles,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) return const Text('Could not load profiles.');
+                if (!snapshot.hasData) return const LinearProgressIndicator();
+                if (snapshot.data!.isEmpty) return const Text('No active profiles.');
+                return Column(children: [
+                  for (final record in snapshot.data!)
+                    ListTile(
+                      leading: WebCircleImage(
+                        url: WebProfileData(id: record.id, data: record.data).avatarUrl,
+                        size: 40,
+                        fallbackIcon: previewRole == 'worker'
+                            ? Icons.person_outline : Icons.business_outlined),
+                      title: Text(WebProfileData(id: record.id, data: record.data).displayName),
+                      subtitle: Text(record.data['trade']?.toString() ??
+                          record.data['companyName']?.toString() ?? ''),
+                      onTap: () => _showUserProfile(record, readOnly: true),
+                    ),
+                ]);
+              },
+            )
+          else if (previewSection == 'Applications')
+            FutureBuilder<List<WebAdminRecord>>(
+              future: previewApplications,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) return const Text('Could not load applications.');
+                if (!snapshot.hasData) return const LinearProgressIndicator();
+                if (snapshot.data!.isEmpty) return const Text('No applications.');
+                return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Platform activity preview; no account is impersonated.',
+                      style: WebTypography.metadata),
+                  for (final record in snapshot.data!)
+                    ListTile(
+                      title: Text(record.data['jobTitle']?.toString() ?? record.id),
+                      subtitle: Text(record.status),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _showRecord(record),
+                    ),
+                ]);
+              },
+            )
+          else ...[
           Row(children: [
             const Expanded(child: Text('Live public vacancies', style: WebTypography.sectionTitle)),
             IconButton(
@@ -759,6 +828,7 @@ class _AdminWebShellState extends State<AdminWebShell> {
               ]);
             },
           ),
+          ],
         ]),
       );
 

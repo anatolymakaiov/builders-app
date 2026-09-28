@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../services/moderation_hold_service.dart';
+import '../../services/registration_lifecycle.dart';
 import '../services/web_admin_profile_service.dart';
 
 class AdminSearchService {
@@ -121,6 +123,35 @@ class AdminSearchService {
         .where((doc) =>
             const {'active', 'published', 'open'}.contains(doc.data()['status']))
         .map((doc) => WebAdminRecord('jobs', doc.id, doc.data()))
+        .toList(growable: false);
+  }
+
+  Future<List<WebAdminRecord>> previewProfiles(
+      String adminUid, String role) async {
+    if (!await _admin.isAuthorized(adminUid)) {
+      throw StateError('Administrator access required.');
+    }
+    if (role != 'worker' && role != 'employer') return const [];
+    final snapshot = await _db.collection('users')
+        .where('role', isEqualTo: role).limit(40).get();
+    return snapshot.docs
+        .where((doc) => doc.data()['active'] != false &&
+            doc.data()['deleted'] != true &&
+            doc.data()['accountDeleted'] != true &&
+            !ModerationHoldService.isProfileHeld(doc.data()) &&
+            RegistrationLifecycle.isComplete(doc.data()))
+        .map((doc) => WebAdminRecord('users', doc.id, doc.data()))
+        .toList(growable: false);
+  }
+
+  Future<List<WebAdminRecord>> previewApplications(String adminUid) async {
+    if (!await _admin.isAuthorized(adminUid)) {
+      throw StateError('Administrator access required.');
+    }
+    final snapshot = await _db.collection('applications')
+        .orderBy('createdAt', descending: true).limit(40).get();
+    return snapshot.docs
+        .map((doc) => WebAdminRecord('applications', doc.id, doc.data()))
         .toList(growable: false);
   }
 
