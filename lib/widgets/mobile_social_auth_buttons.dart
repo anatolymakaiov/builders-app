@@ -8,12 +8,16 @@ bool showMobileSocialAuthControls({required bool isWeb}) => !isWeb;
 class MobileSocialAuthButtons extends StatelessWidget {
   const MobileSocialAuthButtons({
     super.key,
+    required this.onEmail,
     required this.onSelected,
     this.enabled = true,
+    this.registration = false,
   });
 
+  final VoidCallback onEmail;
   final ValueChanged<SocialProvider> onSelected;
   final bool enabled;
+  final bool registration;
 
   @override
   Widget build(BuildContext context) {
@@ -22,51 +26,77 @@ class MobileSocialAuthButtons extends StatelessWidget {
     }
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        for (final provider in SocialProvider.values)
-          if (SocialAuthService.available(provider)) ...[
-            SizedBox(
-              height: 52,
-              child: OutlinedButton(
-                onPressed: enabled ? () => onSelected(provider) : null,
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: const Color(0xFF202B36),
-                  side: const BorderSide(color: Color(0xFFB7C5D1)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  textStyle: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                        width: 24,
-                        child: Center(child: _ProviderIcon(provider))),
-                    Expanded(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          switch (provider) {
-                            SocialProvider.google => 'Continue with Google',
-                            SocialProvider.apple => 'Continue with Apple',
-                            SocialProvider.facebook => 'Continue with Facebook',
-                          },
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 24),
-                  ],
-                ),
+        Text(
+          registration ? 'Register with' : 'Sign in with',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: const Color(0xFF202B36),
+                fontWeight: FontWeight.w700,
               ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _ProviderButton(
+              tooltip:
+                  registration ? 'Register with email' : 'Sign in with email',
+              onPressed: enabled ? onEmail : null,
+              icon: const Icon(Icons.mail_outline, size: 24),
             ),
-            const SizedBox(height: 8),
+            for (final provider in const [
+              SocialProvider.google,
+              SocialProvider.facebook,
+              SocialProvider.apple,
+            ])
+              if (SocialAuthService.available(provider)) ...[
+                const SizedBox(width: 8),
+                _ProviderButton(
+                  tooltip: switch (provider) {
+                    SocialProvider.google => 'Continue with Google',
+                    SocialProvider.apple => 'Continue with Apple',
+                    SocialProvider.facebook => 'Continue with Facebook',
+                  },
+                  onPressed: enabled ? () => onSelected(provider) : null,
+                  icon: _ProviderIcon(provider),
+                ),
+              ],
           ],
+        ),
       ],
     );
   }
+}
+
+class _ProviderButton extends StatelessWidget {
+  const _ProviderButton({
+    required this.tooltip,
+    required this.onPressed,
+    required this.icon,
+  });
+
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final Widget icon;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 48,
+        height: 48,
+        child: IconButton.outlined(
+          tooltip: tooltip,
+          onPressed: onPressed,
+          icon: icon,
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: const Color(0xFF202B36),
+            side: const BorderSide(color: Color(0xFFB7C5D1)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        ),
+      );
 }
 
 class _ProviderIcon extends StatelessWidget {

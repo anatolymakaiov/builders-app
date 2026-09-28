@@ -6,6 +6,7 @@ import 'app_spacing.dart';
 
 class StroykaInputField extends StatelessWidget {
   final TextEditingController? controller;
+  final FocusNode? focusNode;
   final String hintText;
   final IconData? prefixIcon;
   final bool isPassword;
@@ -13,6 +14,7 @@ class StroykaInputField extends StatelessWidget {
   const StroykaInputField({
     super.key,
     this.controller,
+    this.focusNode,
     required this.hintText,
     this.prefixIcon,
     this.isPassword = false,
@@ -35,6 +37,7 @@ class StroykaInputField extends StatelessWidget {
         ),
         child: TextField(
           controller: controller,
+          focusNode: focusNode,
           obscureText: isPassword,
           style: const TextStyle(
             color: Color(0xFF1A2B3C),

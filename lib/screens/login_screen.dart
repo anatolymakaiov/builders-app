@@ -46,6 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget authPage(Widget page) => widget.authPageBuilder?.call(page) ?? page;
 
   final emailController = TextEditingController();
+  final loginEmailFocusNode = FocusNode();
   final passwordController = TextEditingController();
   final registrationNameController = TextEditingController();
   final registrationLastNameController = TextEditingController();
@@ -387,6 +388,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     draftSaveTimer?.cancel();
     emailController.dispose();
+    loginEmailFocusNode.dispose();
     passwordController.dispose();
     registrationNameController.dispose();
     registrationLastNameController.dispose();
@@ -1121,6 +1123,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget socialActions() => MobileSocialAuthButtons(
         enabled: !loading,
+        onEmail: loginEmailFocusNode.requestFocus,
         onSelected: signInSocial,
       );
 
@@ -1132,14 +1135,9 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 16),
           MobileSocialAuthButtons(
             enabled: !loading,
+            registration: true,
+            onEmail: () => setState(() => registrationMethodSelected = true),
             onSelected: signInSocial,
-          ),
-          const SizedBox(height: 4),
-          OutlinedButton(
-            onPressed: loading
-                ? null
-                : () => setState(() => registrationMethodSelected = true),
-            child: const Text('Register with email'),
           ),
         ],
       );
@@ -1370,6 +1368,7 @@ class _LoginScreenState extends State<LoginScreen> {
             else ...[
               StroykaInputField(
                 controller: emailController,
+                focusNode: loginEmailFocusNode,
                 hintText: "Email",
                 prefixIcon: Icons.mail_outline,
               ),
@@ -1551,6 +1550,7 @@ class PasswordLoginScreen extends StatefulWidget {
 class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+  final emailFocusNode = FocusNode();
   final authPreferences = AuthPreferencesService();
   bool loading = false;
 
@@ -1586,6 +1586,7 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
+    emailFocusNode.dispose();
     super.dispose();
   }
 
@@ -1710,6 +1711,7 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
                             children: [
                               StroykaInputField(
                                 controller: emailController,
+                                focusNode: emailFocusNode,
                                 hintText: "Email",
                                 prefixIcon: Icons.mail_outline,
                               ),
@@ -1742,6 +1744,7 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
                               ),
                               MobileSocialAuthButtons(
                                 enabled: !loading,
+                                onEmail: emailFocusNode.requestFocus,
                                 onSelected: signInSocial,
                               ),
                             ],
