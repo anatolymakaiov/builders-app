@@ -7,6 +7,7 @@ import 'package:test_app/web_app/admin/admin_overview_service.dart';
 import 'package:test_app/web_app/services/web_admin_profile_service.dart';
 import 'package:test_app/web_app/services/web_admin_report_summary.dart';
 import 'package:test_app/web_app/shell/web_profile_destination.dart';
+import 'package:test_app/services/job_taxonomy_service.dart';
 
 void main() {
   test('only an administrator is routed into the dedicated Web shell', () {
@@ -15,9 +16,9 @@ void main() {
     expect(usesDedicatedAdminWebShell('employer'), isFalse);
   });
 
-  test('Admin shell exposes the four operational sections', () {
+  test('Admin shell exposes directory and operational sections', () {
     expect(AdminWorkspace.values.map((section) => section.name),
-        ['overview', 'requests', 'search', 'view']);
+        ['overview', 'requests', 'workers', 'employers', 'search', 'view']);
   });
 
   test('overview trend buckets use real calendar days', () {
@@ -124,15 +125,27 @@ void main() {
 
   test('admin search matches a full Worker name', () {
     const worker = WebAdminRecord('users', 'worker-1', {
-      'firstName': 'Alex', 'lastName': 'Taylor', 'role': 'worker',
+      'firstName': 'Alex',
+      'lastName': 'Taylor',
+      'role': 'worker',
     });
     expect(webAdminSearchMatches(worker, 'Alex Taylor'), isTrue);
   });
 
-  test('admin analytics parser retains exact series and unavailable values', () {
+  test('admin profession choices reuse the shared Dryliner taxonomy', () {
+    final role = JobTaxonomyService.bestRoleFor('fixer');
+    expect(role?.canonical, 'Dryliner');
+    expect(role?.searchableTerms, contains('dry liner'));
+    expect(role?.searchableTerms, contains('fixer'));
+  });
+
+  test('admin analytics parser retains exact series and unavailable values',
+      () {
     final result = AdminAnalyticsReport.fromMap({
       'keys': ['2026-09-01'],
-      'series': {'Hires': [2]},
+      'series': {
+        'Hires': [2]
+      },
       'kpis': {'Completed hires': 2, 'Retention percent': null},
       'notes': ['Historical data unavailable'],
     });

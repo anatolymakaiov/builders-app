@@ -19,8 +19,240 @@ const {
   selectAuthorizedAccountLinkGroup,
 } = require("./account_linking");
 const {report: adminAnalyticsReport} = require("./admin_analytics");
+const {normalized: adminDirectoryNormalized, filterDirectoryRecord,
+  broadcastTargetId, matchesBroadcastAudience} =
+  require("./admin_directory");
 
 admin.initializeApp();
+
+async function requireWebAdmin(request) {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const snapshot = await admin.firestore().collection("users").doc(request.auth.uid).get();
+  if (cleanText((snapshot.data() || {}).role).toLowerCase() !== "admin") {
+    throw new HttpsError("permission-denied", "Administrator access required.");
+  }
+}
+
+async function adminLocationCoordinates(location) {
+  const value = cleanText(location).slice(0, 80);
+  if (!value) return null;
+  const postcode = /^[a-z]{1,2}\d[a-z\d]?\s*\d[a-z]{2}$/i.test(value);
+  const url = postcode
+    ? `https://api.postcodes.io/postcodes/${encodeURIComponent(value)}`
+    : `https://api.postcodes.io/places?q=${encodeURIComponent(value)}&limit=10`;
+  const response = await fetch(url, {signal: AbortSignal.timeout(10000)});
+  if (!response.ok) throw new HttpsError("unavailable", "Location lookup failed.");
+  const payload = await response.json();
+  const matches = Array.isArray(payload.result) ? payload.result : [payload.result];
+  const chosen = postcode ? matches[0] : matches.find((item) =>
+    adminDirectoryNormalized(item && item.name_1) === adminDirectoryNormalized(value) &&
+    ["City", "Town", "Capital City", "Other Settlement"].includes(item.local_type));
+  const lat = Number(chosen && chosen.latitude);
+  const lng = Number(chosen && chosen.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) {
+    throw new HttpsError("invalid-argument", "Enter a recognised UK town, city or postcode.");
+  }
+  return {lat, lng};
+}
+
+async function adminPostcodeCoordinates(documents) {
+  const postcodes = [...new Set(documents.map((doc) =>
+    cleanText((doc.data() || {}).postcode || (doc.data() || {}).postCode))
+      .filter(Boolean))].slice(0, 100);
+  const coordinates = new Map();
+  if (!postcodes.length) return coordinates;
+  const response = await fetch("https://api.postcodes.io/postcodes?filter=postcode,longitude,latitude", {
+    method: "POST", headers: {"content-type": "application/json"},
+    body: JSON.stringify({postcodes}), signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) throw new HttpsError("unavailable", "Postcode lookup failed.");
+  for (const item of (await response.json()).result || []) {
+    const result = item.result || {};
+    if (Number.isFinite(result.latitude) && Number.isFinite(result.longitude)) {
+      coordinates.set(adminDirectoryNormalized(item.query),
+        {lat: result.latitude, lng: result.longitude});
+    }
+  }
+  return coordinates;
+}
+
+exports.listAdminDirectory = onCall({timeoutSeconds: 120, memory: "512MiB"}, async (request) => {
+  await requireWebAdmin(request);
+  const input = request.data || {};
+  const role = cleanText(input.role).toLowerCase();
+  if (!["worker", "employer"].includes(role)) {
+    throw new HttpsError("invalid-argument", "Choose Workers or Employers.");
+  }
+  const location = cleanText(input.location).slice(0, 80);
+  const radiusKm = Number(input.radiusKm);
+  if (input.radiusKm != null && ![5, 10, 20, 30, 50, 100].includes(radiusKm)) {
+    throw new HttpsError("invalid-argument", "Choose a supported radius.");
+  }
+  const origin = location && input.radiusKm != null
+    ? await adminLocationCoordinates(location) : null;
+  const filters = {
+    role, location, origin, radiusKm,
+    search: cleanText(input.search).slice(0, 100),
+    status: ["active", "blocked"].includes(input.status) ? input.status : "all",
+    professionTerms: role === "worker" && Array.isArray(input.professionTerms)
+      ? input.professionTerms.slice(0, 80).map((term) => cleanText(term).slice(0, 80)) : [],
+  };
+  const db = admin.firestore();
+  let cursor = cleanText(input.cursor).slice(0, 150);
+  let hasMore = false;
+  const records = [];
+  for (let page = 0; page < 5; page++) {
+    let query = db.collection("users")
+      .where("role", role === "employer" ? "in" : "==",
+        role === "employer" ? ["employer", "company"] : role)
+      .orderBy(admin.firestore.FieldPath.documentId()).limit(80);
+    if (cursor) query = query.startAfter(cursor);
+    const snapshot = await query.get();
+    if (snapshot.empty) { hasMore = false; break; }
+    cursor = snapshot.docs[snapshot.docs.length - 1].id;
+    const coordinates = origin ? await adminPostcodeCoordinates(snapshot.docs) : new Map();
+    for (const doc of snapshot.docs) {
+      const match = filterDirectoryRecord(doc.id, doc.data(), filters, coordinates);
+      if (match) records.push(match);
+    }
+    hasMore = snapshot.size === 80;
+    if (!hasMore || records.length >= 30) break;
+  }
+  if (origin) records.sort((a, b) => a.distanceKm - b.distanceKm);
+  return {records, nextCursor: hasMore ? cursor : null};
+});
+
+exports.createAdminBroadcast = onCall(async (request) => {
+  await requireWebAdmin(request);
+  const data = request.data || {};
+  const audience = cleanText(data.audience);
+  const subject = cleanText(data.subject).slice(0, 160);
+  const message = cleanText(data.message).slice(0, 5000);
+  const requestId = cleanText(data.requestId);
+  if (!["all", "worker", "employer"].includes(audience) || !subject || !message ||
+      !/^[a-zA-Z0-9_-]{12,80}$/.test(requestId)) {
+    throw new HttpsError("invalid-argument", "Audience, subject and message are required.");
+  }
+  const ref = admin.firestore().collection("admin_broadcasts").doc(requestId);
+  try {
+    await ref.create({audience, subject, message, senderId: request.auth.uid,
+      status: "queued", deliveredCount: 0, lastUserId: "",
+      createdAt: admin.firestore.FieldValue.serverTimestamp()});
+  } catch (error) {
+    if (error.code !== 6) throw error;
+    const previous = await ref.get();
+    const original = previous.data() || {};
+    if (original.senderId !== request.auth.uid || original.audience !== audience ||
+        original.subject !== subject || original.message !== message) {
+      throw new HttpsError("already-exists", "This message request already exists.");
+    }
+  }
+  return {broadcastId: ref.id, status: "queued"};
+});
+
+async function createBroadcastDocument(ref, data) {
+  try {
+    await ref.create(data);
+    return true;
+  } catch (error) {
+    if (error.code !== 6) throw error;
+    return false;
+  }
+}
+
+async function deliverAdminBroadcast(ref, data) {
+  const db = admin.firestore();
+  const audience = data.audience;
+  let query = db.collection("users").orderBy(admin.firestore.FieldPath.documentId()).limit(100);
+  if (audience !== "all") {
+    query = db.collection("users")
+      .where("role", audience === "employer" ? "in" : "==",
+        audience === "employer" ? ["employer", "company"] : audience)
+      .orderBy(admin.firestore.FieldPath.documentId()).limit(100);
+  }
+  if (data.lastUserId) query = query.startAfter(data.lastUserId);
+  const users = await query.get();
+  for (const user of users.docs) {
+    const profile = user.data();
+    const role = cleanText(profile.role);
+    if (!matchesBroadcastAudience(audience, profile)) continue;
+    const id = broadcastTargetId(ref.id, user.id);
+    const threadId = `broadcast_${id}`;
+    const now = data.createdAt || admin.firestore.Timestamp.now();
+    const base = {subject: data.subject, message: data.message,
+      audienceType: audience, broadcastId: ref.id, createdAt: now};
+    const name = cleanText(profile.companyName || profile.name || profile.displayName ||
+      [profile.firstName, profile.lastName].filter(Boolean).join(" ")) || user.id;
+    const notification = db.collection("users").doc(user.id)
+      .collection("notifications").doc(id);
+    await createBroadcastDocument(db.collection("admin_messages").doc(id), {
+      ...base, threadId, direction: "outgoing", senderId: "admin",
+      senderName: "Admin", senderRole: "admin", receiverId: user.id,
+      receiverName: name, receiverRole: role, recipientId: user.id,
+      recipientRole: role, threadParticipants: ["admin", user.id],
+      canReply: true, type: "admin_message", readByAdmin: true,
+      readByReceiver: false, deletedByAdmin: false, deletedByReceiver: false,
+      attachments: [], hasAttachments: false,
+    });
+    await createBroadcastDocument(db.collection("message_threads").doc(threadId), {
+      subject: data.subject, participants: ["admin", user.id],
+      lastMessage: data.message, lastMessageAt: now, lastSenderId: "admin",
+      unreadForAdmin: 0, updatedAt: now,
+    });
+    await createBroadcastDocument(db.collection("users").doc(user.id)
+      .collection("admin_inbox").doc(id), {
+      ...base, userId: user.id, title: data.subject, type: "admin_message",
+      targetType: "admin_message", targetId: threadId, audience: role,
+      canReply: true, read: false, threadId, adminMessageId: id,
+    });
+    await createBroadcastDocument(notification, {
+      ...base, notificationId: id, userId: user.id, type: "admin_message",
+      category: "admin", targetType: "admin_message", targetId: threadId,
+      threadId, adminMessageId: id, title: data.subject, read: false,
+      badgeEligible: true, pushEligible: true,
+      push: {title: data.subject, body: data.message, category: "admin",
+        sound: true, badge: true, data: {notificationId: id, userId: user.id,
+          type: "admin_message", category: "admin", targetType: "admin_message",
+          targetId: threadId, threadId, adminMessageId: id}},
+    });
+  }
+  const hasMore = users.size === 100;
+  const deliveredCount = hasMore ? null : (await db.collection("admin_messages")
+    .where("broadcastId", "==", ref.id).count().get()).data().count;
+  await ref.update({lastUserId: users.empty ? data.lastUserId : users.docs.at(-1).id,
+    ...(deliveredCount == null ? {} : {deliveredCount}),
+    status: hasMore ? "queued" : "complete", leaseUntil: null,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()});
+}
+
+exports.processAdminBroadcasts = onSchedule({schedule: "every 1 minutes",
+  timeoutSeconds: 300, memory: "512MiB"}, async () => {
+  const db = admin.firestore();
+  const [queued, sending] = await Promise.all([
+    db.collection("admin_broadcasts").where("status", "==", "queued").limit(5).get(),
+    db.collection("admin_broadcasts").where("status", "==", "sending").limit(5).get(),
+  ]);
+  for (const snapshot of [...queued.docs, ...sending.docs]) {
+    const claimed = await db.runTransaction(async (tx) => {
+      const current = await tx.get(snapshot.ref);
+      const data = current.data();
+      if (data?.status !== "queued" &&
+          !(data?.status === "sending" &&
+            (data.leaseUntil?.toMillis() || 0) < Date.now())) return null;
+      tx.update(snapshot.ref, {status: "sending",
+        leaseUntil: admin.firestore.Timestamp.fromMillis(Date.now() + 330000)});
+      return data;
+    });
+    if (!claimed) continue;
+    try {
+      await deliverAdminBroadcast(snapshot.ref, claimed);
+    } catch (error) {
+      console.error("ADMIN_BROADCAST_DELIVERY_ERROR", {id: snapshot.id, message: error.message});
+      await snapshot.ref.update({status: "queued", leaseUntil: null,
+        lastError: String(error.message || error).slice(0, 200)});
+    }
+  }
+});
 
 const idealPostcodesApiKey = defineSecret("IDEAL_POSTCODES_API_KEY");
 const goCardlessAccessToken = defineSecret("GOCARDLESS_ACCESS_TOKEN");

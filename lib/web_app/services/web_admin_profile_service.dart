@@ -118,10 +118,14 @@ class WebAdminProfileService {
   Future<List<WebAdminRecord>> loadRecentMany(List<String> collections) async {
     await _requireAdmin();
     final groups = await Future.wait(collections.map((collection) async {
-      final snapshot = await _db.collection(collection)
-          .orderBy('createdAt', descending: true).limit(80).get();
-      return snapshot.docs.map((doc) =>
-          WebAdminRecord(collection, doc.id, doc.data())).toList();
+      final snapshot = await _db
+          .collection(collection)
+          .orderBy('createdAt', descending: true)
+          .limit(80)
+          .get();
+      return snapshot.docs
+          .map((doc) => WebAdminRecord(collection, doc.id, doc.data()))
+          .toList();
     }));
     return _withRequesters([for (final group in groups) ...group]);
   }
@@ -129,16 +133,26 @@ class WebAdminProfileService {
   Future<List<WebAdminRecord>> _withRequesters(
       List<WebAdminRecord> records) async {
     String actorId(WebAdminRecord record) =>
-        ((record.data['direction'] == 'outgoing' ? record.data['receiverId'] : null) ??
-         record.data['userId'] ?? record.data['fromUserId'] ??
-         record.data['employerId'] ?? record.data['senderId'] ??
-         record.data['ownerId'])?.toString() ?? '';
-    final ids = records.map(actorId)
-        .where((id) => id.isNotEmpty && id != 'admin').toSet().toList();
+        ((record.data['direction'] == 'outgoing'
+                    ? record.data['receiverId']
+                    : null) ??
+                record.data['userId'] ??
+                record.data['fromUserId'] ??
+                record.data['employerId'] ??
+                record.data['senderId'] ??
+                record.data['ownerId'])
+            ?.toString() ??
+        '';
+    final ids = records
+        .map(actorId)
+        .where((id) => id.isNotEmpty && id != 'admin')
+        .toSet()
+        .toList();
     final people = <String, Map<String, dynamic>>{};
     for (var offset = 0; offset < ids.length; offset += 30) {
       final end = offset + 30 < ids.length ? offset + 30 : ids.length;
-      final snapshot = await _db.collection('users')
+      final snapshot = await _db
+          .collection('users')
           .where(FieldPath.documentId, whereIn: ids.sublist(offset, end))
           .get();
       for (final doc in snapshot.docs) {
@@ -150,15 +164,22 @@ class WebAdminProfileService {
       final person = people[id];
       final first = person?['firstName']?.toString() ?? '';
       final last = person?['lastName']?.toString() ?? '';
-      final name = [first, last].where((part) => part.trim().isNotEmpty)
-          .join(' ').trim();
-      final display = (person?['companyName'] ?? person?['name'] ??
-          person?['displayName'] ??
-          (name.isEmpty ? null : name) ??
-          record.data['requesterName'] ??
-          (record.data['direction'] == 'outgoing'
-              ? record.data['receiverName'] : record.data['senderName']) ??
-          record.data['companyName'] ?? '').toString().trim();
+      final name = [first, last]
+          .where((part) => part.trim().isNotEmpty)
+          .join(' ')
+          .trim();
+      final display = (person?['companyName'] ??
+              person?['name'] ??
+              person?['displayName'] ??
+              (name.isEmpty ? null : name) ??
+              record.data['requesterName'] ??
+              (record.data['direction'] == 'outgoing'
+                  ? record.data['receiverName']
+                  : record.data['senderName']) ??
+              record.data['companyName'] ??
+              '')
+          .toString()
+          .trim();
       return WebAdminRecord(record.collection, record.id, {
         ...record.data,
         'adminRequesterId': id,
@@ -508,6 +529,24 @@ class WebAdminProfileService {
     batch.set(_db.collection('unread_counters').doc('admin'),
         {'updatedAt': now}, SetOptions(merge: true));
     await batch.commit();
+  }
+
+  Future<String> queueBroadcast({
+    required String requestId,
+    required String audience,
+    required String subject,
+    required String message,
+  }) async {
+    await _requireAdmin();
+    final result = await FirebaseFunctions.instance
+        .httpsCallable('createAdminBroadcast')
+        .call({
+      'requestId': requestId,
+      'audience': audience,
+      'subject': subject,
+      'message': message,
+    });
+    return (result.data as Map)['broadcastId']?.toString() ?? '';
   }
 }
 

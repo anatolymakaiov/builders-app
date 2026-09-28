@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../../../models/job.dart';
@@ -6,6 +8,7 @@ import '../jobs/web_job_details_panel.dart';
 import '../../pages/chats/web_chat_media_widgets.dart';
 import '../../services/web_admin_inbox_media_service.dart';
 import '../../services/web_admin_profile_service.dart';
+import '../../admin/admin_search_service.dart';
 import '../../services/web_admin_report_summary.dart';
 import '../../services/web_chat_media_service.dart';
 import '../../theme/web_theme.dart';
@@ -165,21 +168,23 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
 
   void _refresh() => setState(_reloadAuthorized);
 
-  Future<void> _act(Future<void> Function() action) async {
-    if (busy) return;
+  Future<bool> _act(Future<void> Function() action) async {
+    if (busy) return false;
     setState(() => busy = true);
     try {
       await action();
-      if (!mounted) return;
+      if (!mounted) return true;
       _refresh();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Updated.')),
       );
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Action failed: $error')),
       );
+      return false;
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -351,7 +356,8 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
   Widget _record(WebAdminRecord item, {List<Widget> actions = const []}) {
     final heading = item.title.isNotEmpty ? item.title : item.id;
     final subtitle = item.text.isNotEmpty ? item.text : item.status;
-    final actor = (item.data['adminRequesterId'] ?? item.data['userId'] ??
+    final actor = (item.data['adminRequesterId'] ??
+            item.data['userId'] ??
             item.data['fromUserId'] ??
             item.data['employerId'] ??
             item.data['senderId'])
@@ -462,7 +468,15 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
     final subject =
         TextEditingController(text: reply?.data['subject']?.toString() ?? '');
     final message = TextEditingController();
+    final recipientQuery = TextEditingController();
     final selected = <WebPendingChatAttachment>[];
+    var audience = 'specific';
+    WebAdminRecord? selectedRecipient;
+    List<WebAdminRecord> recipientMatches = const [];
+    var searchingRecipients = false;
+    final requestId =
+        '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'
+        '${Random.secure().nextInt(0x7fffffff).toRadixString(36)}';
     try {
       final send = await showDialog<bool>(
           context: context,
@@ -475,10 +489,127 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
                             child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                              TextField(
-                                  controller: recipient,
-                                  decoration: const InputDecoration(
-                                      labelText: 'Recipient user ID')),
+                              if (audience == 'specific' && reply == null)
+                                TextField(
+                                    controller: recipientQuery,
+                                    onChanged: (_) => updateDialog(() {
+                                          selectedRecipient = null;
+                                          recipient.text = '';
+                                        }),
+                                    decoration: InputDecoration(
+                                      labelText: 'Find recipient',
+                                      hintText: 'Name, email, phone or UID',
+                                      suffixIcon: IconButton(
+                                        tooltip: 'Search users',
+                                        icon: searchingRecipients
+                                            ? const SizedBox(
+                                                width: 18,
+                                                height: 18,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                        strokeWidth: 2))
+                                            : const Icon(Icons.search),
+                                        onPressed: searchingRecipients ||
+                                                recipientQuery.text
+                                                        .trim()
+                                                        .length <
+                                                    2
+                                            ? null
+                                            : () async {
+                                                updateDialog(() =>
+                                                    searchingRecipients = true);
+                                                try {
+                                                  final found =
+                                                      await AdminSearchService()
+                                                          .search(
+                                                              widget.uid,
+                                                              recipientQuery
+                                                                  .text);
+                                                  if (dialogContext.mounted) {
+                                                    updateDialog(() =>
+                                                        recipientMatches = found
+                                                            .where((item) =>
+                                                                item.collection ==
+                                                                    'users' &&
+                                                                item.data[
+                                                                        'role'] !=
+                                                                    'admin')
+                                                            .take(12)
+                                                            .toList());
+                                                  }
+                                                } catch (error) {
+                                                  if (dialogContext.mounted) {
+                                                    ScaffoldMessenger.of(
+                                                            dialogContext)
+                                                        .showSnackBar(SnackBar(
+                                                            content: Text(
+                                                                'Recipient search failed: $error')));
+                                                  }
+                                                } finally {
+                                                  if (dialogContext.mounted) {
+                                                    updateDialog(() =>
+                                                        searchingRecipients =
+                                                            false);
+                                                  }
+                                                }
+                                              },
+                                      ),
+                                    )),
+                              if (reply == null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue: audience,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Audience'),
+                                    items: const [
+                                      DropdownMenuItem(
+                                          value: 'specific',
+                                          child: Text('Specific user')),
+                                      DropdownMenuItem(
+                                          value: 'all',
+                                          child: Text('All users')),
+                                      DropdownMenuItem(
+                                          value: 'worker',
+                                          child: Text('All Workers')),
+                                      DropdownMenuItem(
+                                          value: 'employer',
+                                          child: Text('All Employers')),
+                                    ],
+                                    onChanged: (value) => updateDialog(
+                                        () => audience = value ?? 'specific'),
+                                  ),
+                                ),
+                              if (audience == 'specific') ...[
+                                if (reply != null)
+                                  ListTile(
+                                      title: Text(
+                                          'Reply to: ${reply.data['direction'] == 'outgoing' ? reply.data['receiverName'] ?? recipient.text : reply.data['senderName'] ?? recipient.text}'),
+                                      subtitle:
+                                          const Text('Existing conversation')),
+                                if (selectedRecipient != null)
+                                  ListTile(
+                                      leading: const Icon(Icons.person_outline),
+                                      title: Text(selectedRecipient!.title),
+                                      subtitle: Text(
+                                          '${selectedRecipient!.text} · ${selectedRecipient!.id}')),
+                                if (reply == null &&
+                                    recipientMatches.isNotEmpty)
+                                  SizedBox(
+                                      height: 160,
+                                      child: ListView(children: [
+                                        for (final match in recipientMatches)
+                                          ListTile(
+                                              title: Text(match.title),
+                                              subtitle: Text(
+                                                  '${match.text} · ${match.id}'),
+                                              onTap: () => updateDialog(() {
+                                                    selectedRecipient = match;
+                                                    recipient.text = match.id;
+                                                    recipientMatches = const [];
+                                                  })),
+                                      ])),
+                              ],
                               const SizedBox(height: 8),
                               TextField(
                                   controller: subject,
@@ -491,31 +622,33 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
                                   decoration: const InputDecoration(
                                       labelText: 'Message')),
                               const SizedBox(height: 8),
-                              OutlinedButton.icon(
-                                  onPressed: () async {
-                                    try {
-                                      final picked =
-                                          await WebAdminInboxMediaService()
-                                              .pickAttachments();
-                                      if (dialogContext.mounted) {
-                                        updateDialog(
-                                            () => selected.addAll(picked));
+                              if (audience == 'specific')
+                                OutlinedButton.icon(
+                                    onPressed: () async {
+                                      try {
+                                        final picked =
+                                            await WebAdminInboxMediaService()
+                                                .pickAttachments();
+                                        if (dialogContext.mounted) {
+                                          updateDialog(
+                                              () => selected.addAll(picked));
+                                        }
+                                      } catch (error) {
+                                        if (dialogContext.mounted) {
+                                          ScaffoldMessenger.of(dialogContext)
+                                              .showSnackBar(SnackBar(
+                                                  content: Text(
+                                                      'Could not select files: $error')));
+                                        }
                                       }
-                                    } catch (error) {
-                                      if (dialogContext.mounted) {
-                                        ScaffoldMessenger.of(dialogContext)
-                                            .showSnackBar(SnackBar(
-                                                content: Text(
-                                                    'Could not select files: $error')));
-                                      }
-                                    }
-                                  },
-                                  icon: const Icon(Icons.attach_file),
-                                  label: const Text('Attach files')),
-                              WebPendingAttachmentsPreview(
-                                  attachments: selected,
-                                  onRemove: (index) => updateDialog(
-                                      () => selected.removeAt(index))),
+                                    },
+                                    icon: const Icon(Icons.attach_file),
+                                    label: const Text('Attach files')),
+                              if (audience == 'specific')
+                                WebPendingAttachmentsPreview(
+                                    attachments: selected,
+                                    onRemove: (index) => updateDialog(
+                                        () => selected.removeAt(index))),
                             ]))),
                     actions: [
                       TextButton(
@@ -527,7 +660,52 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
                     ],
                   )));
       if (send != true || !mounted) return;
+      if (audience != 'specific') {
+        if (subject.text.trim().isEmpty || message.text.trim().isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Subject and message are required.')));
+          return;
+        }
+        final label = switch (audience) {
+          'worker' => 'all Workers',
+          'employer' => 'all Employers',
+          _ => 'all users',
+        };
+        final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (confirmContext) => AlertDialog(
+                  title: Text('Send this message to $label?'),
+                  content: Text(
+                      'Subject: ${subject.text.trim()}\n\nThis sends to every matching account.'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(confirmContext, false),
+                        child: const Text('Cancel')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(confirmContext, true),
+                        child: const Text('Confirm broadcast')),
+                  ],
+                ));
+        if (confirmed != true || !mounted) return;
+        final queued = await _act(() async {
+          await service.queueBroadcast(
+              requestId: requestId,
+              audience: audience,
+              subject: subject.text,
+              message: message.text);
+        });
+        if (queued && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Message queued for $label.')));
+        }
+        return;
+      }
       final uid = recipient.text.trim();
+      if (uid.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Select a recipient before sending.')));
+        return;
+      }
       final role = reply == null
           ? ''
           : (reply.data['direction'] == 'outgoing'
@@ -551,6 +729,7 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
       });
     } finally {
       recipient.dispose();
+      recipientQuery.dispose();
       subject.dispose();
       message.dispose();
     }

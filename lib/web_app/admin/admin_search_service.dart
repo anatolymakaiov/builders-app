@@ -109,6 +109,21 @@ class AdminSearchService {
         : WebAdminRecord('users', doc.id, doc.data()!);
   }
 
+  Future<List<WebAdminRecord>> employerJobs(
+      String adminUid, String employerId) async {
+    if (!await _admin.isAuthorized(adminUid)) {
+      throw StateError('Administrator access required.');
+    }
+    final snapshot = await _db
+        .collection('jobs')
+        .where('ownerId', isEqualTo: employerId)
+        .limit(30)
+        .get();
+    return snapshot.docs
+        .map((doc) => WebAdminRecord('jobs', doc.id, doc.data()))
+        .toList(growable: false);
+  }
+
   Future<List<WebAdminRecord>> publicPreviewJobs(String adminUid) async {
     if (!await _admin.isAuthorized(adminUid)) {
       throw StateError('Administrator access required.');
@@ -120,8 +135,8 @@ class AdminSearchService {
         .limit(60)
         .get();
     return snapshot.docs
-        .where((doc) =>
-            const {'active', 'published', 'open'}.contains(doc.data()['status']))
+        .where((doc) => const {'active', 'published', 'open'}
+            .contains(doc.data()['status']))
         .map((doc) => WebAdminRecord('jobs', doc.id, doc.data()))
         .toList(growable: false);
   }
@@ -132,10 +147,14 @@ class AdminSearchService {
       throw StateError('Administrator access required.');
     }
     if (role != 'worker' && role != 'employer') return const [];
-    final snapshot = await _db.collection('users')
-        .where('role', isEqualTo: role).limit(40).get();
+    final snapshot = await _db
+        .collection('users')
+        .where('role', isEqualTo: role)
+        .limit(40)
+        .get();
     return snapshot.docs
-        .where((doc) => doc.data()['active'] != false &&
+        .where((doc) =>
+            doc.data()['active'] != false &&
             doc.data()['deleted'] != true &&
             doc.data()['accountDeleted'] != true &&
             !ModerationHoldService.isProfileHeld(doc.data()) &&
@@ -148,8 +167,11 @@ class AdminSearchService {
     if (!await _admin.isAuthorized(adminUid)) {
       throw StateError('Administrator access required.');
     }
-    final snapshot = await _db.collection('applications')
-        .orderBy('createdAt', descending: true).limit(40).get();
+    final snapshot = await _db
+        .collection('applications')
+        .orderBy('createdAt', descending: true)
+        .limit(40)
+        .get();
     return snapshot.docs
         .map((doc) => WebAdminRecord('applications', doc.id, doc.data()))
         .toList(growable: false);
