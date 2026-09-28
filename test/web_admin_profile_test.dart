@@ -1,11 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/web_app/pages/profile/web_admin_profile_page.dart';
+import 'package:test_app/web_app/admin/admin_web_shell.dart';
+import 'package:test_app/web_app/admin/admin_overview_service.dart';
 import 'package:test_app/web_app/services/web_admin_profile_service.dart';
 import 'package:test_app/web_app/services/web_admin_report_summary.dart';
 import 'package:test_app/web_app/shell/web_profile_destination.dart';
 
 void main() {
+  test('only an administrator is routed into the dedicated Web shell', () {
+    expect(usesDedicatedAdminWebShell('admin'), isTrue);
+    expect(usesDedicatedAdminWebShell('worker'), isFalse);
+    expect(usesDedicatedAdminWebShell('employer'), isFalse);
+  });
+
+  test('Admin shell exposes the four operational sections', () {
+    expect(AdminWorkspace.values.map((section) => section.name),
+        ['overview', 'requests', 'search', 'view']);
+  });
+
+  test('overview trend buckets use real calendar days', () {
+    final start = DateTime(2026, 9, 1);
+    expect(
+        adminDailyBuckets([
+          DateTime(2026, 8, 31),
+          DateTime(2026, 9, 1, 8),
+          DateTime(2026, 9, 1, 19),
+          DateTime(2026, 9, 3),
+        ], start, 3),
+        [2, 0, 1]);
+  });
+
   test('own administrator resolves to the admin Web profile', () {
     expect(
         resolveWebProfileDestination(

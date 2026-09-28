@@ -10,6 +10,7 @@ import '../../widgets/auth_session_gate.dart';
 import '../../widgets/legal_documents.dart';
 import '../services/web_password_sign_in.dart';
 import '../shell/web_shell.dart';
+import '../admin/admin_web_shell.dart';
 import '../portrait/portrait_web_auth.dart';
 import '../portrait/portrait_web_layout.dart';
 import '../portrait/portrait_web_shell.dart';
@@ -116,6 +117,13 @@ class _WebAuthGateState extends State<WebAuthGate> {
                     .completePendingNewAccountLink()
                     .catchError((_) {});
               });
+            }
+            if (usesDedicatedAdminWebShell(resolution.role)) {
+              return AdminWebShell(
+                key: ValueKey('admin-web-shell:${user.uid}'),
+                user: user,
+                profile: resolution.profile,
+              );
             }
             return WebPresentationDispatcher(
               key: ValueKey('web-presentation:${user.uid}'),

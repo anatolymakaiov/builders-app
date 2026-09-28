@@ -101,6 +101,48 @@ class WebAdminProfileService {
     return [for (final group in groups) ...group];
   }
 
+  Future<List<WebAdminRecord>> loadRecent(String collection,
+      {int limit = 80}) async {
+    await _requireAdmin();
+    final snapshot = await _db
+        .collection(collection)
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .get();
+    return snapshot.docs
+        .map((doc) => WebAdminRecord(collection, doc.id, doc.data()))
+        .toList(growable: false);
+  }
+
+  Future<List<WebAdminRecord>> loadRecentMany(List<String> collections) async {
+    final groups = await Future.wait(
+      collections.map((collection) => loadRecent(collection)),
+    );
+    return [for (final group in groups) ...group];
+  }
+
+  Future<List<WebAdminRecord>> loadPendingApprovals() async {
+    await _requireAdmin();
+    final results = await Future.wait([
+      _db
+          .collection('jobs')
+          .where('moderationStatus', isEqualTo: 'pending_review')
+          .limit(100)
+          .get(),
+      _db
+          .collection('vacancy_edit_reviews')
+          .where('reviewStatus', isEqualTo: 'pending')
+          .limit(100)
+          .get(),
+    ]);
+    return [
+      for (final doc in results[0].docs)
+        WebAdminRecord('jobs', doc.id, doc.data()),
+      for (final doc in results[1].docs)
+        WebAdminRecord('vacancy_edit_reviews', doc.id, doc.data()),
+    ];
+  }
+
   Future<void> holdUser(WebAdminRecord user, String reason) async {
     await _requireAdmin();
     final role = user.data['role']?.toString() ?? 'worker';

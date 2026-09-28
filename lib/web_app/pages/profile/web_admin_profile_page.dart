@@ -59,6 +59,9 @@ class WebAdminProfilePage extends StatefulWidget {
     required this.onClose,
     required this.onOpenProfile,
     this.service,
+    this.initialSection = WebAdminSection.inbox,
+    this.embedded = false,
+    this.requestCollections,
   });
 
   final String uid;
@@ -66,6 +69,9 @@ class WebAdminProfilePage extends StatefulWidget {
   final VoidCallback onClose;
   final void Function(String, String) onOpenProfile;
   final WebAdminProfileService? service;
+  final WebAdminSection initialSection;
+  final bool embedded;
+  final List<String>? requestCollections;
 
   @override
   State<WebAdminProfilePage> createState() => _WebAdminProfilePageState();
@@ -75,7 +81,7 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
   late WebAdminProfileService service;
   late Future<bool> access;
   late Future<List<WebAdminRecord>> records;
-  WebAdminSection section = WebAdminSection.inbox;
+  late WebAdminSection section;
   String query = '';
   String inboxView = 'Incoming';
   bool busy = false;
@@ -84,6 +90,7 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
   void initState() {
     super.initState();
     service = widget.service ?? WebAdminProfileService();
+    section = widget.initialSection;
     access = service.isAuthorized(widget.uid);
     records = access
         .then((allowed) async => allowed ? await _load() : <WebAdminRecord>[]);
@@ -95,12 +102,30 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
     if (oldWidget.uid != widget.uid) {
       service = widget.service ?? WebAdminProfileService();
       access = service.isAuthorized(widget.uid);
+      section = widget.initialSection;
       records = access.then(
           (allowed) async => allowed ? await _load() : <WebAdminRecord>[]);
+    } else if (oldWidget.initialSection != widget.initialSection) {
+      section = widget.initialSection;
+      _reloadAuthorized();
     }
   }
 
   Future<List<WebAdminRecord>> _load() {
+    if (widget.embedded) {
+      switch (section) {
+        case WebAdminSection.inbox:
+          return service.loadRecent('admin_messages');
+        case WebAdminSection.jobs:
+          return service.loadPendingApprovals();
+        case WebAdminSection.requests:
+          return service.loadRecentMany(widget.requestCollections ??
+              ['support_requests', 'reports', 'payment_requests']);
+        case WebAdminSection.search:
+        case WebAdminSection.reports:
+          return Future.value(const <WebAdminRecord>[]);
+      }
+    }
     switch (section) {
       case WebAdminSection.inbox:
         return service.load('admin_messages');
@@ -205,10 +230,12 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _header(),
-              const SizedBox(height: WebSpacing.lg),
-              _tabs(),
-              const SizedBox(height: WebSpacing.lg),
+              if (!widget.embedded) ...[
+                _header(),
+                const SizedBox(height: WebSpacing.lg),
+                _tabs(),
+                const SizedBox(height: WebSpacing.lg),
+              ],
               FutureBuilder<List<WebAdminRecord>>(
                 future: records,
                 builder: (context, snapshot) {
@@ -324,6 +351,18 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
   Widget _record(WebAdminRecord item, {List<Widget> actions = const []}) {
     final heading = item.title.isNotEmpty ? item.title : item.id;
     final subtitle = item.text.isNotEmpty ? item.text : item.status;
+    final actor = (item.data['userId'] ??
+            item.data['fromUserId'] ??
+            item.data['employerId'] ??
+            item.data['senderId'])
+        ?.toString();
+    final metadata = [
+      if (item.date.year > 1970)
+        '${MaterialLocalizations.of(context).formatMediumDate(item.date.toLocal())} '
+            '${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(item.date.toLocal()))}',
+      if (actor != null && actor.isNotEmpty) actor,
+      if (item.data['readByAdmin'] == false) 'Unread',
+    ];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: WebSpacing.sm),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -332,6 +371,8 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
           Text(subtitle, maxLines: 3, overflow: TextOverflow.ellipsis),
         if (item.status.isNotEmpty)
           Text(item.status, style: WebTypography.metadata),
+        if (metadata.isNotEmpty)
+          Text(metadata.join('  •  '), style: WebTypography.metadata),
         if (actions.isNotEmpty)
           Wrap(spacing: 8, runSpacing: 4, children: actions),
         const Divider(height: 16),
