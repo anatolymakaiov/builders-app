@@ -491,7 +491,10 @@ class _WebShellState extends State<WebShell> {
   }
 
   void _updateOwnProfile(Map<String, dynamic> updates) {
-    setState(() => liveProfile = {...liveProfile, ...updates});
+    setState(() {
+      liveProfile = {...liveProfile, ...updates};
+      if (updates.containsKey('companyLogoUrl')) jobsRefreshRequestId++;
+    });
   }
 
   void _openNotifications() {

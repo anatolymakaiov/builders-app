@@ -213,7 +213,7 @@ class _Hero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final photo = job.photos.isNotEmpty ? job.photos.first.trim() : '';
+    final photo = webVacancyCoverPhoto(job.photos);
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 420;

@@ -16,6 +16,7 @@ import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
 import '../../widgets/web_design_components.dart';
 import '../../widgets/web_vacancy_import_dialog.dart';
+import 'web_job_display.dart';
 
 class WebPostJobPage extends StatefulWidget {
   const WebPostJobPage({
@@ -405,6 +406,9 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
                 onRemove: (url) => setState(
                   () => photos = photos.where((item) => item != url).toList(),
                 ),
+                onSetCover: (url) => setState(() {
+                  photos = webVacancyPhotosWithCover(photos, url);
+                }),
               ),
               if (uploading) ...[
                 const SizedBox(height: 12),
@@ -746,10 +750,15 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
 }
 
 class _PhotoPreview extends StatelessWidget {
-  const _PhotoPreview({required this.photos, required this.onRemove});
+  const _PhotoPreview({
+    required this.photos,
+    required this.onRemove,
+    required this.onSetCover,
+  });
 
   final List<String> photos;
   final ValueChanged<String> onRemove;
+  final ValueChanged<String> onSetCover;
 
   @override
   Widget build(BuildContext context) {
@@ -772,6 +781,21 @@ class _PhotoPreview extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             WebRemoteImage(url: url, borderRadius: 10),
+            Positioned(
+              left: 4,
+              bottom: 4,
+              child: index == 0
+                  ? const Chip(label: Text('Cover'))
+                  : IconButton.filledTonal(
+                      tooltip: 'Set as cover',
+                      onPressed: () => onSetCover(url),
+                      icon: const Icon(Icons.wallpaper_outlined, size: 16),
+                      style: IconButton.styleFrom(
+                        fixedSize: const Size(30, 30),
+                        minimumSize: const Size(30, 30),
+                      ),
+                    ),
+            ),
             Positioned(
               right: 4,
               top: 4,

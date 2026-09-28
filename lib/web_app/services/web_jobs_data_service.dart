@@ -263,9 +263,8 @@ class WebJobsDataService {
                 (liveName == 'Company' && job.companyName.trim().isNotEmpty)
             ? job.companyName
             : liveName,
-        companyLogo: identity.avatarUrl.trim().isEmpty
-            ? job.companyLogo
-            : identity.avatarUrl,
+        // The live company profile is authoritative, including logo removal.
+        companyLogo: identity.avatarUrl,
       );
     }
   }

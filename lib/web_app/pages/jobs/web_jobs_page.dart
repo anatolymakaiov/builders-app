@@ -166,41 +166,48 @@ class _WebJobsPageState extends State<WebJobsPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (creatingJob || editingJob != null) {
-      final editedJob = editingJob;
-      return WebPostJobPage(
-        key: ValueKey<String>(
-          'web-post-job:${editedJob?.id ?? 'new'}',
+    final editedJob = editingJob;
+    final showingEditor = creatingJob || editedJob != null;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Offstage(
+          offstage: showingEditor,
+          child: _buildJobs(),
         ),
-        userId: widget.userId,
-        existingJob: editedJob,
-        onCancel: () => setState(() {
-          creatingJob = false;
-          editingJob = null;
-        }),
-        onDone: (jobId) {
-          setState(() {
-            creatingJob = false;
-            editingJob = null;
-            mode = WebJobsMode.owner;
-            if (jobId != null && jobId.isNotEmpty) selectedJobId = jobId;
-            _resetJobsStream();
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                editedJob == null
+        if (showingEditor)
+          WebPostJobPage(
+            key: ValueKey<String>('web-post-job:${editedJob?.id ?? 'new'}'),
+            userId: widget.userId,
+            existingJob: editedJob,
+            onCancel: () => setState(() {
+              creatingJob = false;
+              editingJob = null;
+            }),
+            onDone: (jobId) {
+              setState(() {
+                creatingJob = false;
+                editingJob = null;
+                mode = WebJobsMode.owner;
+                if (jobId != null && jobId.isNotEmpty) selectedJobId = jobId;
+                _resetJobsStream();
+              });
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(editedJob == null
                     ? 'Vacancy sent for approval'
-                    : 'Vacancy edit sent for review',
-              ),
+                    : 'Vacancy edit sent for review'),
+              ));
+            },
+            onOpenBilling: () => ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text('Open Billing from your profile menu.')),
             ),
-          );
-        },
-        onOpenBilling: () => ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Open Billing from your profile menu.')),
-        ),
-      );
-    }
+          ),
+      ],
+    );
+  }
+
+  Widget _buildJobs() {
     return StreamBuilder<WebDataState<WebJobsResult>>(
       stream: jobsStream,
       builder: (context, snapshot) {

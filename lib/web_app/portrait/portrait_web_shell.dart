@@ -338,8 +338,10 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
       onOpenJob: (id, ownerView) => _openJob(id, ownerMode: ownerView),
       onAdminInbox: () => _openAccount(WebAccountDestination.adminInbox),
       onOwnProfileChanged: profileId == widget.user.uid
-          ? (updates) =>
-              setState(() => liveProfile = {...liveProfile, ...updates})
+          ? (updates) => setState(() {
+                liveProfile = {...liveProfile, ...updates};
+                if (updates.containsKey('companyLogoUrl')) jobsRefresh++;
+              })
           : null,
     );
   }
