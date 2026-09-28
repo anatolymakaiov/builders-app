@@ -1,13 +1,5 @@
 import '../../../models/job.dart';
 
-String webVacancyCoverPhoto(List<String> photos) =>
-    photos.isEmpty ? '' : photos.first.trim();
-
-List<String> webVacancyPhotosWithCover(List<String> photos, String cover) => [
-      cover,
-      ...photos.where((photo) => photo != cover),
-    ];
-
 String webJobWorkFormat(Job job) {
   switch (job.jobType.trim().toLowerCase()) {
     case 'price':

@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/job.dart';
 import '../../services/moderation_hold_service.dart';
 import 'web_data_state.dart';
+import 'web_company_branding.dart';
 import 'web_role_identity_service.dart';
 
 class WebJobsDataService {
@@ -125,10 +126,11 @@ class WebJobsDataService {
     ));
     // Identity reads are presentation enrichment; vacancy documents are ready.
     final allJobs = [...publicJobs, ...ownerJobs];
-    await _enrichCompanyIdentity(allJobs);
+    final companyBranding = await enrichCompanyIdentity(allJobs);
     return WebJobsResult(
       publicJobs: allJobs.take(publicJobs.length).toList(),
       ownerJobs: allJobs.skip(publicJobs.length).toList(),
+      companyBranding: companyBranding,
     );
   }
 
@@ -161,7 +163,7 @@ class WebJobsDataService {
         .where((job) =>
             ownProfile ? _isOwnerWebJob(job, ownerId) : _isPublicWebJob(job))
         .toList();
-    await _enrichCompanyIdentity(jobs);
+    await enrichCompanyIdentity(jobs);
     _sortNewest(jobs);
     return jobs;
   }
@@ -202,21 +204,16 @@ class WebJobsDataService {
     QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) {
     final data = document.data();
-    return Job.fromFirestore(document.id, {
-      ...data,
-      'companyName': _firstNonEmpty(data, const [
-        'companyName',
-        'employerName',
-        'businessName',
-      ]),
-      'companyLogo': _firstNonEmpty(data, const [
-        'companyLogo',
-        'companyLogoUrl',
-        'companyAvatarUrl',
-        'employerAvatarUrl',
-        'logo',
-      ]),
-    });
+    return Job.fromFirestore(
+        document.id,
+        webJobWithoutSnapshotBranding({
+          ...data,
+          'companyName': _firstNonEmpty(data, const [
+            'companyName',
+            'employerName',
+            'businessName',
+          ]),
+        }));
   }
 
   String _firstNonEmpty(
@@ -230,7 +227,8 @@ class WebJobsDataService {
     return '';
   }
 
-  Future<void> _enrichCompanyIdentity(List<Job> jobs) async {
+  Future<Map<String, WebCompanyBranding>> enrichCompanyIdentity(
+      List<Job> jobs) async {
     final identities = <String, Future<WebRoleIdentity?>>{};
     for (final job in jobs) {
       final ownerId = job.ownerId.trim();
@@ -248,15 +246,21 @@ class WebJobsDataService {
         }
       });
     }
-    if (identities.isEmpty) return;
+    if (identities.isEmpty) return const {};
     final resolved = <String, WebRoleIdentity?>{};
     await Future.wait(identities.entries.map((entry) async {
       resolved[entry.key] = await entry.value;
     }));
+    final branding = <String, WebCompanyBranding>{};
+    for (final entry in resolved.entries) {
+      branding[entry.key] = WebCompanyBranding.fromProfile(
+        entry.value?.data ?? const {},
+      );
+    }
     for (var index = 0; index < jobs.length; index++) {
       final job = jobs[index];
       final identity = resolved[job.ownerId.trim()];
-      if (identity == null || identity.data.isEmpty) continue;
+      if (identity == null) continue;
       final liveName = identity.displayName.trim();
       jobs[index] = job.copyWith(
         companyName: liveName.isEmpty ||
@@ -264,9 +268,22 @@ class WebJobsDataService {
             ? job.companyName
             : liveName,
         // The live company profile is authoritative, including logo removal.
-        companyLogo: identity.avatarUrl,
+        companyLogo: branding[job.ownerId.trim()]?.logoUrl ?? '',
       );
     }
+    return branding;
+  }
+
+  Future<WebCompanyBranding> loadCompanyBranding(String ownerId) async {
+    if (ownerId.isEmpty || ownerId == 'unknown') {
+      return const WebCompanyBranding();
+    }
+    final identity = await _identityResolver.resolve(
+      userId: ownerId,
+      role: 'employer',
+      useCache: false,
+    );
+    return WebCompanyBranding.fromProfile(identity.data);
   }
 
   Future<Set<String>> savedJobIds(String userId) async {
@@ -450,10 +467,12 @@ class WebJobsResult {
   const WebJobsResult({
     required this.publicJobs,
     required this.ownerJobs,
+    this.companyBranding = const {},
   });
 
   final List<Job> publicJobs;
   final List<Job> ownerJobs;
+  final Map<String, WebCompanyBranding> companyBranding;
 
   List<Job> jobsForMode(WebJobsMode mode, String role) {
     if (role == 'employer' && mode == WebJobsMode.owner) return ownerJobs;

@@ -438,6 +438,9 @@ class _WebJobsPageState extends State<WebJobsPage> {
                         : WebJobDetailsPanel(
                             key: ValueKey<String?>(selectedJob?.id),
                             job: selectedJob,
+                            companyBranding: selectedJob == null
+                                ? null
+                                : result.companyBranding[selectedJob.ownerId],
                             isWorker: isWorker,
                             isEmployerOwner: selectedJob != null &&
                                 selectedJob.ownerId == widget.userId,

@@ -271,11 +271,12 @@ class WebAccountDataService {
         if (!jobDoc.exists || data == null) continue;
         final job = Job.fromFirestore(jobDoc.id, data);
         if (!job.isPubliclyVisible) continue;
-        jobs.add(job);
+        jobs.add(job.copyWith(companyLogo: ''));
       } catch (error) {
         debugPrint('WEB SAVED JOB SKIPPED jobId=${saved.id} error=$error');
       }
     }
+    await _jobsService.enrichCompanyIdentity(jobs);
     jobs.sort((a, b) {
       final aDate = a.postedAt ?? a.createdAt;
       final bDate = b.postedAt ?? b.createdAt;

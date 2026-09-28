@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../models/job.dart';
+import 'web_company_branding.dart';
 import 'web_jobs_data_service.dart';
 import 'web_data_state.dart';
 
@@ -40,20 +41,7 @@ class WebProfileData {
 
   String get avatarUrl {
     if (role == 'employer' || role == 'company') {
-      return _firstText(
-        data,
-        const [
-          'companyLogo',
-          'companyLogoUrl',
-          'companyAvatarUrl',
-          'logo',
-          'avatarUrl',
-          'profilePhotoUrl',
-          'photoUrl',
-          'photo',
-        ],
-        '',
-      );
+      return WebCompanyBranding.fromProfile(data).logoUrl;
     }
     final photo = _firstText(data, const ['photo'], '');
     if (photo.isNotEmpty) return photo;
@@ -74,20 +62,7 @@ class WebProfileData {
   }
 
   String get headerUrl {
-    return _firstText(
-      data,
-      const [
-        'profileHeaderImage',
-        'headerImage',
-        'headerImageUrl',
-        'backgroundImageUrl',
-        'coverPhotoUrl',
-        'companyHeaderUrl',
-        'backgroundUrl',
-        'backgroundImage',
-      ],
-      '',
-    );
+    return WebCompanyBranding.fromProfile(data).headerUrl;
   }
 
   String get role => _firstText(data, const ['role', 'userRole'], '');

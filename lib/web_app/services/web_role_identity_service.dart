@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'web_company_branding.dart';
+
 class WebRoleIdentity {
   const WebRoleIdentity({
     required this.userId,
@@ -83,20 +85,7 @@ class WebRoleIdentityResolver {
         const ['companyName', 'businessName', 'displayName', 'name', 'email'],
         'Company',
       ),
-      avatarUrl: _firstText(
-        data,
-        const [
-          'companyLogoUrl',
-          'companyLogo',
-          'companyAvatarUrl',
-          'logo',
-          'employerAvatarUrl',
-          'avatarUrl',
-          'photoUrl',
-          'photo',
-        ],
-        '',
-      ),
+      avatarUrl: WebCompanyBranding.fromProfile(data).logoUrl,
       subtitle: _firstText(
         data,
         const ['companyType', 'businessType', 'industry', 'trade'],

@@ -340,7 +340,10 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
       onOwnProfileChanged: profileId == widget.user.uid
           ? (updates) => setState(() {
                 liveProfile = {...liveProfile, ...updates};
-                if (updates.containsKey('companyLogoUrl')) jobsRefresh++;
+                if (updates.containsKey('companyLogoUrl') ||
+                    updates.containsKey('profileHeaderImage')) {
+                  jobsRefresh++;
+                }
               })
           : null,
     );

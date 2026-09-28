@@ -4,6 +4,8 @@ import '../../../models/job.dart';
 import '../../../screens/image_gallery_viewer_screen.dart';
 import '../../../services/job_start_date.dart';
 import '../../services/web_job_management_service.dart';
+import '../../services/web_company_branding.dart';
+import '../../services/web_jobs_data_service.dart';
 import '../../theme/web_theme.dart';
 import '../../portrait/portrait_employer_presentation.dart';
 import '../../widgets/web_panel.dart';
@@ -15,6 +17,7 @@ class WebJobDetailsPanel extends StatelessWidget {
   const WebJobDetailsPanel({
     super.key,
     required this.job,
+    this.companyBranding,
     this.isWorker = false,
     this.isEmployerOwner = false,
     this.isSaved = false,
@@ -38,6 +41,7 @@ class WebJobDetailsPanel extends StatelessWidget {
   });
 
   final Job? job;
+  final WebCompanyBranding? companyBranding;
   final bool isWorker;
   final bool isEmployerOwner;
   final bool isSaved;
@@ -85,6 +89,7 @@ class WebJobDetailsPanel extends StatelessWidget {
                   children: [
                     _Hero(
                       job: currentJob,
+                      branding: companyBranding,
                     ),
                     Padding(
                       padding: EdgeInsets.all(
@@ -206,14 +211,52 @@ class WebJobDetailsPanel extends StatelessWidget {
   }
 }
 
-class _Hero extends StatelessWidget {
-  const _Hero({required this.job});
-
+class _Hero extends StatefulWidget {
+  const _Hero({required this.job, this.branding});
   final Job job;
+  final WebCompanyBranding? branding;
+
+  @override
+  State<_Hero> createState() => _HeroState();
+}
+
+class _HeroState extends State<_Hero> {
+  Future<WebCompanyBranding>? _brandingFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBranding();
+  }
+
+  @override
+  void didUpdateWidget(covariant _Hero oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.branding == null &&
+        (oldWidget.branding != null || !identical(oldWidget.job, widget.job))) {
+      _loadBranding();
+    }
+  }
+
+  void _loadBranding() {
+    _brandingFuture = widget.branding == null
+        ? WebJobsDataService().loadCompanyBranding(widget.job.ownerId)
+        : null;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final photo = webVacancyCoverPhoto(job.photos);
+    if (widget.branding != null) return _buildHero(widget.branding!);
+    return FutureBuilder<WebCompanyBranding>(
+      future: _brandingFuture,
+      builder: (context, snapshot) =>
+          _buildHero(snapshot.data ?? const WebCompanyBranding()),
+    );
+  }
+
+  Widget _buildHero(WebCompanyBranding branding) {
+    final job = widget.job;
+    final photo = branding.headerUrl;
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 420;
@@ -259,7 +302,7 @@ class _Hero extends StatelessWidget {
                     key: ValueKey<String>(
                       'job-company-logo:${job.id}:${job.ownerId}',
                     ),
-                    url: job.companyLogo,
+                    url: branding.logoUrl,
                     size: avatarSize,
                     fallbackIcon: Icons.business_outlined,
                   ),
