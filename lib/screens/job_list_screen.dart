@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:test_app/services/job_alert_service.dart';
 import 'package:test_app/services/job_repository.dart';
+import 'package:test_app/services/worker_job_application_status.dart';
 import '../models/job.dart';
 import '../services/geocoding_service.dart';
 import '../services/job_taxonomy_service.dart';
@@ -51,6 +52,16 @@ class _JobListScreenState extends State<JobListScreen> {
   int currentPage = 1;
   int refreshTick = 0;
   bool showSavedOnly = false;
+  Stream<Set<String>>? appliedJobsStream;
+  String? appliedJobsUid;
+
+  Stream<Set<String>> appliedJobsStreamFor(String uid) {
+    if (appliedJobsUid != uid || appliedJobsStream == null) {
+      appliedJobsUid = uid;
+      appliedJobsStream = WorkerJobApplicationStatus.watch(uid);
+    }
+    return appliedJobsStream!;
+  }
 
   @override
   void initState() {
@@ -182,11 +193,12 @@ class _JobListScreenState extends State<JobListScreen> {
     setState(() => refreshTick++);
   }
 
-  Widget buildJobCard(Job job, bool isSaved) {
+  Widget buildJobCard(Job job, bool isSaved, bool isApplied) {
     final distance = calculateDistance(job.lat, job.lng);
     return JobCard(
       job: job,
       compactWorkerLayout: true,
+      workerApplied: isApplied,
       detailText: distance == double.infinity
           ? null
           : "${distance.toStringAsFixed(1)} miles away",
@@ -241,140 +253,165 @@ class _JobListScreenState extends State<JobListScreen> {
                   final savedJobIds = savedSnapshot.data ?? <String>{};
 
                   return StreamBuilder<List<Job>>(
-                    key: ValueKey("jobs-$refreshTick"),
+                    key: ValueKey('jobs-$refreshTick'),
                     stream: jobRepository.getJobs(),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) {
                         return const Center(child: CircularProgressIndicator());
                       }
+                      return StreamBuilder<Set<String>>(
+                        key: ValueKey('applied-$userId'),
+                        stream: userId == null
+                            ? Stream.value(<String>{})
+                            : appliedJobsStreamFor(userId),
+                        builder: (context, appliedSnapshot) {
+                          if (appliedSnapshot.hasError) {
+                            return Center(
+                              child: TextButton(
+                                onPressed: () => setState(() {
+                                  appliedJobsStream = null;
+                                }),
+                                child: const Text(
+                                    'Could not load applications. Retry'),
+                              ),
+                            );
+                          }
+                          if (!appliedSnapshot.hasData) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          }
+                          final appliedJobIds = appliedSnapshot.data!;
+                          final jobs = snapshot.data!;
+                          final sourceJobs = showSavedOnly
+                              ? jobs
+                                  .where((job) => savedJobIds.contains(job.id))
+                                  .toList()
+                              : jobs;
 
-                      final jobs = snapshot.data!;
-                      final sourceJobs = showSavedOnly
-                          ? jobs
-                              .where((job) => savedJobIds.contains(job.id))
-                              .toList()
-                          : jobs;
-
-                      final searchField = SmartJobSearchField(
-                        selectedRoles: selectedRoles,
-                        query: searchQuery,
-                        filters: searchFilters,
-                        jobs: sourceJobs,
-                        onChanged: (value) {
-                          setState(() {
-                            selectedRoles = value.roles;
-                            searchQuery = value.query;
-                            searchFilters = value.filters;
-                            currentPage = 1;
-                          });
-                        },
-                      );
-
-                      final filteredJobs = sourceJobs.where((job) {
-                        if (!jobMatchesSearch(
-                          job,
-                          roles: selectedRoles,
-                          query: searchQuery,
-                          filters: searchFilters,
-                          originJobs: sourceJobs,
-                        )) {
-                          return false;
-                        }
-
-                        if (filters.trade != "All" &&
-                            !JobTaxonomyService.matchesTradeFilter(
-                              job,
-                              filters.trade,
-                            )) {
-                          return false;
-                        }
-
-                        if (filters.jobType != "All" &&
-                            job.jobType.toLowerCase() !=
-                                filters.jobType.toLowerCase()) {
-                          return false;
-                        }
-
-                        return true;
-                      }).toList();
-
-                      /// SORT
-                      if (sortType == SortType.nearest) {
-                        filteredJobs.sort((a, b) =>
-                            calculateDistance(a.lat, a.lng)
-                                .compareTo(calculateDistance(b.lat, b.lng)));
-                      }
-
-                      if (sortType == SortType.highestPay) {
-                        filteredJobs.sort((a, b) => b.rate.compareTo(a.rate));
-                      }
-
-                      if (sortType == SortType.newest) {
-                        filteredJobs.sort((a, b) =>
-                            (b.createdAt ?? DateTime.now())
-                                .compareTo(a.createdAt ?? DateTime.now()));
-                      }
-
-                      final totalPages =
-                          (filteredJobs.length / _jobsPerPage).ceil();
-                      final safePage = totalPages == 0
-                          ? 1
-                          : currentPage.clamp(1, totalPages).toInt();
-                      final pageStart = (safePage - 1) * _jobsPerPage;
-                      final pageJobs = filteredJobs
-                          .skip(pageStart)
-                          .take(_jobsPerPage)
-                          .toList();
-
-                      return Column(
-                        children: [
-                          searchField,
-                          Expanded(
-                            child: RefreshIndicator(
-                              onRefresh: refreshJobs,
-                              child: pageJobs.isEmpty
-                                  ? ListView(
-                                      physics:
-                                          const AlwaysScrollableScrollPhysics(),
-                                      children: [
-                                        SizedBox(
-                                          height: MediaQuery.sizeOf(context)
-                                                  .height *
-                                              0.42,
-                                          child: Center(
-                                            child: Text(
-                                              showSavedOnly
-                                                  ? "No saved jobs yet."
-                                                  : "No jobs found.",
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    )
-                                  : ListView.builder(
-                                      physics:
-                                          const AlwaysScrollableScrollPhysics(),
-                                      itemCount: pageJobs.length,
-                                      itemBuilder: (context, index) {
-                                        final job = pageJobs[index];
-
-                                        return buildJobCard(
-                                          job,
-                                          savedJobIds.contains(job.id),
-                                        );
-                                      },
-                                    ),
-                            ),
-                          ),
-                          JobPagination(
-                            currentPage: safePage,
-                            totalItems: filteredJobs.length,
-                            itemsPerPage: _jobsPerPage,
-                            onPageChanged: (page) {
-                              setState(() => currentPage = page);
+                          final searchField = SmartJobSearchField(
+                            selectedRoles: selectedRoles,
+                            query: searchQuery,
+                            filters: searchFilters,
+                            jobs: sourceJobs,
+                            onChanged: (value) {
+                              setState(() {
+                                selectedRoles = value.roles;
+                                searchQuery = value.query;
+                                searchFilters = value.filters;
+                                currentPage = 1;
+                              });
                             },
-                          ),
-                        ],
+                          );
+
+                          final filteredJobs = sourceJobs.where((job) {
+                            if (!jobMatchesSearch(
+                              job,
+                              roles: selectedRoles,
+                              query: searchQuery,
+                              filters: searchFilters,
+                              originJobs: sourceJobs,
+                            )) {
+                              return false;
+                            }
+
+                            if (filters.trade != "All" &&
+                                !JobTaxonomyService.matchesTradeFilter(
+                                  job,
+                                  filters.trade,
+                                )) {
+                              return false;
+                            }
+
+                            if (filters.jobType != "All" &&
+                                job.jobType.toLowerCase() !=
+                                    filters.jobType.toLowerCase()) {
+                              return false;
+                            }
+
+                            return true;
+                          }).toList();
+
+                          /// SORT
+                          if (sortType == SortType.nearest) {
+                            filteredJobs.sort((a, b) => calculateDistance(
+                                    a.lat, a.lng)
+                                .compareTo(calculateDistance(b.lat, b.lng)));
+                          }
+
+                          if (sortType == SortType.highestPay) {
+                            filteredJobs
+                                .sort((a, b) => b.rate.compareTo(a.rate));
+                          }
+
+                          if (sortType == SortType.newest) {
+                            filteredJobs.sort((a, b) =>
+                                (b.createdAt ?? DateTime.now())
+                                    .compareTo(a.createdAt ?? DateTime.now()));
+                          }
+
+                          final totalPages =
+                              (filteredJobs.length / _jobsPerPage).ceil();
+                          final safePage = totalPages == 0
+                              ? 1
+                              : currentPage.clamp(1, totalPages).toInt();
+                          final pageStart = (safePage - 1) * _jobsPerPage;
+                          final pageJobs = filteredJobs
+                              .skip(pageStart)
+                              .take(_jobsPerPage)
+                              .toList();
+
+                          return Column(
+                            children: [
+                              searchField,
+                              Expanded(
+                                child: RefreshIndicator(
+                                  onRefresh: refreshJobs,
+                                  child: pageJobs.isEmpty
+                                      ? ListView(
+                                          physics:
+                                              const AlwaysScrollableScrollPhysics(),
+                                          children: [
+                                            SizedBox(
+                                              height: MediaQuery.sizeOf(context)
+                                                      .height *
+                                                  0.42,
+                                              child: Center(
+                                                child: Text(
+                                                  showSavedOnly
+                                                      ? "No saved jobs yet."
+                                                      : "No jobs found.",
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        )
+                                      : ListView.builder(
+                                          physics:
+                                              const AlwaysScrollableScrollPhysics(),
+                                          itemCount: pageJobs.length,
+                                          itemBuilder: (context, index) {
+                                            final job = pageJobs[index];
+
+                                            return buildJobCard(
+                                              job,
+                                              savedJobIds.contains(job.id),
+                                              appliedJobIds.contains(job.id),
+                                            );
+                                          },
+                                        ),
+                                ),
+                              ),
+                              JobPagination(
+                                currentPage: safePage,
+                                totalItems: filteredJobs.length,
+                                itemsPerPage: _jobsPerPage,
+                                onPageChanged: (page) {
+                                  setState(() => currentPage = page);
+                                },
+                              ),
+                            ],
+                          );
+                        },
                       );
                     },
                   );

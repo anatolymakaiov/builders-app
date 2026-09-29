@@ -34,7 +34,7 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       var opened = false;
-      Future<double> cardHeight(bool compact) async {
+      Future<double> cardHeight(bool compact, {bool applied = false}) async {
         await tester.pumpWidget(MaterialApp(
           home: Scaffold(
             body: SingleChildScrollView(
@@ -42,6 +42,7 @@ void main() {
                 key: const ValueKey('job-card'),
                 job: job,
                 compactWorkerLayout: compact,
+                workerApplied: compact ? applied : null,
                 onTap: () => opened = true,
                 trailingAction: IconButton(
                   tooltip: 'Save job',
@@ -57,12 +58,23 @@ void main() {
         expect(find.text('Posted: 28 Sep 2026'), findsOneWidget);
         expect(find.text('5 months'), findsOneWidget);
         expect(find.text('Start: 12 Oct 2026'), findsOneWidget);
+        if (compact) {
+          expect(
+              find.text(applied ? 'Applied' : 'Not Applied'), findsOneWidget);
+          expect(
+            tester
+                .getTopLeft(find.text(applied ? 'Applied' : 'Not Applied'))
+                .dy,
+            greaterThan(tester.getTopLeft(find.byIcon(Icons.business)).dy),
+          );
+        }
         return tester.getSize(find.byKey(const ValueKey('job-card'))).height;
       }
 
       final normalHeight = await cardHeight(false);
       final compactHeight = await cardHeight(true);
       expect(compactHeight, lessThan(normalHeight));
+      await cardHeight(true, applied: true);
 
       await tester.tap(find.byKey(const ValueKey('job-card')));
       expect(opened, isTrue);

@@ -21,6 +21,7 @@ class JobCard extends StatelessWidget {
   final bool dense;
   final bool showPostedDate;
   final bool compactWorkerLayout;
+  final bool? workerApplied;
 
   const JobCard({
     super.key,
@@ -37,6 +38,7 @@ class JobCard extends StatelessWidget {
     this.dense = false,
     this.showPostedDate = true,
     this.compactWorkerLayout = false,
+    this.workerApplied,
   });
 
   @override
@@ -87,7 +89,33 @@ class JobCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         trailingAction!,
-                        _CompanyLogo(job: job),
+                        Column(
+                          children: [
+                            _CompanyLogo(job: job),
+                            if (workerApplied != null) ...[
+                              const SizedBox(height: 2),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 3, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: AppColors.surfaceAlt,
+                                  border: Border.all(
+                                      color: AppColors.blueprintLine),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  workerApplied! ? 'Applied' : 'Not Applied',
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    color: AppColors.greenDark,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ],
                     )
                   else
