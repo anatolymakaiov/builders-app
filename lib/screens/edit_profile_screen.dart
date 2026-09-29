@@ -25,10 +25,12 @@ import '../widgets/uk_postal_address_form.dart';
 
 class ProfileScreen extends StatefulWidget {
   final FutureOr<void> Function()? onProfileSaved;
+  final WidgetBuilder? signedOutBuilder;
 
   const ProfileScreen({
     super.key,
     this.onProfileSaved,
+    this.signedOutBuilder,
   });
 
   @override
@@ -118,6 +120,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool firstProfileCreation = false;
   bool profileLoaded = false;
   int completionStep = 0;
+  bool editingRegistrationDetails = false;
   bool legalAcceptedForCurrentVersion = false;
   bool billingEmailVerified = false;
   bool emailVerified = false;
@@ -1651,8 +1654,11 @@ class _ProfileScreenState extends State<ProfileScreen>
             normalizedPhone;
     final loadedProfileEmail =
         role == "employer" ? loadedBillingEmail : loadedEmail;
-    final emailChanged = normalizeEmailValue(profileEmail) !=
-        normalizeEmailValue(loadedProfileEmail);
+    final emailChanged = RegistrationLifecycle.requiresEmailChangeVerification(
+      creatingProfile: firstProfileCreation,
+      currentEmail: profileEmail,
+      loadedEmail: loadedProfileEmail,
+    );
     final validProfileEmail =
         RegExp(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").hasMatch(profileEmail);
     if (!validProfileEmail) {
@@ -2244,16 +2250,158 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
     if (discard != true || !mounted) return;
     try {
+      final navigator = Navigator.of(context);
       await RegistrationLifecycle.cancel(
           user: FirebaseAuth.instance.currentUser!);
-      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+      if (mounted && widget.signedOutBuilder != null) {
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(builder: widget.signedOutBuilder!),
+          (route) => false,
+        );
+      }
     } catch (error) {
+      debugPrint('REGISTRATION_DISCARD_ERROR: $error');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not discard registration. Try again.'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(error is StateError
+              ? error.message
+              : 'Could not discard registration. Check your connection and try again.'),
         ));
       }
     }
+  }
+
+  void backRegistrationStep() {
+    final previous =
+        RegistrationLifecycle.previousCompletionStep(completionStep);
+    if (previous < 0) {
+      setState(() => editingRegistrationDetails = true);
+    } else {
+      setState(() => completionStep = previous);
+    }
+  }
+
+  Future<void> continueFromRegistrationDetails() async {
+    if (loading) return;
+    final email = currentProfileEmail().trim();
+    final identity = role == 'employer'
+        ? contactPersonController.text.trim()
+        : nameController.text.trim();
+    final address = profileAddressControllers().value();
+    final errors = [
+      if (identity.split(RegExp(r'\s+')).length < 2)
+        'Enter your first and last name.',
+      RegistrationWizardSteps.validate(
+        RegistrationWizardStep.professionOrCompany,
+        role: role,
+        trade: tradeController.text,
+        companyName: companyController.text,
+      ),
+      RegistrationWizardSteps.validate(
+        RegistrationWizardStep.address,
+        role: role,
+        addressLine1: address.addressLine1,
+        townCity: address.townCity,
+        postcode: address.postcode,
+        country: address.country,
+      ),
+      RegistrationWizardSteps.validate(RegistrationWizardStep.email,
+          role: role, email: email),
+      RegistrationWizardSteps.validate(RegistrationWizardStep.phone,
+          role: role, phone: phoneController.text),
+    ].whereType<String>().toList();
+    if (errors.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errors.first)),
+      );
+      return;
+    }
+    setState(() => loading = true);
+    try {
+      final normalizedEmail = normalizeEmailValue(email);
+      final emailIsVerified = isCurrentEmailVerified();
+      await setRegistrationState({
+        'registrationName': identity,
+        'name': role == 'employer' ? companyController.text.trim() : identity,
+        'registrationPosition': tradeController.text.trim(),
+        'registrationCompanyName': companyController.text.trim(),
+        'contactPerson': contactPersonController.text.trim(),
+        'email': email,
+        'normalizedEmail': normalizedEmail,
+        'emailVerified': emailIsVerified,
+        if (!emailIsVerified) ...{
+          'verifiedEmail': FieldValue.delete(),
+          'verifiedNormalizedEmail': FieldValue.delete(),
+          'emailVerifiedAt': FieldValue.delete(),
+        },
+        if (role == 'employer') ...{
+          'billingEmail': email,
+          'billingEmailVerified': emailIsVerified,
+        },
+        'phone': phoneController.text.trim(),
+        'normalizedPhone': normalizePhoneValue(phoneController.text),
+        'addressLine1': address.addressLine1,
+        'addressLine2': address.addressLine2,
+        'addressLine3': address.addressLine3,
+        'townCity': address.townCity,
+        'county': address.county,
+        'postcode': address.postcode,
+        'country': address.country,
+        'location': address.addressLine1,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      if (!mounted) return;
+      setState(() => editingRegistrationDetails = false);
+    } catch (error) {
+      debugPrint('REGISTRATION_DETAILS_SAVE_ERROR: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not save registration details. Try again.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Widget buildRegistrationDetailsEditor() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('Review registration details',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 16),
+      TextField(
+        controller:
+            role == 'employer' ? contactPersonController : nameController,
+        decoration: const InputDecoration(labelText: 'Full name'),
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller:
+            role == 'employer' ? billingEmailController : emailController,
+        keyboardType: TextInputType.emailAddress,
+        onChanged: handleRegistrationEmailChanged,
+        decoration: const InputDecoration(labelText: 'Email'),
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: phoneController,
+        keyboardType: TextInputType.phone,
+        onChanged: handleRegistrationPhoneChanged,
+        decoration: const InputDecoration(labelText: 'Phone number'),
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: role == 'employer' ? companyController : tradeController,
+        decoration: InputDecoration(
+            labelText: role == 'employer' ? 'Company name' : 'Profession'),
+      ),
+      const SizedBox(height: 12),
+      UkPostalAddressForm(
+        controllers: profileAddressControllers(),
+        postcodeLabel: 'Postcode',
+        addressLine1Label: 'Address Line 1',
+      ),
+    ]);
   }
 
   Widget buildAvatar() {
@@ -2671,6 +2819,9 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget buildProfileCompletionWizard() {
+    if (!kIsWeb && editingRegistrationDetails) {
+      return buildRegistrationDetailsEditor();
+    }
     final step = completionSteps[completionStep];
     final stepNumber = RegistrationWizardSteps.count + completionStep + 1;
     final total = RegistrationWizardSteps.count + completionSteps.length;
@@ -2686,6 +2837,12 @@ class _ProfileScreenState extends State<ProfileScreen>
           ProfileCompletionStep.emailVerification => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (!kIsWeb)
+                  TextButton.icon(
+                    onPressed: loading ? null : backRegistrationStep,
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Back to details'),
+                  ),
                 const Text('Verify your email',
                     style:
                         TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
@@ -3231,15 +3388,19 @@ class _ProfileScreenState extends State<ProfileScreen>
                   child: firstProfileCreation
                       ? Row(
                           children: [
-                            if (completionStep > 0)
+                            if (!editingRegistrationDetails &&
+                                (completionStep > 0 || !kIsWeb))
                               TextButton(
                                 onPressed: loading
                                     ? null
-                                    : () => setState(() => completionStep--),
+                                    : kIsWeb
+                                        ? () => setState(() => completionStep--)
+                                        : backRegistrationStep,
                                 child: const Text('Back'),
                               ),
                             const Spacer(),
-                            if (completionSteps[completionStep].optional)
+                            if (!editingRegistrationDetails &&
+                                completionSteps[completionStep].optional)
                               TextButton(
                                 onPressed: loading ? null : saveProfile,
                                 child: const Text('Skip'),
@@ -3247,8 +3408,11 @@ class _ProfileScreenState extends State<ProfileScreen>
                             const SizedBox(width: 8),
                             Flexible(
                               child: ElevatedButton(
-                                onPressed:
-                                    loading ? null : nextProfileCompletionStep,
+                                onPressed: loading
+                                    ? null
+                                    : editingRegistrationDetails
+                                        ? continueFromRegistrationDetails
+                                        : nextProfileCompletionStep,
                                 child: loading
                                     ? const SizedBox(
                                         width: 20,
@@ -3257,10 +3421,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                                             strokeWidth: 2),
                                       )
                                     : Text(
-                                        completionStep ==
-                                                completionSteps.length - 1
-                                            ? 'Complete registration'
-                                            : 'Next',
+                                        editingRegistrationDetails
+                                            ? 'Continue to verification'
+                                            : completionStep ==
+                                                    completionSteps.length - 1
+                                                ? 'Complete registration'
+                                                : 'Next',
                                         textAlign: TextAlign.center,
                                         maxLines: 2),
                               ),

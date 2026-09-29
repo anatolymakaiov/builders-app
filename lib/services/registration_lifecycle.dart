@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import 'registration_validation_service.dart';
 import 'registration_wizard_steps.dart';
@@ -34,6 +35,8 @@ class RegistrationLifecycle {
         ProfileCompletionStep.optionalDetails,
       ];
 
+  static int previousCompletionStep(int step) => step == 0 ? -1 : step - 1;
+
   static bool canComplete({
     required String role,
     required bool emailVerified,
@@ -43,6 +46,35 @@ class RegistrationLifecycle {
 
   static bool canDiscard(Map<String, dynamic>? profile) =>
       profile == null || !isComplete(profile);
+
+  static bool requiresEmailChangeVerification({
+    required bool creatingProfile,
+    required String currentEmail,
+    required String loadedEmail,
+  }) =>
+      !creatingProfile &&
+      RegistrationValidationService.normalizeEmail(currentEmail) !=
+          RegistrationValidationService.normalizeEmail(loadedEmail);
+
+  static Map<String, Set<String>> cancellationIndexKeys(
+      Map<String, dynamic>? profile, Map<String, dynamic>? draft) {
+    final email = <String>{};
+    final phone = <String>{};
+    for (final data in [profile, draft]) {
+      if (data == null) continue;
+      for (final key in ['email', 'normalizedEmail', 'billingEmail']) {
+        final value = RegistrationValidationService.normalizeEmail(
+            data[key]?.toString() ?? '');
+        if (value.isNotEmpty) email.add(value);
+      }
+      for (final key in ['phone', 'normalizedPhone']) {
+        final value = RegistrationValidationService.normalizePhone(
+            data[key]?.toString() ?? '');
+        if (value.isNotEmpty) phone.add(value);
+      }
+    }
+    return {'email': email, 'phone': phone};
+  }
 
   static int resumeStep(Map<String, dynamic> data, String role) {
     if (role != 'worker' && role != 'employer') {
@@ -95,56 +127,55 @@ class RegistrationLifecycle {
     final draftRef = db.collection('pending_registrations').doc(user.uid);
     final draftLegal = await draftRef.collection('legalAcceptances').get();
     final userLegal = await userRef.collection('legalAcceptances').get();
-    await db.runTransaction((transaction) async {
+    final identities = await db.runTransaction((transaction) async {
       final userDoc = await transaction.get(userRef);
-      final incomplete = userDoc.data();
-      if (!canDiscard(incomplete)) {
+      final draftDoc = await transaction.get(draftRef);
+      if (!canDiscard(userDoc.data())) {
         throw StateError('Completed accounts cannot be discarded.');
-      }
-
-      final indexes = <DocumentReference<Map<String, dynamic>>>[];
-      if (incomplete != null) {
-        final phone = RegistrationValidationService.normalizePhone(
-          incomplete['phone']?.toString() ?? '',
-        );
-        final email = RegistrationValidationService.normalizeEmail(
-          incomplete['email']?.toString() ?? '',
-        );
-        for (final collection in ['phoneIndex', 'registrationPhoneIndex']) {
-          if (phone.isNotEmpty) {
-            indexes.add(db.collection(collection).doc(phone));
-          }
-        }
-        for (final collection in ['emailIndex', 'registrationEmailIndex']) {
-          if (email.isNotEmpty) {
-            indexes.add(db.collection(collection).doc(email));
-          }
-        }
-      }
-      final indexDocs = <DocumentSnapshot<Map<String, dynamic>>>[];
-      for (final index in indexes) {
-        indexDocs.add(await transaction.get(index));
-      }
-      for (final indexDoc in indexDocs) {
-        final owner = indexDoc.data()?['uid'] ?? indexDoc.data()?['userId'];
-        if (indexDoc.exists && owner == user.uid) {
-          transaction.update(indexDoc.reference, {
-            'active': false,
-            'deleted': true,
-            'stale': true,
-            'previousUserId': user.uid,
-            'cleanupReason': 'registration_cancelled',
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-        }
       }
       for (final legal in [...draftLegal.docs, ...userLegal.docs]) {
         transaction.delete(legal.reference);
       }
       transaction.delete(draftRef);
       if (userDoc.exists) transaction.delete(userRef);
+      return cancellationIndexKeys(userDoc.data(), draftDoc.data());
     });
+
+    // Legacy incomplete profiles can own lookup indexes. Release them after
+    // the required draft deletion, so an index failure cannot trap sign-out.
+    for (final entry in {
+      'emailIndex': identities['email']!,
+      'registrationEmailIndex': identities['email']!,
+      'phoneIndex': identities['phone']!,
+      'registrationPhoneIndex': identities['phone']!,
+    }.entries) {
+      for (final value in entry.value) {
+        final indexRef = db.collection(entry.key).doc(value);
+        try {
+          await db.runTransaction((transaction) async {
+            final index = await transaction.get(indexRef);
+            final owner = index.data()?['uid'] ?? index.data()?['userId'];
+            if (index.exists && owner == user.uid) {
+              transaction.update(indexRef, {
+                'active': false,
+                'deleted': true,
+                'stale': true,
+                'previousUserId': user.uid,
+                'cleanupReason': 'registration_cancelled',
+                'updatedAt': FieldValue.serverTimestamp(),
+              });
+            }
+          });
+        } catch (error) {
+          debugPrint('REGISTRATION_DISCARD_INDEX_CLEANUP_ERROR '
+              'collection=${entry.key} error=$error');
+        }
+      }
+    }
     RegistrationValidationService.clearPending(user.email ?? '');
+    for (final email in identities['email']!) {
+      RegistrationValidationService.clearPending(email);
+    }
     await (auth ?? FirebaseAuth.instance).signOut();
   }
 

@@ -4,8 +4,46 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/services/auth_session_resolver.dart';
 import 'package:test_app/services/registration_lifecycle.dart';
 import 'package:test_app/services/registration_wizard_steps.dart';
+import 'package:test_app/services/registration_validation_service.dart';
 
 void main() {
+  test('first verification Back returns to details without losing the step',
+      () {
+    expect(RegistrationLifecycle.previousCompletionStep(0), -1);
+    expect(RegistrationLifecycle.previousCompletionStep(1), 0);
+  });
+
+  test('edited draft email does not trigger a second verification on finish',
+      () {
+    expect(
+        RegistrationLifecycle.requiresEmailChangeVerification(
+          creatingProfile: true,
+          currentEmail: 'new@example.com',
+          loadedEmail: 'old@example.com',
+        ),
+        isFalse);
+    expect(
+        RegistrationLifecycle.requiresEmailChangeVerification(
+          creatingProfile: false,
+          currentEmail: 'new@example.com',
+          loadedEmail: 'old@example.com',
+        ),
+        isTrue);
+  });
+
+  test('discard cleanup identifies only normalized draft/profile identities',
+      () {
+    final keys = RegistrationLifecycle.cancellationIndexKeys(
+      {'email': 'Old@Example.com', 'phone': '+44 7700 900123'},
+      {'email': 'New@Example.com', 'phone': '+44 7700 900456'},
+    );
+    expect(keys['email'], {'old@example.com', 'new@example.com'});
+    expect(keys['phone'], {
+      RegistrationValidationService.normalizePhone('+44 7700 900123'),
+      RegistrationValidationService.normalizePhone('+44 7700 900456'),
+    });
+  });
+
   test('Worker needs verified email but not verified phone', () {
     expect(
         RegistrationLifecycle.canComplete(

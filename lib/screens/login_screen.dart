@@ -962,6 +962,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 MaterialPageRoute(
                   builder: (_) => authPage(
                     ProfileScreen(
+                      signedOutBuilder:
+                          kIsWeb ? null : widget.postRegistrationHomeBuilder,
                       onProfileSaved: () async {
                         debugPrint("Next onboarding route: dashboard");
                         await postRegistrationRefresh
