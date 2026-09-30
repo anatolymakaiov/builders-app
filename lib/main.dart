@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -35,9 +37,19 @@ Future<void> main() async {
   if (!kIsWeb) {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
-  await NotificationService().init();
-
   runApp(const JobApp());
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_initializeNotifications());
+  });
+}
+
+Future<void> _initializeNotifications() async {
+  try {
+    await NotificationService().init();
+  } catch (error, stackTrace) {
+    debugPrint('Notification startup initialization error: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
 }
 
 class JobApp extends StatelessWidget {
