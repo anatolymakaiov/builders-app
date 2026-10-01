@@ -75,6 +75,7 @@ class WebJobDetailsPanel extends StatelessWidget {
 
     final currentJob = job!;
     final rate = webJobRate(currentJob);
+    final portraitWeb = isPortraitWebPresentation(context);
     return WebPanel(
       padding: EdgeInsets.zero,
       child: ClipRRect(
@@ -93,7 +94,7 @@ class WebJobDetailsPanel extends StatelessWidget {
                     ),
                     Padding(
                       padding: EdgeInsets.all(
-                        isPortraitWebPresentation(context) ? 16 : 28,
+                        portraitWeb ? 16 : WebSpacing.lg,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -114,10 +115,10 @@ class WebJobDetailsPanel extends StatelessWidget {
                             onShowOnMap: onShowOnMap,
                             onWithdraw: onWithdraw,
                           ),
-                          const SizedBox(height: 18),
+                          SizedBox(height: portraitWeb ? 18 : WebSpacing.xs),
                           Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
+                            spacing: portraitWeb ? 10 : WebSpacing.xs,
+                            runSpacing: portraitWeb ? 10 : WebSpacing.xs,
                             children: [
                               _DetailChip(
                                 icon: Icons.place_outlined,
@@ -157,7 +158,7 @@ class WebJobDetailsPanel extends StatelessWidget {
                             ],
                           ),
                           if (isEmployerOwner) ...[
-                            const SizedBox(height: 22),
+                            SizedBox(height: portraitWeb ? 22 : WebSpacing.md),
                             _OwnerActions(
                               job: currentJob,
                               managing: managing,
@@ -168,13 +169,13 @@ class WebJobDetailsPanel extends StatelessWidget {
                               statsLoader: statsLoader,
                             ),
                           ],
-                          const SizedBox(height: 28),
+                          SizedBox(height: portraitWeb ? 28 : WebSpacing.lg),
                           if (currentJob.photos.isNotEmpty) ...[
                             _PhotoGrid(
                               jobId: currentJob.id,
                               photos: currentJob.photos,
                             ),
-                            const SizedBox(height: 28),
+                            SizedBox(height: portraitWeb ? 28 : WebSpacing.lg),
                           ],
                           _Section(
                             title: 'Job Description',
@@ -368,7 +369,10 @@ class _IdentityRow extends StatelessWidget {
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
               if (job.companyName.trim().isNotEmpty) ...[
-                const SizedBox(height: 6),
+                SizedBox(
+                    height: isPortraitWebPresentation(context)
+                        ? 6
+                        : WebSpacing.xxs),
                 TextButton(
                   onPressed: onViewCompanyProfile,
                   style: TextButton.styleFrom(

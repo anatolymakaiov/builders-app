@@ -649,25 +649,28 @@ class _MapResultsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final portraitWeb = isPortraitWebPresentation(context);
     return WebPanel(
       padding: EdgeInsets.zero,
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(18),
+            padding: portraitWeb
+                ? const EdgeInsets.all(18)
+                : const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text('Vacancies on map',
                     style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 6),
+                SizedBox(height: portraitWeb ? 6 : WebSpacing.xxs),
                 Text(
                   jobs.length == 1
                       ? '1 vacancy in this area'
                       : '${jobs.length} vacancies in this area',
                   style: const TextStyle(color: WebTheme.muted),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: portraitWeb ? 14 : WebSpacing.xs),
                 WebSmartJobSearchField(
                   controller: searchController,
                   onChanged: onSearchChanged,
@@ -682,14 +685,19 @@ class _MapResultsPanel extends StatelessWidget {
                 ? const Center(child: Text('No active vacancies available.'))
                 : ListView.separated(
                     controller: controller,
-                    padding: const EdgeInsets.all(12),
+                    padding: portraitWeb
+                        ? const EdgeInsets.all(12)
+                        : const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
                     itemCount: jobs.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, __) =>
+                        SizedBox(height: portraitWeb ? 10 : WebSpacing.xs),
                     itemBuilder: (context, index) {
                       final job = jobs[index];
                       return WebWorkerVacancyCard(
                         key: cardKeyForJob(job.id),
                         job: job,
+                        compact: !portraitWeb,
                         selected: job.id == selectedJobId,
                         saved: savedJobIds.contains(job.id),
                         applicationStatus: applicationStatuses[job.id],

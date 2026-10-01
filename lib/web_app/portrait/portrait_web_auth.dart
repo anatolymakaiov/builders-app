@@ -8,6 +8,7 @@ import '../../screens/password_recovery_screen.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/stroyka_background.dart';
 import '../services/web_password_sign_in.dart';
+import '../widgets/web_auth_page_frame.dart';
 
 Widget portraitWebAuthPage(Widget page) => PortraitWebAuthFrame(
       backdrop: page is LoginScreen,
@@ -29,10 +30,7 @@ class PortraitWebAuthFrame extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               if (backdrop)
-                Image.asset(
-                  'assets/branding/login_background_stroyka.png',
-                  fit: BoxFit.cover,
-                )
+                const WebLoginBackground()
               else
                 const StroykaBackground(
                   asset: AppAssets.backgroundWorkersCity,
@@ -83,47 +81,51 @@ class PortraitWebLanding extends StatelessWidget {
   Widget build(BuildContext context) => Theme(
         data: AppTheme.light,
         child: Scaffold(
-          body: StroykaBackground(
-            asset: AppAssets.backgroundCranesYard,
-            child: SafeArea(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 520),
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 48, 24, 32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text('STROYKA',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 34,
-                              fontWeight: FontWeight.w900,
-                            )),
-                        const SizedBox(height: 42),
-                        _LandingAction(
-                          label: 'Enter',
-                          onPressed: () => _open(
-                              context,
-                              PortraitWebPasswordLogin(
-                                  homeBuilder: homeBuilder)),
-                        ),
-                        const SizedBox(height: 12),
-                        _LandingAction(
-                          label: 'Registration',
-                          onPressed: () => _open(
-                              context,
-                              PortraitWebRegistration(
-                                  homeBuilder: homeBuilder)),
-                        ),
-                      ],
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              const WebLoginBackground(),
+              ColoredBox(color: Colors.black.withValues(alpha: 0.28)),
+              SafeArea(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 48, 24, 32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text('STROYKA',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 34,
+                                fontWeight: FontWeight.w900,
+                              )),
+                          const SizedBox(height: 42),
+                          _LandingAction(
+                            label: 'Enter',
+                            onPressed: () => _open(
+                                context,
+                                PortraitWebPasswordLogin(
+                                    homeBuilder: homeBuilder)),
+                          ),
+                          const SizedBox(height: 12),
+                          _LandingAction(
+                            label: 'Registration',
+                            onPressed: () => _open(
+                                context,
+                                PortraitWebRegistration(
+                                    homeBuilder: homeBuilder)),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       );

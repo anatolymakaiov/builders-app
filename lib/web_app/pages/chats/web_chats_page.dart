@@ -665,10 +665,14 @@ class _ChatList extends StatelessWidget {
             : 'Your work conversations will appear here.',
       );
     }
+    final portraitWeb = isPortraitWebPresentation(context);
     return ListView.separated(
-      padding: const EdgeInsets.all(14),
+      padding: portraitWeb
+          ? const EdgeInsets.all(14)
+          : const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       itemCount: chats.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      separatorBuilder: (_, __) =>
+          SizedBox(height: portraitWeb ? 10 : WebSpacing.xs),
       itemBuilder: (context, index) {
         final chat = chats[index];
         final selected = chat.id == selectedChatId;
@@ -676,7 +680,9 @@ class _ChatList extends StatelessWidget {
           onTap: () => onSelected(chat.id),
           borderRadius: BorderRadius.circular(WebRadii.card),
           child: Container(
-            padding: const EdgeInsets.all(12),
+            padding: portraitWeb
+                ? const EdgeInsets.all(12)
+                : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: selected ? WebTheme.selected : WebTheme.surface,
               borderRadius: BorderRadius.circular(WebRadii.card),
@@ -704,7 +710,7 @@ class _ChatList extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: portraitWeb ? 4 : WebSpacing.xxs),
                       Text(
                         chat.lastMessage,
                         maxLines: 1,
@@ -1119,8 +1125,11 @@ class _ThreadHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final portraitWeb = isPortraitWebPresentation(context);
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: portraitWeb
+          ? const EdgeInsets.all(16)
+          : const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: WebTheme.border)),
       ),
@@ -1131,7 +1140,7 @@ class _ThreadHeader extends StatelessWidget {
               onTap: onOpenProfile,
               borderRadius: BorderRadius.circular(WebRadii.card),
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
+                padding: EdgeInsets.symmetric(vertical: portraitWeb ? 2 : 0),
                 child: Row(
                   children: [
                     WebCircleImage(

@@ -190,7 +190,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                     });
                   },
                 ),
-                SizedBox(height: portraitWeb ? 14 : WebSpacing.sm),
+                SizedBox(height: portraitWeb ? 14 : WebSpacing.xs),
               ],
               Expanded(
                 child: LayoutBuilder(
@@ -345,11 +345,13 @@ class _ApplicationFilters extends StatelessWidget {
     );
     final search = SizedBox(
       width: 260,
+      height: portraitWeb ? null : 52,
       child: TextFormField(
         initialValue: searchFilter,
         onChanged: onSearchChanged,
         decoration: const InputDecoration(
           isDense: true,
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           prefixIcon: Icon(Icons.search),
           hintText: 'Job, trade or site',
           border: OutlineInputBorder(),
@@ -357,42 +359,57 @@ class _ApplicationFilters extends StatelessWidget {
       ),
     );
     if (!portraitWeb) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: Wrap(
-          spacing: WebSpacing.sm,
-          runSpacing: WebSpacing.xs,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            if (desktopLeading != null) desktopLeading!,
-            SizedBox(
-              width: 178,
-              child: DropdownButtonFormField<String>(
-                key: ValueKey(statusFilter),
-                initialValue: statusFilter,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Status',
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  for (final filter in filters)
-                    DropdownMenuItem(
-                      value: filter,
-                      child: Text(filter == ApplicationStatusUtils.offerFilter
-                          ? 'Offer'
-                          : _filterLabel(filter, role)),
-                    ),
-                ],
-                onChanged: (value) {
-                  if (value != null) onStatusChanged(value);
-                },
+      final dropdown = SizedBox(
+        width: 178,
+        height: 52,
+        child: DropdownButtonFormField<String>(
+          key: ValueKey(statusFilter),
+          initialValue: statusFilter,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Status',
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            border: OutlineInputBorder(),
+          ),
+          items: [
+            for (final filter in filters)
+              DropdownMenuItem(
+                value: filter,
+                child: Text(filter == ApplicationStatusUtils.offerFilter
+                    ? 'Offer'
+                    : _filterLabel(filter, role)),
               ),
-            ),
-            search,
           ],
+          onChanged: (value) {
+            if (value != null) onStatusChanged(value);
+          },
         ),
+      );
+      final controls = <Widget>[
+        if (desktopLeading != null) desktopLeading!,
+        dropdown,
+        search,
+      ];
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= 800) {
+            return Row(
+              children: [
+                for (var i = 0; i < controls.length; i++) ...[
+                  if (i > 0) const SizedBox(width: WebSpacing.sm),
+                  controls[i],
+                ],
+              ],
+            );
+          }
+          return Wrap(
+            spacing: WebSpacing.sm,
+            runSpacing: WebSpacing.xs,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: controls,
+          );
+        },
       );
     }
     return LayoutBuilder(
@@ -456,6 +473,11 @@ class _WorkerApplicationToggle extends StatelessWidget {
     return Align(
       alignment: Alignment.centerLeft,
       child: SegmentedButton<bool>(
+        style: isPortraitWebPresentation(context)
+            ? null
+            : const ButtonStyle(
+                minimumSize: WidgetStatePropertyAll(Size(0, 52)),
+              ),
         segments: [
           ButtonSegment(
             value: false,

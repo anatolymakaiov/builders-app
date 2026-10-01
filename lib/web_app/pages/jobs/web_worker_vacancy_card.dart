@@ -16,6 +16,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
     required this.selected,
     required this.saved,
     required this.onTap,
+    this.compact = false,
     this.applicationStatus,
     this.applicationStatusResolved = true,
     this.showApplicationStatus = true,
@@ -29,6 +30,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
   final bool selected;
   final bool saved;
   final VoidCallback onTap;
+  final bool compact;
   final WebWorkerJobApplicationStatus? applicationStatus;
   final bool applicationStatusResolved;
   final bool showApplicationStatus;
@@ -45,7 +47,8 @@ class WebWorkerVacancyCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(WebRadii.card),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding:
+            EdgeInsets.symmetric(horizontal: 14, vertical: compact ? 7 : 10),
         decoration: BoxDecoration(
           color: selected ? WebTheme.accentSoft : WebTheme.surface,
           borderRadius: BorderRadius.circular(WebRadii.card),
@@ -138,7 +141,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
               ],
             ),
             if (job.fullAddress.trim().isNotEmpty) ...[
-              const SizedBox(height: 5),
+              SizedBox(height: compact ? 3 : 5),
               Row(
                 children: [
                   const Icon(
@@ -159,7 +162,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
               ),
             ],
             if (posted != null || onViewVacancy != null) ...[
-              const SizedBox(height: 3),
+              SizedBox(height: compact ? 2 : 3),
               Row(
                 children: [
                   if (posted != null)
@@ -186,10 +189,10 @@ class WebWorkerVacancyCard extends StatelessWidget {
                 ],
               ),
             ],
-            const SizedBox(height: 5),
+            SizedBox(height: compact ? 3 : 5),
             Wrap(
               spacing: 8,
-              runSpacing: 5,
+              runSpacing: compact ? 3 : 5,
               children: [
                 _FactChip(label: webJobWorkFormat(job)),
                 if (rate != null) _FactChip(label: rate),
