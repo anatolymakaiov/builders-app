@@ -326,10 +326,13 @@ class _WebJobsPageState extends State<WebJobsPage> {
                         }),
                       ),
                     ),
-                    OutlinedButton.icon(
-                      onPressed: _openFilters,
-                      icon: const Icon(Icons.tune),
-                      label: const Text('Filters'),
+                    SizedBox(
+                      height: WebToolbar.controlHeight,
+                      child: OutlinedButton.icon(
+                        onPressed: _openFilters,
+                        icon: const Icon(Icons.tune),
+                        label: const Text('Filters'),
+                      ),
                     ),
                     MenuAnchor(
                       menuChildren: [
@@ -342,52 +345,66 @@ class _WebJobsPageState extends State<WebJobsPage> {
                             child: Text(_sortLabel(option)),
                           ),
                       ],
-                      builder: (context, controller, child) =>
-                          OutlinedButton.icon(
-                        onPressed: controller.isOpen
-                            ? controller.close
-                            : controller.open,
-                        icon: const Icon(Icons.swap_vert),
-                        label: Text('Sort: ${_sortLabel(sort)}'),
+                      builder: (context, controller, child) => SizedBox(
+                        height: WebToolbar.controlHeight,
+                        child: OutlinedButton.icon(
+                          onPressed: controller.isOpen
+                              ? controller.close
+                              : controller.open,
+                          icon: const Icon(Icons.swap_vert),
+                          label: Text('Sort: ${_sortLabel(sort)}'),
+                        ),
                       ),
                     ),
                     if (isWorker && widget.onOpenSubscriptions != null)
-                      OutlinedButton.icon(
-                        onPressed: widget.onOpenSubscriptions,
-                        icon: const Icon(Icons.work_history_outlined),
-                        label: const Text('Subscriptions'),
+                      SizedBox(
+                        height: WebToolbar.controlHeight,
+                        child: OutlinedButton.icon(
+                          onPressed: widget.onOpenSubscriptions,
+                          icon: const Icon(Icons.work_history_outlined),
+                          label: const Text('Subscriptions'),
+                        ),
                       ),
                     if (isWorker)
-                      IconButton(
-                        tooltip:
-                            savedOnly ? 'Show all jobs' : 'Show saved jobs',
-                        icon: Icon(
-                          savedOnly ? Icons.favorite : Icons.favorite_border,
+                      SizedBox(
+                        height: WebToolbar.controlHeight,
+                        child: IconButton(
+                          tooltip:
+                              savedOnly ? 'Show all jobs' : 'Show saved jobs',
+                          icon: Icon(
+                            savedOnly ? Icons.favorite : Icons.favorite_border,
+                          ),
+                          onPressed: () async {
+                            await _loadSavedJobs();
+                            if (mounted) {
+                              setState(() {
+                                savedOnly = !savedOnly;
+                                page = 1;
+                              });
+                            }
+                          },
                         ),
-                        onPressed: () async {
-                          await _loadSavedJobs();
-                          if (mounted) {
-                            setState(() {
-                              savedOnly = !savedOnly;
-                              page = 1;
-                            });
-                          }
-                        },
                       ),
-                    IconButton(
-                      tooltip: 'Previous page',
-                      icon: const Icon(Icons.chevron_left),
-                      onPressed: currentPage > 1
-                          ? () => setState(() => page = currentPage - 1)
-                          : null,
+                    SizedBox(
+                      height: WebToolbar.controlHeight,
+                      child: IconButton(
+                        tooltip: 'Previous page',
+                        icon: const Icon(Icons.chevron_left),
+                        onPressed: currentPage > 1
+                            ? () => setState(() => page = currentPage - 1)
+                            : null,
+                      ),
                     ),
                     Text('$currentPage / ${pages == 0 ? 1 : pages}'),
-                    IconButton(
-                      tooltip: 'Next page',
-                      icon: const Icon(Icons.chevron_right),
-                      onPressed: currentPage < pages
-                          ? () => setState(() => page = currentPage + 1)
-                          : null,
+                    SizedBox(
+                      height: WebToolbar.controlHeight,
+                      child: IconButton(
+                        tooltip: 'Next page',
+                        icon: const Icon(Icons.chevron_right),
+                        onPressed: currentPage < pages
+                            ? () => setState(() => page = currentPage + 1)
+                            : null,
+                      ),
                     ),
                   ],
                 ),
@@ -883,21 +900,34 @@ class _EmployerModeTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SegmentedButton<WebJobsMode>(
-      segments: const [
+    final portraitWeb = isPortraitWebPresentation(context);
+    Widget label(String text) => portraitWeb
+        ? Text(text)
+        : SizedBox(
+            height: WebToolbar.segmentLabelHeight,
+            child: Center(child: Text(text)),
+          );
+    final control = SegmentedButton<WebJobsMode>(
+      style: portraitWeb
+          ? null
+          : const ButtonStyle(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+      segments: [
         ButtonSegment(
           value: WebJobsMode.owner,
-          label: Text('My vacancies'),
-          icon: Icon(Icons.business_center_outlined),
+          label: label('My vacancies'),
+          icon: const Icon(Icons.business_center_outlined),
         ),
         ButtonSegment(
           value: WebJobsMode.market,
-          label: Text('Market jobs'),
-          icon: Icon(Icons.public_outlined),
+          label: label('Market jobs'),
+          icon: const Icon(Icons.public_outlined),
         ),
       ],
       selected: {mode},
       onSelectionChanged: (value) => onChanged(value.first),
     );
+    return portraitWeb
+        ? control
+        : SizedBox(height: WebToolbar.controlHeight, child: control);
   }
 }

@@ -246,6 +246,11 @@ class WebSpacing {
   static const huge = 48.0;
 }
 
+class WebToolbar {
+  static const controlHeight = 56.0;
+  static const segmentLabelHeight = controlHeight - 16.0;
+}
+
 class WebRadii {
   static const input = 6.0;
   static const button = 6.0;

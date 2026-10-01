@@ -49,14 +49,20 @@ class _WebSmartJobSearchFieldState extends State<WebSmartJobSearchField> {
         );
         widget.onChanged(value);
       },
-      fieldViewBuilder: (context, controller, focus, onSubmitted) => TextField(
-        controller: controller,
-        focusNode: focus,
-        onChanged: widget.onChanged,
-        onSubmitted: (_) => onSubmitted(),
-        decoration: InputDecoration(
-          prefixIcon: const Icon(Icons.search),
-          hintText: widget.hintText,
+      fieldViewBuilder: (context, controller, focus, onSubmitted) => SizedBox(
+        height: WebToolbar.controlHeight,
+        child: TextField(
+          controller: controller,
+          focusNode: focus,
+          onChanged: widget.onChanged,
+          onSubmitted: (_) => onSubmitted(),
+          decoration: InputDecoration(
+            constraints: const BoxConstraints.tightFor(
+              height: WebToolbar.controlHeight,
+            ),
+            prefixIcon: const Icon(Icons.search),
+            hintText: widget.hintText,
+          ),
         ),
       ),
       optionsViewBuilder: (context, onSelected, options) {

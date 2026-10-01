@@ -153,19 +153,26 @@ class _WebChatsPageState extends State<WebChatsPage> {
                           ? (MediaQuery.sizeOf(context).width - 24)
                               .clamp(0.0, 520.0)
                           : 300,
+                      height: WebToolbar.controlHeight,
                       child: TextField(
                         controller: conversationSearchController,
                         onChanged: (_) => setState(() {}),
                         decoration: const InputDecoration(
+                          constraints: BoxConstraints.tightFor(
+                            height: WebToolbar.controlHeight,
+                          ),
                           hintText: 'Search conversations........',
                           prefixIcon: Icon(Icons.search),
                         ),
                       ),
                     ),
-                    FilledButton.icon(
-                      onPressed: _openNewMessage,
-                      icon: const Icon(Icons.edit_square),
-                      label: const Text('New message'),
+                    SizedBox(
+                      height: WebToolbar.controlHeight,
+                      child: FilledButton.icon(
+                        onPressed: _openNewMessage,
+                        icon: const Icon(Icons.edit_square),
+                        label: const Text('New message'),
+                      ),
                     ),
                   ],
                 ],

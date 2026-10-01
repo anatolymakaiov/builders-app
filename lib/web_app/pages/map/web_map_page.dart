@@ -160,37 +160,46 @@ class _WebMapPageState extends State<WebMapPage> {
                 bottomSpacing: WebSpacing.sm,
                 subtitle: '${mapJobs.length} active vacancies in this area.',
                 actions: [
-                  OutlinedButton.icon(
-                      icon: const Icon(Icons.tune),
-                      label: const Text('Trade filters'),
-                      onPressed: () async {
-                        final next = await showDialog<WebJobFilters>(
-                            context: context,
-                            builder: (_) => WebJobFiltersDialog(
-                                current: filters, rolesOnly: true));
-                        if (mounted && next != null) {
-                          setState(() => filters = next);
-                        }
-                      }),
+                  SizedBox(
+                    height: WebToolbar.controlHeight,
+                    child: OutlinedButton.icon(
+                        icon: const Icon(Icons.tune),
+                        label: const Text('Trade filters'),
+                        onPressed: () async {
+                          final next = await showDialog<WebJobFilters>(
+                              context: context,
+                              builder: (_) => WebJobFiltersDialog(
+                                  current: filters, rolesOnly: true));
+                          if (mounted && next != null) {
+                            setState(() => filters = next);
+                          }
+                        }),
+                  ),
                   if (isWorker)
-                    OutlinedButton.icon(
-                        icon: loadingLocation
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.my_location),
-                        label: const Text('Use my location'),
-                        onPressed: loadingLocation ? null : _locateUser),
-                  OutlinedButton.icon(
-                      icon: const Icon(Icons.open_in_new),
-                      label: const Text('View vacancy'),
-                      onPressed:
-                          selectedJobId == null || widget.onOpenJob == null
-                              ? null
-                              : () => widget.onOpenJob!(selectedJobId!)),
+                    SizedBox(
+                      height: WebToolbar.controlHeight,
+                      child: OutlinedButton.icon(
+                          icon: loadingLocation
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.my_location),
+                          label: const Text('Use my location'),
+                          onPressed: loadingLocation ? null : _locateUser),
+                    ),
+                  SizedBox(
+                    height: WebToolbar.controlHeight,
+                    child: OutlinedButton.icon(
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('View vacancy'),
+                        onPressed:
+                            selectedJobId == null || widget.onOpenJob == null
+                                ? null
+                                : () => widget.onOpenJob!(selectedJobId!)),
+                  ),
                 ],
               ),
               Expanded(

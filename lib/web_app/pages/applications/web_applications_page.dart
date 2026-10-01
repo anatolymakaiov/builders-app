@@ -16,8 +16,6 @@ import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
 import '../profile/web_profile_gallery.dart';
 
-const _applicationToolbarHeight = 56.0;
-
 class WebApplicationsPage extends StatefulWidget {
   const WebApplicationsPage({
     super.key,
@@ -347,7 +345,7 @@ class _ApplicationFilters extends StatelessWidget {
     );
     final search = SizedBox(
       width: 260,
-      height: portraitWeb ? null : _applicationToolbarHeight,
+      height: portraitWeb ? null : WebToolbar.controlHeight,
       child: TextFormField(
         initialValue: searchFilter,
         onChanged: onSearchChanged,
@@ -356,7 +354,7 @@ class _ApplicationFilters extends StatelessWidget {
           constraints: portraitWeb
               ? null
               : const BoxConstraints.tightFor(
-                  height: _applicationToolbarHeight,
+                  height: WebToolbar.controlHeight,
                 ),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -369,7 +367,7 @@ class _ApplicationFilters extends StatelessWidget {
     if (!portraitWeb) {
       final dropdown = SizedBox(
         width: 178,
-        height: _applicationToolbarHeight,
+        height: WebToolbar.controlHeight,
         child: DropdownButtonFormField<String>(
           key: ValueKey(statusFilter),
           initialValue: statusFilter,
@@ -378,7 +376,7 @@ class _ApplicationFilters extends StatelessWidget {
             labelText: 'Status',
             isDense: true,
             constraints: BoxConstraints.tightFor(
-              height: _applicationToolbarHeight,
+              height: WebToolbar.controlHeight,
             ),
             contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             border: OutlineInputBorder(),
@@ -511,7 +509,7 @@ class _WorkerApplicationToggle extends StatelessWidget {
       onSelectionChanged: (value) => onChanged(value.first),
     );
     if (!portraitWeb) {
-      return SizedBox(height: _applicationToolbarHeight, child: control);
+      return SizedBox(height: WebToolbar.controlHeight, child: control);
     }
     return Align(
       alignment: Alignment.centerLeft,
@@ -522,7 +520,7 @@ class _WorkerApplicationToggle extends StatelessWidget {
   Widget _toolbarSegmentLabel(String text, {required bool portraitWeb}) {
     if (portraitWeb) return Text(text);
     return SizedBox(
-      height: _applicationToolbarHeight - 16,
+      height: WebToolbar.segmentLabelHeight,
       child: Center(child: Text(text)),
     );
   }
