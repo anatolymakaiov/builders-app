@@ -16,6 +16,7 @@ import '../../widgets/web_page_container.dart';
 import '../../widgets/web_design_components.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
+import '../../widgets/web_toolbar_field.dart';
 import 'web_chat_media_widgets.dart';
 import 'web_chat_timeline.dart';
 
@@ -153,16 +154,18 @@ class _WebChatsPageState extends State<WebChatsPage> {
                           ? (MediaQuery.sizeOf(context).width - 24)
                               .clamp(0.0, 520.0)
                           : 300,
-                      height: WebToolbar.controlHeight,
-                      child: TextField(
-                        controller: conversationSearchController,
-                        onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          constraints: BoxConstraints.tightFor(
-                            height: WebToolbar.controlHeight,
+                      child: WebToolbarField(
+                        child: TextField(
+                          controller: conversationSearchController,
+                          onChanged: (_) => setState(() {}),
+                          decoration: const InputDecoration(
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            hintText: 'Search conversations........',
+                            prefixIcon: Icon(Icons.search),
                           ),
-                          hintText: 'Search conversations........',
-                          prefixIcon: Icon(Icons.search),
                         ),
                       ),
                     ),

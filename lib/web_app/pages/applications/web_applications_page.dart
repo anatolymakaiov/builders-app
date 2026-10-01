@@ -14,6 +14,7 @@ import '../../widgets/web_page_container.dart';
 import '../../widgets/web_design_components.dart';
 import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
+import '../../widgets/web_toolbar_field.dart';
 import '../profile/web_profile_gallery.dart';
 
 class WebApplicationsPage extends StatefulWidget {
@@ -343,56 +344,55 @@ class _ApplicationFilters extends StatelessWidget {
         onSelectionChanged: (value) => onStatusChanged(value.first),
       ),
     );
+    final searchField = TextFormField(
+      initialValue: searchFilter,
+      onChanged: onSearchChanged,
+      decoration: InputDecoration(
+        isDense: true,
+        filled: portraitWeb,
+        border: portraitWeb ? const OutlineInputBorder() : InputBorder.none,
+        enabledBorder: portraitWeb ? null : InputBorder.none,
+        focusedBorder: portraitWeb ? null : InputBorder.none,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        prefixIcon: const Icon(Icons.search),
+        hintText: 'Job, trade or site',
+      ),
+    );
     final search = SizedBox(
       width: 260,
-      height: portraitWeb ? null : WebToolbar.controlHeight,
-      child: TextFormField(
-        initialValue: searchFilter,
-        onChanged: onSearchChanged,
-        decoration: InputDecoration(
-          isDense: true,
-          constraints: portraitWeb
-              ? null
-              : const BoxConstraints.tightFor(
-                  height: WebToolbar.controlHeight,
-                ),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          prefixIcon: const Icon(Icons.search),
-          hintText: 'Job, trade or site',
-          border: const OutlineInputBorder(),
-        ),
-      ),
+      child: portraitWeb ? searchField : WebToolbarField(child: searchField),
     );
     if (!portraitWeb) {
       final dropdown = SizedBox(
         width: 178,
-        height: WebToolbar.controlHeight,
-        child: DropdownButtonFormField<String>(
-          key: ValueKey(statusFilter),
-          initialValue: statusFilter,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Status',
-            isDense: true,
-            constraints: BoxConstraints.tightFor(
-              height: WebToolbar.controlHeight,
+        child: WebToolbarField(
+          child: DropdownButtonFormField<String>(
+            key: ValueKey(statusFilter),
+            initialValue: statusFilter,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Status',
+              isDense: true,
+              filled: false,
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
             ),
-            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            border: OutlineInputBorder(),
+            items: [
+              for (final filter in filters)
+                DropdownMenuItem(
+                  value: filter,
+                  child: Text(filter == ApplicationStatusUtils.offerFilter
+                      ? 'Offer'
+                      : _filterLabel(filter, role)),
+                ),
+            ],
+            onChanged: (value) {
+              if (value != null) onStatusChanged(value);
+            },
           ),
-          items: [
-            for (final filter in filters)
-              DropdownMenuItem(
-                value: filter,
-                child: Text(filter == ApplicationStatusUtils.offerFilter
-                    ? 'Offer'
-                    : _filterLabel(filter, role)),
-              ),
-          ],
-          onChanged: (value) {
-            if (value != null) onStatusChanged(value);
-          },
         ),
       );
       final controls = <Widget>[

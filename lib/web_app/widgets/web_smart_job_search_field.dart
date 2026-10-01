@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/job_taxonomy_service.dart';
 import '../theme/web_theme.dart';
+import 'web_toolbar_field.dart';
 
 class WebSmartJobSearchField extends StatefulWidget {
   const WebSmartJobSearchField({
@@ -49,17 +50,18 @@ class _WebSmartJobSearchFieldState extends State<WebSmartJobSearchField> {
         );
         widget.onChanged(value);
       },
-      fieldViewBuilder: (context, controller, focus, onSubmitted) => SizedBox(
-        height: WebToolbar.controlHeight,
+      fieldViewBuilder: (context, controller, focus, onSubmitted) =>
+          WebToolbarField(
         child: TextField(
           controller: controller,
           focusNode: focus,
           onChanged: widget.onChanged,
           onSubmitted: (_) => onSubmitted(),
           decoration: InputDecoration(
-            constraints: const BoxConstraints.tightFor(
-              height: WebToolbar.controlHeight,
-            ),
+            filled: false,
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
             prefixIcon: const Icon(Icons.search),
             hintText: widget.hintText,
           ),
