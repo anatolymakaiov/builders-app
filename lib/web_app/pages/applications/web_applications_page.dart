@@ -16,6 +16,8 @@ import '../../widgets/web_panel.dart';
 import '../../widgets/web_remote_image.dart';
 import '../profile/web_profile_gallery.dart';
 
+const _applicationToolbarHeight = 56.0;
+
 class WebApplicationsPage extends StatefulWidget {
   const WebApplicationsPage({
     super.key,
@@ -154,7 +156,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
             children: [
               WebPageHeader(
                 title: 'Applications',
-                bottomSpacing: WebSpacing.sm,
+                bottomSpacing: portraitWeb ? WebSpacing.sm : WebSpacing.xs,
                 subtitle: isWorker
                     ? 'Track your single and team applications.'
                     : 'Review candidates, teams and offer activity.',
@@ -345,23 +347,29 @@ class _ApplicationFilters extends StatelessWidget {
     );
     final search = SizedBox(
       width: 260,
-      height: portraitWeb ? null : 52,
+      height: portraitWeb ? null : _applicationToolbarHeight,
       child: TextFormField(
         initialValue: searchFilter,
         onChanged: onSearchChanged,
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           isDense: true,
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-          prefixIcon: Icon(Icons.search),
+          constraints: portraitWeb
+              ? null
+              : const BoxConstraints.tightFor(
+                  height: _applicationToolbarHeight,
+                ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          prefixIcon: const Icon(Icons.search),
           hintText: 'Job, trade or site',
-          border: OutlineInputBorder(),
+          border: const OutlineInputBorder(),
         ),
       ),
     );
     if (!portraitWeb) {
       final dropdown = SizedBox(
         width: 178,
-        height: 52,
+        height: _applicationToolbarHeight,
         child: DropdownButtonFormField<String>(
           key: ValueKey(statusFilter),
           initialValue: statusFilter,
@@ -369,6 +377,9 @@ class _ApplicationFilters extends StatelessWidget {
           decoration: const InputDecoration(
             labelText: 'Status',
             isDense: true,
+            constraints: BoxConstraints.tightFor(
+              height: _applicationToolbarHeight,
+            ),
             contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             border: OutlineInputBorder(),
           ),
@@ -395,6 +406,7 @@ class _ApplicationFilters extends StatelessWidget {
         builder: (context, constraints) {
           if (constraints.maxWidth >= 800) {
             return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 for (var i = 0; i < controls.length; i++) ...[
                   if (i > 0) const SizedBox(width: WebSpacing.sm),
@@ -470,29 +482,48 @@ class _WorkerApplicationToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final portraitWeb = isPortraitWebPresentation(context);
+    final control = SegmentedButton<bool>(
+      style: portraitWeb
+          ? null
+          : const ButtonStyle(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+      segments: [
+        ButtonSegment(
+          value: false,
+          label: _toolbarSegmentLabel(
+            'Single ($singleCount)',
+            portraitWeb: portraitWeb,
+          ),
+          icon: const Icon(Icons.person_outline),
+        ),
+        ButtonSegment(
+          value: true,
+          label: _toolbarSegmentLabel(
+            'Team ($teamCount)',
+            portraitWeb: portraitWeb,
+          ),
+          icon: const Icon(Icons.groups_2_outlined),
+        ),
+      ],
+      selected: {showTeamApplications},
+      onSelectionChanged: (value) => onChanged(value.first),
+    );
+    if (!portraitWeb) {
+      return SizedBox(height: _applicationToolbarHeight, child: control);
+    }
     return Align(
       alignment: Alignment.centerLeft,
-      child: SegmentedButton<bool>(
-        style: isPortraitWebPresentation(context)
-            ? null
-            : const ButtonStyle(
-                minimumSize: WidgetStatePropertyAll(Size(0, 52)),
-              ),
-        segments: [
-          ButtonSegment(
-            value: false,
-            label: Text('Single ($singleCount)'),
-            icon: const Icon(Icons.person_outline),
-          ),
-          ButtonSegment(
-            value: true,
-            label: Text('Team ($teamCount)'),
-            icon: const Icon(Icons.groups_2_outlined),
-          ),
-        ],
-        selected: {showTeamApplications},
-        onSelectionChanged: (value) => onChanged(value.first),
-      ),
+      child: control,
+    );
+  }
+
+  Widget _toolbarSegmentLabel(String text, {required bool portraitWeb}) {
+    if (portraitWeb) return Text(text);
+    return SizedBox(
+      height: _applicationToolbarHeight - 16,
+      child: Center(child: Text(text)),
     );
   }
 }
