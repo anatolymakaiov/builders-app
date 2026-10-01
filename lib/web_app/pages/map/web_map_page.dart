@@ -147,6 +147,8 @@ class _WebMapPageState extends State<WebMapPage> {
         }
 
         return WebPageContainer(
+          topPadding: WebSpacing.xs,
+          bottomPadding: WebSpacing.lg,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -155,6 +157,7 @@ class _WebMapPageState extends State<WebMapPage> {
                     message: 'Could not refresh map jobs: ${state!.error}'),
               WebPageHeader(
                 title: 'Map',
+                bottomSpacing: WebSpacing.sm,
                 subtitle: '${mapJobs.length} active vacancies in this area.',
                 actions: [
                   OutlinedButton.icon(

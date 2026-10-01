@@ -136,10 +136,13 @@ class _WebChatsPageState extends State<WebChatsPage> {
                 .toList();
 
         return WebPageContainer(
+          topPadding: WebSpacing.xs,
+          bottomPadding: WebSpacing.lg,
           child: Column(
             children: [
               WebPageHeader(
                 title: 'Chats',
+                bottomSpacing: WebSpacing.sm,
                 subtitle: 'Conversations about work, teams and vacancies.',
                 actions: [
                   if (!(PortraitEmployerPresentation.enabled(context) &&

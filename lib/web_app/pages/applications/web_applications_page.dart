@@ -129,12 +129,32 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
           }
         }
         _markSelectedRead(selected);
+        final portraitWeb = isPortraitWebPresentation(context);
+        final workerToggle = isWorker
+            ? _WorkerApplicationToggle(
+                showTeamApplications: showTeamApplications,
+                singleCount:
+                    loadedApplications.where((item) => !item.isTeam).length,
+                teamCount:
+                    loadedApplications.where((item) => item.isTeam).length,
+                onChanged: (value) {
+                  setState(() {
+                    showTeamApplications = value;
+                    selectedApplicationId = null;
+                    compactDetailVisible = false;
+                  });
+                },
+              )
+            : null;
 
         return WebPageContainer(
+          topPadding: WebSpacing.xs,
+          bottomPadding: WebSpacing.lg,
           child: Column(
             children: [
               WebPageHeader(
                 title: 'Applications',
+                bottomSpacing: WebSpacing.sm,
                 subtitle: isWorker
                     ? 'Track your single and team applications.'
                     : 'Review candidates, teams and offer activity.',
@@ -143,21 +163,8 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                 _ErrorBanner(
                   message: 'Could not refresh applications: ${state!.error}',
                 ),
-              if (isWorker) ...[
-                _WorkerApplicationToggle(
-                  showTeamApplications: showTeamApplications,
-                  singleCount:
-                      loadedApplications.where((item) => !item.isTeam).length,
-                  teamCount:
-                      loadedApplications.where((item) => item.isTeam).length,
-                  onChanged: (value) {
-                    setState(() {
-                      showTeamApplications = value;
-                      selectedApplicationId = null;
-                      compactDetailVisible = false;
-                    });
-                  },
-                ),
+              if (portraitWeb && workerToggle != null) ...[
+                workerToggle,
                 const SizedBox(height: 14),
               ],
               if (!(PortraitEmployerPresentation.enabled(context) &&
@@ -165,6 +172,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                   selected != null)) ...[
                 _ApplicationFilters(
                   role: widget.role,
+                  desktopLeading: portraitWeb ? null : workerToggle,
                   statusFilter: statusFilter,
                   searchFilter: searchFilter,
                   onStatusChanged: (value) {
@@ -182,7 +190,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
                     });
                   },
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: portraitWeb ? 14 : WebSpacing.sm),
               ],
               Expanded(
                 child: LayoutBuilder(
@@ -294,6 +302,7 @@ class _WebApplicationsPageState extends State<WebApplicationsPage> {
 class _ApplicationFilters extends StatelessWidget {
   const _ApplicationFilters({
     required this.role,
+    required this.desktopLeading,
     required this.statusFilter,
     required this.searchFilter,
     required this.onStatusChanged,
@@ -301,6 +310,7 @@ class _ApplicationFilters extends StatelessWidget {
   });
 
   final String role;
+  final Widget? desktopLeading;
   final String statusFilter;
   final String searchFilter;
   final ValueChanged<String> onStatusChanged;
@@ -317,6 +327,7 @@ class _ApplicationFilters extends StatelessWidget {
       ApplicationStatusUtils.rejectedFilter,
       ApplicationStatusUtils.withdrawnFilter,
     ];
+    final portraitWeb = isPortraitWebPresentation(context);
     final statuses = SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: SegmentedButton<String>(
@@ -345,6 +356,45 @@ class _ApplicationFilters extends StatelessWidget {
         ),
       ),
     );
+    if (!portraitWeb) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          spacing: WebSpacing.sm,
+          runSpacing: WebSpacing.xs,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (desktopLeading != null) desktopLeading!,
+            SizedBox(
+              width: 178,
+              child: DropdownButtonFormField<String>(
+                key: ValueKey(statusFilter),
+                initialValue: statusFilter,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Status',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  for (final filter in filters)
+                    DropdownMenuItem(
+                      value: filter,
+                      child: Text(filter == ApplicationStatusUtils.offerFilter
+                          ? 'Offer'
+                          : _filterLabel(filter, role)),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value != null) onStatusChanged(value);
+                },
+              ),
+            ),
+            search,
+          ],
+        ),
+      );
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < WebBreakpoints.narrow) {

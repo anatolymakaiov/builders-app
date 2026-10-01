@@ -52,7 +52,7 @@ class WebTopNavigation extends StatelessWidget {
     return Material(
       color: WebTheme.deep,
       child: SizedBox(
-        height: 84,
+        height: 87,
         child: Stack(
           fit: StackFit.expand,
           children: [

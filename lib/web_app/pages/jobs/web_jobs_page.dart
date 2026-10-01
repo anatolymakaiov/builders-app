@@ -252,7 +252,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
                 selectedJob != null;
 
         return WebPageContainer(
-          topPadding: WebSpacing.md,
+          topPadding: WebSpacing.xs,
           bottomPadding: WebSpacing.lg,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -270,7 +270,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
               ],
               WebPageHeader(
                 title: 'Jobs',
-                bottomSpacing: WebSpacing.sm,
+                bottomSpacing: WebSpacing.xs,
                 subtitle: isEmployer
                     ? 'Manage your vacancies or explore the market.'
                     : 'Find active construction work across the UK.',
