@@ -58,11 +58,16 @@ class _WebSmartJobSearchFieldState extends State<WebSmartJobSearchField> {
           onChanged: widget.onChanged,
           onSubmitted: (_) => onSubmitted(),
           decoration: InputDecoration(
+            isDense: true,
             filled: false,
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
-            prefixIcon: const Icon(Icons.search),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            prefixIconConstraints:
+                const BoxConstraints(minWidth: 40, minHeight: 40),
+            prefixIcon: const Icon(Icons.search, size: 20),
             hintText: widget.hintText,
           ),
         ),

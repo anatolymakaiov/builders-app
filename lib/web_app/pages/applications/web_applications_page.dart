@@ -353,9 +353,12 @@ class _ApplicationFilters extends StatelessWidget {
         border: portraitWeb ? const OutlineInputBorder() : InputBorder.none,
         enabledBorder: portraitWeb ? null : InputBorder.none,
         focusedBorder: portraitWeb ? null : InputBorder.none,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        prefixIcon: const Icon(Icons.search),
+        contentPadding: EdgeInsets.symmetric(
+            horizontal: 12, vertical: portraitWeb ? 12 : 8),
+        prefixIconConstraints: portraitWeb
+            ? null
+            : const BoxConstraints(minWidth: 40, minHeight: 40),
+        prefixIcon: const Icon(Icons.search, size: 20),
         hintText: 'Job, trade or site',
       ),
     );
@@ -375,7 +378,7 @@ class _ApplicationFilters extends StatelessWidget {
               labelText: 'Status',
               isDense: true,
               filled: false,
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
               focusedBorder: InputBorder.none,

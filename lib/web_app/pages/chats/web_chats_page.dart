@@ -159,12 +159,17 @@ class _WebChatsPageState extends State<WebChatsPage> {
                           controller: conversationSearchController,
                           onChanged: (_) => setState(() {}),
                           decoration: const InputDecoration(
+                            isDense: true,
                             filled: false,
                             border: InputBorder.none,
                             enabledBorder: InputBorder.none,
                             focusedBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            prefixIconConstraints:
+                                BoxConstraints(minWidth: 40, minHeight: 40),
                             hintText: 'Search conversations........',
-                            prefixIcon: Icon(Icons.search),
+                            prefixIcon: Icon(Icons.search, size: 20),
                           ),
                         ),
                       ),

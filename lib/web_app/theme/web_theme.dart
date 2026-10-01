@@ -247,7 +247,7 @@ class WebSpacing {
 }
 
 class WebToolbar {
-  static const controlHeight = 56.0;
+  static const controlHeight = 42.0;
   static const segmentLabelHeight = controlHeight - 16.0;
 }
 
