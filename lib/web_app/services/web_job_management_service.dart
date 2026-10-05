@@ -12,6 +12,7 @@ import '../../services/job_taxonomy_service.dart';
 import '../../services/job_start_date.dart';
 import '../../services/moderation_hold_service.dart';
 import '../../services/offer_acceptance_service.dart';
+import '../../services/safe_profile_service.dart';
 import 'web_media_pipeline.dart';
 
 class WebJobManagementService {
@@ -158,7 +159,9 @@ class WebJobManagementService {
   }
 
   Future<String> companyName(String employerId) async {
-    final doc = await _firestore.collection('users').doc(employerId).get();
+    final doc = await SafeProfileService(firestore: _firestore, auth: _auth)
+        .profile(employerId)
+        .get();
     final data = doc.data();
     final name =
         _firstText(data, const ['companyName', 'name', 'displayName'], '');

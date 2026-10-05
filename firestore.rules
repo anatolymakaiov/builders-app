@@ -27,11 +27,15 @@ service cloud.firestore {
     }
 
     function isEmployer() {
-      return role() == "employer";
+      return role() == "employer"
+        && registrationComplete(get(userPath(uid())).data)
+        && get(userPath(uid())).data.get("accountDeleted", false) != true;
     }
 
     function isWorker() {
-      return role() == "worker";
+      return role() == "worker"
+        && registrationComplete(get(userPath(uid())).data)
+        && get(userPath(uid())).data.get("accountDeleted", false) != true;
     }
 
     function isSelf(userId) {
@@ -342,9 +346,8 @@ service cloud.firestore {
         );
     }
 
-    function protectedBillingKeysChanged() {
-      let changed = request.resource.data.diff(resource.data).affectedKeys();
-      let protectedBillingKeys = [
+    function protectedBillingKeys() {
+      return [
         "provider",
         "environment",
         "billingStatus",
@@ -397,23 +400,110 @@ service cloud.firestore {
 	        "paymentGraceEndsAt",
 	        "billingSuspendedAt"
 	      ];
+    }
+
+    function protectedBillingKeysChanged() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
       return changed.hasAny(["directDebit"])
         || (
           changed.hasAny(["billing"])
-          && request.resource.data.billing is map
+          && request.resource.data.get("billing", null) is map
           && (
             (
-              resource.data.billing is map
-              && request.resource.data.billing.diff(resource.data.billing)
+              resource.data.get("billing", null) is map
+              && request.resource.data.billing.diff(resource.data.get("billing", {}))
                 .affectedKeys()
-                .hasAny(protectedBillingKeys)
+                .hasAny(protectedBillingKeys())
             )
             || (
-              !(resource.data.billing is map)
-              && request.resource.data.billing.keys().hasAny(protectedBillingKeys)
+              !(resource.data.get("billing", null) is map)
+              && request.resource.data.billing.keys().hasAny(protectedBillingKeys())
             )
           )
         );
+    }
+
+    function registrationComplete(data) {
+      return data.get("profileComplete", false) == true
+        || data.get("onboardingComplete", false) == true
+        || data.get("profileCreated", false) == true
+        || data.keys().hasAny(["registrationFinalizedAt"])
+        || (
+          !data.keys().hasAny([
+            "profileComplete", "onboardingComplete", "profileCreated"
+          ])
+          && data.get("draft", false) != true
+          && data.get("pendingRegistration", false) != true
+          && data.get("registrationFormComplete", true) != false
+          && (
+            (data.get("role", "") in ["employer", "company"]
+              && data.get("companyName", "") is string
+              && data.get("companyName", "") != "")
+            || (data.get("role", "") == "worker"
+              && data.get("name", "") is string
+              && data.get("name", "") != "")
+          )
+        );
+    }
+
+    function protectedUserFieldsChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        "admin", "isAdmin", "moderator", "isModerator", "permissions",
+        "customClaims", "companyId", "employerId", "ownerId",
+        "accountOwnerId", "linkedAccountIds", "entitlements",
+        "vacancySlotLimit", "subscriptionStatus", "billingStatus"
+      ]);
+    }
+
+    function verifiedIdentityAllowed(changed) {
+      return (!changed.hasAny([
+          "emailVerified", "verifiedEmail", "verifiedNormalizedEmail"
+        ]) || request.resource.data.get("emailVerified", false) != true
+        || (request.auth.token.get("email_verified", false) == true
+          && request.resource.data.get("verifiedEmail", "") ==
+            request.auth.token.get("email", null)))
+        && (!changed.hasAny([
+          "phoneVerified", "verifiedPhone", "verifiedNormalizedPhone"
+        ]) || request.resource.data.get("phoneVerified", false) != true
+          || (request.auth.token.get("phone_number", null) is string
+            && request.resource.data.get("verifiedNormalizedPhone", "") ==
+              request.auth.token.get("phone_number", null)))
+        && (!changed.hasAny(["billingEmailVerified"])
+          || request.resource.data.get("billingEmailVerified", false) != true
+          || (request.auth.token.get("email_verified", false) == true
+            && request.resource.data.get("billingEmail", "") ==
+              request.auth.token.get("email", null)))
+        && (!changed.hasAny(["billing"])
+          || !(request.resource.data.get("billing", null) is map)
+          || request.resource.data.billing.get("billingEmailVerified", false) != true
+          || (request.auth.token.get("email_verified", false) == true
+            && request.resource.data.billing.get("billingEmail",
+              request.resource.data.get("billingEmail", "")) ==
+              request.auth.token.get("email", null)));
+    }
+
+    function verifiedCompletionIdentity(data) {
+      return request.auth.token.get("email_verified", false) == true
+        && data.get("emailVerified", false) == true
+        && data.get("verifiedEmail", "") == request.auth.token.get("email", null)
+        && (data.get("role", "") != "employer"
+          || (request.auth.token.get("phone_number", null) is string
+            && data.get("phoneVerified", false) == true
+            && data.get("verifiedNormalizedPhone", "") ==
+              request.auth.token.get("phone_number", null)));
+    }
+
+    function completionTransitionAllowed() {
+      return (!registrationComplete(resource.data)
+          && (!registrationComplete(request.resource.data)
+            || verifiedCompletionIdentity(request.resource.data)))
+        || (registrationComplete(resource.data)
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "profileComplete", "onboardingComplete", "profileCreated",
+            "registrationFinalizedAt"
+          ])
+          || (request.resource.data.get("accountDeleted", false) == true
+            && request.resource.data.get("deleted", false) == true)));
     }
 
     match /users/{userId} {
@@ -423,24 +513,44 @@ service cloud.firestore {
           || request.resource.data.role in ["worker", "employer", "company"])
         && !request.resource.data.keys().hasAny([
           "admin", "isAdmin", "moderator", "isModerator",
-          "permissions", "customClaims"
+          "permissions", "customClaims", "companyId", "employerId",
+          "ownerId", "accountOwnerId", "linkedAccountIds", "entitlements",
+          "vacancySlotLimit", "subscriptionStatus", "billingStatus"
         ])
+        && !request.resource.data.keys().hasAny(["directDebit"])
+        && request.resource.data.get("uid", userId) == userId
+        && request.resource.data.get("userId", userId) == userId
+        && (!("billing" in request.resource.data)
+          || (request.resource.data.billing is map
+            && !request.resource.data.billing.keys().hasAny(protectedBillingKeys())))
+        && verifiedIdentityAllowed(request.resource.data.keys())
+        && (!registrationComplete(request.resource.data)
+          || verifiedCompletionIdentity(request.resource.data))
       );
-      // Phase 1 compatibility: released mobile builds still read other users.
-      // Remove this broad read only after those builds use public_profiles.
-      allow read: if signedIn();
+      allow get: if isAdmin() || isSelf(userId);
+      allow list: if isAdmin();
       allow update: if isAdmin()
         || (
           isSelf(userId)
           && !protectedBillingKeysChanged()
           && (!("role" in request.resource.data)
             || request.resource.data.role in ["worker", "employer", "company"])
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            "admin", "isAdmin", "moderator", "isModerator",
-            "permissions", "customClaims"
-          ])
+          && !protectedUserFieldsChanged()
+          && request.resource.data.get("uid", userId) == userId
+          && request.resource.data.get("userId", userId) == userId
+          && (resource.data.get("role", null) == request.resource.data.get("role", null)
+            || (!registrationComplete(resource.data)
+              && resource.data.get("accountDeleted", false) != true
+              && resource.data.get("deleted", false) != true))
+          && completionTransitionAllowed()
+          && (resource.data.get("accountDeleted", false) != true
+            || request.resource.data.get("accountDeleted", false) == true)
+          && verifiedIdentityAllowed(
+            request.resource.data.diff(resource.data).affectedKeys())
         );
-      allow delete: if isAdmin() || isSelf(userId);
+      allow delete: if isAdmin() || (isSelf(userId)
+        && !registrationComplete(resource.data)
+        && resource.data.get("accountDeleted", false) != true);
 
       match /notifications/{notificationId} {
         allow create: if signedIn();

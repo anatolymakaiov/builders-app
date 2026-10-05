@@ -118,7 +118,7 @@ class PostRegistrationRefreshService {
 
     for (final employerId in employerIds.take(10)) {
       await firestore
-          .collection("users")
+          .collection("public_profiles")
           .doc(employerId)
           .get(const GetOptions(source: Source.server));
     }

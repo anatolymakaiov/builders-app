@@ -1090,6 +1090,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       if (refreshed.emailVerified &&
           normalizeEmailValue(refreshed.email ?? "") ==
               currentNormalizedProfileEmail()) {
+        await refreshed.getIdToken(true);
         debugPrint("EMAIL VERIFIED: uid=$userId");
         final refreshedEmail = refreshed.email?.trim() ?? "";
         final normalizedEmail = normalizeEmailValue(refreshedEmail);
@@ -1183,6 +1184,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           billingEmailController.text.trim().toLowerCase();
 
       if (verified && normalizedEmail == currentEmail) {
+        await refreshed.getIdToken(true);
         debugPrint("EMAIL VERIFIED: uid=$userId");
         await setRegistrationState({
           "emailVerified": true,
@@ -1418,6 +1420,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
 
     debugPrint("PHONE VERIFIED: uid=$userId");
+    await FirebaseAuth.instance.currentUser?.getIdToken(true);
     final verifiedPhoneValue = phone;
     final verifiedNormalizedPhoneValue = normalizedPhone;
     await setRegistrationState({
@@ -2081,6 +2084,9 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
 
       debugPrint("PROFILE CREATION START: uid=$userId");
+      if (wasFirstProfileCreation) {
+        await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      }
       await RegistrationValidationService().updatePhoneIndexesForUser(
         uid: userId,
         phone: phone,
@@ -2354,6 +2360,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     try {
       final normalizedEmail = normalizeEmailValue(email);
       final emailIsVerified = isCurrentEmailVerified();
+      if (emailIsVerified) {
+        await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      }
       await setRegistrationState({
         'registrationName': identity,
         'name': role == 'employer' ? companyController.text.trim() : identity,
