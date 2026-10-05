@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:test_app/services/worker_availability_service.dart';
 import 'package:test_app/web_app/portrait/portrait_worker_presentation.dart';
 import 'package:test_app/web_app/portrait/portrait_worker_profile_header.dart';
 import 'package:test_app/web_app/services/web_profile_data_service.dart';
@@ -61,7 +60,7 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     var switched = false;
-    WorkerAvailability? changedAvailability;
+    var openedAvailability = false;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
@@ -76,20 +75,18 @@ void main() {
             onEdit: () {},
             onChangeHeader: () {},
             onChangeAvatar: () {},
-            onAvailabilityChanged: (value) => changedAvailability = value,
+            onAvailabilityChanged: () => openedAvailability = true,
           ),
         ),
       ),
     ));
     expect(find.text('Alex Worker'), findsOneWidget);
-    expect(find.text('Open to Work'), findsOneWidget);
+    expect(find.text('Availability not confirmed'), findsOneWidget);
     expect(find.byTooltip('Change avatar'), findsOneWidget);
     await tester.tap(find.byTooltip('Switch account'));
     expect(switched, isTrue);
-    await tester.tap(find.byTooltip('Change availability'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Busy').last);
-    expect(changedAvailability, WorkerAvailability.busy);
+    await tester.tap(find.text('Availability not confirmed'));
+    expect(openedAvailability, isTrue);
     expect(tester.takeException(), isNull);
   });
 }

@@ -13,6 +13,7 @@ import '../../portrait/portrait_employer_profile_header.dart';
 import '../../../services/moderation_hold_service.dart';
 import '../../../services/multi_account_service.dart';
 import '../../../services/worker_availability_service.dart';
+import '../../../widgets/worker_availability_editor.dart';
 import '../../../services/job_taxonomy_service.dart';
 import '../../../widgets/trade_selector.dart';
 import '../../../widgets/account_switcher.dart';
@@ -187,14 +188,20 @@ class _WebProfilePageState extends State<WebProfilePage> {
                   onChangeHeader: ownProfile && !held ? _changeHeader : null,
                   onSwitchAccount: ownProfile ? _showAccountSwitcher : null,
                   onAvailabilityChanged: ownProfile && isWorker && !held
-                      ? (availability) async {
+                      ? () async {
+                          final selection = await showWorkerAvailabilityEditor(
+                            context,
+                            profile: current.data,
+                          );
+                          if (selection == null) return;
                           try {
-                            await WorkerAvailabilityService()
-                                .updateOwnStatus(viewedUserId, availability);
+                            final fields = await WorkerAvailabilityService()
+                                .updateOwnAvailability(
+                              viewedUserId,
+                              selection,
+                            );
                             if (!mounted) return;
-                            setState(() => localProfileUpdates[
-                                    WorkerAvailabilityService.field] =
-                                WorkerAvailabilityService.value(availability));
+                            setState(() => localProfileUpdates.addAll(fields));
                           } catch (_) {
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -512,7 +519,7 @@ class _ProfileHeader extends StatelessWidget {
   final VoidCallback? onChangeAvatar;
   final VoidCallback? onChangeHeader;
   final VoidCallback? onSwitchAccount;
-  final ValueChanged<WorkerAvailability>? onAvailabilityChanged;
+  final VoidCallback? onAvailabilityChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -696,43 +703,22 @@ class _ProfileHeader extends StatelessWidget {
                             const SizedBox(height: 6),
                             if (onAvailabilityChanged == null)
                               Text(
-                                WorkerAvailabilityService.label(
-                                  WorkerAvailabilityService.fromProfile(
-                                      profile.data),
-                                ),
+                                WorkerAvailabilityService.profileLabel(
+                                    profile.data),
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w700,
                                 ),
                               )
                             else
-                              PopupMenuButton<WorkerAvailability>(
-                                tooltip: 'Change availability',
-                                onSelected: onAvailabilityChanged,
-                                itemBuilder: (_) => WorkerAvailability.values
-                                    .map((value) => PopupMenuItem(
-                                          value: value,
-                                          child: Text(
-                                              WorkerAvailabilityService.label(
-                                                  value)),
-                                        ))
-                                    .toList(),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      WorkerAvailabilityService.label(
-                                        WorkerAvailabilityService.fromProfile(
-                                            profile.data),
-                                      ),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const Icon(Icons.arrow_drop_down,
-                                        color: Colors.white),
-                                  ],
+                              TextButton.icon(
+                                onPressed: onAvailabilityChanged,
+                                icon: const Icon(Icons.edit_outlined,
+                                    color: Colors.white),
+                                label: Text(
+                                  WorkerAvailabilityService.profileLabel(
+                                      profile.data),
+                                  style: const TextStyle(color: Colors.white),
                                 ),
                               ),
                           ],
@@ -779,6 +765,13 @@ class _WorkerProfileBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final cvItems = <MapEntry<String, String>>[
       MapEntry('Trade / position', profile.trade),
+      MapEntry(
+          'Availability', WorkerAvailabilityService.profileLabel(profile.data)),
+      if (ownProfile)
+        MapEntry(
+          'Vacancy invitations',
+          WorkerAvailabilityService.allowsInvites(profile.data) ? 'On' : 'Off',
+        ),
       MapEntry('Experience', profile.experience),
       for (final entry in const {
         'permits': 'Permits / licences',

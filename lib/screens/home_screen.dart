@@ -26,6 +26,7 @@ import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/legal_documents.dart';
 import '../widgets/profile_hamburger_menu.dart';
+import '../widgets/worker_availability_editor.dart';
 
 class HomeScreen extends StatefulWidget {
   final int initialIndex;
@@ -50,6 +51,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool legalPromptShown = false;
   bool _showOnboardingTour = false;
   bool _savingTourCompletion = false;
+  Map<String, dynamic>? _workerAvailabilityProfile;
+  bool _requiresLegalAcceptance = false;
   int _tourStepIndex = 0;
   int _lastNotificationCount = 0;
   int _lastChatCount = 0;
@@ -152,9 +155,14 @@ class _HomeScreenState extends State<HomeScreen> {
             (role == "employer" &&
                 (data?["companyName"]?.toString().trim() ?? "").isNotEmpty);
 
+        if (role == 'worker' && hasProfile && data != null) {
+          _workerAvailabilityProfile = data;
+        }
+
         if (hasProfile &&
             role != "admin" &&
             !LegalDocuments.hasAcceptedCurrentVersion(data, role)) {
+          _requiresLegalAcceptance = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             promptForUpdatedLegalDocuments();
           });
@@ -184,6 +192,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       loading = false;
+    });
+    _scheduleAvailabilityCheckIn();
+  }
+
+  void _scheduleAvailabilityCheckIn() {
+    final uid = userId;
+    final profile = _workerAvailabilityProfile;
+    if (role != 'worker' ||
+        uid == null ||
+        profile == null ||
+        _showOnboardingTour ||
+        _requiresLegalAcceptance) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 600), () {
+        if (mounted && FirebaseAuth.instance.currentUser?.uid == uid) {
+          WorkerAvailabilityCheckIn.maybePrompt(
+            context,
+            workerId: uid,
+            profile: profile,
+          );
+        }
+      });
     });
   }
 
@@ -220,6 +252,8 @@ class _HomeScreenState extends State<HomeScreen> {
         role: role,
         language: result.language,
       );
+      _requiresLegalAcceptance = false;
+      _scheduleAvailabilityCheckIn();
     } catch (e) {
       debugPrint("LEGAL PROMPT SAVE ERROR: $e");
       legalPromptShown = false;
@@ -742,6 +776,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _savingTourCompletion = false;
       _showOnboardingTour = false;
     });
+    _scheduleAvailabilityCheckIn();
   }
 
   void _goToNextTourStep() {

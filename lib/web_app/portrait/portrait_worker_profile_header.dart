@@ -27,11 +27,10 @@ class PortraitWorkerProfileHeader extends StatelessWidget {
   final VoidCallback? onChangeAvatar;
   final VoidCallback? onChangeHeader;
   final VoidCallback? onSwitchAccount;
-  final ValueChanged<WorkerAvailability>? onAvailabilityChanged;
+  final VoidCallback? onAvailabilityChanged;
 
   @override
   Widget build(BuildContext context) {
-    final availability = WorkerAvailabilityService.fromProfile(profile.data);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -161,37 +160,22 @@ class PortraitWorkerProfileHeader extends StatelessWidget {
                     ),
                     if (onAvailabilityChanged == null)
                       Text(
-                        WorkerAvailabilityService.label(availability),
+                        WorkerAvailabilityService.profileLabel(profile.data),
                         style: const TextStyle(
                           color: WebTheme.accent,
                           fontWeight: FontWeight.w700,
                         ),
                       )
                     else
-                      PopupMenuButton<WorkerAvailability>(
-                        tooltip: 'Change availability',
-                        onSelected: onAvailabilityChanged,
-                        itemBuilder: (_) => [
-                          for (final status in WorkerAvailability.values)
-                            PopupMenuItem(
-                              value: status,
-                              child:
-                                  Text(WorkerAvailabilityService.label(status)),
-                            ),
-                        ],
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              WorkerAvailabilityService.label(availability),
-                              style: const TextStyle(
-                                color: WebTheme.accent,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const Icon(Icons.arrow_drop_down,
-                                color: WebTheme.accent),
-                          ],
+                      TextButton.icon(
+                        onPressed: onAvailabilityChanged,
+                        icon: const Icon(Icons.edit_outlined),
+                        label: Text(
+                          WorkerAvailabilityService.profileLabel(profile.data),
+                          style: const TextStyle(
+                            color: WebTheme.accent,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                   ],

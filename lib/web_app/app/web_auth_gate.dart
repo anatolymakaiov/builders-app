@@ -8,6 +8,7 @@ import '../../services/multi_account_service.dart';
 import '../../services/auth_session_resolver.dart';
 import '../../widgets/auth_session_gate.dart';
 import '../../widgets/legal_documents.dart';
+import '../../widgets/worker_availability_editor.dart';
 import '../services/web_password_sign_in.dart';
 import '../shell/web_shell.dart';
 import '../admin/admin_web_shell.dart';
@@ -117,6 +118,18 @@ class _WebAuthGateState extends State<WebAuthGate> {
                     .completePendingNewAccountLink()
                     .catchError((_) {});
               });
+              if (resolution.role == 'worker') {
+                Future<void>.delayed(const Duration(milliseconds: 600), () {
+                  if (context.mounted &&
+                      FirebaseAuth.instance.currentUser?.uid == user.uid) {
+                    WorkerAvailabilityCheckIn.maybePrompt(
+                      context,
+                      workerId: user.uid,
+                      profile: resolution.profile,
+                    );
+                  }
+                });
+              }
             }
             if (usesDedicatedAdminWebShell(resolution.role)) {
               return AdminWebShell(
