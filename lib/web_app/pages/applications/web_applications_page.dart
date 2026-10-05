@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../services/application_activity_service.dart';
 import '../../../services/application_status_utils.dart';
+import '../../../services/job_taxonomy_service.dart';
 import '../../services/web_application_actions_service.dart';
 import '../../services/web_applications_data_service.dart';
 import '../../services/web_data_state.dart';
@@ -961,11 +962,9 @@ class _ApplicationDetail extends StatelessWidget {
                 ),
                 _InfoRow(
                   label: 'Trade / role',
-                  value: _firstText(
-                    item.profileData,
-                    const ['trade', 'position', 'registrationPosition'],
-                    '',
-                  ),
+                  value: JobTaxonomyService.workerTradeLabels(
+                    item.profileData!,
+                  ).join(' · '),
                 ),
                 _InfoRow(
                   label: 'Location',

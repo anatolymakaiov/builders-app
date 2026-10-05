@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../models/job.dart';
+import '../../services/job_taxonomy_service.dart';
 import 'web_company_branding.dart';
 import 'web_jobs_data_service.dart';
 import 'web_data_state.dart';
@@ -68,11 +69,13 @@ class WebProfileData {
   String get role => _firstText(data, const ['role', 'userRole'], '');
   String get email => _firstText(data, const ['email'], '');
   String get phone => _firstText(data, const ['phone', 'phoneNumber'], '');
-  String get trade => _firstText(
-        data,
-        const ['trade', 'position', 'registrationPosition', 'profession'],
-        '',
-      );
+  String get trade => role == 'worker'
+      ? JobTaxonomyService.workerTradeLabels(data).join(' · ')
+      : _firstText(
+          data,
+          const ['trade', 'position', 'registrationPosition', 'profession'],
+          '',
+        );
   String get location => _firstText(data, const ['location', 'address'], '');
   String get addressLine1 => _firstText(data, const ['addressLine1'], '');
   String get addressLine2 => _firstText(data, const ['addressLine2'], '');

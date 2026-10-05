@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'address_lookup_service.dart';
+import 'job_taxonomy_service.dart';
 
 class PendingRegistrationDetails {
   final String email;
@@ -12,6 +13,7 @@ class PendingRegistrationDetails {
   final String firstName;
   final String lastName;
   final String trade;
+  final List<String> tradeIds;
   final String companyName;
   final PostalAddress? address;
   final bool emailVerified;
@@ -27,6 +29,7 @@ class PendingRegistrationDetails {
     this.firstName = '',
     this.lastName = '',
     this.trade = '',
+    this.tradeIds = const [],
     this.companyName = '',
     this.address,
     this.emailVerified = false,
@@ -62,6 +65,11 @@ class PendingRegistrationDetails {
 
   Map<String, dynamic> toUserDocument() {
     final requiresPhoneVerification = role == "employer";
+    final resolvedTradeIds = tradeIds.isNotEmpty
+        ? tradeIds
+        : (JobTaxonomyService.roleFor(trade) == null
+            ? const <String>[]
+            : <String>[JobTaxonomyService.roleFor(trade)!.id]);
     return {
       "role": role,
       if (role == 'worker') 'availabilityStatus': 'open_to_work',
@@ -70,7 +78,8 @@ class PendingRegistrationDetails {
       "registrationName": registrationName,
       if (firstName.isNotEmpty) 'registrationFirstName': firstName,
       if (lastName.isNotEmpty) 'registrationLastName': lastName,
-      if (trade.isNotEmpty) 'registrationPosition': trade,
+      if (role == 'worker' && resolvedTradeIds.isNotEmpty)
+        ...JobTaxonomyService.workerTradeFields(resolvedTradeIds),
       if (companyName.isNotEmpty) 'registrationCompanyName': companyName,
       if (address != null) ...{
         'addressLine1': address!.addressLine1,

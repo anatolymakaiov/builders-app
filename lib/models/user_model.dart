@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/job_taxonomy_service.dart';
 
 class AppUser {
   final String id;
@@ -11,6 +12,8 @@ class AppUser {
 
   /// worker
   final String? trade;
+  final String? primaryTradeId;
+  final List<String> tradeIds;
 
   /// NEW: experience in years
   final int? experienceYears;
@@ -45,6 +48,8 @@ class AppUser {
     this.name,
     this.phone,
     this.trade,
+    this.primaryTradeId,
+    this.tradeIds = const [],
     this.experienceYears,
     this.experienceMonths,
     this.rate,
@@ -62,8 +67,7 @@ class AppUser {
   bool get isProfileComplete {
     if (role != "worker") return true;
 
-    return trade != null &&
-        trade!.isNotEmpty &&
+    return (trade?.isNotEmpty == true || tradeIds.isNotEmpty) &&
         rate != null &&
         availability != null;
   }
@@ -138,7 +142,9 @@ class AppUser {
       role: data["role"] ?? "worker",
       name: data["name"],
       phone: data["phone"],
-      trade: data["trade"],
+      trade: JobTaxonomyService.workerTradeLabels(data).join(' · '),
+      primaryTradeId: JobTaxonomyService.workerTradeIds(data).firstOrNull,
+      tradeIds: JobTaxonomyService.workerTradeIds(data),
       experienceYears: safeInt(data["experienceYears"]),
       experienceMonths: safeInt(data["experienceMonths"]),
       rate: safeDouble(data["rate"]),

@@ -1,11 +1,13 @@
 import '../models/job.dart';
 
 class ConstructionRole {
+  final String id;
   final String canonical;
   final String category;
   final List<String> aliases;
 
   const ConstructionRole({
+    required this.id,
     required this.canonical,
     required this.category,
     this.aliases = const [],
@@ -17,41 +19,46 @@ class ConstructionRole {
     yield* aliases;
   }
 
-  String get canonicalRoleId => JobTaxonomyService.roleIdFor(canonical);
+  String get canonicalRoleId => id;
 }
 
 class JobTaxonomyService {
   static const roles = <ConstructionRole>[
     ConstructionRole(
+      id: "bricklayer",
       canonical: "Bricklayer",
       category: "Brickwork",
       aliases: ["brickie", "brick mason", "block layer", "blocklayer"],
     ),
     ConstructionRole(
+      id: "dryliner",
       canonical: "Dryliner",
       category: "Drylining",
       aliases: [
         "dry liner",
+        "drylining",
+        "dry lining",
         "dry lining boarder",
         "drywall installer",
         "partition installer",
         "dryliner fixer",
+        "drylining fixer",
+        "dry lining fixer",
+        "drylining_fixer",
         "drywall fixer",
+        "board fixer",
         "fixer",
         "fix"
       ],
     ),
     ConstructionRole(
-      canonical: "Drylining Fixer",
-      category: "Drylining",
-      aliases: ["dry lining fixer", "board fixer"],
-    ),
-    ConstructionRole(
+      id: "ceiling_fixer",
       canonical: "Ceiling Fixer",
       category: "Drylining",
       aliases: ["ceiling fixer", "suspended ceiling fixer", "grid fixer"],
     ),
     ConstructionRole(
+      id: "tape_and_joiner",
       canonical: "Tape & Joiner",
       category: "Drylining",
       aliases: [
@@ -62,6 +69,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "demountable_partition_installer",
       canonical: "Demountable Partition Installer",
       category: "Drylining",
       aliases: [
@@ -71,6 +79,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "glass_partition_installer",
       canonical: "Glass Partition Installer",
       category: "Drylining",
       aliases: [
@@ -80,6 +89,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "access_flooring_operative",
       canonical: "Access Flooring Operative",
       category: "Interiors",
       aliases: [
@@ -89,6 +99,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "acoustic_installer",
       canonical: "Acoustic Installer",
       category: "Interiors",
       aliases: [
@@ -98,21 +109,25 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "hygienic_cladding_installer",
       canonical: "Hygienic Cladding Installer",
       category: "Interiors",
       aliases: ["hygienic wall cladding", "protective component installer"],
     ),
     ConstructionRole(
+      id: "plasterer",
       canonical: "Plasterer",
       category: "Finishes",
       aliases: ["skimmer", "render plasterer", "solid plasterer"],
     ),
     ConstructionRole(
+      id: "renderer",
       canonical: "Renderer",
       category: "Finishes",
       aliases: ["external renderer", "silicone render", "k rend"],
     ),
     ConstructionRole(
+      id: "fibrous_plasterer",
       canonical: "Fibrous Plasterer",
       category: "Finishes",
       aliases: [
@@ -122,6 +137,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "screeder",
       canonical: "Screeder",
       category: "Finishes",
       aliases: [
@@ -132,6 +148,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "resin_flooring_operative",
       canonical: "Resin Flooring Operative",
       category: "Finishes",
       aliases: [
@@ -141,26 +158,31 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "sealant_applicator",
       canonical: "Sealant Applicator",
       category: "Finishes",
       aliases: ["mastic man", "mastic applicator", "joint sealant applicator"],
     ),
     ConstructionRole(
+      id: "painter_and_decorator",
       canonical: "Painter & Decorator",
       category: "Finishes",
       aliases: ["painter", "decorator", "paint sprayer"],
     ),
     ConstructionRole(
+      id: "tiler",
       canonical: "Tiler",
       category: "Finishes",
       aliases: ["wall tiler", "floor tiler", "ceramic tiler"],
     ),
     ConstructionRole(
+      id: "floor_layer",
       canonical: "Floor Layer",
       category: "Finishes",
       aliases: ["floor fitter", "vinyl floor layer", "laminate fitter"],
     ),
     ConstructionRole(
+      id: "carpenter",
       canonical: "Carpenter",
       category: "Carpentry",
       aliases: [
@@ -171,21 +193,25 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "joiner",
       canonical: "Joiner",
       category: "Carpentry",
       aliases: ["bench joiner", "site joiner", "shopfitter"],
     ),
     ConstructionRole(
+      id: "shuttering_carpenter",
       canonical: "Shuttering Carpenter",
       category: "Carpentry",
       aliases: ["formwork carpenter", "shuttering joiner", "formworker"],
     ),
     ConstructionRole(
+      id: "formwork_erector",
       canonical: "Formwork Erector",
       category: "Carpentry",
       aliases: ["formwork striker", "formworker", "shuttering erector"],
     ),
     ConstructionRole(
+      id: "timber_frame_erector",
       canonical: "Timber Frame Erector",
       category: "Carpentry",
       aliases: [
@@ -195,36 +221,43 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "wood_machinist",
       canonical: "Wood Machinist",
       category: "Carpentry",
       aliases: ["woodmachining", "saw mill operative", "machinist"],
     ),
     ConstructionRole(
+      id: "kitchen_fitter",
       canonical: "Kitchen Fitter",
       category: "Fit-out",
       aliases: ["kitchen installer", "cabinet fitter"],
     ),
     ConstructionRole(
+      id: "bathroom_fitter",
       canonical: "Bathroom Fitter",
       category: "Fit-out",
       aliases: ["bathroom installer", "wet room fitter"],
     ),
     ConstructionRole(
+      id: "window_fitter",
       canonical: "Window Fitter",
       category: "Fit-out",
       aliases: ["glazing installer", "window installer", "upvc fitter"],
     ),
     ConstructionRole(
+      id: "door_installer",
       canonical: "Door Installer",
       category: "Fit-out",
       aliases: ["door fitter", "fire door installer", "fire door fitter"],
     ),
     ConstructionRole(
+      id: "steel_fixer",
       canonical: "Steel Fixer",
       category: "Structures",
       aliases: ["rebar fixer", "steel fixer fixer", "reinforcement fixer"],
     ),
     ConstructionRole(
+      id: "steel_erector",
       canonical: "Steel Erector",
       category: "Structures",
       aliases: [
@@ -234,6 +267,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "steel_fabricator_welder",
       canonical: "Steel Fabricator Welder",
       category: "Structures",
       aliases: [
@@ -243,16 +277,19 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "metal_decking_installer",
       canonical: "Metal Decking Installer",
       category: "Structures",
       aliases: ["steel decker", "metal decker", "stud welder"],
     ),
     ConstructionRole(
+      id: "precast_concrete_installer",
       canonical: "Precast Concrete Installer",
       category: "Structures",
       aliases: ["precast installer", "precast erector", "concrete installer"],
     ),
     ConstructionRole(
+      id: "concrete_repair_operative",
       canonical: "Concrete Repair Operative",
       category: "Structures",
       aliases: [
@@ -262,31 +299,37 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "concrete_finisher",
       canonical: "Concrete Finisher",
       category: "Structures",
       aliases: ["concrete worker", "concreter", "power float operative"],
     ),
     ConstructionRole(
+      id: "groundworker",
       canonical: "Groundworker",
       category: "Groundworks",
       aliases: ["ground worker", "civils groundworker", "kerb layer"],
     ),
     ConstructionRole(
+      id: "drainage_operative",
       canonical: "Drainage Operative",
       category: "Groundworks",
       aliases: ["drainage gang", "drain layer", "deep drainage"],
     ),
     ConstructionRole(
+      id: "kerb_layer",
       canonical: "Kerb Layer",
       category: "Groundworks",
       aliases: ["kerb and channel layer", "kerber", "edging layer"],
     ),
     ConstructionRole(
+      id: "highways_maintenance_operative",
       canonical: "Highways Maintenance Operative",
       category: "Highways",
       aliases: ["highway maintenance", "road maintenance", "road worker"],
     ),
     ConstructionRole(
+      id: "road_surfacing_operative",
       canonical: "Road Surfacing Operative",
       category: "Highways",
       aliases: [
@@ -297,31 +340,37 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "pavement_marking_operative",
       canonical: "Pavement Marking Operative",
       category: "Highways",
       aliases: ["road marking operative", "line marking", "road studs"],
     ),
     ConstructionRole(
+      id: "paver",
       canonical: "Paver",
       category: "Groundworks",
       aliases: ["block paver", "slab layer", "paving operative"],
     ),
     ConstructionRole(
+      id: "scaffolder",
       canonical: "Scaffolder",
       category: "Access",
       aliases: ["scaffold erector", "part 1 scaffolder", "part 2 scaffolder"],
     ),
     ConstructionRole(
+      id: "roofer",
       canonical: "Roofer",
       category: "Envelope",
       aliases: ["flat roofer", "pitched roofer", "roof tiler"],
     ),
     ConstructionRole(
+      id: "roof_slater_and_tiler",
       canonical: "Roof Slater & Tiler",
       category: "Envelope",
       aliases: ["roof slater", "roof tiler", "slate and tile roofer"],
     ),
     ConstructionRole(
+      id: "single_ply_roofer",
       canonical: "Single Ply Roofer",
       category: "Envelope",
       aliases: [
@@ -331,31 +380,37 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "felt_roofer",
       canonical: "Felt Roofer",
       category: "Envelope",
       aliases: ["built up felt roofing", "bitumen roofer", "torch on felt"],
     ),
     ConstructionRole(
+      id: "leadworker",
       canonical: "Leadworker",
       category: "Envelope",
       aliases: ["specialist leadworker", "metal roofer", "tinsmith"],
     ),
     ConstructionRole(
+      id: "thatcher",
       canonical: "Thatcher",
       category: "Envelope",
       aliases: ["thatching", "thatched roofer"],
     ),
     ConstructionRole(
+      id: "cladder",
       canonical: "Cladder",
       category: "Envelope",
       aliases: ["cladding installer", "rainscreen cladder", "facade installer"],
     ),
     ConstructionRole(
+      id: "roof_sheeter_and_cladder",
       canonical: "Roof Sheeter & Cladder",
       category: "Envelope",
       aliases: ["roof sheeting", "sheeting and cladding", "industrial cladder"],
     ),
     ConstructionRole(
+      id: "stone_fixer",
       canonical: "Stone Fixer",
       category: "Masonry",
       aliases: [
@@ -365,6 +420,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "stonemason",
       canonical: "Stonemason",
       category: "Masonry",
       aliases: [
@@ -375,21 +431,25 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "curtain_wall_installer",
       canonical: "Curtain Wall Installer",
       category: "Envelope",
       aliases: ["curtain wall fixer", "facade fixer", "glazier"],
     ),
     ConstructionRole(
+      id: "electrician",
       canonical: "Electrician",
       category: "MEP",
       aliases: ["sparky", "approved electrician", "installation electrician"],
     ),
     ConstructionRole(
+      id: "electrical_mate",
       canonical: "Electrical Mate",
       category: "MEP",
       aliases: ["electricians mate", "electrical labourer", "improver"],
     ),
     ConstructionRole(
+      id: "electrical_tester",
       canonical: "Electrical Tester",
       category: "MEP",
       aliases: [
@@ -399,11 +459,13 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "plumber",
       canonical: "Plumber",
       category: "MEP",
       aliases: ["plumbing engineer", "pipework installer"],
     ),
     ConstructionRole(
+      id: "pipe_fitter",
       canonical: "Pipe Fitter",
       category: "MEP",
       aliases: [
@@ -413,11 +475,13 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "gas_engineer",
       canonical: "Gas Engineer",
       category: "MEP",
       aliases: ["gas safe engineer", "heating engineer"],
     ),
     ConstructionRole(
+      id: "hvac_engineer",
       canonical: "HVAC Engineer",
       category: "MEP",
       aliases: [
@@ -427,21 +491,25 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "duct_fitter",
       canonical: "Duct Fitter",
       category: "MEP",
       aliases: ["ductwork installer", "ventilation fitter", "ducting fitter"],
     ),
     ConstructionRole(
+      id: "refrigeration_engineer",
       canonical: "Refrigeration Engineer",
       category: "MEP",
       aliases: ["air conditioning engineer", "ac engineer", "cooling engineer"],
     ),
     ConstructionRole(
+      id: "fire_alarm_engineer",
       canonical: "Fire Alarm Engineer",
       category: "MEP",
       aliases: ["fire systems engineer", "fire alarm installer"],
     ),
     ConstructionRole(
+      id: "security_engineer",
       canonical: "Security Engineer",
       category: "MEP",
       aliases: [
@@ -451,6 +519,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "data_engineer",
       canonical: "Data Engineer",
       category: "MEP",
       aliases: [
@@ -460,11 +529,13 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "lightning_protection_engineer",
       canonical: "Lightning Protection Engineer",
       category: "MEP",
       aliases: ["lightning conductor engineer", "earthing installer"],
     ),
     ConstructionRole(
+      id: "solar_pv_installer",
       canonical: "Solar PV Installer",
       category: "MEP",
       aliases: [
@@ -474,6 +545,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "lift_installer",
       canonical: "Lift Installer",
       category: "MEP",
       aliases: [
@@ -483,6 +555,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "mechanical_fitter",
       canonical: "Mechanical Fitter",
       category: "MEP",
       aliases: [
@@ -492,16 +565,19 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
-      canonical: "Passive Fire Protection Installer",
+      id: "fire_stopper",
+      canonical: "Fire Stopper",
       category: "Fire Protection",
-      aliases: [
-        "fire stopping",
-        "fire stopper",
-        "pfp installer",
-        "cavity barrier installer"
-      ],
+      aliases: ["fire stopping", "firestopper", "penetration sealing"],
     ),
     ConstructionRole(
+      id: "passive_fire_protection_installer",
+      canonical: "Passive Fire Protection Installer",
+      category: "Fire Protection",
+      aliases: ["pfp installer", "cavity barrier installer"],
+    ),
+    ConstructionRole(
+      id: "sprinkler_fitter",
       canonical: "Sprinkler Fitter",
       category: "Fire Protection",
       aliases: [
@@ -511,36 +587,43 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "plant_operator",
       canonical: "Plant Operator",
       category: "Plant",
       aliases: ["machine operator", "heavy plant operator"],
     ),
     ConstructionRole(
+      id: "360_excavator_operator",
       canonical: "360 Excavator Operator",
       category: "Plant",
       aliases: ["360 driver", "digger driver", "excavator driver"],
     ),
     ConstructionRole(
+      id: "dumper_driver",
       canonical: "Dumper Driver",
       category: "Plant",
       aliases: ["forward tipping dumper", "articulated dumper driver"],
     ),
     ConstructionRole(
+      id: "roller_driver",
       canonical: "Roller Driver",
       category: "Plant",
       aliases: ["roller operator", "ride on roller", "road roller driver"],
     ),
     ConstructionRole(
+      id: "telehandler_operator",
       canonical: "Telehandler Operator",
       category: "Plant",
       aliases: ["telehandler driver", "forklift driver", "forklift operator"],
     ),
     ConstructionRole(
+      id: "crane_operator",
       canonical: "Crane Operator",
       category: "Plant",
       aliases: ["tower crane operator", "mobile crane operator"],
     ),
     ConstructionRole(
+      id: "crane_supervisor",
       canonical: "Crane Supervisor",
       category: "Plant",
       aliases: [
@@ -550,11 +633,13 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "hoist_installer",
       canonical: "Hoist Installer",
       category: "Plant",
       aliases: ["hoist operative", "construction hoist installer"],
     ),
     ConstructionRole(
+      id: "plant_fitter",
       canonical: "Plant Fitter",
       category: "Plant",
       aliases: [
@@ -564,11 +649,13 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "slinger_signaller",
       canonical: "Slinger Signaller",
       category: "Plant",
       aliases: ["slinger", "signaller", "banksman"],
     ),
     ConstructionRole(
+      id: "piling_operative",
       canonical: "Piling Operative",
       category: "Substructure",
       aliases: [
@@ -578,16 +665,19 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "underpinning_operative",
       canonical: "Underpinning Operative",
       category: "Substructure",
       aliases: ["underpinning", "underpinning piling", "basement underpinning"],
     ),
     ConstructionRole(
+      id: "dewatering_operative",
       canonical: "Dewatering Operative",
       category: "Substructure",
       aliases: ["well points", "dewatering", "ground water control"],
     ),
     ConstructionRole(
+      id: "land_driller",
       canonical: "Land Driller",
       category: "Substructure",
       aliases: [
@@ -597,6 +687,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "tunnelling_operative",
       canonical: "Tunnelling Operative",
       category: "Tunnelling",
       aliases: [
@@ -608,16 +699,19 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "microtunnelling_operative",
       canonical: "Microtunnelling Operative",
       category: "Tunnelling",
       aliases: ["pipejacking operative", "micro tunneller", "pipe jacking"],
     ),
     ConstructionRole(
+      id: "labourer",
       canonical: "Labourer",
       category: "General",
       aliases: ["general labourer", "site labourer", "cscs labourer"],
     ),
     ConstructionRole(
+      id: "skilled_labourer",
       canonical: "Skilled Labourer",
       category: "General",
       aliases: [
@@ -627,6 +721,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "handyman",
       canonical: "Handyman",
       category: "General",
       aliases: [
@@ -636,21 +731,25 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "snagger",
       canonical: "Snagger",
       category: "General",
       aliases: ["finishing operative", "defects operative", "making good"],
     ),
     ConstructionRole(
+      id: "cleaner",
       canonical: "Cleaner",
       category: "General",
       aliases: ["site cleaner", "builders clean", "sparkle clean"],
     ),
     ConstructionRole(
+      id: "site_manager",
       canonical: "Site Manager",
       category: "Management",
       aliases: ["construction manager", "site supervisor", "site foreman"],
     ),
     ConstructionRole(
+      id: "site_supervisor",
       canonical: "Site Supervisor",
       category: "Management",
       aliases: [
@@ -661,11 +760,13 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "general_foreman",
       canonical: "General Foreman",
       category: "Management",
       aliases: ["foreperson", "works foreman", "construction foreman"],
     ),
     ConstructionRole(
+      id: "project_manager",
       canonical: "Project Manager",
       category: "Management",
       aliases: [
@@ -675,31 +776,37 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "contracts_manager",
       canonical: "Contracts Manager",
       category: "Management",
       aliases: ["construction contracts manager", "contract manager"],
     ),
     ConstructionRole(
+      id: "quantity_surveyor",
       canonical: "Quantity Surveyor",
       category: "Commercial",
       aliases: ["qs", "commercial manager", "assistant quantity surveyor"],
     ),
     ConstructionRole(
+      id: "estimator",
       canonical: "Estimator",
       category: "Commercial",
       aliases: ["construction estimator", "cost estimator", "tender estimator"],
     ),
     ConstructionRole(
+      id: "buyer",
       canonical: "Buyer",
       category: "Commercial",
       aliases: ["construction buyer", "materials buyer", "procurement"],
     ),
     ConstructionRole(
+      id: "setting_out_engineer",
       canonical: "Setting Out Engineer",
       category: "Engineering",
       aliases: ["site engineer", "engineer", "setting out"],
     ),
     ConstructionRole(
+      id: "clerk_of_works",
       canonical: "Clerk of Works",
       category: "Engineering",
       aliases: [
@@ -709,41 +816,49 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "civil_engineer",
       canonical: "Civil Engineer",
       category: "Engineering",
       aliases: ["construction engineer", "civil engineering technician"],
     ),
     ConstructionRole(
+      id: "cad_technician",
       canonical: "CAD Technician",
       category: "Design",
       aliases: ["cad operator", "architectural technician", "bim technician"],
     ),
     ConstructionRole(
+      id: "architectural_technologist",
       canonical: "Architectural Technologist",
       category: "Design",
       aliases: ["architectural technician", "technical designer"],
     ),
     ConstructionRole(
+      id: "building_surveyor",
       canonical: "Building Surveyor",
       category: "Surveying",
       aliases: ["surveyor", "building control officer", "building inspector"],
     ),
     ConstructionRole(
+      id: "health_and_safety_advisor",
       canonical: "Health & Safety Advisor",
       category: "Management",
       aliases: ["hse advisor", "safety advisor", "health and safety"],
     ),
     ConstructionRole(
+      id: "traffic_marshal",
       canonical: "Traffic Marshal",
       category: "Logistics",
       aliases: ["banksman traffic marshal", "gate person", "gateman"],
     ),
     ConstructionRole(
+      id: "storeman",
       canonical: "Storeman",
       category: "Logistics",
       aliases: ["store person", "materials controller", "logistics operative"],
     ),
     ConstructionRole(
+      id: "waste_management_operative",
       canonical: "Waste Management Operative",
       category: "Logistics",
       aliases: [
@@ -753,16 +868,19 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "landscape_operative",
       canonical: "Landscape Operative",
       category: "External Works",
       aliases: ["landscaper", "hard landscaper", "soft landscaper"],
     ),
     ConstructionRole(
+      id: "fencer",
       canonical: "Fencer",
       category: "External Works",
       aliases: ["fencing operative", "fence installer", "hoarding installer"],
     ),
     ConstructionRole(
+      id: "demolition_operative",
       canonical: "Demolition Operative",
       category: "Demolition",
       aliases: [
@@ -772,6 +890,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "asbestos_removal_operative",
       canonical: "Asbestos Removal Operative",
       category: "Demolition",
       aliases: [
@@ -781,6 +900,7 @@ class JobTaxonomyService {
       ],
     ),
     ConstructionRole(
+      id: "architect",
       canonical: "Architect",
       category: "Design",
       aliases: ["project architect", "architectural designer"],
@@ -791,7 +911,7 @@ class JobTaxonomyService {
       roles.map((role) => role.canonical).toList(growable: false);
 
   static String roleIdFor(String value) {
-    return normalise(value).replaceAll(" ", "_");
+    return roleFor(value)?.id ?? normalise(value).replaceAll(" ", "_");
   }
 
   static String normalise(String value) {
@@ -815,7 +935,9 @@ class JobTaxonomyService {
     if (override != null) return override;
 
     for (final role in roles) {
-      if (role.searchableTerms.any((term) => normalise(term) == query)) {
+      if (normalise(role.id) == query ||
+          normalise(role.canonical) == query ||
+          role.aliases.any((term) => normalise(term) == query)) {
         return role;
       }
     }
@@ -824,6 +946,66 @@ class JobTaxonomyService {
 
   static String canonicalFor(String value) {
     return roleFor(value)?.canonical ?? value.trim();
+  }
+
+  static List<String> workerTradeIds(Map<String, dynamic> data) {
+    final ids = <String>[];
+    final stored = data['tradeIds'];
+    if (stored is Iterable) {
+      for (final value in stored) {
+        final role = roleFor(value.toString());
+        if (role != null && !ids.contains(role.id) && ids.length < 3) {
+          ids.add(role.id);
+        }
+      }
+    }
+    if (ids.isEmpty) {
+      for (final value in [
+        data['primaryTradeId'],
+        data['trade'],
+        data['position'],
+        data['registrationPosition'],
+      ]) {
+        final role = roleFor(value?.toString() ?? '');
+        if (role != null) {
+          ids.add(role.id);
+          break;
+        }
+      }
+    }
+    return ids;
+  }
+
+  static List<String> workerTradeLabels(Map<String, dynamic> data) {
+    final ids = workerTradeIds(data);
+    if (ids.isNotEmpty) {
+      return ids.map((id) => roleFor(id)!.canonical).toList();
+    }
+    final legacy = (data['trade'] ??
+            data['position'] ??
+            data['registrationPosition'] ??
+            '')
+        .toString()
+        .trim();
+    return legacy.isEmpty ? const [] : [legacy];
+  }
+
+  static Map<String, dynamic> workerTradeFields(List<String> ids) {
+    if (ids.isEmpty ||
+        ids.length > 3 ||
+        ids.toSet().length != ids.length ||
+        ids.any((id) => roleFor(id)?.id != id)) {
+      throw ArgumentError.value(
+          ids, 'ids', 'Select one to three unique trades.');
+    }
+    final primary = roleFor(ids.first)!;
+    return {
+      'primaryTradeId': primary.id,
+      'tradeIds': List<String>.of(ids),
+      'trade': primary.canonical,
+      'position': primary.canonical,
+      'registrationPosition': primary.canonical,
+    };
   }
 
   static ConstructionRole? bestRoleFor(String value) {
@@ -839,7 +1021,7 @@ class JobTaxonomyService {
   }
 
   static List<String> searchTermsFor(String value) {
-    final role = bestRoleFor(value);
+    final role = roleFor(value);
     final terms = role?.searchableTerms ?? [value];
     return terms
         .map(normalise)
@@ -854,19 +1036,13 @@ class JobTaxonomyService {
   }) {
     final normalisedQuery = normalise(query);
     if (normalisedQuery.isEmpty) return roles.take(limit).toList();
-    final override = _canonicalOverride(normalisedQuery);
-
-    final scored = roles.map((role) {
-      final score = _scoreRole(role, normalisedQuery);
-      return (role: role, score: score);
-    }).where((item) {
-      if (override != null &&
-          item.role.canonical == "Drylining Fixer" &&
-          override.canonical == "Dryliner") {
-        return false;
-      }
-      return item.score < 9999;
-    }).toList()
+    final scored = roles
+        .map((role) {
+          final score = _scoreRole(role, normalisedQuery);
+          return (role: role, score: score);
+        })
+        .where((item) => item.score < 9999)
+        .toList()
       ..sort((a, b) => a.score.compareTo(b.score));
 
     return scored.map((item) => item.role).take(limit).toList();
@@ -906,8 +1082,11 @@ class JobTaxonomyService {
       return true;
     }
 
-    return _scoreRoleForValue("${job.title} ${job.trade}", normalisedQuery) <
-        9999;
+    final role = roleFor(job.canonicalRoleId) ??
+        roleFor(job.trade) ??
+        roleFor(job.canonicalRoleName) ??
+        roleFor(job.title);
+    return role != null && _scoreRole(role, normalisedQuery) < 9999;
   }
 
   static bool matchesAnyRole(Job job, Iterable<ConstructionRole> roles) {
@@ -915,7 +1094,7 @@ class JobTaxonomyService {
     if (selected.isEmpty) return true;
 
     return selected.any((role) {
-      final selectedRoleId = roleIdFor(role.canonical);
+      final selectedRoleId = role.id;
 
       if (job.canonicalRoleId.trim().isNotEmpty &&
           roleIdFor(job.canonicalRoleId) == selectedRoleId) {
@@ -934,18 +1113,6 @@ class JobTaxonomyService {
         if (exactRole != null && exactRole.canonicalRoleId == selectedRoleId) {
           return true;
         }
-
-        final bestRole = bestRoleFor(value);
-        if (bestRole != null && bestRole.canonicalRoleId == selectedRoleId) {
-          return true;
-        }
-
-        final compactValue = compactNormalise(value);
-        final compactCanonical = compactNormalise(role.canonical);
-        if (compactValue.contains(compactCanonical) ||
-            compactCanonical.contains(compactValue)) {
-          return true;
-        }
       }
 
       return false;
@@ -954,10 +1121,9 @@ class JobTaxonomyService {
 
   static bool matchesTradeFilter(Job job, String filter) {
     if (filter == "All") return true;
-    final filterRole = bestCanonicalFor(filter);
-    final jobRole =
-        bestCanonicalFor(job.trade.isNotEmpty ? job.trade : job.title);
-    return normalise(jobRole) == normalise(filterRole);
+    final filterRole = roleFor(filter);
+    if (filterRole == null) return false;
+    return matchesAnyRole(job, [filterRole]);
   }
 
   static int _scoreRole(ConstructionRole role, String query) {
@@ -981,6 +1147,8 @@ class JobTaxonomyService {
       "fixer",
       "dryliner fixer",
       "drylining fixer",
+      "dry lining fixer",
+      "board fixer",
       "drywall fixer",
     };
 

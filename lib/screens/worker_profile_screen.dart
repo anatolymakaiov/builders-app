@@ -23,6 +23,7 @@ import '../widgets/profile_hamburger_menu.dart';
 import '../widgets/account_switcher.dart';
 import '../services/multi_account_service.dart';
 import '../services/worker_availability_service.dart';
+import '../services/job_taxonomy_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/app_photo_grid_gallery.dart';
@@ -1876,6 +1877,11 @@ class WorkerProfileScreen extends StatelessWidget {
                                 children: [
                                   buildPhoneSection(phone),
                                   buildInfoSection("Location", location),
+                                  buildInfoSection(
+                                    "Trades",
+                                    JobTaxonomyService.workerTradeLabels(data)
+                                        .join(' · '),
+                                  ),
                                   buildInfoSection("About", bio),
                                   buildInfoSection(
                                       "Work experience", experienceDuration),

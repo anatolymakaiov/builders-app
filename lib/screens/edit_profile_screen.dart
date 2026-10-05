@@ -17,11 +17,13 @@ import '../services/moderation_hold_service.dart';
 import '../services/registration_validation_service.dart';
 import '../services/registration_lifecycle.dart';
 import '../services/registration_wizard_steps.dart';
+import '../services/job_taxonomy_service.dart';
 import '../services/stroyka_action_feedback.dart';
 import '../widgets/app_cached_image.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/legal_documents.dart';
 import '../widgets/uk_postal_address_form.dart';
+import '../widgets/trade_selector.dart';
 
 class ProfileScreen extends StatefulWidget {
   final FutureOr<void> Function()? onProfileSaved;
@@ -45,6 +47,18 @@ class _ProfileScreenState extends State<ProfileScreen>
   final nicknameController = TextEditingController();
 
   final tradeController = TextEditingController();
+  List<String> selectedTradeIds = [];
+  bool tradeSelectionChanged = false;
+
+  void updateSelectedTrades(List<String> ids) {
+    setState(() {
+      selectedTradeIds = ids;
+      tradeSelectionChanged = true;
+      tradeController.text =
+          ids.isEmpty ? '' : JobTaxonomyService.roleFor(ids.first)!.canonical;
+    });
+  }
+
   final companyController = TextEditingController();
 
   final bioController = TextEditingController();
@@ -540,6 +554,12 @@ class _ProfileScreenState extends State<ProfileScreen>
               data["registrationPosition"] ??
               "")
           .toString();
+      selectedTradeIds = JobTaxonomyService.workerTradeIds(data);
+      tradeSelectionChanged = false;
+      if (tradeController.text.trim().isEmpty && selectedTradeIds.isNotEmpty) {
+        tradeController.text =
+            JobTaxonomyService.roleFor(selectedTradeIds.first)!.canonical;
+      }
       companyController.text = (data["companyName"] ??
               data['registrationCompanyName'] ??
               data["businessName"] ??
@@ -1593,6 +1613,13 @@ class _ProfileScreenState extends State<ProfileScreen>
     final companyName = companyController.text.trim();
     final certificationsText = certificationsController.text.trim();
 
+    if (role == 'worker' && tradeSelectionChanged && selectedTradeIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Select at least one trade.'),
+      ));
+      return;
+    }
+
     if (role == "worker" && name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Enter your name")),
@@ -1630,7 +1657,9 @@ class _ProfileScreenState extends State<ProfileScreen>
         postcode: locationPostcodeController.text,
         country: locationCountryController.text,
       );
-      final error = professionError ?? addressError;
+      final error = (role == 'worker' && selectedTradeIds.isEmpty)
+          ? 'Select a trade from the list.'
+          : professionError ?? addressError;
       if (error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(error)),
@@ -1901,9 +1930,8 @@ class _ProfileScreenState extends State<ProfileScreen>
           "name": name,
           "nickname": nicknameController.text.trim(),
           "username": nicknameController.text.trim(),
-          "trade": tradeController.text.trim(),
-          "position": tradeController.text.trim(),
-          "registrationPosition": tradeController.text.trim(),
+          if (selectedTradeIds.isNotEmpty)
+            ...JobTaxonomyService.workerTradeFields(selectedTradeIds),
           "experience": experienceController.text.trim(),
           "experienceYears":
               int.tryParse(experienceYearsController.text.trim()),
@@ -2283,6 +2311,12 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Future<void> continueFromRegistrationDetails() async {
     if (loading) return;
+    if (role == 'worker' && selectedTradeIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Select a trade from the list.'),
+      ));
+      return;
+    }
     final email = currentProfileEmail().trim();
     final identity = role == 'employer'
         ? contactPersonController.text.trim()
@@ -2324,6 +2358,8 @@ class _ProfileScreenState extends State<ProfileScreen>
         'registrationName': identity,
         'name': role == 'employer' ? companyController.text.trim() : identity,
         'registrationPosition': tradeController.text.trim(),
+        if (role == 'worker' && selectedTradeIds.isNotEmpty)
+          ...JobTaxonomyService.workerTradeFields(selectedTradeIds),
         'registrationCompanyName': companyController.text.trim(),
         'contactPerson': contactPersonController.text.trim(),
         'email': email,
@@ -2390,11 +2426,17 @@ class _ProfileScreenState extends State<ProfileScreen>
         decoration: const InputDecoration(labelText: 'Phone number'),
       ),
       const SizedBox(height: 12),
-      TextField(
-        controller: role == 'employer' ? companyController : tradeController,
-        decoration: InputDecoration(
-            labelText: role == 'employer' ? 'Company name' : 'Profession'),
-      ),
+      if (role == 'employer')
+        TextField(
+          controller: companyController,
+          decoration: const InputDecoration(labelText: 'Company name'),
+        )
+      else
+        TradeSelector(
+          tradeIds: selectedTradeIds,
+          legacyTrade: tradeController.text,
+          onChanged: updateSelectedTrades,
+        ),
       const SizedBox(height: 12),
       UkPostalAddressForm(
         controllers: profileAddressControllers(),
@@ -3024,10 +3066,10 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: tradeController,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(labelText: "Trade"),
+          TradeSelector(
+            tradeIds: selectedTradeIds,
+            legacyTrade: tradeController.text,
+            onChanged: updateSelectedTrades,
           ),
           const SizedBox(height: 12),
           Row(

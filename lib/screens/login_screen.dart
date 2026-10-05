@@ -9,11 +9,13 @@ import '../services/post_registration_refresh_service.dart';
 import '../services/multi_account_service.dart';
 import '../services/registration_validation_service.dart';
 import '../services/registration_lifecycle.dart';
+import '../services/job_taxonomy_service.dart';
 import '../services/social_auth_service.dart';
 import '../services/registration_wizard_steps.dart';
 import '../widgets/legal_documents.dart';
 import '../widgets/mobile_social_auth_buttons.dart';
 import '../widgets/uk_postal_address_form.dart';
+import '../widgets/trade_selector.dart';
 import 'edit_profile_screen.dart';
 import 'home_screen.dart';
 import 'password_recovery_screen.dart';
@@ -51,6 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final registrationNameController = TextEditingController();
   final registrationLastNameController = TextEditingController();
   final registrationTradeController = TextEditingController();
+  List<String> registrationTradeIds = [];
   final registrationCompanyController = TextEditingController();
   final registrationPostcodeController = TextEditingController();
   final registrationAddressLine1Controller = TextEditingController();
@@ -113,6 +116,8 @@ class _LoginScreenState extends State<LoginScreen> {
       'registrationFirstName': details.firstName,
       'registrationLastName': details.lastName,
       'registrationPosition': details.trade,
+      if (role == 'worker' && registrationTradeIds.isNotEmpty)
+        ...JobTaxonomyService.workerTradeFields(registrationTradeIds),
       'registrationCompanyName': details.companyName,
       'phone': details.phone,
       'normalizedPhone': details.normalizedPhone,
@@ -185,6 +190,7 @@ class _LoginScreenState extends State<LoginScreen> {
       firstName: firstName,
       lastName: lastName,
       trade: registrationTradeController.text.trim(),
+      tradeIds: registrationTradeIds,
       companyName: registrationCompanyController.text.trim(),
       address: registrationAddressControllers().value(),
       emailVerified: providerEmailVerified &&
@@ -199,22 +205,28 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  String? validateRegistrationStep(RegistrationWizardStep step) =>
-      RegistrationWizardSteps.validate(
-        step,
-        role: role,
-        firstName: registrationNameController.text,
-        lastName: registrationLastNameController.text,
-        trade: registrationTradeController.text,
-        companyName: registrationCompanyController.text,
-        addressLine1: registrationAddressLine1Controller.text,
-        townCity: registrationTownCityController.text,
-        postcode: registrationPostcodeController.text,
-        country: registrationCountryController.text,
-        email: emailController.text,
-        phone: phoneController.text,
-        password: passwordController.text,
-      );
+  String? validateRegistrationStep(RegistrationWizardStep step) {
+    if (step == RegistrationWizardStep.professionOrCompany &&
+        role == 'worker' &&
+        registrationTradeIds.isEmpty) {
+      return 'Select a trade from the list.';
+    }
+    return RegistrationWizardSteps.validate(
+      step,
+      role: role,
+      firstName: registrationNameController.text,
+      lastName: registrationLastNameController.text,
+      trade: registrationTradeController.text,
+      companyName: registrationCompanyController.text,
+      addressLine1: registrationAddressLine1Controller.text,
+      townCity: registrationTownCityController.text,
+      postcode: registrationPostcodeController.text,
+      country: registrationCountryController.text,
+      email: emailController.text,
+      phone: phoneController.text,
+      password: passwordController.text,
+    );
+  }
 
   String? validateRegistrationDetails({bool requirePassword = true}) {
     for (final step in RegistrationWizardStep.values) {
@@ -344,6 +356,7 @@ class _LoginScreenState extends State<LoginScreen> {
             .toString();
         registrationTradeController.text =
             (data['registrationPosition'] ?? data['trade'] ?? '').toString();
+        registrationTradeIds = JobTaxonomyService.workerTradeIds(data);
         registrationCompanyController.text =
             (data['registrationCompanyName'] ?? data['companyName'] ?? '')
                 .toString();
@@ -635,6 +648,7 @@ class _LoginScreenState extends State<LoginScreen> {
       registrationNameController.clear();
       registrationLastNameController.clear();
       registrationTradeController.clear();
+      registrationTradeIds = [];
       registrationCompanyController.clear();
       registrationPostcodeController.clear();
       registrationAddressLine1Controller.clear();
@@ -1185,16 +1199,25 @@ class _LoginScreenState extends State<LoginScreen> {
                 hintText: 'Last name',
               ),
             ]),
-          RegistrationWizardStep.professionOrCompany => StroykaInputField(
-              controller: role == 'employer'
-                  ? registrationCompanyController
-                  : registrationTradeController,
-              hintText:
-                  role == 'employer' ? 'Company name' : 'Profession or trade',
-              prefixIcon: role == 'employer'
-                  ? Icons.business_outlined
-                  : Icons.handyman_outlined,
-            ),
+          RegistrationWizardStep.professionOrCompany => role == 'employer'
+              ? StroykaInputField(
+                  controller: registrationCompanyController,
+                  hintText: 'Company name',
+                  prefixIcon: Icons.business_outlined,
+                )
+              : TradeSelector(
+                  tradeIds: registrationTradeIds,
+                  legacyTrade: registrationTradeController.text,
+                  onChanged: (ids) {
+                    setState(() {
+                      registrationTradeIds = ids;
+                      registrationTradeController.text = ids.isEmpty
+                          ? ''
+                          : JobTaxonomyService.roleFor(ids.first)!.canonical;
+                    });
+                    onRegistrationFieldChanged();
+                  },
+                ),
           RegistrationWizardStep.address => UkPostalAddressForm(
               controllers: registrationAddressControllers(),
               lookupService: registrationAddressLookup,

@@ -41,6 +41,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
   final service = WebJobManagementService();
   final addressLookup = IdealPostcodesAddressLookupService();
   late final TextEditingController role;
+  String? selectedRoleId;
   late final TextEditingController site;
   late final TextEditingController duration;
   late final TextEditingController weeklyHours;
@@ -86,6 +87,11 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
           ? job!.canonicalRoleName
           : job?.displayTitle ?? '',
     );
+    selectedRoleId = JobTaxonomyService.roleFor(
+      job?.canonicalRoleId.isNotEmpty == true
+          ? job!.canonicalRoleId
+          : role.text,
+    )?.id;
     site = TextEditingController(text: job?.site ?? '');
     duration = TextEditingController(text: job?.duration ?? '');
     weeklyHours = TextEditingController(text: job?.weeklyHours ?? '');
@@ -231,7 +237,10 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
                   return JobTaxonomyService.suggestions(query, limit: 12)
                       .map((item) => item.canonical);
                 },
-                onSelected: (value) => role.text = value,
+                onSelected: (value) {
+                  role.text = value;
+                  selectedRoleId = JobTaxonomyService.roleFor(value)?.id;
+                },
                 fieldViewBuilder: (
                   context,
                   controller,
@@ -239,7 +248,15 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
                   onFieldSubmitted,
                 ) {
                   if (controller.text != role.text) controller.text = role.text;
-                  controller.addListener(() => role.text = controller.text);
+                  controller.addListener(() {
+                    role.text = controller.text;
+                    if (selectedRoleId != null &&
+                        JobTaxonomyService.roleFor(selectedRoleId!)
+                                ?.canonical !=
+                            controller.text.trim()) {
+                      selectedRoleId = null;
+                    }
+                  });
                   return TextField(
                     controller: controller,
                     focusNode: focusNode,
@@ -705,7 +722,11 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
   }
 
   String? _validate() {
-    if (role.text.trim().isEmpty) return 'Enter job role / trade.';
+    if (selectedRoleId == null ||
+        JobTaxonomyService.roleFor(selectedRoleId!)?.canonical !=
+            role.text.trim()) {
+      return 'Select a job role from the list.';
+    }
     if (site.text.trim().isEmpty) return 'Enter site / project name.';
     if (!addressLookup.isValidPostcode(postcode.text)) {
       return 'Enter a valid UK postcode.';

@@ -155,7 +155,9 @@ void main() {
         expect(data['profileComplete'], isFalse);
         expect(data['companyName'], isNull);
         if (role == 'worker') {
-          expect(data['registrationPosition'], 'Fixer');
+          expect(data['registrationPosition'], 'Dryliner');
+          expect(data['primaryTradeId'], 'dryliner');
+          expect(data['tradeIds'], ['dryliner']);
         } else {
           expect(data['registrationCompanyName'], 'Example Builders Ltd');
         }

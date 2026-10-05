@@ -230,9 +230,12 @@ class WebJobManagementService {
     required String companyName,
     bool create = true,
   }) {
-    final taxonomyRole = JobTaxonomyService.bestRoleFor(title);
-    final canonicalTitle = taxonomyRole?.canonical ?? title.trim();
-    final canonicalRoleId = JobTaxonomyService.roleIdFor(canonicalTitle);
+    final taxonomyRole = JobTaxonomyService.roleFor(title);
+    if (taxonomyRole == null) {
+      throw ArgumentError.value(title, 'title', 'Select a catalog trade.');
+    }
+    final canonicalTitle = taxonomyRole.canonical;
+    final canonicalRoleId = taxonomyRole.id;
     final siteAddress = [
       addressLine1,
       addressLine2,
@@ -254,8 +257,8 @@ class WebJobManagementService {
       'originalEmployerInput': title.trim(),
       'roleCanonical': canonicalTitle,
       'roleCanonicalId': canonicalRoleId,
-      'roleCategory': taxonomyRole?.category ?? '',
-      'roleAliases': taxonomyRole?.aliases ?? const <String>[],
+      'roleCategory': taxonomyRole.category,
+      'roleAliases': taxonomyRole.aliases,
       'searchTerms': JobTaxonomyService.searchTermsFor(canonicalTitle),
       'duration': duration.trim(),
       'weeklyHours': weeklyHours.trim(),

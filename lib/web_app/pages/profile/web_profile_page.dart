@@ -13,6 +13,8 @@ import '../../portrait/portrait_employer_profile_header.dart';
 import '../../../services/moderation_hold_service.dart';
 import '../../../services/multi_account_service.dart';
 import '../../../services/worker_availability_service.dart';
+import '../../../services/job_taxonomy_service.dart';
+import '../../../widgets/trade_selector.dart';
 import '../../../widgets/account_switcher.dart';
 import '../../widgets/web_report_dialog.dart';
 import '../../theme/web_breakpoints.dart';
@@ -1335,6 +1337,8 @@ class _EditProfileDialog extends StatefulWidget {
 }
 
 class _EditProfileDialogState extends State<_EditProfileDialog> {
+  late List<String> selectedTradeIds;
+  bool tradeSelectionChanged = false;
   late final TextEditingController name;
   late final TextEditingController email;
   late final TextEditingController phone;
@@ -1364,6 +1368,7 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
     email = TextEditingController(text: profile.email);
     phone = TextEditingController(text: profile.phone);
     trade = TextEditingController(text: profile.trade);
+    selectedTradeIds = JobTaxonomyService.workerTradeIds(profile.data);
     bio = TextEditingController(text: profile.bio);
     addressLine1 = TextEditingController(text: profile.addressLine1);
     addressLine2 = TextEditingController(text: profile.addressLine2);
@@ -1449,7 +1454,20 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
             _input(name, isEmployer ? 'Company name' : 'Name'),
             _input(email, 'Email'),
             _input(phone, 'Phone'),
-            _input(trade, isEmployer ? 'Speciality' : 'Trade / position'),
+            if (isEmployer)
+              _input(trade, 'Speciality')
+            else
+              SizedBox(
+                width: _dialogFieldWidth(680),
+                child: TradeSelector(
+                  tradeIds: selectedTradeIds,
+                  legacyTrade: widget.profile.data['trade']?.toString() ?? '',
+                  onChanged: (ids) => setState(() {
+                    selectedTradeIds = ids;
+                    tradeSelectionChanged = true;
+                  }),
+                ),
+              ),
             _input(bio, isEmployer ? 'Company description' : 'Bio', lines: 3),
             if (!isEmployer) _input(experience, 'Experience'),
             if (!isEmployer) _input(qualifications, 'Qualifications'),
@@ -1612,6 +1630,14 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
   }
 
   Future<void> _save() async {
+    if (widget.role == 'worker' &&
+        tradeSelectionChanged &&
+        selectedTradeIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Select at least one trade.'),
+      ));
+      return;
+    }
     setState(() => saving = true);
     final isEmployer = widget.role == 'employer';
     final addressParts = [
@@ -1634,7 +1660,9 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
       if (isEmployer) 'description': bio.text.trim(),
       if (isEmployer) 'bio': bio.text.trim(),
       if (!isEmployer) 'bio': bio.text.trim(),
-      'trade': trade.text.trim(),
+      if (isEmployer) 'trade': trade.text.trim(),
+      if (!isEmployer && selectedTradeIds.isNotEmpty)
+        ...JobTaxonomyService.workerTradeFields(selectedTradeIds),
       'location': singleLineAddress,
       'address': singleLineAddress,
       'addressLine1': addressLine1.text.trim(),

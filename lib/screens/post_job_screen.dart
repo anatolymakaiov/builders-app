@@ -64,7 +64,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
   DateTime? selectedStartDate;
 
   String jobType = "hourly";
-  String selectedTrade = JobTaxonomyService.canonicalRoles.first;
+  String selectedTrade = '';
+  bool tradeWasSelected = false;
 
   List<File> jobPhotos = [];
   List<String> existingPhotos = [];
@@ -100,9 +101,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
       requiredDocumentsController.text = job.requiredDocuments;
       additionalInformationController.text = job.additionalInformation;
 
-      selectedTrade = JobTaxonomyService.bestCanonicalFor(
-        job.trade.isNotEmpty ? job.trade : job.title,
+      selectedTrade = JobTaxonomyService.canonicalFor(
+        job.canonicalRoleId.isNotEmpty
+            ? job.canonicalRoleId
+            : (job.trade.isNotEmpty ? job.trade : job.title),
       );
+      tradeWasSelected = JobTaxonomyService.roleFor(selectedTrade) != null;
       jobType = job.jobType;
 
       existingPhotos = job.photos;
@@ -312,15 +316,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
       return;
     }
 
-    final taxonomyRole = JobTaxonomyService.bestRoleFor(selectedTrade);
-    final title = JobTaxonomyService.bestCanonicalFor(selectedTrade);
-    final canonicalRoleId = JobTaxonomyService.roleIdFor(title);
+    final taxonomyRole = JobTaxonomyService.roleFor(selectedTrade);
+    final title = taxonomyRole?.canonical ?? '';
+    final canonicalRoleId = taxonomyRole?.id ?? '';
     final postcode = addressLookupService.normalizePostcode(
       postcodeController.text,
     );
 
-    if (title.isEmpty) {
-      showValidationMessage("Choose a trade.");
+    if (!tradeWasSelected || title.isEmpty) {
+      showValidationMessage("Select a trade from the list.");
       return;
     }
 
@@ -554,9 +558,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
                 ],
                 SmartRolePickerField(
                   initialValue: selectedTrade,
-                  onChanged: (value) => selectedTrade = value,
+                  onChanged: (value) {
+                    selectedTrade = value;
+                    tradeWasSelected = false;
+                  },
                   onSelected: (role) {
-                    setState(() => selectedTrade = role.canonical);
+                    setState(() {
+                      selectedTrade = role.canonical;
+                      tradeWasSelected = true;
+                    });
                   },
                 ),
                 const SizedBox(height: 12),
