@@ -113,28 +113,6 @@ class AuthPreferencesService {
     );
   }
 
-  Future<String> methodForEmail(String email) async {
-    final normalized = normalizeEmail(email);
-    if (normalized.isEmpty) return AuthPreferenceMethod.password;
-
-    QuerySnapshot<Map<String, dynamic>> snapshot;
-    try {
-      snapshot = await _firestore
-          .collection("users")
-          .where("email", isEqualTo: normalized)
-          .limit(1)
-          .get();
-    } on FirebaseException catch (e) {
-      if (e.code == "permission-denied") {
-        return AuthPreferenceMethod.password;
-      }
-      rethrow;
-    }
-
-    if (snapshot.docs.isEmpty) return AuthPreferenceMethod.password;
-    return methodFromUserData(snapshot.docs.first.data());
-  }
-
   Future<bool> biometricAvailable() async {
     try {
       final supported = await _localAuth.isDeviceSupported();

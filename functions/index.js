@@ -23,8 +23,22 @@ const {normalized: adminDirectoryNormalized, filterDirectoryRecord,
   broadcastTargetId, matchesBroadcastAudience} =
   require("./admin_directory");
 const {publicProfile, workerDiscovery} = require("./profile_projections");
+const {identityInUse} = require("./registration_identity_lookup");
 
 admin.initializeApp();
+
+exports.checkRegistrationIdentity = onCall(async (request) => {
+  const kind = request.data && request.data.kind;
+  const value = request.data && request.data.value;
+  if (!["email", "phone"].includes(kind) || typeof value !== "string" ||
+      value.length > 254 || value.trim().length < 3) {
+    throw new HttpsError("invalid-argument", "Invalid identity lookup.");
+  }
+  const blocked = await identityInUse(admin.firestore(), {
+    kind, value, currentUid: request.auth?.uid || "",
+  });
+  return {blocked};
+});
 
 exports.syncSafeProfileProjections = onDocumentWritten("users/{userId}", async (event) => {
   const uid = event.params.userId;
