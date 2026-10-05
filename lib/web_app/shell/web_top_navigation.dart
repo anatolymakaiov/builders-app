@@ -7,7 +7,8 @@ enum WebSection {
   jobs('Jobs', Icons.work_outline),
   map('Map', Icons.map_outlined),
   applications('Applications', Icons.assignment_outlined),
-  chats('Chats', Icons.chat_bubble_outline);
+  chats('Chats', Icons.chat_bubble_outline),
+  talent('Talent', Icons.groups_outlined);
 
   const WebSection(this.label, this.icon);
 
@@ -117,25 +118,27 @@ class WebTopNavigation extends StatelessWidget {
                                   : MainAxisAlignment.center,
                               children: [
                                 for (final section in WebSection.values)
-                                  Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: constraints.maxWidth < 640
-                                          ? 0
-                                          : WebSpacing.xxs,
+                                  if (section != WebSection.talent ||
+                                      role == 'employer')
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: constraints.maxWidth < 640
+                                            ? 0
+                                            : WebSpacing.xxs,
+                                      ),
+                                      child: _WebNavItem(
+                                        section: section,
+                                        selected: section == selected,
+                                        showLabel: showLabels,
+                                        onTap: () => onSelected(section),
+                                        badgeCount: switch (section) {
+                                          WebSection.applications =>
+                                            applicationCount,
+                                          WebSection.chats => chatCount,
+                                          _ => 0,
+                                        },
+                                      ),
                                     ),
-                                    child: _WebNavItem(
-                                      section: section,
-                                      selected: section == selected,
-                                      showLabel: showLabels,
-                                      onTap: () => onSelected(section),
-                                      badgeCount: switch (section) {
-                                        WebSection.applications =>
-                                          applicationCount,
-                                        WebSection.chats => chatCount,
-                                        _ => 0,
-                                      },
-                                    ),
-                                  ),
                               ],
                             ),
                           ),

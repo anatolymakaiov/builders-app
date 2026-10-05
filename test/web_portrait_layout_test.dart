@@ -85,9 +85,9 @@ void main() {
     expect(find.text('Desktop workspace'), findsOneWidget);
   });
 
-  test('portrait shell has five native-style navigation destinations', () {
+  test('portrait shell includes employer Talent destination', () {
     expect(PortraitWebSection.values.map((section) => section.label),
-        ['Jobs', 'Map', 'Applications', 'Chats', 'Profile']);
+        ['Jobs', 'Map', 'Applications', 'Chats', 'Profile', 'Talent']);
   });
 
   testWidgets('portrait navigation fits a narrow viewport and selects a tab',
@@ -110,7 +110,30 @@ void main() {
     ));
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('portrait-nav-profile')), findsOneWidget);
+    expect(find.byKey(const ValueKey('portrait-nav-talent')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('portrait-nav-map')));
     expect(selected, PortraitWebSection.map);
+  });
+
+  testWidgets('employer portrait navigation exposes Talent', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    PortraitWebSection? selected;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        bottomNavigationBar: PortraitWebNavigation(
+          selected: PortraitWebSection.jobs,
+          isEmployer: true,
+          onSelected: (section) => selected = section,
+        ),
+      ),
+    ));
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byKey(const ValueKey('portrait-nav-talent')));
+    expect(selected, PortraitWebSection.talent);
   });
 }

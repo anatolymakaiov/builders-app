@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "worker_discovery",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "discoveryVisible", "order": "ASCENDING" },
+        { "fieldPath": "tradeIds", "arrayConfig": "CONTAINS" }
+      ]
+    },
+    {
       "collectionGroup": "jobs",
       "queryScope": "COLLECTION",
       "fields": [

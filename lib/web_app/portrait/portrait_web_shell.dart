@@ -11,6 +11,7 @@ import '../pages/chats/web_chats_page.dart';
 import '../pages/jobs/web_jobs_page.dart';
 import '../pages/jobs/web_post_job_page.dart';
 import '../pages/map/web_map_page.dart';
+import '../pages/talent/web_talent_page.dart';
 import '../pages/profile/web_admin_profile_page.dart';
 import '../pages/profile/web_profile_page.dart';
 import '../pages/profile/web_team_page.dart';
@@ -226,6 +227,7 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                   child: PortraitWebNavigation(
                     selected: selected,
                     onSelected: _selectSection,
+                    isEmployer: widget.role == 'employer',
                     applicationCount: badges.applications,
                     chatCount: badges.chats,
                   ),
@@ -301,6 +303,12 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
             onOpenJob: _openJob,
           ),
         PortraitWebSection.profile => _buildProfile(),
+        PortraitWebSection.talent => widget.role == 'employer'
+            ? WebTalentPage(
+                key: ValueKey('portrait-talent:${widget.user.uid}'),
+                employerId: widget.user.uid,
+              )
+            : const SizedBox.shrink(),
       };
 
   Widget _buildProfile() {

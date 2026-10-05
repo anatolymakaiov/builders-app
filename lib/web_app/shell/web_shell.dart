@@ -9,6 +9,7 @@ import '../pages/chats/web_chats_page.dart';
 import '../pages/jobs/web_jobs_page.dart';
 import '../pages/jobs/web_post_job_page.dart';
 import '../pages/map/web_map_page.dart';
+import '../pages/talent/web_talent_page.dart';
 import '../../services/application_status_utils.dart';
 import '../../services/multi_account_service.dart';
 import '../services/web_account_data_service.dart';
@@ -167,6 +168,12 @@ class _WebShellState extends State<WebShell> {
               navigationRequestId: chatsNavigationRequestId,
               onOpenProfile: _openProfile,
               onOpenJob: _openJobFromChats,
+            )
+          : const SizedBox.shrink(),
+      widget.role == 'employer' && visited.contains(WebSection.talent)
+          ? WebTalentPage(
+              key: ValueKey('web-talent:${widget.user.uid}'),
+              employerId: widget.user.uid,
             )
           : const SizedBox.shrink(),
     ];

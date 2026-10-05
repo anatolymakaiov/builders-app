@@ -616,11 +616,26 @@ service cloud.firestore {
     }
 
     match /worker_discovery/{workerId} {
-      // Employer-wide discovery awaits a trusted employer identity. The role
-      // on users is still registration-controlled in published mobile builds.
-      allow get: if isSelf(workerId) || isAdmin();
-      allow list: if isAdmin();
+      allow get: if isSelf(workerId) || isAdmin()
+        || (isEmployer() && resource.data.discoveryVisible == true);
+      allow list: if isAdmin() || (isEmployer()
+        && resource.data.discoveryVisible == true
+        && request.query.limit != null && request.query.limit <= 25);
       allow create, update, delete: if false;
+    }
+
+    match /employer_talent_pools/{employerId}/workers/{workerId} {
+      function ownsTalentPool() {
+        return isEmployer() && isSelf(employerId);
+      }
+      allow get, list, delete: if ownsTalentPool();
+      allow create: if ownsTalentPool()
+        && exists(/databases/$(database)/documents/worker_discovery/$(workerId))
+        && get(/databases/$(database)/documents/worker_discovery/$(workerId)).data.discoveryVisible == true
+        && request.resource.data.keys().hasOnly(["workerId", "savedAt"])
+        && request.resource.data.workerId == workerId
+        && request.resource.data.savedAt == request.time;
+      allow update: if false;
     }
 
     // Multi-account ownership and one-time link sessions are server-only.
