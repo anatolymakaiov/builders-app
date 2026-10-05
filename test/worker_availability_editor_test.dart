@@ -25,7 +25,11 @@ void main() {
 
     await tester.tap(find.text('Edit availability'));
     await tester.pumpAndSettle();
-    expect(find.text('Receive vacancy invitations'), findsOneWidget);
+    expect(
+      find.text(
+          'Allow verified employers to send me relevant vacancy invitations through STROYKA'),
+      findsOneWidget,
+    );
     expect(find.text('Save'), findsOneWidget);
     await tester.tap(find.byType(DropdownButtonFormField<WorkerAvailability>));
     await tester.pumpAndSettle();

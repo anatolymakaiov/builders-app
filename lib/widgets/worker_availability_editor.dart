@@ -81,12 +81,14 @@ Future<WorkerAvailabilitySelection?> showWorkerAvailabilityEditor(
                 const SizedBox(height: 12),
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Receive vacancy invitations'),
+                  title: const Text(
+                    'Allow verified employers to send me relevant vacancy invitations through STROYKA',
+                  ),
                   value: invites,
                   onChanged: (value) => setDialogState(() => invites = value),
                 ),
                 const Text(
-                  'Verified employers can invite you through STROYKA. Your phone, email and exact address are not shared.',
+                  'Invitations stay inside STROYKA. Your phone, email and exact address are not shared.',
                   style: TextStyle(fontSize: 12),
                 ),
               ],
