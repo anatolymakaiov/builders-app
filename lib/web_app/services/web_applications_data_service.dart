@@ -596,7 +596,7 @@ class WebApplicationsDataService {
     final jobFuture = loadLiveJob
         ? read('jobs', jobId)
         : Future<Map<String, dynamic>?>.value();
-    final profileFuture = read('users', workerId);
+    final profileFuture = read('public_profiles', workerId);
     final teamFuture = read('teams', teamId);
     final jobData = await jobFuture;
     final employerId = (jobData?['ownerId'] ??
@@ -605,7 +605,7 @@ class WebApplicationsDataService {
             data['ownerId'])
         ?.toString()
         .trim();
-    final companyFuture = read('users', employerId ?? '');
+    final companyFuture = read('public_profiles', employerId ?? '');
     final profileData = await profileFuture;
     final teamData = await teamFuture;
     final companyData = await companyFuture;
@@ -619,7 +619,7 @@ class WebApplicationsDataService {
         ...data,
       });
       final memberData = await Future.wait(
-        memberIds.map((memberId) => read('users', memberId)),
+        memberIds.map((memberId) => read('public_profiles', memberId)),
       );
       for (var index = 0; index < memberIds.length; index++) {
         final memberId = memberIds[index];

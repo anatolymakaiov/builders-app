@@ -53,7 +53,7 @@ class WebChatRecipientSearchService {
             'displayName',
             'name',
           ];
-    final userDocs = await _prefixDocuments('users', userFields, query);
+    final userDocs = await _prefixDocuments('public_profiles', userFields, query);
     for (final doc in userDocs.values) {
       if (doc.id == currentUserId) continue;
       final data = doc.data();
@@ -67,8 +67,8 @@ class WebChatRecipientSearchService {
       final searchableValues = [for (final field in userFields) data[field]];
       if (!_hasPrefix(needle, searchableValues)) continue;
       final details = isEmployer
-          ? [profile.trade, profile.location]
-          : [profile.location, profile.city, profile.postcode];
+          ? [profile.trade, profile.city]
+          : [profile.city, profile.county];
       results.add(WebChatRecipient(
         id: doc.id,
         role: isEmployer ? 'worker' : 'employer',

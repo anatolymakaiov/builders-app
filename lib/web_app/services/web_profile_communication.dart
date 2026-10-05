@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/chat_service.dart';
 import '../../services/moderation_hold_service.dart';
+import '../../services/safe_profile_service.dart';
 
 class WebProfileCommunication {
   static bool unavailable(Map<String, dynamic>? data) =>
@@ -18,7 +19,10 @@ class WebProfileCommunication {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     if (uid == targetId) throw StateError('Cannot message yourself.');
     final current = (await db.collection('users').doc(uid).get()).data();
-    final target = (await db.collection('users').doc(targetId).get()).data();
+    final target = (await SafeProfileService(firestore: db)
+            .profile(targetId)
+            .get())
+        .data();
     if (unavailable(current) || unavailable(target)) {
       throw StateError('This profile is no longer available.');
     }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/safe_profile_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/job.dart';
@@ -131,10 +132,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     }
 
     try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection("users")
-          .doc(ownerId)
-          .get();
+      final userDoc = await SafeProfileService().profile(ownerId).get();
       if (userDoc.exists) {
         final data = userDoc.data() ?? {};
         final logo = firstNonEmpty([

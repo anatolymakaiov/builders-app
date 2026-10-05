@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/job.dart';
 import '../../services/job_taxonomy_service.dart';
+import '../../services/safe_profile_service.dart';
 import 'web_company_branding.dart';
 import 'web_jobs_data_service.dart';
 import 'web_data_state.dart';
@@ -229,7 +230,9 @@ class WebProfileDataService {
 
   Future<WebProfileData?> loadProfile(String uid) async {
     if (uid.trim().isEmpty) return null;
-    final snapshot = await _firestore.collection('users').doc(uid).get();
+    final snapshot = await SafeProfileService(firestore: _firestore)
+        .profile(uid)
+        .get();
     final data = snapshot.data();
     final profile = data == null ? null : WebProfileData(id: uid, data: data);
     _profileCache[uid] = profile;

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/job.dart';
 import '../../services/moderation_hold_service.dart';
+import '../../services/safe_profile_service.dart';
 import 'web_data_state.dart';
 import 'web_company_branding.dart';
 import 'web_role_identity_service.dart';
@@ -394,8 +395,10 @@ class WebJobsDataService {
     if (ModerationHoldService.isProfileHeld(worker)) {
       throw StateError(ModerationHoldService.suspensionSnackBarMessage);
     }
-    final employer =
-        (await _firestore.collection('users').doc(job.ownerId).get()).data();
+    final employer = (await SafeProfileService(firestore: _firestore)
+            .profile(job.ownerId)
+            .get())
+        .data();
     if (employer == null ||
         employer['active'] == false ||
         employer['deleted'] == true ||

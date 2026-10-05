@@ -18,6 +18,7 @@
     "heic-convert": "^2.1.0"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "firebase-functions-test": "^3.4.1"
   },
   "private": true

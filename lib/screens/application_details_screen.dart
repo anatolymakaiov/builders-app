@@ -13,6 +13,7 @@ import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../services/offer_acceptance_service.dart';
 import '../services/profile_communication_service.dart';
+import '../services/safe_profile_service.dart';
 import '../services/stroyka_action_feedback.dart';
 import '../widgets/app_cached_image.dart';
 import '../widgets/make_offer_dialog.dart';
@@ -557,8 +558,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
   ) async {
     final names = <String>[];
     for (final id in ids) {
-      final doc =
-          await FirebaseFirestore.instance.collection("users").doc(id).get();
+      final doc = await SafeProfileService().profile(id).get();
       final data = doc.data();
       final isInactive = !doc.exists ||
           data?["deleted"] == true ||
@@ -1118,10 +1118,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
               const SizedBox(height: 10),
               ...memberIds.map((memberId) {
                 return StreamBuilder<DocumentSnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection("users")
-                      .doc(memberId)
-                      .snapshots(),
+                  stream: SafeProfileService().profile(memberId).snapshots(),
                   builder: (context, snap) {
                     if (!snap.hasData || !snap.data!.exists) {
                       return const SizedBox();
@@ -2089,10 +2086,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                       }
 
                       return StreamBuilder<DocumentSnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection("users")
-                            .doc(leaderId)
-                            .snapshots(),
+                        stream: SafeProfileService().profile(leaderId).snapshots(),
                         builder: (context, leaderSnapshot) {
                           final leader = leaderSnapshot.data?.data()
                               as Map<String, dynamic>?;
@@ -2329,10 +2323,7 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
               }
 
               return StreamBuilder<DocumentSnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection("users")
-                    .doc(workerId)
-                    .snapshots(),
+                stream: SafeProfileService().profile(workerId).snapshots(),
                 builder: (context, userSnapshot) {
                   if (!userSnapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());

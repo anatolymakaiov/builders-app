@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { HttpsError, onCall, onRequest } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
@@ -22,8 +22,74 @@ const {report: adminAnalyticsReport} = require("./admin_analytics");
 const {normalized: adminDirectoryNormalized, filterDirectoryRecord,
   broadcastTargetId, matchesBroadcastAudience} =
   require("./admin_directory");
+const {publicProfile, workerDiscovery} = require("./profile_projections");
 
 admin.initializeApp();
+
+exports.syncSafeProfileProjections = onDocumentWritten("users/{userId}", async (event) => {
+  const uid = event.params.userId;
+  const db = admin.firestore();
+  const userRef = db.collection("users").doc(uid);
+  const publicRef = db.collection("public_profiles").doc(uid);
+  const discoveryRef = db.collection("worker_discovery").doc(uid);
+  await db.runTransaction(async (transaction) => {
+    const [user, previousPublic, previousDiscovery] = await Promise.all([
+      transaction.get(userRef),
+      transaction.get(publicRef),
+      transaction.get(discoveryRef),
+    ]);
+    const data = user.exists ? user.data() : null;
+    const projections = [
+      [publicRef, previousPublic, data && publicProfile(uid, data)],
+      [discoveryRef, previousDiscovery, data && workerDiscovery(uid, data)],
+    ];
+    for (const [ref, previous, value] of projections) {
+      if (value) {
+        if (!previous.exists || !require("node:util").isDeepStrictEqual(previous.data(), value)) {
+          transaction.set(ref, value);
+        }
+      } else if (previous.exists) {
+        transaction.delete(ref);
+      }
+    }
+  });
+});
+
+exports.resolveTeamWorker = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const teamId = cleanText(request.data && request.data.teamId).slice(0, 150);
+  const query = cleanText(request.data && request.data.query).slice(0, 120);
+  if (!teamId || query.length < 2) {
+    throw new HttpsError("invalid-argument", "Enter a worker identifier.");
+  }
+  const db = admin.firestore();
+  const team = await db.collection("teams").doc(teamId).get();
+  const teamData = team.data() || {};
+  if (!team.exists || ![teamData.ownerId, teamData.createdBy, teamData.leaderId]
+    .includes(request.auth.uid)) {
+    throw new HttpsError("permission-denied", "Team owner access required.");
+  }
+  let normalizedPhone = query.replace(/[^0-9+]/g, "");
+  if (normalizedPhone.startsWith("00")) normalizedPhone = `+${normalizedPhone.slice(2)}`;
+  else if (normalizedPhone.startsWith("44")) normalizedPhone = `+${normalizedPhone}`;
+  else if (normalizedPhone.startsWith("0") && normalizedPhone.length > 1) {
+    normalizedPhone = `+44${normalizedPhone.slice(1)}`;
+  }
+  const fields = /^[+\d\s()-]{7,}$/.test(query)
+    ? ["normalizedPhone", "phone", "nickname", "nickName", "username"]
+    : ["nickname", "nickName", "username"];
+  for (const field of fields) {
+    const value = field === "normalizedPhone" ? normalizedPhone : query;
+    const match = await db.collection("users").where(field, "==", value).limit(1).get();
+    if (match.empty) continue;
+    const user = match.docs[0];
+    const data = user.data();
+    if (data.role !== "worker") continue;
+    const safe = publicProfile(user.id, data);
+    if (safe && safe.active) return {id: user.id, data: safe};
+  }
+  return null;
+});
 
 async function requireWebAdmin(request) {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");

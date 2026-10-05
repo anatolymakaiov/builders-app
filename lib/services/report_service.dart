@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'notification_service.dart';
+import 'safe_profile_service.dart';
 import 'stroyka_action_feedback.dart';
 
 class ReportService {
@@ -87,9 +88,8 @@ class ReportService {
     if (againstUserId == null || againstUserId.isEmpty) return;
 
     try {
-      final targetSnap = await FirebaseFirestore.instance
-          .collection("users")
-          .doc(againstUserId)
+      final targetSnap = await SafeProfileService()
+          .profile(againstUserId)
           .get();
       final targetRole = targetSnap.data()?["role"]?.toString() ?? "";
       if (targetRole != "employer") return;

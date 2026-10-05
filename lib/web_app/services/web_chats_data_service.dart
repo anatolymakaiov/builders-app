@@ -492,7 +492,7 @@ class WebChatsDataService {
     if (targetProfileId != null &&
         targetProfileId.isNotEmpty &&
         targetProfileId != uid) {
-      return _DisplayTarget('users', targetProfileId);
+      return _DisplayTarget('public_profiles', targetProfileId);
     }
     final otherId = uid == workerId ? employerId : workerId;
     final fallback = otherId ??
@@ -501,7 +501,7 @@ class WebChatsDataService {
           orElse: () => '',
         );
     if (fallback.isEmpty) return null;
-    return _DisplayTarget('users', fallback);
+    return _DisplayTarget('public_profiles', fallback);
   }
 
   Future<Map<String, dynamic>?> _getCachedData(

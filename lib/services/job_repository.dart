@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/job.dart';
 import 'application_activity_service.dart';
 import 'notification_service.dart';
+import 'safe_profile_service.dart';
 
 enum ApplicationStatus {
   pending,
@@ -52,7 +53,9 @@ class JobRepository {
   Future<bool> _isOwnerActive(String ownerId) async {
     if (ownerId.trim().isEmpty || ownerId == "unknown") return false;
 
-    final ownerDoc = await _db.collection("users").doc(ownerId).get();
+    final ownerDoc = await SafeProfileService(firestore: _db)
+        .profile(ownerId)
+        .get();
     if (!ownerDoc.exists) return false;
 
     final data = ownerDoc.data() ?? <String, dynamic>{};

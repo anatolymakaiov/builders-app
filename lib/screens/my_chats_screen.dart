@@ -279,9 +279,8 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
 
   Future<List<_ChatSearchResult>> searchUsers(String query, String uid) async {
     final normalizedQuery = normalizeSearch(query);
-    final phoneQuery = normalizePhoneForSearch(query);
     final snap =
-        await FirebaseFirestore.instance.collection("users").limit(250).get();
+        await FirebaseFirestore.instance.collection("public_profiles").limit(250).get();
 
     final results = <_ChatSearchResult>[];
     for (final doc in snap.docs) {
@@ -308,11 +307,6 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
               "$firstName $lastName",
               data["nickname"],
             ], fallback: "Worker");
-      final phone = firstNonEmpty([data["phone"], data["billingPhone"]]);
-      final normalizedPhone = firstNonEmpty([
-        data["normalizedPhone"],
-        normalizePhoneForSearch(phone),
-      ]);
       final haystack = normalizeSearch([
         doc.id,
         firstName,
@@ -321,13 +315,9 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
         data["nickname"],
         data["companyName"],
         data["name"],
-        phone,
-        normalizedPhone,
       ].whereType<Object>().join(" "));
-      final phoneMatches = phoneQuery.isNotEmpty &&
-          normalizePhoneForSearch(haystack).contains(phoneQuery);
 
-      if (!haystack.contains(normalizedQuery) && !phoneMatches) continue;
+      if (!haystack.contains(normalizedQuery)) continue;
 
       results.add(
         _ChatSearchResult(
@@ -335,7 +325,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
           type: role == "employer" ? "Employer" : "Worker",
           role: role,
           name: name,
-          phone: phone,
+          phone: "",
           avatarUrl: firstNonEmpty([
             data["avatarUrl"],
             data["profilePhotoUrl"],
@@ -626,15 +616,6 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
   }
 
   String normalizeSearch(String value) => value.toLowerCase().trim();
-
-  String normalizePhoneForSearch(String value) {
-    final digits = value.replaceAll(RegExp(r"[^0-9+]"), "");
-    if (digits.startsWith("+44")) return "0${digits.substring(3)}";
-    if (digits.startsWith("44") && digits.length > 10) {
-      return "0${digits.substring(2)}";
-    }
-    return digits;
-  }
 
   String text(dynamic value) => value?.toString().trim() ?? "";
 

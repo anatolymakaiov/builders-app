@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/safe_profile_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'application_details_screen.dart';
 import '../services/application_activity_service.dart';
@@ -112,10 +113,7 @@ class _EmployerApplicationsScreenState
     }
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection("users")
-          .doc(workerId)
-          .snapshots(),
+      stream: SafeProfileService().profile(workerId).snapshots(),
       builder: (context, snapshot) {
         final user = snapshot.data?.data() as Map<String, dynamic>?;
         final photo = user?["photo"] ?? user?["avatarUrl"];

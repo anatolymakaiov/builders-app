@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../services/chat_service.dart';
 import '../services/profile_communication_service.dart';
+import '../services/safe_profile_service.dart';
 import '../services/stroyka_action_feedback.dart';
 import '../widgets/app_photo_grid_gallery.dart';
 import '../widgets/phone_link.dart';
@@ -280,25 +282,16 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
   Future<Map<String, dynamic>?> findWorker(String query) async {
     final text = query.trim();
     if (text.isEmpty) return null;
-
-    Future<Map<String, dynamic>?> byField(String field) async {
-      final snap = await FirebaseFirestore.instance
-          .collection("users")
-          .where(field, isEqualTo: text)
-          .limit(1)
-          .get();
-
-      if (snap.docs.isEmpty) return null;
-      return {
-        "id": snap.docs.first.id,
-        "data": snap.docs.first.data(),
-      };
+    final result = await FirebaseFunctions.instance
+        .httpsCallable('resolveTeamWorker')
+        .call({'teamId': widget.teamId, 'query': text});
+    final value = result.data;
+    if (value is! Map) return null;
+    final worker = Map<String, dynamic>.from(value);
+    if (worker['data'] is Map) {
+      worker['data'] = Map<String, dynamic>.from(worker['data'] as Map);
     }
-
-    return await byField("phone") ??
-        await byField("nickname") ??
-        await byField("nickName") ??
-        await byField("username");
+    return worker;
   }
 
   Future<void> addMember(List<String> currentMembers) async {
@@ -644,8 +637,7 @@ class _TeamDetailsScreenState extends State<TeamDetailsScreen> {
     bool isLeader,
   ) {
     return FutureBuilder<DocumentSnapshot>(
-      future:
-          FirebaseFirestore.instance.collection("users").doc(memberId).get(),
+      future: SafeProfileService().profile(memberId).get(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const ListTile(title: Text("Loading..."));

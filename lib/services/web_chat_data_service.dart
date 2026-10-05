@@ -216,7 +216,7 @@ class WebChatDataService {
         ? employerId
         : (isWorker ? employerId : workerId ?? _otherParticipantId(data, uid));
     if (otherUserId == null || otherUserId.isEmpty) return null;
-    return _DisplayTarget("users", otherUserId);
+    return _DisplayTarget("public_profiles", otherUserId);
   }
 
   String? _otherParticipantId(Map<String, dynamic> data, String uid) {

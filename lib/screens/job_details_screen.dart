@@ -18,6 +18,7 @@ import '../services/moderation_hold_service.dart';
 import '../services/notification_service.dart';
 import '../services/offer_acceptance_service.dart';
 import '../services/report_service.dart';
+import '../services/safe_profile_service.dart';
 import '../services/stroyka_action_feedback.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -449,11 +450,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       return;
     }
 
-    final employerSnap = await FirebaseFirestore.instance
-        .collection("users")
-        .doc(activeJob.ownerId)
-        .get();
-    if (ModerationHoldService.isProfileHeld(employerSnap.data())) {
+    final employerSnap =
+        await SafeProfileService().profile(activeJob.ownerId).get();
+    if (employerSnap.data()?['active'] == false ||
+        ModerationHoldService.isProfileHeld(employerSnap.data())) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1256,10 +1256,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection("users")
-          .doc(ownerId)
-          .snapshots(),
+      stream: SafeProfileService().profile(ownerId).snapshots(),
       builder: (context, snapshot) {
         /// ⏳ LOADING
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -2432,10 +2429,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection("users")
-          .doc(ownerId)
-          .snapshots(),
+      stream: SafeProfileService().profile(ownerId).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());

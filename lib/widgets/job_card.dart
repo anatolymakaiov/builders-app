@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/safe_profile_service.dart';
 import 'package:flutter/material.dart';
 
 import '../models/job.dart';
@@ -198,8 +199,7 @@ class _CompanyHeader extends StatelessWidget {
     }
 
     return FutureBuilder<DocumentSnapshot>(
-      future:
-          FirebaseFirestore.instance.collection("users").doc(job.ownerId).get(),
+      future: SafeProfileService().profile(job.ownerId).get(),
       builder: (context, snapshot) {
         String companyName = job.companyName.trim();
         if (snapshot.hasData && snapshot.data!.exists) {
@@ -340,8 +340,7 @@ class _CompanyLogo extends StatelessWidget {
     }
 
     return FutureBuilder<DocumentSnapshot>(
-      future:
-          FirebaseFirestore.instance.collection("users").doc(job.ownerId).get(),
+      future: SafeProfileService().profile(job.ownerId).get(),
       builder: (context, snapshot) {
         String? photo = job.companyLogo;
         if (snapshot.hasData && snapshot.data!.exists) {

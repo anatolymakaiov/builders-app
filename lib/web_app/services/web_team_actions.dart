@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
@@ -57,21 +58,11 @@ class WebTeamActions {
           'Your profile is temporarily suspended. Please contact Administrator.');
     }
     if (search != null) {
-      for (final field in ['phone', 'nickname', 'nickName', 'username']) {
-        final result = await db
-            .collection('users')
-            .where(field, isEqualTo: search.trim())
-            .limit(1)
-            .get();
-        if (result.docs.isEmpty) continue;
-        final worker = result.docs.first;
-        if (worker.data()['role'] != 'worker' ||
-            WebProfileCommunication.unavailable(worker.data())) {
-          throw StateError('Worker is unavailable.');
-        }
-        addId = worker.id;
-        break;
-      }
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('resolveTeamWorker')
+          .call({'teamId': teamId, 'query': search.trim()});
+      final worker = result.data;
+      if (worker is Map) addId = worker['id']?.toString();
       if (addId == null) throw StateError('Worker not found.');
     }
     final ref = db.collection('teams').doc(teamId);

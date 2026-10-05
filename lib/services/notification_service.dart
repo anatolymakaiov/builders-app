@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'safe_profile_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -625,7 +626,9 @@ class NotificationService {
     Map<String, dynamic> workerProfile = {};
     if (workerId != null && workerId.isNotEmpty) {
       try {
-        final workerDoc = await _db.collection("users").doc(workerId).get();
+        final workerDoc = await SafeProfileService(firestore: _db)
+            .profile(workerId)
+            .get();
         workerProfile = workerDoc.data() ?? {};
       } catch (_) {
         workerProfile = {};

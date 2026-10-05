@@ -15,6 +15,7 @@ import '../services/billing_service.dart';
 import '../services/job_repository.dart';
 import '../services/moderation_hold_service.dart';
 import '../services/profile_communication_service.dart';
+import '../services/safe_profile_service.dart';
 import '../services/report_service.dart';
 import '../services/stroyka_action_feedback.dart';
 import '../services/support_request_service.dart';
@@ -456,10 +457,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
         ],
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection("users")
-            .doc(widget.userId)
-            .snapshots(),
+        stream: SafeProfileService().profile(widget.userId).snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -530,7 +528,8 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
           final showBilling = isMyCompany && role == "employer";
           final tabCount = showBilling ? 5 : 4;
           final initialTab = widget.initialTab.clamp(0, tabCount - 1).toInt();
-          final profileHeld = ModerationHoldService.isProfileHeld(data);
+          final profileHeld = ModerationHoldService.isProfileHeld(data) ||
+              (!isMyCompany && data["active"] == false);
           final isAdminViewer = viewerRole == "admin";
           if (profileHeld) {
             WidgetsBinding.instance.addPostFrameCallback((_) {

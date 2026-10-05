@@ -13,6 +13,7 @@ import '../services/chat_service.dart';
 import '../services/moderation_hold_service.dart';
 import '../services/notification_service.dart';
 import '../services/profile_communication_service.dart';
+import '../services/safe_profile_service.dart';
 import '../services/report_service.dart';
 import '../services/stroyka_action_feedback.dart';
 import '../services/support_request_service.dart';
@@ -1590,9 +1591,8 @@ class WorkerProfileScreen extends StatelessWidget {
         ],
       ),
       body: StreamBuilder<Map<String, dynamic>>(
-        stream: FirebaseFirestore.instance
-            .collection("users")
-            .doc(userId)
+        stream: SafeProfileService()
+            .profile(userId)
             .snapshots()
             .asyncMap((userSnap) async {
           final userData = userSnap.data() ?? <String, dynamic>{};
@@ -1659,7 +1659,7 @@ class WorkerProfileScreen extends StatelessWidget {
           final String? currentRole = result["currentRole"];
           final name = data["name"] ?? "Worker";
           final bio = data["bio"] ?? "";
-          final location = data["location"] ?? "";
+          final location = data["location"] ?? data["townCity"] ?? "";
           final photo = data["photo"];
           final headerImage =
               (data["profileHeaderImage"] ?? data["headerImage"])?.toString();
@@ -1678,7 +1678,8 @@ class WorkerProfileScreen extends StatelessWidget {
               applicationId != null &&
               employerId != null &&
               jobId != null;
-          final profileHeld = ModerationHoldService.isProfileHeld(data);
+          final profileHeld = ModerationHoldService.isProfileHeld(data) ||
+              (!isMyProfile && data["active"] == false);
           final isAdminViewer = currentRole == "admin";
           if (profileHeld) {
             WidgetsBinding.instance.addPostFrameCallback((_) {

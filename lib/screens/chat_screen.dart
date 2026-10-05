@@ -589,15 +589,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String normalizeSearch(String value) => value.toLowerCase().trim();
 
-  String normalizePhoneForSearch(String value) {
-    final digits = value.replaceAll(RegExp(r"[^0-9+]"), "");
-    if (digits.startsWith("+44")) return "0${digits.substring(3)}";
-    if (digits.startsWith("44") && digits.length > 10) {
-      return "0${digits.substring(2)}";
-    }
-    return digits;
-  }
-
   List<String> idsFrom(dynamic value) {
     if (value is List) {
       return value
@@ -704,15 +695,16 @@ class _ChatScreenState extends State<ChatScreen> {
     String uid,
   ) async {
     final normalizedQuery = normalizeSearch(query);
-    final phoneQuery = normalizePhoneForSearch(query);
     final currentUserSnap =
         await FirebaseFirestore.instance.collection("users").doc(uid).get();
     final currentRole =
         cleanText(currentUserSnap.data()?["role"]).toLowerCase();
 
     final results = <_ForwardRecipient>[];
-    final users =
-        await FirebaseFirestore.instance.collection("users").limit(250).get();
+    final users = await FirebaseFirestore.instance
+        .collection("public_profiles")
+        .limit(250)
+        .get();
     for (final doc in users.docs) {
       if (doc.id == uid) continue;
       final data = doc.data();
@@ -721,7 +713,6 @@ class _ChatScreenState extends State<ChatScreen> {
       if (role == "admin") continue;
       final firstName = cleanText(data["firstName"]);
       final lastName = cleanText(data["lastName"]);
-      final phone = firstNonEmpty([data["phone"], data["billingPhone"]]);
       final name = role == "employer"
           ? firstNonEmpty([
               data["companyName"],
@@ -742,19 +733,15 @@ class _ChatScreenState extends State<ChatScreen> {
         lastName,
         data["nickname"],
         data["companyName"],
-        phone,
-        data["normalizedPhone"],
       ].whereType<Object>().join(" "));
-      final phoneMatches = phoneQuery.isNotEmpty &&
-          normalizePhoneForSearch(haystack).contains(phoneQuery);
-      if (!haystack.contains(normalizedQuery) && !phoneMatches) continue;
+      if (!haystack.contains(normalizedQuery)) continue;
 
       final recipient = _ForwardRecipient(
         id: doc.id,
         name: name,
         subtitle: role == "employer" ? "Employer" : "Worker",
         role: role == "employer" ? "employer" : "worker",
-        phone: phone,
+        phone: "",
         avatarUrl: firstNonEmpty([
           data["avatarUrl"],
           data["profilePhotoUrl"],

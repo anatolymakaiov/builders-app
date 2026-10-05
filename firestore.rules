@@ -417,12 +417,28 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow create: if signedIn() && (isSelf(userId) || isAdmin());
+      allow create: if isAdmin() || (
+        isSelf(userId)
+        && (!("role" in request.resource.data)
+          || request.resource.data.role in ["worker", "employer", "company"])
+        && !request.resource.data.keys().hasAny([
+          "admin", "isAdmin", "moderator", "isModerator",
+          "permissions", "customClaims"
+        ])
+      );
+      // Phase 1 compatibility: released mobile builds still read other users.
+      // Remove this broad read only after those builds use public_profiles.
       allow read: if signedIn();
       allow update: if isAdmin()
         || (
           isSelf(userId)
           && !protectedBillingKeysChanged()
+          && (!("role" in request.resource.data)
+            || request.resource.data.role in ["worker", "employer", "company"])
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "admin", "isAdmin", "moderator", "isModerator",
+            "permissions", "customClaims"
+          ])
         );
       allow delete: if isAdmin() || isSelf(userId);
 
@@ -482,6 +498,19 @@ service cloud.firestore {
           );
         allow read, update, delete: if isAdmin() || isSelf(userId);
       }
+    }
+
+    match /public_profiles/{profileId} {
+      allow read: if signedIn();
+      allow create, update, delete: if false;
+    }
+
+    match /worker_discovery/{workerId} {
+      // Employer-wide discovery awaits a trusted employer identity. The role
+      // on users is still registration-controlled in published mobile builds.
+      allow get: if isSelf(workerId) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     // Multi-account ownership and one-time link sessions are server-only.

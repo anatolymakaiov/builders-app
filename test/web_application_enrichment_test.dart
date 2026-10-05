@@ -36,8 +36,8 @@ void main() {
       return {'id': id};
     });
     final results = await Future.wait([
-      reads.get('users', 'employer-1'),
-      reads.get('users', 'employer-1'),
+      reads.get('public_profiles', 'employer-1'),
+      reads.get('public_profiles', 'employer-1'),
       reads.get('jobs', 'job-1'),
     ]);
     expect(calls, 2);

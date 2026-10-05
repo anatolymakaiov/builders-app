@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../screens/employer_profile_screen.dart';
 import '../screens/team_details_screen.dart';
 import '../screens/worker_profile_screen.dart';
+import 'safe_profile_service.dart';
 
 class ChatProfileNavigationService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -83,7 +84,9 @@ class ChatProfileNavigationService {
     String userId, {
     String roleHint = "",
   }) async {
-    final snapshot = await _firestore.collection("users").doc(userId).get();
+    final snapshot = await SafeProfileService(firestore: _firestore)
+        .profile(userId)
+        .get();
     if (!context.mounted) return;
     if (!snapshot.exists || _isInactive(snapshot.data())) {
       _showUnavailable(context);

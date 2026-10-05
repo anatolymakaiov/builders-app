@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/safe_profile_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'worker_profile_screen.dart';
@@ -293,10 +294,7 @@ class ApplicantsScreen extends StatelessWidget {
                 }
 
                 return FutureBuilder<DocumentSnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection("users")
-                      .doc(workerId)
-                      .get(),
+                  future: SafeProfileService().profile(workerId).get(),
                   builder: (context, userSnapshot) {
                     if (!userSnapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());

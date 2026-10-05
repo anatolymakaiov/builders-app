@@ -6,6 +6,7 @@ import '../models/job.dart';
 import 'employer_applications_screen.dart';
 import 'job_details_screen.dart';
 import '../services/job_repository.dart';
+import '../services/safe_profile_service.dart';
 import '../services/notification_service.dart';
 import '../services/billing_service.dart';
 import '../services/job_taxonomy_service.dart';
@@ -460,10 +461,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
         job.ownerId.isNotEmpty &&
         job.ownerId != "unknown") {
       return FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance
-            .collection("users")
-            .doc(job.ownerId)
-            .get(),
+        future: SafeProfileService().profile(job.ownerId).get(),
         builder: (context, snapshot) {
           final data = snapshot.data?.data() as Map<String, dynamic>?;
           return buildJobCardContent(context, job, data, ownerId, ownerJobIds);
@@ -710,10 +708,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                     : "No active vacancies available.";
 
                 return StreamBuilder<DocumentSnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection("users")
-                      .doc(ownerId)
-                      .snapshots(),
+                  stream: SafeProfileService().profile(ownerId).snapshots(),
                   builder: (context, employerSnapshot) {
                     final employerData =
                         employerSnapshot.data?.data() as Map<String, dynamic>?;

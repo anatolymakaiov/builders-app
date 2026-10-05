@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'web_company_branding.dart';
+import '../../services/safe_profile_service.dart';
 
 class WebRoleIdentity {
   const WebRoleIdentity({
@@ -38,7 +39,10 @@ class WebRoleIdentityResolver {
       return _cache[cacheKey]!;
     }
     final data = profile ??
-        (await _firestore.collection('users').doc(userId).get()).data() ??
+        (await SafeProfileService(firestore: _firestore)
+                .profile(userId)
+                .get())
+            .data() ??
         const <String, dynamic>{};
     final resolvedRole =
         (role ?? data['role'] ?? '').toString().trim().toLowerCase();

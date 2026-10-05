@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../screens/chat_screen.dart';
 import '../widgets/phone_link.dart';
 import 'chat_service.dart';
+import 'safe_profile_service.dart';
 
 class ProfileCommunicationService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -45,7 +46,9 @@ class ProfileCommunicationService {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null || currentUser.uid == targetUserId) return;
 
-    final targetSnap = await _db.collection("users").doc(targetUserId).get();
+    final targetSnap = await SafeProfileService(firestore: _db)
+        .profile(targetUserId)
+        .get();
     if (!context.mounted) return;
     if (!targetSnap.exists || isUnavailable(targetSnap.data())) {
       showUnavailable(context);
@@ -157,10 +160,7 @@ class ProfileCommunicationService {
         .trim();
     if (leaderId.isEmpty) return null;
 
-    final leaderSnap = await _db.collection("users").doc(leaderId).get();
-    final leader = leaderSnap.data();
-    if (isUnavailable(leader)) return null;
-    return leader?["phone"]?.toString().trim();
+    return null;
   }
 
   static Future<String?> _findDirectChat(

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'safe_profile_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
@@ -267,7 +268,9 @@ class AccountDeletionService {
   Future<List<String>> _activeMemberIds(List<String> members) async {
     final active = <String>[];
     for (final memberId in members) {
-      final snapshot = await _firestore.collection("users").doc(memberId).get();
+      final snapshot = await SafeProfileService(firestore: _firestore)
+          .profile(memberId)
+          .get();
       final data = snapshot.data();
       final status = data?["status"]?.toString().trim().toLowerCase() ?? "";
       if (snapshot.exists &&

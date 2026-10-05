@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/safe_profile_service.dart';
 
 import 'worker_profile_screen.dart';
 import '../theme/stroyka_background.dart';
@@ -45,10 +46,7 @@ class HiredWorkersScreen extends StatelessWidget {
                 final workerId = data["workerId"];
 
                 return FutureBuilder<DocumentSnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection("users")
-                      .doc(workerId)
-                      .get(),
+                  future: SafeProfileService().profile(workerId).get(),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData) {
                       return const SizedBox();
