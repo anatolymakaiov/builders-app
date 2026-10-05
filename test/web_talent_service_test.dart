@@ -71,6 +71,14 @@ void main() {
             const WebTalentFilters(tradeId: 'dryliner', location: 'london'),
             now),
         isFalse);
+    expect(
+        candidate('name')
+            .matches(const WebTalentFilters(tradeId: '', name: 'anthony'), now),
+        isTrue);
+    expect(
+        candidate('name')
+            .matches(const WebTalentFilters(tradeId: '', name: 'elena'), now),
+        isFalse);
   });
 
   test('safe candidate model has no contact or exact address fields', () {

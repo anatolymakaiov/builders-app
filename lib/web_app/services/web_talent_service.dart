@@ -87,6 +87,10 @@ class WebTalentCandidate {
       .join(' · ');
 
   bool matches(WebTalentFilters filters, DateTime now) {
+    final nameQuery = filters.name.trim().toLowerCase();
+    if (nameQuery.isNotEmpty && !name.toLowerCase().contains(nameQuery)) {
+      return false;
+    }
     final location = filters.location.trim().toLowerCase();
     if (location.isNotEmpty &&
         !area.toLowerCase().contains(location) &&
@@ -105,12 +109,14 @@ class WebTalentCandidate {
 class WebTalentFilters {
   const WebTalentFilters({
     required this.tradeId,
+    this.name = '',
     this.location = '',
     this.availability,
     this.invitesOnly = false,
   });
 
   final String tradeId;
+  final String name;
   final String location;
   final WorkerAvailability? availability;
   final bool invitesOnly;

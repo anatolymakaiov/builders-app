@@ -20,6 +20,7 @@ class WebTalentPage extends StatefulWidget {
 class _WebTalentPageState extends State<WebTalentPage> {
   final service = WebTalentService();
   final tradeController = TextEditingController();
+  final nameController = TextEditingController();
   final locationController = TextEditingController();
   Set<String> saved = {};
   bool poolMode = false;
@@ -40,6 +41,7 @@ class _WebTalentPageState extends State<WebTalentPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.employerId != widget.employerId) {
       saved = {};
+      nameController.clear();
       candidates = [];
       cursor = null;
       selectedId = null;
@@ -53,6 +55,7 @@ class _WebTalentPageState extends State<WebTalentPage> {
   void dispose() {
     requestId++;
     tradeController.dispose();
+    nameController.dispose();
     locationController.dispose();
     super.dispose();
   }
@@ -71,6 +74,7 @@ class _WebTalentPageState extends State<WebTalentPage> {
         ? filters!
         : WebTalentFilters(
             tradeId: role?.id ?? '',
+            name: poolMode ? nameController.text : '',
             location: locationController.text,
             availability: availability,
             invitesOnly: invitesOnly,
@@ -215,6 +219,19 @@ class _WebTalentPageState extends State<WebTalentPage> {
                 runSpacing: 10,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
+                  if (poolMode)
+                    SizedBox(
+                      width: width,
+                      height: WebToolbar.controlHeight,
+                      child: TextField(
+                        controller: nameController,
+                        onSubmitted: (_) => _search(),
+                        decoration: const InputDecoration(
+                          hintText: 'Search saved workers by name',
+                          prefixIcon: Icon(Icons.person_search_outlined),
+                        ),
+                      ),
+                    ),
                   SizedBox(
                     width: width,
                     height: WebToolbar.controlHeight,
