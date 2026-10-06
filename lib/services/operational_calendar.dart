@@ -5,7 +5,8 @@ enum CalendarEventType {
   vacancyStart,
   assignmentStart,
   assignmentOngoing,
-  assignmentFinish
+  assignmentFinish,
+  unavailable,
 }
 
 class CalendarRange {
@@ -69,6 +70,7 @@ class CalendarEvent {
         CalendarEventType.assignmentStart => 'Start',
         CalendarEventType.assignmentOngoing => 'Ongoing',
         CalendarEventType.assignmentFinish => 'Finish',
+        CalendarEventType.unavailable => 'Unavailable',
       };
 }
 
@@ -207,6 +209,37 @@ List<CalendarEvent> assignmentPeriodEvents(
   return events;
 }
 
+List<CalendarEvent> unavailableCalendarEvents(
+    String id, Map<String, dynamic> data, CalendarRange range) {
+  final start = calendarDate(data['startDate']);
+  final end = calendarDate(data['endDate']);
+  if (start == null || end == null || end.isBefore(start)) return const [];
+  final events = <CalendarEvent>[];
+  for (var date = range.start;
+      date.isBefore(range.end);
+      date = date.add(const Duration(days: 1))) {
+    if (CalendarRange.day(date)
+            .start
+            .isBefore(CalendarRange.day(start).start) ||
+        CalendarRange.day(date).start.isAfter(CalendarRange.day(end).start)) {
+      continue;
+    }
+    events.add(CalendarEvent(
+      id: 'unavailable:$id:${date.year}-${date.month}-${date.day}',
+      type: CalendarEventType.unavailable,
+      date: date,
+      title: 'Unavailable',
+      sourceId: id,
+      vacancyId: '',
+      siteId: '',
+      siteName: (data['note'] ?? '').toString(),
+      trade: (data['type'] ?? '').toString().replaceAll('_', ' '),
+      status: 'unavailable',
+    ));
+  }
+  return events;
+}
+
 List<CalendarEvent> filterCalendarEventsBySite(
     List<CalendarEvent> events, String? siteId) {
   if (siteId == null) return events;
@@ -325,6 +358,15 @@ class OperationalCalendarService {
           .get();
       for (final doc in jobs.docs) {
         events.addAll(vacancyCalendarEvents(doc.id, doc.data(), range));
+      }
+    } else {
+      final periods = await _db
+          .collection('worker_unavailability')
+          .where('workerId', isEqualTo: uid)
+          .where('endDate', isGreaterThanOrEqualTo: lower)
+          .get();
+      for (final doc in periods.docs) {
+        events.addAll(unavailableCalendarEvents(doc.id, doc.data(), range));
       }
     }
     events.sort((a, b) {

@@ -22,7 +22,7 @@ const {report: adminAnalyticsReport} = require("./admin_analytics");
 const {normalized: adminDirectoryNormalized, filterDirectoryRecord,
   broadcastTargetId, matchesBroadcastAudience} =
   require("./admin_directory");
-const {publicProfile, workerDiscovery} = require("./profile_projections");
+const {publicProfile} = require("./profile_projections");
 const {identityInUse} = require("./registration_identity_lookup");
 const {inviteWorkers, respondToInvitation, closeInvitations,
   markApplicationInvitations} = require("./vacancy_invitations");
@@ -30,6 +30,7 @@ const {PLANS: STROYKA_COMMERCIAL_PLANS, planForBilling,
   resolveEmployerEntitlements} =
   require("./employer_entitlements");
 const {createAcceptedAssignments} = require("./site_assignments");
+const {recomputeWorkerAvailability} = require("./recompute_worker_availability");
 
 admin.initializeApp();
 
@@ -96,6 +97,46 @@ exports.createAcceptedWorkAssignments = onDocumentWritten(
       admin.firestore.FieldValue);
   });
 
+exports.syncAssignmentWorkerAvailability = onDocumentWritten(
+  "assignments/{assignmentId}", async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+    for (const workerId of new Set([before?.workerId, after?.workerId]
+      .filter(Boolean))) {
+      await recomputeWorkerAvailability(admin.firestore(), workerId);
+    }
+  });
+
+exports.syncWorkerUnavailability = onDocumentWritten(
+  "worker_unavailability/{periodId}", async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+    for (const workerId of new Set([before?.workerId, after?.workerId]
+      .filter(Boolean))) {
+      await recomputeWorkerAvailability(admin.firestore(), workerId);
+    }
+  });
+
+exports.refreshWorkerAvailability = onSchedule({
+  schedule: "every day 00:15", timeZone: "Etc/UTC",
+}, async () => {
+  const db = admin.firestore();
+  const now = new Date();
+  while (true) {
+    const query = db.collection("worker_discovery")
+      .where("nextAvailabilityRefreshAt", "<=", now)
+      .orderBy("nextAvailabilityRefreshAt").limit(200);
+    const page = await query.get();
+    if (page.empty) break;
+    let changed = 0;
+    for (const doc of page.docs) {
+      const result = await recomputeWorkerAvailability(db, doc.id, now);
+      if (result?.changed) changed++;
+    }
+    if (page.size < 200 || changed === 0) break;
+  }
+});
+
 exports.checkRegistrationIdentity = onCall(async (request) => {
   const kind = request.data && request.data.kind;
   const value = request.data && request.data.value;
@@ -114,17 +155,14 @@ exports.syncSafeProfileProjections = onDocumentWritten("users/{userId}", async (
   const db = admin.firestore();
   const userRef = db.collection("users").doc(uid);
   const publicRef = db.collection("public_profiles").doc(uid);
-  const discoveryRef = db.collection("worker_discovery").doc(uid);
   await db.runTransaction(async (transaction) => {
-    const [user, previousPublic, previousDiscovery] = await Promise.all([
+    const [user, previousPublic] = await Promise.all([
       transaction.get(userRef),
       transaction.get(publicRef),
-      transaction.get(discoveryRef),
     ]);
     const data = user.exists ? user.data() : null;
     const projections = [
       [publicRef, previousPublic, data && publicProfile(uid, data)],
-      [discoveryRef, previousDiscovery, data && workerDiscovery(uid, data)],
     ];
     for (const [ref, previous, value] of projections) {
       if (value) {
@@ -136,6 +174,7 @@ exports.syncSafeProfileProjections = onDocumentWritten("users/{userId}", async (
       }
     }
   });
+  await recomputeWorkerAvailability(db, uid);
 });
 
 exports.resolveTeamWorker = onCall(async (request) => {

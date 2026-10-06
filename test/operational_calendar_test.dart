@@ -153,4 +153,21 @@ void main() {
         currentOrNextAssignment([next, old], now: now)!.assignment.id, 'next');
     expect(currentOrNextAssignment([old], now: now), isNull);
   });
+
+  test('worker unavailable period renders only in its date range', () {
+    final events = unavailableCalendarEvents(
+        'private',
+        {
+          'startDate': day(2026, 10, 15),
+          'endDate': day(2026, 10, 17),
+          'type': 'holiday',
+          'note': 'Private note',
+        },
+        CalendarRange.week(DateTime(2026, 10, 16)));
+    expect(events, hasLength(3));
+    expect(events.every((event) => event.type == CalendarEventType.unavailable),
+        isTrue);
+    expect(events.first.title, 'Unavailable');
+    expect(events.first.siteName, 'Private note');
+  });
 }

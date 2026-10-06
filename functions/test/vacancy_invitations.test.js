@@ -17,14 +17,20 @@ const job = {ownerId: employerId, moderationStatus: "approved", status: "active"
   positions: 3, filledPositions: 0};
 const worker = {discoveryVisible: true, allowVacancyInvites: true,
   tradeIds: ["dryliner", "fixer"], availabilityStatus: "available_now",
+  effectiveAvailabilityStatus: "available_now",
   availabilityConfirmedAt: now};
 
 test("eligibility, closure and safe invitation display fields", () => {
   assert.equal(eligibleWorker(worker, job, now), null);
   assert.equal(eligibleWorker({...worker, allowVacancyInvites: false}, job, now),
     "invites_disabled");
-  assert.equal(eligibleWorker({...worker, availabilityStatus: "not_looking"}, job, now),
+  assert.equal(eligibleWorker({...worker, effectiveAvailabilityStatus: "not_looking"}, job, now),
     "availability_unconfirmed");
+  assert.equal(eligibleWorker({...worker, effectiveAvailabilityStatus: "busy"},
+    job, now), "availability_unconfirmed");
+  assert.equal(eligibleWorker({...worker,
+    nextUnavailableFrom: new Date("2026-10-07")},
+  {...job, startDate: new Date("2026-10-08")}, now), "start_date_mismatch");
   assert.equal(eligibleWorker({...worker, tradeIds: ["plasterer"]}, job, now),
     "trade_mismatch");
   assert.equal(eligibleWorker({...worker,
@@ -63,7 +69,7 @@ test("invitation lifecycle in Firestore emulator", {
     await discovery.doc("workerTest003").set({...worker,
       allowVacancyInvites: false});
     await discovery.doc("workerTest004").set({...worker,
-      availabilityStatus: "not_looking"});
+      effectiveAvailabilityStatus: "not_looking"});
     await discovery.doc("workerTest005").set(worker);
     await discovery.doc("workerTest006").set(worker);
     await discovery.doc("workerTest007").set(worker);

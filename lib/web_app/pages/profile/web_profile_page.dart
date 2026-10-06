@@ -14,6 +14,7 @@ import '../../../services/moderation_hold_service.dart';
 import '../../../services/multi_account_service.dart';
 import '../../../services/worker_availability_service.dart';
 import '../../../widgets/worker_availability_editor.dart';
+import '../../../widgets/worker_unavailability_panel.dart';
 import '../../../services/job_taxonomy_service.dart';
 import '../../../widgets/trade_selector.dart';
 import '../../../widgets/account_switcher.dart';
@@ -215,6 +216,14 @@ class _WebProfilePageState extends State<WebProfilePage> {
                       : null,
                   mediaBusy: mediaBusy,
                 ),
+                if (ownProfile && isWorker && !held)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: WorkerUnavailabilityPanel(
+                      workerId: viewedUserId,
+                      profile: current.data,
+                    ),
+                  ),
                 if (ownProfile && held)
                   MaterialBanner(
                     content: const Text(

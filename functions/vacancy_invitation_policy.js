@@ -69,7 +69,7 @@ function closureStatus(job) {
 }
 
 function availabilityFresh(worker, now) {
-  const status = String(worker.availabilityStatus || "unknown");
+  const status = String(worker.effectiveAvailabilityStatus || "unknown");
   const confirmed = asDate(worker.availabilityConfirmedAt);
   if (!confirmed || confirmed.getTime() > now.getTime()) return false;
   const elapsedDays = (now.getTime() - confirmed.getTime()) / 86400000;
@@ -91,9 +91,14 @@ function eligibleWorker(worker, job, now) {
   if (!tradeId) return "vacancy_trade_missing";
   if (!Array.isArray(worker.tradeIds) ||
       !worker.tradeIds.includes(tradeId)) return "trade_mismatch";
-  const status = String(worker.availabilityStatus || "unknown");
+  const status = String(worker.effectiveAvailabilityStatus || "unknown");
   if (!["available_now", "available_from"].includes(status) ||
       !availabilityFresh(worker, now)) return "availability_unconfirmed";
+  const nextBlock = asDate(worker.nextUnavailableFrom);
+  const startDate = asDate(job.startDate);
+  if (nextBlock && startDate && dateOnly(nextBlock) <= dateOnly(startDate)) {
+    return "start_date_mismatch";
+  }
   if (status === "available_from") {
     const from = asDate(worker.availableFrom);
     const start = asDate(job.startDate);

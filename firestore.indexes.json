@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "worker_unavailability",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "workerId", "order": "ASCENDING" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "assignments",
       "queryScope": "COLLECTION",
       "fields": [

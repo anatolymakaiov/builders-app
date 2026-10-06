@@ -1,5 +1,7 @@
 "use strict";
 
+const {day} = require("./effective_worker_availability");
+
 const ACCEPTED = new Set(["offer_accepted", "accepted", "hired"]);
 
 function assignmentWorkers(application) {
@@ -51,6 +53,27 @@ async function createAcceptedAssignments(db, applicationId, before, after,
   for (const workerId of workers) {
     const ref = db.collection("assignments")
       .doc(assignmentId(applicationId, workerId));
+    const start = day(vacancy.startDate || siteData.startDate);
+    const end = day(siteData.expectedEndDate) ?? Infinity;
+    let hasAvailabilityConflict = false;
+    if (start != null) {
+      const [periods, assignments] = await Promise.all([
+        db.collection("worker_unavailability")
+          .where("workerId", "==", workerId)
+          .where("endDate", ">=", new Date(start)).get(),
+        db.collection("assignments")
+          .where("workerId", "==", workerId)
+          .where("status", "in", ["scheduled", "active"]).get(),
+      ]);
+      hasAvailabilityConflict = periods.docs.some((doc) =>
+        day(doc.data().startDate) <= end) || assignments.docs.some((doc) => {
+        const data = doc.data();
+        const existingStart = day(data.startDate);
+        const existingEnd = day(data.actualEndDate || data.expectedEndDate) ?? Infinity;
+        return existingStart != null && existingStart <= end &&
+          existingEnd >= start;
+      });
+    }
     await db.runTransaction(async (transaction) => {
       if ((await transaction.get(ref)).exists) return;
       transaction.create(ref, {
@@ -68,6 +91,7 @@ async function createAcceptedAssignments(db, applicationId, before, after,
         tradeName: vacancy.canonicalRoleName || vacancy.trade ||
           vacancy.title || "",
         status: "scheduled",
+        hasAvailabilityConflict,
         ...(vacancy.startDate || siteData.startDate
           ? {startDate: vacancy.startDate || siteData.startDate} : {}),
         ...(siteData.expectedEndDate

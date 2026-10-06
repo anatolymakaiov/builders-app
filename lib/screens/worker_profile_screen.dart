@@ -27,6 +27,7 @@ import '../services/worker_availability_service.dart';
 import '../services/worker_assignment_service.dart';
 import 'worker_calendar_screen.dart';
 import '../widgets/worker_availability_editor.dart';
+import '../widgets/worker_unavailability_panel.dart';
 import '../services/job_taxonomy_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -1910,6 +1911,11 @@ class WorkerProfileScreen extends StatelessWidget {
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
                           children: [
                             if (isMyProfile) _buildOwnAssignments(context),
+                            if (isMyProfile)
+                              WorkerUnavailabilityPanel(
+                                workerId: userId,
+                                profile: data,
+                              ),
                             StroykaSurface(
                               padding: const EdgeInsets.all(18),
                               child: Column(

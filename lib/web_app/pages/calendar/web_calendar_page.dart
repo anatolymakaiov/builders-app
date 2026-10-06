@@ -362,6 +362,7 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
                 CalendarEventType.assignmentOngoing =>
                   Icons.work_history_outlined,
                 CalendarEventType.assignmentFinish => Icons.flag_outlined,
+                CalendarEventType.unavailable => Icons.event_busy_outlined,
               },
               color: WebTheme.accent),
           title: Text('${event.typeLabel}: ${event.title}'),

@@ -671,6 +671,36 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    match /worker_unavailability/{periodId} {
+      function validPeriod() {
+        return request.resource.data.keys().hasOnly([
+          "workerId", "startDate", "endDate", "type", "note",
+          "createdAt", "updatedAt"])
+          && request.resource.data.keys().hasAll([
+            "workerId", "startDate", "endDate", "type",
+            "createdAt", "updatedAt"])
+          && request.resource.data.workerId == uid()
+          && request.resource.data.startDate is timestamp
+          && request.resource.data.endDate is timestamp
+          && request.resource.data.startDate <= request.resource.data.endDate
+          && request.resource.data.endDate >= request.time - duration.value(1, 'd')
+          && request.resource.data.endDate <= request.resource.data.startDate + duration.value(730, 'd')
+          && request.resource.data.type in ["holiday", "personal", "external_work", "other"]
+          && request.resource.data.get("note", "") is string
+          && request.resource.data.get("note", "").size() <= 500
+          && request.resource.data.updatedAt == request.time;
+      }
+      allow get, list: if isAdmin() || (isWorker()
+        && resource.data.workerId == uid());
+      allow create: if isWorker() && validPeriod()
+        && request.resource.data.createdAt == request.time;
+      allow update: if isWorker() && resource.data.workerId == uid()
+        && validPeriod()
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isAdmin() || (isWorker()
+        && resource.data.workerId == uid());
+    }
+
     match /vacancy_invitations/{invitationId} {
       allow get, list: if isAdmin()
         || (isWorker() && resource.data.workerId == uid())

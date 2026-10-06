@@ -18,6 +18,8 @@ class WebTalentCandidate {
     required this.availableFrom,
     required this.confirmedAt,
     required this.allowsInvites,
+    this.effectiveReason = '',
+    this.nextUnavailableFrom,
   });
 
   final String id;
@@ -33,6 +35,8 @@ class WebTalentCandidate {
   final DateTime? availableFrom;
   final DateTime? confirmedAt;
   final bool allowsInvites;
+  final String effectiveReason;
+  final DateTime? nextUnavailableFrom;
 
   factory WebTalentCandidate.fromDocument(
       DocumentSnapshot<Map<String, dynamic>> document) {
@@ -41,7 +45,13 @@ class WebTalentCandidate {
   }
 
   factory WebTalentCandidate.fromMap(String id, Map<String, dynamic> data) {
-    final status = WorkerAvailabilityService.fromProfile(data);
+    final effectiveStatus =
+        (data['effectiveAvailabilityStatus'] ?? 'unknown').toString();
+    final status = effectiveStatus == 'unavailable'
+        ? WorkerAvailability.busy
+        : WorkerAvailabilityService.fromProfile({
+            WorkerAvailabilityService.field: effectiveStatus,
+          });
     return WebTalentCandidate(
       id: id,
       name: (data['displayNameShort'] as String?)?.trim().isNotEmpty == true
@@ -57,10 +67,16 @@ class WebTalentCandidate {
       rating: (data['rating'] as num?)?.toDouble() ?? 0,
       ratingCount: (data['ratingCount'] as num?)?.toInt() ?? 0,
       availability: status,
-      availableFrom: WorkerAvailabilityService.availableFrom(data),
+      availableFrom: WorkerAvailabilityService.availableFrom({
+        WorkerAvailabilityService.dateField: data['effectiveAvailableFrom'],
+      }),
       confirmedAt: WorkerAvailabilityService.confirmedAt(data) ??
           DateTime.tryParse(data['availabilityConfirmedAt']?.toString() ?? ''),
       allowsInvites: WorkerAvailabilityService.allowsInvites(data),
+      effectiveReason: (data['effectiveAvailabilityReason'] ?? '').toString(),
+      nextUnavailableFrom: WorkerAvailabilityService.availableFrom({
+        WorkerAvailabilityService.dateField: data['nextUnavailableFrom'],
+      }),
     );
   }
 
@@ -78,8 +94,24 @@ class WebTalentCandidate {
   }
 
   String availabilityLabel(DateTime now) {
+    if (effectiveReason == 'assignment' ||
+        effectiveReason == 'unavailability') {
+      final prefix = effectiveReason == 'assignment' ? 'Busy' : 'Unavailable';
+      return availableFrom == null
+          ? prefix
+          : '$prefix until ${WorkerAvailabilityService.label(
+              WorkerAvailability.availableFrom,
+              from: availableFrom!.subtract(const Duration(days: 1)),
+            ).replaceFirst('Available from ', '')}';
+    }
     if (!isRecentlyConfirmed(now)) return 'Availability not recently confirmed';
-    return WorkerAvailabilityService.label(availability, from: availableFrom);
+    final current =
+        WorkerAvailabilityService.label(availability, from: availableFrom);
+    if (nextUnavailableFrom != null &&
+        availability == WorkerAvailability.availableNow) {
+      return '$current until ${nextUnavailableFrom!.day}/${nextUnavailableFrom!.month}';
+    }
+    return current;
   }
 
   String get tradeLabel => tradeIds
@@ -102,7 +134,10 @@ class WebTalentCandidate {
     if (filters.availability == WorkerAvailability.unknown) {
       return !isRecentlyConfirmed(now);
     }
-    return availability == filters.availability && isRecentlyConfirmed(now);
+    return availability == filters.availability &&
+        (effectiveReason == 'assignment' ||
+            effectiveReason == 'unavailability' ||
+            isRecentlyConfirmed(now));
   }
 }
 

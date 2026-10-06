@@ -54,8 +54,8 @@ class _WebTalentPageState extends State<WebTalentPage> {
   void initState() {
     super.initState();
     _loadEntitlements();
-    entitlementRefresh = Timer.periodic(
-      const Duration(minutes: 1), (_) => _loadEntitlements());
+    entitlementRefresh =
+        Timer.periodic(const Duration(minutes: 1), (_) => _loadEntitlements());
   }
 
   Future<void> _loadEntitlements() async {
@@ -250,6 +250,11 @@ class _WebTalentPageState extends State<WebTalentPage> {
 
   bool _matchesVacancy(WebTalentCandidate candidate, Job job) {
     if (!candidate.tradeIds.contains(job.canonicalRoleId)) return false;
+    if (candidate.nextUnavailableFrom != null &&
+        job.startDate != null &&
+        !candidate.nextUnavailableFrom!.isAfter(job.startDate!)) {
+      return false;
+    }
     if (candidate.availability != WorkerAvailability.availableFrom) return true;
     final from = candidate.availableFrom;
     if (from == null) return false;

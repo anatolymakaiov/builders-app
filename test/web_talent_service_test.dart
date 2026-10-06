@@ -19,9 +19,12 @@ void main() {
         'generalArea': 'Manchester',
         'region': 'Greater Manchester',
         'availabilityStatus': status,
+        'effectiveAvailabilityStatus': status,
         'availabilityConfirmedAt':
             Timestamp.fromDate(confirmed ?? DateTime(2026, 10, 5)),
         'availableFrom': Timestamp.fromDate(DateTime.utc(2026, 10, 21)),
+        'effectiveAvailableFrom':
+            Timestamp.fromDate(DateTime.utc(2026, 10, 21)),
         'allowVacancyInvites': invites,
         'email': 'never@example.com',
         'phone': '+447700900123',
@@ -88,6 +91,30 @@ void main() {
     expect(item.toString(), isNot(contains('never@example.com')));
     expect(item.toString(), isNot(contains('+447700900123')));
     expect(item.toString(), isNot(contains('Private street')));
+  });
+
+  test('effective assignment and unavailable state override manual status', () {
+    final busy = WebTalentCandidate.fromMap('w2', {
+      'availabilityStatus': 'available_now',
+      'effectiveAvailabilityStatus': 'busy',
+      'effectiveAvailabilityReason': 'assignment',
+      'effectiveAvailableFrom': Timestamp.fromDate(DateTime.utc(2026, 10, 21)),
+      'availabilityConfirmedAt': Timestamp.fromDate(DateTime.utc(2026, 10, 5)),
+    });
+    expect(busy.availability, WorkerAvailability.busy);
+    expect(busy.availabilityLabel(now), contains('Busy until'));
+    expect(
+        busy.matches(
+            const WebTalentFilters(
+                tradeId: '', availability: WorkerAvailability.availableNow),
+            now),
+        isFalse);
+    final unavailable = WebTalentCandidate.fromMap('w3', {
+      'availabilityStatus': 'available_now',
+      'effectiveAvailabilityStatus': 'unavailable',
+      'effectiveAvailabilityReason': 'unavailability',
+    });
+    expect(unavailable.availabilityLabel(now), 'Unavailable');
   });
 
   test('pagination merge keeps one candidate per worker ID', () {
