@@ -6,6 +6,7 @@ import 'application_details_screen.dart';
 import 'chat_screen.dart';
 import 'job_details_screen.dart';
 import 'worker_profile_screen.dart';
+import 'worker_opportunities_screen.dart';
 import '../models/job.dart';
 import '../services/calendar_service.dart';
 import '../services/app_navigation.dart';
@@ -485,6 +486,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final workerId = cleanId(data["workerId"]);
     final role = await currentUserRole();
     if (!context.mounted) return;
+
+    if (targetType == 'vacancy_invitation' && role == 'worker') {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => WorkerOpportunitiesScreen(workerId: uid),
+            ));
+      }
+      return;
+    }
 
     if (targetType == "worker_review") {
       final requestId = cleanId(data["reviewRequestId"] ?? targetId);

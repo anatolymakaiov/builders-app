@@ -553,7 +553,9 @@ service cloud.firestore {
         && resource.data.get("accountDeleted", false) != true);
 
       match /notifications/{notificationId} {
-        allow create: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.get("type", "") != "vacancy_invitation"
+          && request.resource.data.get("targetType", "") != "vacancy_invitation";
         allow read, update, delete: if isAdmin() || isSelf(userId);
       }
 
@@ -622,6 +624,17 @@ service cloud.firestore {
         && resource.data.discoveryVisible == true
         && request.query.limit != null && request.query.limit <= 25);
       allow create, update, delete: if false;
+    }
+
+    match /vacancy_invitations/{invitationId} {
+      allow get, list: if isAdmin()
+        || (isWorker() && resource.data.workerId == uid())
+        || (isEmployer() && resource.data.employerId == uid());
+      allow create, update, delete: if false;
+    }
+
+    match /vacancy_invitation_quotas/{quotaId} {
+      allow read, write: if false;
     }
 
     match /employer_talent_pools/{employerId}/workers/{workerId} {

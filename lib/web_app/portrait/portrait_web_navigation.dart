@@ -20,23 +20,26 @@ class PortraitWebNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visible = PortraitWebSection.values
+        .where((section) =>
+            (section != PortraitWebSection.talent || isEmployer) &&
+            (section != PortraitWebSection.opportunities || !isEmployer))
+        .toList();
     return NavigationBar(
       height: 68,
-      selectedIndex: selected.index,
-      onDestinationSelected: (index) =>
-          onSelected(PortraitWebSection.values[index]),
+      selectedIndex: visible.indexOf(selected).clamp(0, visible.length - 1),
+      onDestinationSelected: (index) => onSelected(visible[index]),
       destinations: [
-        for (final section in PortraitWebSection.values)
-          if (section != PortraitWebSection.talent || isEmployer)
-            NavigationDestination(
-              key: ValueKey('portrait-nav-${section.name}'),
-              icon: Badge(
-                isLabelVisible: _count(section) > 0,
-                label: Text('${_count(section)}'),
-                child: Icon(section.icon),
-              ),
-              label: section.label,
+        for (final section in visible)
+          NavigationDestination(
+            key: ValueKey('portrait-nav-${section.name}'),
+            icon: Badge(
+              isLabelVisible: _count(section) > 0,
+              label: Text('${_count(section)}'),
+              child: Icon(section.icon),
             ),
+            label: section.label,
+          ),
       ],
     );
   }

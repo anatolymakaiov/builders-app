@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../../services/job_taxonomy_service.dart';
+import '../../../models/job.dart';
+import '../../../services/vacancy_invitation_service.dart';
 import '../../../services/worker_availability_service.dart';
 import '../../services/web_talent_service.dart';
 import '../../theme/web_theme.dart';
@@ -23,6 +25,9 @@ class _WebTalentPageState extends State<WebTalentPage> {
   final nameController = TextEditingController();
   final locationController = TextEditingController();
   Set<String> saved = {};
+  final Set<String> selectedWorkerIds = {};
+  final invitationService = VacancyInvitationService();
+  bool inviting = false;
   bool poolMode = false;
   bool loading = false;
   bool hasMore = false;
@@ -41,6 +46,7 @@ class _WebTalentPageState extends State<WebTalentPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.employerId != widget.employerId) {
       saved = {};
+      selectedWorkerIds.clear();
       nameController.clear();
       candidates = [];
       cursor = null;
@@ -85,6 +91,7 @@ class _WebTalentPageState extends State<WebTalentPage> {
       loading = true;
       error = null;
       if (!more) {
+        selectedWorkerIds.clear();
         candidates = [];
         cursor = null;
         hasMore = false;
@@ -145,6 +152,7 @@ class _WebTalentPageState extends State<WebTalentPage> {
       cursor = null;
       hasMore = false;
       selectedId = null;
+      selectedWorkerIds.clear();
       error = null;
       loading = false;
       requestId++;
@@ -181,6 +189,121 @@ class _WebTalentPageState extends State<WebTalentPage> {
         }
         error = 'Could not update Talent Pool. Please try again.';
       });
+    }
+  }
+
+  bool _selectable(WebTalentCandidate candidate) =>
+      candidate.allowsInvites &&
+      candidate.isRecentlyConfirmed(DateTime.now()) &&
+      (candidate.availability == WorkerAvailability.availableNow ||
+          candidate.availability == WorkerAvailability.availableFrom);
+
+  bool _matchesVacancy(WebTalentCandidate candidate, Job job) {
+    if (!candidate.tradeIds.contains(job.canonicalRoleId)) return false;
+    if (candidate.availability != WorkerAvailability.availableFrom) return true;
+    final from = candidate.availableFrom;
+    if (from == null) return false;
+    final start = job.startDate;
+    if (start == null) {
+      final today = DateTime.now();
+      return DateTime(from.year, from.month, from.day)
+          .isBefore(DateTime(today.year, today.month, today.day + 1));
+    }
+    return !DateTime(from.year, from.month, from.day)
+        .isAfter(DateTime(start.year, start.month, start.day));
+  }
+
+  Future<void> _inviteSelected() async {
+    final chosen = candidates
+        .where((item) => selectedWorkerIds.contains(item.id))
+        .toList(growable: false);
+    if (chosen.isEmpty || inviting) return;
+    final vacancy = await showDialog<Job>(
+      context: context,
+      builder: (dialogContext) => FutureBuilder(
+        future: FirebaseFirestore.instance
+            .collection('jobs')
+            .where('ownerId', isEqualTo: widget.employerId)
+            .orderBy('createdAt', descending: true)
+            .limit(50)
+            .get(),
+        builder: (context, snapshot) {
+          final jobs = snapshot.data?.docs
+                  .map((doc) => Job.fromFirestore(doc.id, doc.data()))
+                  .where((job) =>
+                      job.moderationStatus == 'approved' &&
+                      ['active', 'published', 'open'].contains(job.status) &&
+                      job.active &&
+                      !job.deleted &&
+                      !job.employerDeleted &&
+                      !job.companyDeleted &&
+                      job.remainingPositions > 0)
+                  .toList() ??
+              const <Job>[];
+          return AlertDialog(
+            title: const Text('Invite to vacancy'),
+            content: SizedBox(
+              width: 450,
+              height: 350,
+              child: snapshot.hasError
+                  ? const Center(child: Text('Could not load vacancies.'))
+                  : !snapshot.hasData
+                      ? const Center(child: CircularProgressIndicator())
+                      : jobs.isEmpty
+                          ? const Center(
+                              child: Text('No active vacancies available.'))
+                          : ListView(children: [
+                              for (final job in jobs)
+                                ListTile(
+                                  title: Text(job.displayTitle),
+                                  subtitle: Text(chosen.every((worker) =>
+                                          _matchesVacancy(worker, job))
+                                      ? '${job.site} · ${job.remainingPositions} positions left'
+                                      : 'Trade or availability date does not match'),
+                                  enabled: chosen.every(
+                                      (worker) => _matchesVacancy(worker, job)),
+                                  onTap: chosen.every((worker) =>
+                                          _matchesVacancy(worker, job))
+                                      ? () => Navigator.pop(dialogContext, job)
+                                      : null,
+                                ),
+                            ]),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'))
+            ],
+          );
+        },
+      ),
+    );
+    if (!mounted || vacancy == null) return;
+    setState(() => inviting = true);
+    try {
+      final result = await invitationService.invite(
+          vacancy.id, chosen.map((item) => item.id).toList());
+      if (!mounted) return;
+      final created = (result['created'] as num?)?.toInt() ?? 0;
+      final outcomes = (result['results'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((item) => item['result']?.toString() ?? '')
+          .where((item) => item != 'invited')
+          .toSet();
+      if (created > 0) setState(selectedWorkerIds.clear);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+        '$created invitation(s) sent.'
+        '${outcomes.isEmpty ? '' : ' Skipped: ${outcomes.join(', ').replaceAll('_', ' ')}.'}',
+      )));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not send invitations. Please try again.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => inviting = false);
     }
   }
 
@@ -321,6 +444,39 @@ class _WebTalentPageState extends State<WebTalentPage> {
               Text(error!, style: const TextStyle(color: WebTheme.danger)),
             ],
             if (loading) const LinearProgressIndicator(),
+            if (candidates.isNotEmpty) ...[
+              Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text('${selectedWorkerIds.length} selected'),
+                  TextButton(
+                      onPressed: () => setState(() {
+                            selectedWorkerIds.clear();
+                            for (final candidate in candidates) {
+                              if (_selectable(candidate) &&
+                                  selectedWorkerIds.length < 20) {
+                                selectedWorkerIds.add(candidate.id);
+                              }
+                            }
+                          }),
+                      child: const Text('Select visible eligible')),
+                  TextButton(
+                      onPressed: selectedWorkerIds.isEmpty
+                          ? null
+                          : () => setState(selectedWorkerIds.clear),
+                      child: const Text('Clear')),
+                  FilledButton.icon(
+                    onPressed: selectedWorkerIds.isEmpty || inviting
+                        ? null
+                        : _inviteSelected,
+                    icon: const Icon(Icons.send_outlined),
+                    label: const Text('Invite to vacancy'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
             const SizedBox(height: 16),
             if (!searched)
               Text(
@@ -344,6 +500,19 @@ class _WebTalentPageState extends State<WebTalentPage> {
                             for (final candidate in candidates)
                               _CandidateCard(
                                 candidate: candidate,
+                                checked:
+                                    selectedWorkerIds.contains(candidate.id),
+                                selectable: _selectable(candidate) &&
+                                    (selectedWorkerIds.length < 20 ||
+                                        selectedWorkerIds
+                                            .contains(candidate.id)),
+                                onChecked: (checked) => setState(() {
+                                  if (checked == true) {
+                                    selectedWorkerIds.add(candidate.id);
+                                  } else {
+                                    selectedWorkerIds.remove(candidate.id);
+                                  }
+                                }),
                                 saved: saved.contains(candidate.id),
                                 selected: selectedId == candidate.id,
                                 onOpen: () => bounds.maxWidth < 800
@@ -400,11 +569,17 @@ class _WebTalentPageState extends State<WebTalentPage> {
 class _CandidateCard extends StatelessWidget {
   const _CandidateCard(
       {required this.candidate,
+      required this.checked,
+      required this.selectable,
+      required this.onChecked,
       required this.saved,
       required this.selected,
       required this.onOpen,
       required this.onSave});
   final WebTalentCandidate candidate;
+  final bool checked;
+  final bool selectable;
+  final ValueChanged<bool?> onChecked;
   final bool saved;
   final bool selected;
   final VoidCallback onOpen;
@@ -421,6 +596,7 @@ class _CandidateCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(children: [
+            Checkbox(value: checked, onChanged: selectable ? onChecked : null),
             ClipOval(
                 child: WebRemoteImage(
                     url: candidate.avatarUrl,

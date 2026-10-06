@@ -10,6 +10,7 @@ import '../pages/jobs/web_jobs_page.dart';
 import '../pages/jobs/web_post_job_page.dart';
 import '../pages/map/web_map_page.dart';
 import '../pages/talent/web_talent_page.dart';
+import '../pages/opportunities/web_opportunities_page.dart';
 import '../../services/application_status_utils.dart';
 import '../../services/multi_account_service.dart';
 import '../services/web_account_data_service.dart';
@@ -174,6 +175,13 @@ class _WebShellState extends State<WebShell> {
           ? WebTalentPage(
               key: ValueKey('web-talent:${widget.user.uid}'),
               employerId: widget.user.uid,
+            )
+          : const SizedBox.shrink(),
+      widget.role == 'worker' && visited.contains(WebSection.opportunities)
+          ? WebOpportunitiesPage(
+              key: ValueKey('web-opportunities:${widget.user.uid}'),
+              workerId: widget.user.uid,
+              onOpenJob: _openJob,
             )
           : const SizedBox.shrink(),
     ];
@@ -539,6 +547,10 @@ class _WebShellState extends State<WebShell> {
   void _routeNotification(WebNotificationItem notification) {
     final data = notification.data;
     final targetType = _targetTypeFor(data);
+    if (targetType == 'vacancy_invitation' && widget.role == 'worker') {
+      _selectSection(WebSection.opportunities);
+      return;
+    }
     final targetId = _cleanId(data['targetId']);
     final chatId = _cleanId(data['chatId'] ?? targetId);
     final jobId = _cleanId(data['relatedJobId'] ?? data['jobId'] ?? targetId);

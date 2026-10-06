@@ -24,8 +24,30 @@ const {normalized: adminDirectoryNormalized, filterDirectoryRecord,
   require("./admin_directory");
 const {publicProfile, workerDiscovery} = require("./profile_projections");
 const {identityInUse} = require("./registration_identity_lookup");
+const {inviteWorkers, respondToInvitation, closeInvitations,
+  markApplicationInvitations} = require("./vacancy_invitations");
 
 admin.initializeApp();
+
+exports.inviteWorkersToVacancy = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  return inviteWorkers(admin.firestore(), request.auth.uid, request.data);
+});
+
+exports.respondToVacancyInvitation = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  return respondToInvitation(admin.firestore(), request.auth.uid, request.data);
+});
+
+exports.closeVacancyInvitations = onDocumentWritten("jobs/{jobId}", async (event) => {
+  await closeInvitations(admin.firestore(), event.params.jobId,
+    event.data?.after?.data());
+});
+
+exports.applyVacancyInvitation = onDocumentWritten(
+  "applications/{applicationId}", async (event) => {
+    await markApplicationInvitations(admin.firestore(), event.data?.after?.data());
+  });
 
 exports.checkRegistrationIdentity = onCall(async (request) => {
   const kind = request.data && request.data.kind;

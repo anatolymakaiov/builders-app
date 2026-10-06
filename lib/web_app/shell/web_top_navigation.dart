@@ -8,7 +8,8 @@ enum WebSection {
   map('Map', Icons.map_outlined),
   applications('Applications', Icons.assignment_outlined),
   chats('Chats', Icons.chat_bubble_outline),
-  talent('Talent', Icons.groups_outlined);
+  talent('Talent', Icons.groups_outlined),
+  opportunities('Opportunities', Icons.local_offer_outlined);
 
   const WebSection(this.label, this.icon);
 
@@ -118,8 +119,10 @@ class WebTopNavigation extends StatelessWidget {
                                   : MainAxisAlignment.center,
                               children: [
                                 for (final section in WebSection.values)
-                                  if (section != WebSection.talent ||
-                                      role == 'employer')
+                                  if ((section != WebSection.talent ||
+                                          role == 'employer') &&
+                                      (section != WebSection.opportunities ||
+                                          role == 'worker'))
                                     Padding(
                                       padding: EdgeInsets.symmetric(
                                         horizontal: constraints.maxWidth < 640

@@ -85,9 +85,18 @@ void main() {
     expect(find.text('Desktop workspace'), findsOneWidget);
   });
 
-  test('portrait shell includes employer Talent destination', () {
-    expect(PortraitWebSection.values.map((section) => section.label),
-        ['Jobs', 'Map', 'Applications', 'Chats', 'Profile', 'Talent']);
+  test(
+      'portrait shell includes role-specific Talent and Opportunities destinations',
+      () {
+    expect(PortraitWebSection.values.map((section) => section.label), [
+      'Jobs',
+      'Map',
+      'Applications',
+      'Chats',
+      'Profile',
+      'Talent',
+      'Opportunities'
+    ]);
   });
 
   testWidgets('portrait navigation fits a narrow viewport and selects a tab',
@@ -111,6 +120,8 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('portrait-nav-profile')), findsOneWidget);
     expect(find.byKey(const ValueKey('portrait-nav-talent')), findsNothing);
+    expect(find.byKey(const ValueKey('portrait-nav-opportunities')),
+        findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('portrait-nav-map')));
     expect(selected, PortraitWebSection.map);
   });

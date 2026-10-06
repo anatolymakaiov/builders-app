@@ -12,6 +12,7 @@ import '../pages/jobs/web_jobs_page.dart';
 import '../pages/jobs/web_post_job_page.dart';
 import '../pages/map/web_map_page.dart';
 import '../pages/talent/web_talent_page.dart';
+import '../pages/opportunities/web_opportunities_page.dart';
 import '../pages/profile/web_admin_profile_page.dart';
 import '../pages/profile/web_profile_page.dart';
 import '../pages/profile/web_team_page.dart';
@@ -309,6 +310,13 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                 employerId: widget.user.uid,
               )
             : const SizedBox.shrink(),
+        PortraitWebSection.opportunities => widget.role == 'worker'
+            ? WebOpportunitiesPage(
+                key: ValueKey('portrait-opportunities:${widget.user.uid}'),
+                workerId: widget.user.uid,
+                onOpenJob: _openJob,
+              )
+            : const SizedBox.shrink(),
       };
 
   Widget _buildProfile() {
@@ -536,6 +544,10 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
     final data = notification.data;
     final type =
         (data['targetType'] ?? data['type'] ?? '').toString().toLowerCase();
+    if (type == 'vacancy_invitation' && widget.role == 'worker') {
+      _selectSection(PortraitWebSection.opportunities);
+      return;
+    }
     final targetId = _cleanId(data['targetId']);
     final chatTarget = _cleanId(data['chatId']) ?? targetId;
     final jobTarget = _cleanId(data['relatedJobId'] ?? data['jobId']);
