@@ -11,6 +11,7 @@ import '../pages/jobs/web_post_job_page.dart';
 import '../pages/map/web_map_page.dart';
 import '../pages/talent/web_talent_page.dart';
 import '../pages/sites/web_sites_page.dart';
+import '../pages/calendar/web_calendar_page.dart';
 import '../pages/opportunities/web_opportunities_page.dart';
 import '../../services/application_status_utils.dart';
 import '../../services/multi_account_service.dart';
@@ -59,6 +60,10 @@ class _WebShellState extends State<WebShell> {
   bool profileCoveredByJob = false;
   int mapSavedJobsRefreshToken = 0;
   bool postingJob = false;
+  String? calendarSiteId;
+  String? selectedSiteId;
+  int siteRequestId = 0;
+  int calendarRefresh = 0;
   _SecondaryRoute? secondaryRoute;
   late Stream<WebDataState<WebShellBadges>> badgesStream;
   late Map<String, dynamic> liveProfile;
@@ -102,6 +107,10 @@ class _WebShellState extends State<WebShell> {
       initialJobId = null;
       initialMapJobId = null;
       secondaryRoute = null;
+      calendarSiteId = null;
+      selectedSiteId = null;
+      siteRequestId = 0;
+      calendarRefresh = 0;
       badgesStream = WebAccountDataService().badges(
         uid: widget.user.uid,
         role: widget.role,
@@ -179,17 +188,30 @@ class _WebShellState extends State<WebShell> {
               onOpenBilling: () => _openAccount(WebAccountDestination.billing),
             )
           : const SizedBox.shrink(),
+      widget.role == 'employer' && visited.contains(WebSection.sites)
+          ? WebSitesPage(
+              key: ValueKey('web-sites:${widget.user.uid}:$siteRequestId'),
+              employerId: widget.user.uid,
+              onOpenJob: _openJob,
+              initialSiteId: selectedSiteId,
+              onOpenCalendar: _openSiteCalendar,
+            )
+          : const SizedBox.shrink(),
+      visited.contains(WebSection.calendar)
+          ? WebCalendarPage(
+              key: ValueKey('web-calendar:${widget.user.uid}:${widget.role}'),
+              uid: widget.user.uid,
+              employer: widget.role == 'employer',
+              initialSiteId: calendarSiteId,
+              refreshToken: calendarRefresh,
+              onOpenJob: _openJob,
+              onOpenSite: _openSite,
+            )
+          : const SizedBox.shrink(),
       widget.role == 'worker' && visited.contains(WebSection.opportunities)
           ? WebOpportunitiesPage(
               key: ValueKey('web-opportunities:${widget.user.uid}'),
               workerId: widget.user.uid,
-              onOpenJob: _openJob,
-            )
-          : const SizedBox.shrink(),
-      widget.role == 'employer' && visited.contains(WebSection.sites)
-          ? WebSitesPage(
-              key: ValueKey('web-sites:${widget.user.uid}'),
-              employerId: widget.user.uid,
               onOpenJob: _openJob,
             )
           : const SizedBox.shrink(),
@@ -477,6 +499,7 @@ class _WebShellState extends State<WebShell> {
     setState(() {
       profileHistory.clear();
       selected = value;
+      if (value == WebSection.calendar) calendarRefresh++;
       profileRoute = null;
       profileCoveredByJob = false;
       jobReturnTarget = null;
@@ -484,6 +507,20 @@ class _WebShellState extends State<WebShell> {
       postingJob = false;
     });
   }
+
+  void _openSiteCalendar(String siteId) => setState(() {
+        calendarSiteId = siteId;
+        calendarRefresh++;
+        selected = WebSection.calendar;
+        visited.add(selected);
+      });
+
+  void _openSite(String siteId) => setState(() {
+        selectedSiteId = siteId;
+        siteRequestId++;
+        selected = WebSection.sites;
+        visited.add(selected);
+      });
 
   Widget _secondaryPage(_SecondaryRoute route) {
     return switch (route.kind) {

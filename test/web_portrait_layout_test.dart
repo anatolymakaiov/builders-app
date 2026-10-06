@@ -85,8 +85,7 @@ void main() {
     expect(find.text('Desktop workspace'), findsOneWidget);
   });
 
-  test('portrait shell includes role-specific Talent, Sites and Opportunities',
-      () {
+  test('portrait shell includes Calendar and role-specific destinations', () {
     expect(PortraitWebSection.values.map((section) => section.label), [
       'Jobs',
       'Map',
@@ -95,6 +94,7 @@ void main() {
       'Profile',
       'Talent',
       'Sites',
+      'Calendar',
       'Opportunities'
     ]);
   });

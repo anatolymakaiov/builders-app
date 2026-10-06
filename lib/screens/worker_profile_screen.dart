@@ -25,6 +25,7 @@ import '../widgets/account_switcher.dart';
 import '../services/multi_account_service.dart';
 import '../services/worker_availability_service.dart';
 import '../services/worker_assignment_service.dart';
+import 'worker_calendar_screen.dart';
 import '../widgets/worker_availability_editor.dart';
 import '../services/job_taxonomy_service.dart';
 import '../theme/app_theme.dart';
@@ -53,39 +54,50 @@ class WorkerProfileScreen extends StatelessWidget {
   bool get openedFromTeam =>
       openedFrom == "team" && (returnToTeamId?.trim().isNotEmpty ?? false);
 
-  Widget _buildOwnAssignments() => StreamBuilder<List<WorkerAssignment>>(
-        stream: WorkerAssignmentService().watchOwn(userId),
-        builder: (context, snapshot) {
-          final assignments = snapshot.data ?? const <WorkerAssignment>[];
-          if (assignments.isEmpty) return const SizedBox.shrink();
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: StroykaSurface(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Current / next work',
-                      style: TextStyle(fontWeight: FontWeight.w800)),
-                  for (final assignment in assignments)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(assignment.siteName),
-                      subtitle: Text([
-                        assignment.employerName,
-                        assignment.tradeName,
-                        if (assignment.startDate != null)
-                          'Starts ${assignment.startDate!.day}/${assignment.startDate!.month}',
-                        if (assignment.expectedEndDate != null)
-                          'Ends ${assignment.expectedEndDate!.day}/${assignment.expectedEndDate!.month}',
-                      ].where((value) => value.isNotEmpty).join(' · ')),
-                      trailing: Text(assignment.status),
-                    ),
-                ],
-              ),
-            ),
-          );
-        },
+  Widget _buildOwnAssignments(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => WorkerCalendarScreen(workerId: userId))),
+            icon: const Icon(Icons.calendar_month_outlined),
+            label: const Text('Calendar'),
+          ),
+          StreamBuilder<List<WorkerAssignment>>(
+            stream: WorkerAssignmentService().watchOwn(userId),
+            builder: (context, snapshot) {
+              final assignments = snapshot.data ?? const <WorkerAssignment>[];
+              if (assignments.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: StroykaSurface(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Current / next work',
+                          style: TextStyle(fontWeight: FontWeight.w800)),
+                      for (final assignment in assignments)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(assignment.siteName),
+                          subtitle: Text([
+                            assignment.employerName,
+                            assignment.tradeName,
+                            if (assignment.startDate != null)
+                              'Starts ${assignment.startDate!.day}/${assignment.startDate!.month}',
+                            if (assignment.expectedEndDate != null)
+                              'Ends ${assignment.expectedEndDate!.day}/${assignment.expectedEndDate!.month}',
+                          ].where((value) => value.isNotEmpty).join(' · ')),
+                          trailing: Text(assignment.status),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       );
 
   Future<String?> askHoldMessage(BuildContext context) async {
@@ -1897,7 +1909,7 @@ class WorkerProfileScreen extends StatelessWidget {
                         ListView(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
                           children: [
-                            if (isMyProfile) _buildOwnAssignments(),
+                            if (isMyProfile) _buildOwnAssignments(context),
                             StroykaSurface(
                               padding: const EdgeInsets.all(18),
                               child: Column(

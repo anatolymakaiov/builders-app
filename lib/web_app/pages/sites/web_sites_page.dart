@@ -5,10 +5,17 @@ import '../../services/web_sites_service.dart';
 import '../../widgets/web_page_container.dart';
 
 class WebSitesPage extends StatefulWidget {
-  const WebSitesPage({super.key, required this.employerId, this.onOpenJob});
+  const WebSitesPage(
+      {super.key,
+      required this.employerId,
+      this.onOpenJob,
+      this.initialSiteId,
+      this.onOpenCalendar});
 
   final String employerId;
   final ValueChanged<String>? onOpenJob;
+  final String? initialSiteId;
+  final ValueChanged<String>? onOpenCalendar;
 
   @override
   State<WebSitesPage> createState() => _WebSitesPageState();
@@ -19,11 +26,13 @@ class _WebSitesPageState extends State<WebSitesPage> {
   late Stream<List<WebSite>> sites;
   WebSite? selected;
   bool showInactive = false;
+  String? requestedSiteId;
 
   @override
   void initState() {
     super.initState();
     sites = service.watchEmployerSites(widget.employerId);
+    requestedSiteId = widget.initialSiteId;
   }
 
   @override
@@ -32,6 +41,10 @@ class _WebSitesPageState extends State<WebSitesPage> {
     if (oldWidget.employerId != widget.employerId) {
       selected = null;
       sites = service.watchEmployerSites(widget.employerId);
+      requestedSiteId = widget.initialSiteId;
+    } else if (oldWidget.initialSiteId != widget.initialSiteId) {
+      selected = null;
+      requestedSiteId = widget.initialSiteId;
     }
   }
 
@@ -54,7 +67,7 @@ class _WebSitesPageState extends State<WebSitesPage> {
                     : site.status == 'active')
                 .toList();
             final current = selected == null
-                ? null
+                ? all.where((site) => site.id == requestedSiteId).firstOrNull
                 : all.where((site) => site.id == selected!.id).firstOrNull;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -100,11 +113,14 @@ class _WebSitesPageState extends State<WebSitesPage> {
                               .where((s) => s.isNotEmpty)
                               .join(' ')),
                           trailing: Text(_statusLabel(site.status)),
-                          onTap: () => setState(() => selected = site),
+                          onTap: () => setState(() {
+                            requestedSiteId = null;
+                            selected = site;
+                          }),
                         );
                       },
                     );
-                    if (visible.isEmpty) {
+                    if (visible.isEmpty && current == null) {
                       return Center(
                           child: Text(showInactive
                               ? 'No completed or archived sites.'
@@ -167,6 +183,11 @@ class _WebSitesPageState extends State<WebSitesPage> {
               PopupMenuItem(value: status, child: Text(_statusLabel(status))),
           ],
         ),
+        if (widget.onOpenCalendar != null)
+          IconButton(
+              tooltip: 'View in Calendar',
+              onPressed: () => widget.onOpenCalendar!(site.id),
+              icon: const Icon(Icons.calendar_month_outlined)),
       ]),
       Text([
         site.data['addressLine1'],

@@ -13,6 +13,9 @@ class WorkerAssignment {
   DateTime? get startDate => (data['startDate'] as Timestamp?)?.toDate();
   DateTime? get expectedEndDate =>
       (data['expectedEndDate'] as Timestamp?)?.toDate();
+  DateTime? get actualEndDate =>
+      (data['actualEndDate'] as Timestamp?)?.toDate();
+  String get vacancyId => (data['vacancyId'] ?? '').toString();
 }
 
 class WorkerAssignmentService {

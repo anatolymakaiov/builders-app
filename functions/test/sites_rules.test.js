@@ -30,9 +30,15 @@ test("sites and assignments remain scoped to their participants", {
       }
       await db.doc("assignments/assignmentA").set({
         employerContextId: "employerA", workerId: "workerA",
-        vacancyId: "jobA", status: "scheduled"});
+        vacancyId: "jobA", status: "scheduled",
+        startDate: firebase.firestore.Timestamp.fromDate(
+          new Date("2026-10-15T12:00:00Z")),
+        expectedEndDate: firebase.firestore.Timestamp.fromDate(
+          new Date("2026-10-25T12:00:00Z"))});
       await db.doc("jobs/jobA").set({ownerId: "employerA",
-        moderationStatus: "pending_review", status: "active"});
+        moderationStatus: "pending_review", status: "active",
+        startDate: firebase.firestore.Timestamp.fromDate(
+          new Date("2026-10-15T12:00:00Z"))});
     });
     const a = env.authenticatedContext("employerA").firestore();
     const b = env.authenticatedContext("employerB").firestore();
@@ -68,10 +74,35 @@ test("sites and assignments remain scoped to their participants", {
     await assertSucceeds(a.doc("assignments/assignmentA").get());
     await assertSucceeds(a.collection("assignments")
       .where("employerContextId", "==", "employerA").get());
+    const start = firebase.firestore.Timestamp.fromDate(
+      new Date("2026-10-01T00:00:00Z"));
+    const end = firebase.firestore.Timestamp.fromDate(
+      new Date("2026-11-01T00:00:00Z"));
+    await assertSucceeds(a.collection("assignments")
+      .where("employerContextId", "==", "employerA")
+      .where("startDate", ">=", start).where("startDate", "<", end).get());
+    await assertSucceeds(a.collection("assignments")
+      .where("employerContextId", "==", "employerA")
+      .where("expectedEndDate", ">=", start)
+      .where("startDate", "<", end)
+      .orderBy("expectedEndDate").orderBy("startDate").get());
+    await assertFails(b.collection("assignments")
+      .where("employerContextId", "==", "employerA")
+      .where("startDate", ">=", start).get());
+    await assertSucceeds(a.collection("jobs")
+      .where("ownerId", "==", "employerA")
+      .where("startDate", ">=", start).where("startDate", "<", end).get());
     await assertFails(b.doc("assignments/assignmentA").get());
     await assertSucceeds(workerA.doc("assignments/assignmentA").get());
     await assertSucceeds(workerA.collection("assignments")
       .where("workerId", "==", "workerA").get());
+    await assertSucceeds(workerA.collection("assignments")
+      .where("workerId", "==", "workerA")
+      .where("startDate", ">=", start).where("startDate", "<", end).get());
+    await assertFails(workerB.collection("assignments")
+      .where("workerId", "==", "workerA")
+      .where("startDate", ">=", start).get());
+    await assertFails(workerA.doc("users/workerB").get());
     await assertFails(workerA.collection("assignments").get());
     await assertFails(workerB.doc("assignments/assignmentA").get());
     await assertFails(workerA.doc("assignments/assignmentA")

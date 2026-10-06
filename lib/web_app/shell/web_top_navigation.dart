@@ -10,6 +10,7 @@ enum WebSection {
   chats('Chats', Icons.chat_bubble_outline),
   talent('Talent', Icons.groups_outlined),
   sites('Sites', Icons.location_city_outlined),
+  calendar('Calendar', Icons.calendar_month_outlined),
   opportunities('Opportunities', Icons.local_offer_outlined);
 
   const WebSection(this.label, this.icon);
@@ -124,6 +125,8 @@ class WebTopNavigation extends StatelessWidget {
                                           role == 'employer') &&
                                       (section != WebSection.sites ||
                                           role == 'employer') &&
+                                      (section != WebSection.calendar ||
+                                          role == 'worker' || role == 'employer') &&
                                       (section != WebSection.opportunities ||
                                           role == 'worker'))
                                     Padding(

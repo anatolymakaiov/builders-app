@@ -13,6 +13,7 @@ import '../pages/jobs/web_post_job_page.dart';
 import '../pages/map/web_map_page.dart';
 import '../pages/talent/web_talent_page.dart';
 import '../pages/sites/web_sites_page.dart';
+import '../pages/calendar/web_calendar_page.dart';
 import '../pages/opportunities/web_opportunities_page.dart';
 import '../pages/profile/web_admin_profile_page.dart';
 import '../pages/profile/web_profile_page.dart';
@@ -70,6 +71,11 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
   int mapRequest = 0;
   int applicationsRequest = 0;
   int chatsRequest = 0;
+  String? calendarSiteId;
+  String? selectedSiteId;
+  int siteRequestId = 0;
+  PortraitWebSection calendarReturn = PortraitWebSection.jobs;
+  int calendarRefresh = 0;
 
   @override
   void initState() {
@@ -99,6 +105,11 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
       mapJobId = null;
       applicationJobId = null;
       chatId = null;
+      calendarSiteId = null;
+      selectedSiteId = null;
+      siteRequestId = 0;
+      calendarReturn = PortraitWebSection.jobs;
+      calendarRefresh = 0;
       badgesStream = WebAccountDataService().badges(
         uid: widget.user.uid,
         role: widget.role,
@@ -150,10 +161,16 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                         overlay != null
                     ? _title
                     : 'STROYKA'),
-            leading: overlay != null || viewedProfileId != null
+            leading: overlay != null ||
+                    viewedProfileId != null ||
+                    selected == PortraitWebSection.calendar
                 ? IconButton(
                     tooltip: 'Back',
-                    onPressed: overlay != null ? _closeOverlay : _closeProfile,
+                    onPressed: overlay != null
+                        ? _closeOverlay
+                        : selected == PortraitWebSection.calendar
+                            ? _closeCalendar
+                            : _closeProfile,
                     icon: const Icon(Icons.arrow_back),
                   )
                 : null,
@@ -201,6 +218,9 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                     const PopupMenuItem(
                         value: 'subscriptions',
                         child: Text('Job Subscriptions')),
+                  if (widget.role == 'worker' || widget.role == 'employer')
+                    const PopupMenuItem(
+                        value: 'calendar', child: Text('Calendar')),
                   const PopupMenuItem(value: 'support', child: Text('Support')),
                   const PopupMenuItem(
                       value: 'signOut', child: Text('Sign out')),
@@ -223,18 +243,19 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                   )
                 : _buildOverlay(),
           ),
-          bottomNavigationBar: overlay == null
-              ? SafeArea(
-                  top: false,
-                  child: PortraitWebNavigation(
-                    selected: selected,
-                    onSelected: _selectSection,
-                    isEmployer: widget.role == 'employer',
-                    applicationCount: badges.applications,
-                    chatCount: badges.chats,
-                  ),
-                )
-              : null,
+          bottomNavigationBar:
+              overlay == null && selected != PortraitWebSection.calendar
+                  ? SafeArea(
+                      top: false,
+                      child: PortraitWebNavigation(
+                        selected: selected,
+                        onSelected: _selectSection,
+                        isEmployer: widget.role == 'employer',
+                        applicationCount: badges.applications,
+                        chatCount: badges.chats,
+                      ),
+                    )
+                  : null,
         );
         return switch (widget.role) {
           'worker' => PortraitWorkerPresentation(child: shell),
@@ -322,11 +343,23 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
             : const SizedBox.shrink(),
         PortraitWebSection.sites => widget.role == 'employer'
             ? WebSitesPage(
-                key: ValueKey('portrait-sites:${widget.user.uid}'),
+                key: ValueKey(
+                    'portrait-sites:${widget.user.uid}:$siteRequestId'),
                 employerId: widget.user.uid,
                 onOpenJob: (id) => _openJob(id, ownerMode: true),
+                initialSiteId: selectedSiteId,
+                onOpenCalendar: _openSiteCalendar,
               )
             : const SizedBox.shrink(),
+        PortraitWebSection.calendar => WebCalendarPage(
+            key: ValueKey('portrait-calendar:${widget.user.uid}'),
+            uid: widget.user.uid,
+            employer: widget.role == 'employer',
+            initialSiteId: calendarSiteId,
+            refreshToken: calendarRefresh,
+            onOpenJob: _openJob,
+            onOpenSite: _openSite,
+          ),
       };
 
   Widget _buildProfile() {
@@ -420,6 +453,21 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
         _activate(section);
       });
 
+  void _openSiteCalendar(String siteId) => setState(() {
+        calendarReturn = selected;
+        calendarSiteId = siteId;
+        calendarRefresh++;
+        _activate(PortraitWebSection.calendar);
+      });
+
+  void _closeCalendar() => setState(() => _activate(calendarReturn));
+
+  void _openSite(String siteId) => setState(() {
+        selectedSiteId = siteId;
+        siteRequestId++;
+        _activate(PortraitWebSection.sites);
+      });
+
   void _openProfile(String id, String role) => setState(() {
         if (selected == PortraitWebSection.profile) {
           profileHistory.add((id: viewedProfileId, role: viewedProfileRole));
@@ -511,6 +559,14 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
   void _closeOverlay() => setState(() => overlay = null);
 
   void _selectMenuAction(String action) {
+    if (action == 'calendar') {
+      setState(() {
+        if (selected != PortraitWebSection.calendar) calendarReturn = selected;
+        calendarRefresh++;
+        _activate(PortraitWebSection.calendar);
+      });
+      return;
+    }
     if (action == 'switchAccount') {
       _showAccountSwitcher();
       return;
