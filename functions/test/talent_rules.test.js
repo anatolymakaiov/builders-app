@@ -28,6 +28,9 @@ test("employer candidate discovery and private Talent Pool", async () => {
       await db.doc("users/employerExpired").set({role: "employer",
         companyName: "Expired", profileComplete: true,
         billing: {planId: "growth", subscriptionStatus: "expired"}});
+      await db.doc("users/employerLegacy").set({role: "employer",
+        companyName: "Legacy", profileComplete: true,
+        billing: {includedJobSlots: 10, subscriptionStatus: "active"}});
       await db.doc("users/admin").set({role: "admin"});
       await db.doc("users/worker").set({role: "worker",
         name: "Worker", profileComplete: true, phone: "+447700900123"});
@@ -46,6 +49,7 @@ test("employer candidate discovery and private Talent Pool", async () => {
     const b = env.authenticatedContext("employerB").firestore();
     const worker = env.authenticatedContext("worker").firestore();
     const expired = env.authenticatedContext("employerExpired").firestore();
+    const legacy = env.authenticatedContext("employerLegacy").firestore();
     const admin = env.authenticatedContext("admin").firestore();
     const guest = env.unauthenticatedContext().firestore();
     const visibleQuery = (db) => db.collection("worker_discovery")
@@ -67,6 +71,7 @@ test("employer candidate discovery and private Talent Pool", async () => {
     await assertFails(a.doc("worker_discovery/worker").set({phone: "secret"}));
     await assertFails(visibleQuery(b).get());
     await assertFails(visibleQuery(expired).get());
+    await assertSucceeds(visibleQuery(legacy).get());
     await assertFails(b.collection("public_profiles").limit(25).get());
     await assertFails(expired.collection("public_profiles").limit(25).get());
     await assertSucceeds(b.doc("public_profiles/worker").get());

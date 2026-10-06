@@ -40,7 +40,8 @@ service cloud.firestore {
       let billing = employerBilling();
       let plan = billing.get("planId", billing.get("currentPlanId",
         billing.get("activePlanId", billing.get("currentPlan", ""))));
-      let legacySlots = billing.get("vacancySlotLimit", 0);
+      let slots = billing.get("vacancySlotLimit", 0);
+      let legacySlots = slots > 0 ? slots : billing.get("includedJobSlots", 0);
       let status = billing.get("subscriptionStatus",
         billing.get("trialActive", false) == true
           || billing.get("trialStatus", "") == "active"
