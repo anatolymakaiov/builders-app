@@ -162,7 +162,7 @@ List<CalendarEvent> assignmentCalendarEvents(
 
 bool assignmentSpansDate(Map<String, dynamic> data, DateTime date) {
   final status = (data['status'] ?? '').toString().toLowerCase();
-  if (status == 'cancelled') return false;
+  if (status != 'active' && status != 'completed') return false;
   final start = calendarDate(data['startDate']);
   if (start == null) return false;
   final end = calendarDate(data['actualEndDate']) ??

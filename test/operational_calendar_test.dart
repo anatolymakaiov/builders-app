@@ -108,6 +108,10 @@ void main() {
         assignmentPeriodEvents(
             'legacy', {...data, 'status': 'cancelled'}, month),
         isEmpty);
+    expect(
+        assignmentPeriodEvents(
+            'legacy', {...data, 'status': 'scheduled'}, month),
+        isEmpty);
   });
 
   test('site filtering uses siteId, including legacy empty siteId', () {
