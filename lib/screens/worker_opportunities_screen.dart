@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/job.dart';
@@ -17,11 +18,13 @@ class WorkerOpportunitiesScreen extends StatefulWidget {
 class _WorkerOpportunitiesScreenState extends State<WorkerOpportunitiesScreen> {
   final service = VacancyInvitationService();
   late Stream<List<VacancyInvitation>> invitations;
+  late final Stream<User?> authStream;
   String? busyId;
 
   @override
   void initState() {
     super.initState();
+    authStream = FirebaseAuth.instance.userChanges();
     invitations = service.watchMine(widget.workerId);
   }
 
@@ -30,7 +33,10 @@ class _WorkerOpportunitiesScreenState extends State<WorkerOpportunitiesScreen> {
     setState(() => busyId = invitation.id);
     try {
       final status = await service.respond(invitation.id, 'viewed');
-      if (!mounted) return;
+      if (!mounted ||
+          FirebaseAuth.instance.currentUser?.uid != widget.workerId) {
+        return;
+      }
       if (status == 'vacancy_closed' || status == 'vacancy_filled') {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('This opportunity is no longer available.'),
@@ -41,7 +47,10 @@ class _WorkerOpportunitiesScreenState extends State<WorkerOpportunitiesScreen> {
           .collection('jobs')
           .doc(invitation.vacancyId)
           .get();
-      if (!mounted) return;
+      if (!mounted ||
+          FirebaseAuth.instance.currentUser?.uid != widget.workerId) {
+        return;
+      }
       if (!snapshot.exists) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Vacancy details are unavailable.'),
@@ -88,52 +97,65 @@ class _WorkerOpportunitiesScreenState extends State<WorkerOpportunitiesScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Opportunities')),
-        body: StreamBuilder<List<VacancyInvitation>>(
-          stream: invitations,
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return const Center(child: Text('Could not load opportunities.'));
+        body: StreamBuilder<User?>(
+          stream: authStream,
+          initialData: FirebaseAuth.instance.currentUser,
+          builder: (context, authSnapshot) {
+            if (authSnapshot.data?.uid != widget.workerId) {
+              return const Center(
+                  child: Text('Account changed. Reopen Opportunities.'));
             }
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final items = snapshot.data!;
-            if (items.isEmpty) {
-              return const Center(child: Text('No vacancy invitations yet.'));
-            }
-            return ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: items.length,
-              itemBuilder: (context, index) {
-                final item = items[index];
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.title,
-                            style: Theme.of(context).textTheme.titleMedium),
-                        Text(item.company),
-                        if (item.generalLocation.isNotEmpty)
-                          Text(item.generalLocation),
-                        const SizedBox(height: 4),
-                        Text(item.statusLabel),
-                        if (item.actionable)
-                          Wrap(spacing: 8, children: [
-                            FilledButton(
-                                onPressed:
-                                    busyId == null ? () => _open(item) : null,
-                                child: const Text('View vacancy / Apply')),
-                            TextButton(
-                                onPressed: busyId == null
-                                    ? () => _decline(item)
-                                    : null,
-                                child: const Text('Not interested')),
-                          ]),
-                      ],
-                    ),
-                  ),
+            return StreamBuilder<List<VacancyInvitation>>(
+              stream: invitations,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return const Center(
+                      child: Text('Could not load opportunities.'));
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final items = snapshot.data!;
+                if (items.isEmpty) {
+                  return const Center(
+                      child: Text('No vacancy invitations yet.'));
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(item.title,
+                                style: Theme.of(context).textTheme.titleMedium),
+                            Text(item.company),
+                            if (item.generalLocation.isNotEmpty)
+                              Text(item.generalLocation),
+                            const SizedBox(height: 4),
+                            Text(item.statusLabel),
+                            if (item.actionable)
+                              Wrap(spacing: 8, children: [
+                                FilledButton(
+                                    onPressed: busyId == null
+                                        ? () => _open(item)
+                                        : null,
+                                    child: const Text('View vacancy / Apply')),
+                                TextButton(
+                                    onPressed: busyId == null
+                                        ? () => _decline(item)
+                                        : null,
+                                    child: const Text('Not interested')),
+                              ]),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
             );
