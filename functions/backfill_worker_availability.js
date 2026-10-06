@@ -7,7 +7,7 @@ const {recomputeWorkerAvailability} =
 async function run({commit = false, pageSize = 100} = {}) {
   if (!admin.apps.length) admin.initializeApp();
   const db = admin.firestore();
-  const counts = {scanned: 0, changed: 0, errors: 0};
+  const counts = {scanned: 0, changed: 0, errors: 0, errorCodes: {}};
   let last = null;
   while (true) {
     let query = db.collection("users").where("role", "==", "worker")
@@ -21,8 +21,10 @@ async function run({commit = false, pageSize = 100} = {}) {
         const result = await recomputeWorkerAvailability(db, worker.id,
           new Date(), {commit});
         if (result?.changed) counts.changed++;
-      } catch (_) {
+      } catch (error) {
         counts.errors++;
+        const code = String(error.code || error.name || "unknown");
+        counts.errorCodes[code] = (counts.errorCodes[code] || 0) + 1;
       }
     }
     last = page.docs.at(-1);
