@@ -95,8 +95,10 @@ function eligibleWorker(worker, job, now) {
   if (!["available_now", "available_from"].includes(status) ||
       !availabilityFresh(worker, now)) return "availability_unconfirmed";
   const nextBlock = asDate(worker.nextUnavailableFrom);
+  const nextBlockEnd = asDate(worker.nextUnavailableUntil);
   const startDate = asDate(job.startDate);
-  if (nextBlock && startDate && dateOnly(nextBlock) <= dateOnly(startDate)) {
+  if (nextBlock && startDate && dateOnly(nextBlock) <= dateOnly(startDate) &&
+      (!nextBlockEnd || dateOnly(startDate) <= dateOnly(nextBlockEnd))) {
     return "start_date_mismatch";
   }
   if (status === "available_from") {

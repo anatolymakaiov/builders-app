@@ -86,6 +86,18 @@ test("future work leaves worker available only until assignment starts", () => {
   assert.equal(result.effectiveAvailabilityStatus, "available_now");
   assert.equal(result.nextUnavailableFrom.toISOString().slice(0, 10),
     "2026-10-15");
+  assert.equal(result.nextUnavailableUntil.toISOString().slice(0, 10),
+    "2026-10-20");
+});
+
+test("available-from date inside future assignment shifts to first safe day", () => {
+  const result = derive({...manual, availabilityStatus: "available_from",
+    availableFrom: new Date("2026-10-15")},
+  [assignment("2026-10-12", "2026-10-20", "scheduled")]);
+  assert.equal(result.effectiveAvailableFrom.toISOString().slice(0, 10),
+    "2026-10-21");
+  assert.equal(result.nextUnavailableFrom.toISOString().slice(0, 10),
+    "2026-10-12");
 });
 
 test("recompute writes a PII-free, idempotent discovery projection", {

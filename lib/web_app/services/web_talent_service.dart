@@ -20,6 +20,7 @@ class WebTalentCandidate {
     required this.allowsInvites,
     this.effectiveReason = '',
     this.nextUnavailableFrom,
+    this.nextUnavailableUntil,
   });
 
   final String id;
@@ -37,6 +38,7 @@ class WebTalentCandidate {
   final bool allowsInvites;
   final String effectiveReason;
   final DateTime? nextUnavailableFrom;
+  final DateTime? nextUnavailableUntil;
 
   factory WebTalentCandidate.fromDocument(
       DocumentSnapshot<Map<String, dynamic>> document) {
@@ -76,6 +78,9 @@ class WebTalentCandidate {
       effectiveReason: (data['effectiveAvailabilityReason'] ?? '').toString(),
       nextUnavailableFrom: WorkerAvailabilityService.availableFrom({
         WorkerAvailabilityService.dateField: data['nextUnavailableFrom'],
+      }),
+      nextUnavailableUntil: WorkerAvailabilityService.availableFrom({
+        WorkerAvailabilityService.dateField: data['nextUnavailableUntil'],
       }),
     );
   }

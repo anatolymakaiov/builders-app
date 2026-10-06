@@ -32,6 +32,25 @@ function intervals(assignments, periods, today) {
   return result.sort((a, b) => a.start - b.start || a.end - b.end);
 }
 
+function firstSafeDate(candidate, spans) {
+  for (const span of spans) {
+    if (span.start <= candidate && span.end >= candidate) {
+      candidate = span.end + DAY;
+    }
+  }
+  return candidate;
+}
+
+function mergedEnd(first, spans) {
+  let end = first.end;
+  for (const span of spans) {
+    if (span.start >= first.start && span.start <= end + DAY) {
+      end = Math.max(end, span.end);
+    }
+  }
+  return end;
+}
+
 function deriveEffectiveAvailability(manual, assignments, periods, now = new Date()) {
   const today = day(now);
   const status = VALID_MANUAL.has(manual.availabilityStatus) &&
@@ -58,6 +77,7 @@ function deriveEffectiveAvailability(manual, assignments, periods, now = new Dat
     }
   }
   const next = spans.find((span) => span.start > today);
+  const nextEnd = next ? mergedEnd(next, spans) : null;
   const nextTransition = current.length
     ? (Number.isFinite(blockEnd) ? blockEnd + DAY : null)
     : next?.start ?? null;
@@ -78,6 +98,7 @@ function deriveEffectiveAvailability(manual, assignments, periods, now = new Dat
     effectiveAvailableFrom: null,
     effectiveAvailabilityReason: "unconfirmed",
     nextUnavailableFrom: null,
+    nextUnavailableUntil: null,
     nextAvailabilityRefreshAt: refreshCandidates.length
       ? asDate(Math.min(...refreshCandidates)) : null,
   };
@@ -92,7 +113,7 @@ function deriveEffectiveAvailability(manual, assignments, periods, now = new Dat
     return {...base, effectiveAvailabilityStatus: source === "assignment"
       ? "busy" : "unavailable", effectiveAvailabilityReason: source,
     effectiveAvailableFrom: available == null ? null :
-      asDate(Math.max(available, manualFrom ?? available))};
+      asDate(firstSafeDate(Math.max(available, manualFrom ?? available), spans))};
   }
   if (status === "busy") {
     return {...base, effectiveAvailabilityStatus: "busy",
@@ -100,13 +121,20 @@ function deriveEffectiveAvailability(manual, assignments, periods, now = new Dat
   }
   if (stale || status === "unknown") return base;
   if (status === "available_from" && manualFrom != null && manualFrom > today) {
+    const safeFrom = firstSafeDate(manualFrom, spans);
     return {...base, effectiveAvailabilityStatus: "available_from",
-      effectiveAvailableFrom: asDate(manualFrom),
-      effectiveAvailabilityReason: "preference"};
+      effectiveAvailableFrom: Number.isFinite(safeFrom)
+        ? asDate(safeFrom) : null,
+      effectiveAvailabilityReason: "preference",
+      nextUnavailableFrom: next ? asDate(next.start) : null,
+      nextUnavailableUntil: Number.isFinite(nextEnd)
+        ? asDate(nextEnd) : null};
   }
   return {...base, effectiveAvailabilityStatus: "available_now",
     effectiveAvailabilityReason: "preference",
-    nextUnavailableFrom: next ? asDate(next.start) : null};
+    nextUnavailableFrom: next ? asDate(next.start) : null,
+    nextUnavailableUntil: Number.isFinite(nextEnd)
+      ? asDate(nextEnd) : null};
 }
 
-module.exports = {day, intervals, deriveEffectiveAvailability};
+module.exports = {day, intervals, firstSafeDate, deriveEffectiveAvailability};

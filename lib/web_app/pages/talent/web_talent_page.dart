@@ -252,7 +252,9 @@ class _WebTalentPageState extends State<WebTalentPage> {
     if (!candidate.tradeIds.contains(job.canonicalRoleId)) return false;
     if (candidate.nextUnavailableFrom != null &&
         job.startDate != null &&
-        !candidate.nextUnavailableFrom!.isAfter(job.startDate!)) {
+        !candidate.nextUnavailableFrom!.isAfter(job.startDate!) &&
+        (candidate.nextUnavailableUntil == null ||
+            !candidate.nextUnavailableUntil!.isBefore(job.startDate!))) {
       return false;
     }
     if (candidate.availability != WorkerAvailability.availableFrom) return true;

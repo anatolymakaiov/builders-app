@@ -29,8 +29,13 @@ test("eligibility, closure and safe invitation display fields", () => {
   assert.equal(eligibleWorker({...worker, effectiveAvailabilityStatus: "busy"},
     job, now), "availability_unconfirmed");
   assert.equal(eligibleWorker({...worker,
-    nextUnavailableFrom: new Date("2026-10-07")},
+    nextUnavailableFrom: new Date("2026-10-07"),
+    nextUnavailableUntil: new Date("2026-10-09")},
   {...job, startDate: new Date("2026-10-08")}, now), "start_date_mismatch");
+  assert.equal(eligibleWorker({...worker,
+    nextUnavailableFrom: new Date("2026-10-07"),
+    nextUnavailableUntil: new Date("2026-10-09")},
+  {...job, startDate: new Date("2026-10-12")}, now), null);
   assert.equal(eligibleWorker({...worker, tradeIds: ["plasterer"]}, job, now),
     "trade_mismatch");
   assert.equal(eligibleWorker({...worker,

@@ -35,6 +35,7 @@ async function recomputeWorkerAvailability(db, workerId, now = new Date(),
   const value = {...base, ...safeEffective,
     effectiveAvailableFrom: timestamp(effective.effectiveAvailableFrom),
     nextUnavailableFrom: timestamp(effective.nextUnavailableFrom),
+    nextUnavailableUntil: timestamp(effective.nextUnavailableUntil),
     nextAvailabilityRefreshAt: timestamp(effective.nextAvailabilityRefreshAt),
     availabilityStatus: effective.effectiveAvailabilityStatus,
     availableFrom: timestamp(effective.effectiveAvailableFrom)};
