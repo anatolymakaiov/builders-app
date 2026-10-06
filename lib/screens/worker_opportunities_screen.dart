@@ -28,7 +28,8 @@ class _WorkerOpportunitiesScreenState extends State<WorkerOpportunitiesScreen> {
     invitations = service.watchMine(widget.workerId);
   }
 
-  Future<void> _open(VacancyInvitation invitation) async {
+  Future<void> _open(VacancyInvitation invitation,
+      {bool applyImmediately = false}) async {
     if (busyId != null) return;
     setState(() => busyId = invitation.id);
     try {
@@ -61,7 +62,8 @@ class _WorkerOpportunitiesScreenState extends State<WorkerOpportunitiesScreen> {
       await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => JobDetailScreen(job: job),
+            builder: (_) =>
+                JobDetailScreen(job: job, autoApply: applyImmediately),
           ));
     } catch (_) {
       if (mounted) {
@@ -144,7 +146,13 @@ class _WorkerOpportunitiesScreenState extends State<WorkerOpportunitiesScreen> {
                                     onPressed: busyId == null
                                         ? () => _open(item)
                                         : null,
-                                    child: const Text('View vacancy / Apply')),
+                                    child: const Text('View vacancy')),
+                                OutlinedButton(
+                                    onPressed: busyId == null
+                                        ? () =>
+                                            _open(item, applyImmediately: true)
+                                        : null,
+                                    child: const Text('Apply')),
                                 TextButton(
                                     onPressed: busyId == null
                                         ? () => _decline(item)

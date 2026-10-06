@@ -30,11 +30,13 @@ import '../widgets/job_card.dart';
 class JobDetailScreen extends StatefulWidget {
   final Job job;
   final String? applicationId;
+  final bool autoApply;
 
   const JobDetailScreen({
     super.key,
     required this.job,
     this.applicationId,
+    this.autoApply = false,
   });
 
   @override
@@ -86,6 +88,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     await loadRole();
     await checkIfApplied();
     await watchApplyState();
+    if (widget.autoApply && mounted && role == "worker" && !isApplied) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !isApplied) apply();
+      });
+    }
   }
 
   @override
