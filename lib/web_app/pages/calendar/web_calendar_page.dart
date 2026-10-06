@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/operational_calendar.dart';
+import '../../../services/calendar_export.dart';
 import '../../../services/worker_assignment_service.dart';
+import '../../services/web_calendar_download_stub.dart'
+    if (dart.library.js_interop) '../../services/web_calendar_download.dart';
 import '../../services/web_sites_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
@@ -19,6 +22,9 @@ class WebCalendarPage extends StatefulWidget {
       this.refreshToken = 0,
       this.loadEvents,
       this.loadCurrentNext,
+      this.loadExport,
+      this.loadSingleAssignment,
+      this.downloadIcs,
       this.employerSites});
 
   final String uid;
@@ -29,6 +35,11 @@ class WebCalendarPage extends StatefulWidget {
   final int refreshToken;
   final Future<List<CalendarEvent>> Function(CalendarRange)? loadEvents;
   final Future<List<WorkerAssignment>> Function()? loadCurrentNext;
+  final Future<List<CalendarExportEvent>> Function(CalendarRange, String?)?
+      loadExport;
+  final Future<CalendarExportEvent?> Function(String, CalendarRange)?
+      loadSingleAssignment;
+  final void Function(String, String)? downloadIcs;
   final Stream<List<WebSite>>? employerSites;
 
   @override
@@ -43,6 +54,7 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
   DateTime selectedDay = DateTime.now();
   CalendarView view = CalendarView.month;
   String? siteId;
+  bool exporting = false;
 
   @override
   void initState() {
@@ -106,6 +118,69 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
 
   String _date(DateTime date) =>
       MaterialLocalizations.of(context).formatMediumDate(date);
+
+  Future<void> _export({String? selectedSite, bool allSites = false}) async {
+    if (exporting) return;
+    setState(() => exporting = true);
+    try {
+      final exportRange = range;
+      final exportSite = allSites ? null : (selectedSite ?? siteId);
+      final data = await (widget.loadExport?.call(exportRange, exportSite) ??
+          service.loadExport(
+              uid: widget.uid,
+              employer: widget.employer,
+              range: exportRange,
+              siteId: exportSite));
+      if (!mounted) return;
+      final labelDate =
+          view == CalendarView.month ? selectedDay : exportRange.start;
+      final filename =
+          'stroyka-${widget.employer ? 'employer' : 'worker'}-calendar-'
+          '${labelDate.year}-${labelDate.month.toString().padLeft(2, '0')}.ics';
+      (widget.downloadIcs ?? downloadCalendarIcs)(
+          const IcsCalendarProvider().exportEvents(data), filename);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Calendar downloaded')));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not export calendar. Try again.')));
+      }
+    } finally {
+      if (mounted) setState(() => exporting = false);
+    }
+  }
+
+  void _exportSingle(WorkerAssignment assignment) {
+    final start = assignment.startDate;
+    if (start == null) return;
+    final event = assignmentExportEvent(assignment.id, assignment.data,
+        uid: widget.uid, employer: false, range: CalendarRange.day(start));
+    if (event == null) return;
+    (widget.downloadIcs ?? downloadCalendarIcs)(
+        const IcsCalendarProvider().singleEvent(event),
+        'assignment-${assignment.id}.ics');
+  }
+
+  Future<void> _exportSelected(CalendarEvent selected) async {
+    try {
+      final event = await (widget.loadSingleAssignment
+              ?.call(selected.sourceId, CalendarRange.day(selected.date)) ??
+          service.loadSingleAssignmentExport(
+              workerId: widget.uid,
+              assignmentId: selected.sourceId,
+              range: CalendarRange.day(selected.date)));
+      if (!mounted || event == null) return;
+      (widget.downloadIcs ?? downloadCalendarIcs)(
+          const IcsCalendarProvider().singleEvent(event),
+          'assignment-${event.sourceId}.ics');
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not add assignment to calendar.')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) => WebPageContainer(
@@ -181,6 +256,44 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
                 }),
                 icon: const Icon(Icons.refresh),
               ),
+              if (widget.employer)
+                PopupMenuButton<String>(
+                  tooltip: 'Export calendar',
+                  enabled: !exporting,
+                  onSelected: (value) => _export(
+                      selectedSite: value == 'site' ? siteId : null,
+                      allSites: value == 'all'),
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                        value: 'visible', child: Text('Export visible period')),
+                    if (siteId != null)
+                      const PopupMenuItem(
+                          value: 'site', child: Text('Export selected site')),
+                    const PopupMenuItem(
+                        value: 'all', child: Text('Export all sites')),
+                  ],
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: WebTheme.border),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.download_outlined, size: 19),
+                      SizedBox(width: 7),
+                      Text('Export'),
+                      SizedBox(width: 4),
+                      Icon(Icons.arrow_drop_down, size: 18),
+                    ]),
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: exporting ? null : () => _export(),
+                  icon: const Icon(Icons.download_outlined),
+                  label: const Text('Export visible period'),
+                ),
               IconButton(
                   tooltip: 'Next period',
                   onPressed: () => _move(1),
@@ -227,6 +340,11 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
                             null)
                           'Finish ${_date((next.actualEndDate ?? next.expectedEndDate)!)}',
                       ].where((s) => s.isNotEmpty).join(' · ')),
+                      trailing: IconButton(
+                        tooltip: 'Add to Calendar',
+                        icon: const Icon(Icons.event_available_outlined),
+                        onPressed: () => _exportSingle(next),
+                      ),
                       onTap: next.vacancyId.isEmpty
                           ? null
                           : () => widget.onOpenJob?.call(next.vacancyId),
@@ -370,9 +488,20 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
               .where((part) => part.isNotEmpty)
               .toSet()
               .join(' · ')),
-          trailing: event.vacancyId.isNotEmpty || event.siteId.isNotEmpty
-              ? const Icon(Icons.chevron_right)
-              : null,
+          trailing: !widget.employer &&
+                  {
+                    CalendarEventType.assignmentStart,
+                    CalendarEventType.assignmentOngoing,
+                    CalendarEventType.assignmentFinish
+                  }.contains(event.type)
+              ? IconButton(
+                  tooltip: 'Add to Calendar',
+                  icon: const Icon(Icons.event_available_outlined),
+                  onPressed: () => _exportSelected(event),
+                )
+              : event.vacancyId.isNotEmpty || event.siteId.isNotEmpty
+                  ? const Icon(Icons.chevron_right)
+                  : null,
           onTap: () {
             if (widget.employer &&
                 event.type != CalendarEventType.vacancyStart &&

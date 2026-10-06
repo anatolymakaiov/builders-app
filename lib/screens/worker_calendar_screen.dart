@@ -1,19 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:add_2_calendar/add_2_calendar.dart';
 
+import '../services/calendar_export.dart';
 import '../services/operational_calendar.dart';
 import '../services/worker_assignment_service.dart';
 
 class WorkerCalendarScreen extends StatefulWidget {
-  const WorkerCalendarScreen({super.key, required this.workerId});
+  const WorkerCalendarScreen(
+      {super.key,
+      required this.workerId,
+      this.loadEvents,
+      this.loadCurrentNext,
+      this.loadSingleAssignment,
+      this.addToCalendar});
 
   final String workerId;
+  final Future<List<CalendarEvent>> Function(CalendarRange)? loadEvents;
+  final Future<List<WorkerAssignment>> Function()? loadCurrentNext;
+  final Future<CalendarExportEvent?> Function(String, CalendarRange)?
+      loadSingleAssignment;
+  final Future<bool> Function(CalendarExportEvent)? addToCalendar;
 
   @override
   State<WorkerCalendarScreen> createState() => _WorkerCalendarScreenState();
 }
 
 class _WorkerCalendarScreenState extends State<WorkerCalendarScreen> {
-  final service = OperationalCalendarService();
+  late final service = OperationalCalendarService();
   late Future<List<CalendarEvent>> events;
   late Future<List<WorkerAssignment>> assignments;
   DateTime selected = DateTime.now();
@@ -22,13 +35,16 @@ class _WorkerCalendarScreenState extends State<WorkerCalendarScreen> {
   void initState() {
     super.initState();
     _load();
-    assignments = service.loadCurrentNext(widget.workerId);
+    assignments = widget.loadCurrentNext?.call() ??
+        service.loadCurrentNext(widget.workerId);
   }
 
-  void _load() => events = service.load(
-      uid: widget.workerId,
-      employer: false,
-      range: CalendarRange.month(selected));
+  void _load() => events =
+      widget.loadEvents?.call(CalendarRange.month(selected)) ??
+          service.load(
+              uid: widget.workerId,
+              employer: false,
+              range: CalendarRange.month(selected));
 
   void _move(int delta) => setState(() {
         selected = DateTime(selected.year, selected.month + delta, 1);
@@ -37,6 +53,58 @@ class _WorkerCalendarScreenState extends State<WorkerCalendarScreen> {
 
   String _date(DateTime value) =>
       MaterialLocalizations.of(context).formatMediumDate(value);
+
+  Future<void> _addAssignment(WorkerAssignment assignment) async {
+    final start = assignment.startDate;
+    if (start == null) return;
+    final event = assignmentExportEvent(assignment.id, assignment.data,
+        uid: widget.workerId, employer: false, range: CalendarRange.day(start));
+    if (event == null) return;
+    await _addExportEvent(event);
+  }
+
+  Future<void> _addSelected(CalendarEvent selectedEvent) async {
+    try {
+      final event = await (widget.loadSingleAssignment?.call(
+              selectedEvent.sourceId, CalendarRange.day(selectedEvent.date)) ??
+          service.loadSingleAssignmentExport(
+              workerId: widget.workerId,
+              assignmentId: selectedEvent.sourceId,
+              range: CalendarRange.day(selectedEvent.date)));
+      if (event != null && mounted) await _addExportEvent(event);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not add assignment to calendar.')));
+      }
+    }
+  }
+
+  Future<void> _addExportEvent(CalendarExportEvent event) async {
+    final start = event.start;
+    final last = event.end ?? event.start;
+    final end = DateTime(last.year, last.month, last.day + 1);
+    try {
+      final added = await (widget.addToCalendar?.call(event) ??
+          Add2Calendar.addEvent2Cal(Event(
+            title: event.title,
+            description: event.description,
+            location: event.location,
+            startDate: DateTime(start.year, start.month, start.day),
+            endDate: end,
+            allDay: true,
+          )));
+      if (mounted && !added) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not open the calendar. Try again.')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not open the calendar. Try again.')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +117,8 @@ class _WorkerCalendarScreenState extends State<WorkerCalendarScreen> {
         onRefresh: () async {
           setState(() {
             _load();
-            assignments = service.loadCurrentNext(widget.workerId);
+            assignments = widget.loadCurrentNext?.call() ??
+                service.loadCurrentNext(widget.workerId);
           });
           await events;
         },
@@ -59,8 +128,9 @@ class _WorkerCalendarScreenState extends State<WorkerCalendarScreen> {
             builder: (context, snapshot) {
               if (snapshot.hasError) {
                 return TextButton.icon(
-                  onPressed: () => setState(() =>
-                      assignments = service.loadCurrentNext(widget.workerId)),
+                  onPressed: () => setState(() => assignments =
+                      widget.loadCurrentNext?.call() ??
+                          service.loadCurrentNext(widget.workerId)),
                   icon: const Icon(Icons.refresh),
                   label: const Text('Could not load current work. Retry'),
                 );
@@ -83,6 +153,11 @@ class _WorkerCalendarScreenState extends State<WorkerCalendarScreen> {
                       if ((next.actualEndDate ?? next.expectedEndDate) != null)
                         'Finish ${_date((next.actualEndDate ?? next.expectedEndDate)!)}',
                     ].where((s) => s.isNotEmpty).join(' · ')),
+                    trailing: IconButton(
+                      tooltip: 'Add to Calendar',
+                      icon: const Icon(Icons.event_available_outlined),
+                      onPressed: () => _addAssignment(next),
+                    ),
                   ));
             },
           ),
@@ -196,6 +271,18 @@ class _WorkerCalendarScreenState extends State<WorkerCalendarScreen> {
                                 .where((s) => s.isNotEmpty)
                                 .toSet()
                                 .join(' · ')),
+                            trailing: {
+                              CalendarEventType.assignmentStart,
+                              CalendarEventType.assignmentOngoing,
+                              CalendarEventType.assignmentFinish,
+                            }.contains(event.type)
+                                ? IconButton(
+                                    tooltip: 'Add to Calendar',
+                                    icon: const Icon(
+                                        Icons.event_available_outlined),
+                                    onPressed: () => _addSelected(event),
+                                  )
+                                : null,
                           )),
                   if (!all.any((event) =>
                       CalendarRange.day(selected).contains(event.date)))

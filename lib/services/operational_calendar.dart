@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'calendar_export.dart';
 import 'worker_assignment_service.dart';
 
 enum CalendarEventType {
@@ -299,6 +301,42 @@ class OperationalCalendarService {
         range.start.toUtc().subtract(const Duration(days: 1)));
     final upper =
         Timestamp.fromDate(range.end.toUtc().add(const Duration(days: 1)));
+    final unique = await _assignmentData(uid, employer, lower, upper);
+    final events = <CalendarEvent>[
+      for (final entry in unique.entries)
+        ...assignmentCalendarEvents(entry.key, entry.value, range),
+      for (final entry in unique.entries)
+        ...assignmentPeriodEvents(entry.key, entry.value, range),
+    ];
+    if (employer) {
+      final jobs = await _db
+          .collection('jobs')
+          .where('ownerId', isEqualTo: uid)
+          .where('startDate', isGreaterThanOrEqualTo: lower)
+          .where('startDate', isLessThan: upper)
+          .get();
+      for (final doc in jobs.docs) {
+        events.addAll(vacancyCalendarEvents(doc.id, doc.data(), range));
+      }
+    } else {
+      final periods = await _db
+          .collection('worker_unavailability')
+          .where('workerId', isEqualTo: uid)
+          .where('endDate', isGreaterThanOrEqualTo: lower)
+          .get();
+      for (final doc in periods.docs) {
+        events.addAll(unavailableCalendarEvents(doc.id, doc.data(), range));
+      }
+    }
+    events.sort((a, b) {
+      final byDate = a.date.compareTo(b.date);
+      return byDate != 0 ? byDate : a.type.index.compareTo(b.type.index);
+    });
+    return events;
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _assignmentData(
+      String uid, bool employer, Timestamp lower, Timestamp upper) async {
     final field = employer ? 'employerContextId' : 'workerId';
     final assignments = _db.collection('assignments');
     final reads = await Future.wait([
@@ -343,11 +381,33 @@ class OperationalCalendarService {
         unique[doc.id] = doc.data();
       }
     }
-    final events = <CalendarEvent>[
-      for (final entry in unique.entries)
-        ...assignmentCalendarEvents(entry.key, entry.value, range),
-      for (final entry in unique.entries)
-        ...assignmentPeriodEvents(entry.key, entry.value, range),
+    return unique;
+  }
+
+  Future<List<CalendarExportEvent>> loadExport({
+    required String uid,
+    required bool employer,
+    required CalendarRange range,
+    String? siteId,
+  }) async {
+    if (FirebaseAuth.instance.currentUser?.uid != uid) {
+      throw StateError('Calendar export is limited to the signed-in account.');
+    }
+    if (!range.start.isBefore(range.end) ||
+        range.end.difference(range.start).inDays > 370) {
+      throw ArgumentError('Calendar export range must be at most 12 months.');
+    }
+    final lower = Timestamp.fromDate(
+        range.start.toUtc().subtract(const Duration(days: 1)));
+    final upper =
+        Timestamp.fromDate(range.end.toUtc().add(const Duration(days: 1)));
+    final assignments = await _assignmentData(uid, employer, lower, upper);
+    final exported = <CalendarExportEvent>[
+      for (final entry in assignments.entries)
+        if (assignmentExportEvent(entry.key, entry.value,
+                uid: uid, employer: employer, range: range)
+            case final event?)
+          event,
     ];
     if (employer) {
       final jobs = await _db
@@ -357,7 +417,9 @@ class OperationalCalendarService {
           .where('startDate', isLessThan: upper)
           .get();
       for (final doc in jobs.docs) {
-        events.addAll(vacancyCalendarEvents(doc.id, doc.data(), range));
+        final event = vacancyExportEvent(doc.id, doc.data(),
+            employerId: uid, range: range);
+        if (event != null) exported.add(event);
       }
     } else {
       final periods = await _db
@@ -366,13 +428,32 @@ class OperationalCalendarService {
           .where('endDate', isGreaterThanOrEqualTo: lower)
           .get();
       for (final doc in periods.docs) {
-        events.addAll(unavailableCalendarEvents(doc.id, doc.data(), range));
+        final event = unavailabilityExportEvent(doc.id, doc.data(),
+            workerId: uid, range: range);
+        if (event != null) exported.add(event);
       }
     }
-    events.sort((a, b) {
-      final byDate = a.date.compareTo(b.date);
-      return byDate != 0 ? byDate : a.type.index.compareTo(b.type.index);
-    });
-    return events;
+    final filtered = filterCalendarExportBySite(exported, siteId);
+    if (FirebaseAuth.instance.currentUser?.uid != uid) {
+      throw StateError('The signed-in account changed during calendar export.');
+    }
+    filtered.sort((a, b) => a.start.compareTo(b.start));
+    return filtered;
+  }
+
+  Future<CalendarExportEvent?> loadSingleAssignmentExport({
+    required String workerId,
+    required String assignmentId,
+    required CalendarRange range,
+  }) async {
+    if (FirebaseAuth.instance.currentUser?.uid != workerId) {
+      throw StateError('Calendar export is limited to the signed-in worker.');
+    }
+    final doc = await _db.collection('assignments').doc(assignmentId).get();
+    if (FirebaseAuth.instance.currentUser?.uid != workerId || !doc.exists) {
+      return null;
+    }
+    return assignmentExportEvent(doc.id, doc.data()!,
+        uid: workerId, employer: false, range: range);
   }
 }

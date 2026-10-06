@@ -41,6 +41,7 @@ dependencies:
 
   # EXTERNAL LINKS
   url_launcher: ^6.3.0
+  web: ^1.1.1
 
   # CHAT MEDIA
   image_picker: ^1.1.2
