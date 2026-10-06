@@ -9,6 +9,9 @@ enum CalendarEventType {
   assignmentOngoing,
   assignmentFinish,
   unavailable,
+  siteStart,
+  siteFinish,
+  manual,
 }
 
 class CalendarRange {
@@ -54,6 +57,10 @@ class CalendarEvent {
     required this.siteName,
     required this.trade,
     required this.status,
+    this.description = '',
+    this.end,
+    this.allDay = true,
+    this.eventType = '',
   });
 
   final String id;
@@ -66,6 +73,10 @@ class CalendarEvent {
   final String siteName;
   final String trade;
   final String status;
+  final String description;
+  final DateTime? end;
+  final bool allDay;
+  final String eventType;
 
   String get typeLabel => switch (type) {
         CalendarEventType.vacancyStart => 'Vacancy',
@@ -73,7 +84,60 @@ class CalendarEvent {
         CalendarEventType.assignmentOngoing => 'Ongoing',
         CalendarEventType.assignmentFinish => 'Finish',
         CalendarEventType.unavailable => 'Unavailable',
+        CalendarEventType.siteStart => 'Project starts',
+        CalendarEventType.siteFinish => 'Expected completion',
+        CalendarEventType.manual => 'Site event',
       };
+}
+
+List<CalendarEvent> siteMilestoneEvents(
+    String id, Map<String, dynamic> data, CalendarRange range) {
+  final name = (data['name'] ?? 'Site').toString();
+  final events = <CalendarEvent>[];
+  for (final (field, type, label) in [
+    ('startDate', CalendarEventType.siteStart, 'Project starts'),
+    ('expectedEndDate', CalendarEventType.siteFinish, 'Expected completion'),
+  ]) {
+    final date = calendarDate(data[field]);
+    if (date == null || !range.contains(date)) continue;
+    events.add(CalendarEvent(
+      id: 'site:$id:$field',
+      type: type,
+      date: date,
+      title: '$label — $name',
+      sourceId: id,
+      vacancyId: '',
+      siteId: id,
+      siteName: name,
+      trade: '',
+      status: (data['status'] ?? '').toString(),
+    ));
+  }
+  return events;
+}
+
+List<CalendarEvent> manualSiteCalendarEvents(
+    String id, Map<String, dynamic> data, CalendarRange range) {
+  final start = calendarDate(data['startDateTime']);
+  if (start == null || !range.contains(start)) return const [];
+  return [
+    CalendarEvent(
+      id: 'manual:$id',
+      type: CalendarEventType.manual,
+      date: start,
+      title: (data['title'] ?? 'Event').toString(),
+      sourceId: id,
+      vacancyId: '',
+      siteId: (data['siteId'] ?? '').toString(),
+      siteName: (data['siteName'] ?? '').toString(),
+      trade: '',
+      status: '',
+      description: (data['description'] ?? '').toString(),
+      end: calendarDate(data['endDateTime']),
+      allDay: data['allDay'] == true,
+      eventType: (data['eventType'] ?? 'other').toString(),
+    )
+  ];
 }
 
 DateTime? calendarDate(dynamic value) {
@@ -277,6 +341,63 @@ class OperationalCalendarService {
 
   final FirebaseFirestore _db;
 
+  Future<List<CalendarEvent>> loadSiteUpcoming({
+    required String employerId,
+    required String siteId,
+    required Map<String, dynamic> siteData,
+    DateTime? now,
+  }) async {
+    final today = now ?? DateTime.now();
+    final start = CalendarRange.day(today).start;
+    final range = CalendarRange(start, start.add(const Duration(days: 91)));
+    final lower = Timestamp.fromDate(
+        range.start.toUtc().subtract(const Duration(days: 1)));
+    final upper =
+        Timestamp.fromDate(range.end.toUtc().add(const Duration(days: 1)));
+    final jobs = _db
+        .collection('jobs')
+        .where('ownerId', isEqualTo: employerId)
+        .where('siteId', isEqualTo: siteId)
+        .where('startDate', isGreaterThanOrEqualTo: lower)
+        .where('startDate', isLessThan: upper)
+        .get();
+    final assignments = _db.collection('assignments');
+    final assignmentReads = Future.wait([
+      for (final field in ['startDate', 'expectedEndDate', 'actualEndDate'])
+        assignments
+            .where('employerContextId', isEqualTo: employerId)
+            .where('siteId', isEqualTo: siteId)
+            .where(field, isGreaterThanOrEqualTo: lower)
+            .where(field, isLessThan: upper)
+            .get(),
+    ]);
+    final manual = _db
+        .collection('site_events')
+        .where('employerContextId', isEqualTo: employerId)
+        .where('siteId', isEqualTo: siteId)
+        .where('startDateTime', isGreaterThanOrEqualTo: lower)
+        .where('startDateTime', isLessThan: upper)
+        .get();
+    final events = siteMilestoneEvents(siteId, siteData, range);
+    for (final doc in (await jobs).docs) {
+      events.addAll(vacancyCalendarEvents(doc.id, doc.data(), range));
+    }
+    final unique = <String, Map<String, dynamic>>{};
+    for (final snapshot in await assignmentReads) {
+      for (final doc in snapshot.docs) {
+        unique[doc.id] = doc.data();
+      }
+    }
+    for (final entry in unique.entries) {
+      events.addAll(assignmentCalendarEvents(entry.key, entry.value, range));
+    }
+    for (final doc in (await manual).docs) {
+      events.addAll(manualSiteCalendarEvents(doc.id, doc.data(), range));
+    }
+    events.sort((a, b) => a.date.compareTo(b.date));
+    return events.take(8).toList();
+  }
+
   Future<List<WorkerAssignment>> loadCurrentNext(String workerId) async {
     final snapshot = await _db
         .collection('assignments')
@@ -309,6 +430,8 @@ class OperationalCalendarService {
         ...assignmentPeriodEvents(entry.key, entry.value, range),
     ];
     if (employer) {
+      final siteFuture = _siteData(uid, lower, upper);
+      final manualFuture = _manualData(uid, lower, upper);
       final jobs = await _db
           .collection('jobs')
           .where('ownerId', isEqualTo: uid)
@@ -317,6 +440,12 @@ class OperationalCalendarService {
           .get();
       for (final doc in jobs.docs) {
         events.addAll(vacancyCalendarEvents(doc.id, doc.data(), range));
+      }
+      for (final entry in (await siteFuture).entries) {
+        events.addAll(siteMilestoneEvents(entry.key, entry.value, range));
+      }
+      for (final entry in (await manualFuture).entries) {
+        events.addAll(manualSiteCalendarEvents(entry.key, entry.value, range));
       }
     } else {
       final periods = await _db
@@ -384,6 +513,38 @@ class OperationalCalendarService {
     return unique;
   }
 
+  Future<Map<String, Map<String, dynamic>>> _siteData(
+      String uid, Timestamp lower, Timestamp upper) async {
+    final sites = _db.collection('sites');
+    final snapshots = await Future.wait([
+      sites
+          .where('employerContextId', isEqualTo: uid)
+          .where('startDate', isGreaterThanOrEqualTo: lower)
+          .where('startDate', isLessThan: upper)
+          .get(),
+      sites
+          .where('employerContextId', isEqualTo: uid)
+          .where('expectedEndDate', isGreaterThanOrEqualTo: lower)
+          .where('expectedEndDate', isLessThan: upper)
+          .get(),
+    ]);
+    return {
+      for (final snapshot in snapshots)
+        for (final doc in snapshot.docs) doc.id: doc.data()
+    };
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _manualData(
+      String uid, Timestamp lower, Timestamp upper) async {
+    final snapshot = await _db
+        .collection('site_events')
+        .where('employerContextId', isEqualTo: uid)
+        .where('startDateTime', isGreaterThanOrEqualTo: lower)
+        .where('startDateTime', isLessThan: upper)
+        .get();
+    return {for (final doc in snapshot.docs) doc.id: doc.data()};
+  }
+
   Future<List<CalendarExportEvent>> loadExport({
     required String uid,
     required bool employer,
@@ -410,6 +571,8 @@ class OperationalCalendarService {
           event,
     ];
     if (employer) {
+      final siteFuture = _siteData(uid, lower, upper);
+      final manualFuture = _manualData(uid, lower, upper);
       final jobs = await _db
           .collection('jobs')
           .where('ownerId', isEqualTo: uid)
@@ -418,6 +581,15 @@ class OperationalCalendarService {
           .get();
       for (final doc in jobs.docs) {
         final event = vacancyExportEvent(doc.id, doc.data(),
+            employerId: uid, range: range);
+        if (event != null) exported.add(event);
+      }
+      for (final entry in (await siteFuture).entries) {
+        exported.addAll(siteMilestoneExportEvents(entry.key, entry.value,
+            employerId: uid, range: range));
+      }
+      for (final entry in (await manualFuture).entries) {
+        final event = manualSiteExportEvent(entry.key, entry.value,
             employerId: uid, range: range);
         if (event != null) exported.add(event);
       }

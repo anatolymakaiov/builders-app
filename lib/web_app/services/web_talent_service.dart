@@ -123,6 +123,43 @@ class WebTalentCandidate {
       .map((id) => JobTaxonomyService.roleFor(id)?.canonical ?? id)
       .join(' · ');
 
+  bool availableBy(DateTime target, DateTime now) {
+    if (!isRecentlyConfirmed(now) ||
+        availability == WorkerAvailability.notLooking ||
+        availability == WorkerAvailability.unknown) {
+      return false;
+    }
+    final day = WorkerAvailabilityService.dateOnly(target);
+    if (day.isBefore(WorkerAvailabilityService.dateOnly(now))) return false;
+    if (nextUnavailableFrom != null &&
+        !WorkerAvailabilityService.dateOnly(nextUnavailableFrom!)
+            .isAfter(day) &&
+        (nextUnavailableUntil == null ||
+            !WorkerAvailabilityService.dateOnly(nextUnavailableUntil!)
+                .isBefore(day))) {
+      return false;
+    }
+    if (availability == WorkerAvailability.availableNow) return true;
+    if (availableFrom == null) return false;
+    if (availability == WorkerAvailability.busy &&
+        effectiveReason != 'assignment' &&
+        effectiveReason != 'unavailability') {
+      return false;
+    }
+    return !WorkerAvailabilityService.dateOnly(availableFrom!).isAfter(day);
+  }
+
+  bool canSelectForInvitation(DateTime now, {DateTime? byDate}) {
+    if (!allowsInvites) return false;
+    if (byDate != null) return availableBy(byDate, now);
+    return isRecentlyConfirmed(now) &&
+        (availability == WorkerAvailability.availableNow ||
+            availability == WorkerAvailability.availableFrom ||
+            (availability == WorkerAvailability.busy &&
+                availableFrom != null &&
+                {'assignment', 'unavailability'}.contains(effectiveReason)));
+  }
+
   bool matches(WebTalentFilters filters, DateTime now) {
     final nameQuery = filters.name.trim().toLowerCase();
     if (nameQuery.isNotEmpty && !name.toLowerCase().contains(nameQuery)) {
@@ -135,6 +172,10 @@ class WebTalentCandidate {
       return false;
     }
     if (filters.invitesOnly && !allowsInvites) return false;
+    if (filters.availableBy != null &&
+        !availableBy(filters.availableBy!, now)) {
+      return false;
+    }
     if (filters.availability == null) return true;
     if (filters.availability == WorkerAvailability.unknown) {
       return !isRecentlyConfirmed(now);
@@ -153,6 +194,7 @@ class WebTalentFilters {
     this.location = '',
     this.availability,
     this.invitesOnly = false,
+    this.availableBy,
   });
 
   final String tradeId;
@@ -160,6 +202,7 @@ class WebTalentFilters {
   final String location;
   final WorkerAvailability? availability;
   final bool invitesOnly;
+  final DateTime? availableBy;
 }
 
 class WebTalentPageResult<T> {

@@ -144,6 +144,47 @@ CalendarExportEvent? unavailabilityExportEvent(
       end: end);
 }
 
+List<CalendarExportEvent> siteMilestoneExportEvents(
+    String id, Map<String, dynamic> data,
+    {required String employerId, required CalendarRange range}) {
+  if (data['employerContextId'] != employerId) return const [];
+  return siteMilestoneEvents(id, data, range)
+      .map((event) => CalendarExportEvent(
+            sourceType: 'site',
+            sourceId:
+                '${event.sourceId}-${event.type == CalendarEventType.siteStart ? 'start' : 'finish'}',
+            title: event.title,
+            start: event.date,
+            siteId: id,
+            location: event.siteName,
+            description: event.typeLabel,
+            status: 'CONFIRMED',
+          ))
+      .toList();
+}
+
+CalendarExportEvent? manualSiteExportEvent(String id, Map<String, dynamic> data,
+    {required String employerId, required CalendarRange range}) {
+  if (data['employerContextId'] != employerId) return null;
+  final events = manualSiteCalendarEvents(id, data, range);
+  if (events.isEmpty) return null;
+  final event = events.first;
+  return CalendarExportEvent(
+    sourceType: 'site-event',
+    sourceId: id,
+    title: event.title,
+    start: event.date,
+    end: event.end,
+    allDay: event.allDay,
+    siteId: event.siteId,
+    location: event.siteName,
+    description: [event.eventType.replaceAll('_', ' '), event.description]
+        .where((text) => text.isNotEmpty)
+        .join('\n'),
+    status: 'CONFIRMED',
+  );
+}
+
 List<CalendarExportEvent> filterCalendarExportBySite(
     Iterable<CalendarExportEvent> events, String? siteId) {
   if (siteId == null) return events.toList();

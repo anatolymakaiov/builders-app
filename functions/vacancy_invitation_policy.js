@@ -74,8 +74,13 @@ function availabilityFresh(worker, now) {
   if (!confirmed || confirmed.getTime() > now.getTime()) return false;
   const elapsedDays = (now.getTime() - confirmed.getTime()) / 86400000;
   if (status === "available_now") return elapsedDays < 7;
+  if (["busy", "unavailable"].includes(status) &&
+      ["assignment", "unavailability"].includes(
+        worker.effectiveAvailabilityReason)) {
+    return elapsedDays < 10 && asDate(worker.effectiveAvailableFrom) != null;
+  }
   if (status !== "available_from") return false;
-  const from = asDate(worker.availableFrom);
+  const from = asDate(worker.effectiveAvailableFrom || worker.availableFrom);
   if (!from) return false;
   if (dateOnly(from) > dateOnly(now)) {
     return dateOnly(from) - dateOnly(now) > 3 * 86400000 ||
@@ -92,7 +97,7 @@ function eligibleWorker(worker, job, now) {
   if (!Array.isArray(worker.tradeIds) ||
       !worker.tradeIds.includes(tradeId)) return "trade_mismatch";
   const status = String(worker.effectiveAvailabilityStatus || "unknown");
-  if (!["available_now", "available_from"].includes(status) ||
+  if (!["available_now", "available_from", "busy", "unavailable"].includes(status) ||
       !availabilityFresh(worker, now)) return "availability_unconfirmed";
   const nextBlock = asDate(worker.nextUnavailableFrom);
   const nextBlockEnd = asDate(worker.nextUnavailableUntil);
@@ -101,8 +106,8 @@ function eligibleWorker(worker, job, now) {
       (!nextBlockEnd || dateOnly(startDate) <= dateOnly(nextBlockEnd))) {
     return "start_date_mismatch";
   }
-  if (status === "available_from") {
-    const from = asDate(worker.availableFrom);
+  if (status !== "available_now") {
+    const from = asDate(worker.effectiveAvailableFrom || worker.availableFrom);
     const start = asDate(job.startDate);
     if (!from || (!start && dateOnly(from) > dateOnly(now)) ||
         (start && dateOnly(from) > dateOnly(start))) {

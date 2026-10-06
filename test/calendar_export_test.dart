@@ -44,6 +44,29 @@ void main() {
     expect(content, isNot(contains('DTEND:')));
   });
 
+  test('employer export includes manual event and derived site milestones', () {
+    final site = siteMilestoneExportEvents('site-a', {
+      'employerContextId': 'employer-a', 'name': 'Tower',
+      'startDate': start, 'expectedEndDate': end,
+    }, employerId: 'employer-a', range: range);
+    final manual = manualSiteExportEvent('meeting-a', {
+      'employerContextId': 'employer-a', 'siteId': 'site-a',
+      'title': 'Safety briefing', 'eventType': 'safety_briefing',
+      'startDateTime': Timestamp.fromDate(DateTime.utc(2026, 10, 8, 9)),
+      'allDay': false, 'description': 'Bring PPE',
+    }, employerId: 'employer-a', range: range);
+    expect(site, hasLength(2));
+    expect(manual, isNotNull);
+    final export = const IcsCalendarProvider().exportEvents([...site, manual!]);
+    expect(export, contains('UID:site-site-a-start@stroyka.uk'));
+    expect(export, contains('UID:site-event-meeting-a@stroyka.uk'));
+    expect(export, contains('SUMMARY:Safety briefing'));
+    expect(filterCalendarExportBySite([...site, manual], 'other'), isEmpty);
+    expect(manualSiteExportEvent('meeting-a', {
+      'employerContextId': 'employer-a', 'startDateTime': start,
+    }, employerId: 'worker-a', range: range), isNull);
+  });
+
   test('text escaping and UTF-8 octet folding preserve long content', () {
     final description = 'Café, Tower; \\ West\n${'é' * 70}';
     final content = const IcsCalendarProvider().exportEvents([

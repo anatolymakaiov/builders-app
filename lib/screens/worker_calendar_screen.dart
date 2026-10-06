@@ -265,6 +265,11 @@ class _WorkerCalendarScreenState extends State<WorkerCalendarScreen> {
                                 Icons.work_outline,
                               CalendarEventType.unavailable =>
                                 Icons.event_busy_outlined,
+                              CalendarEventType.siteStart =>
+                                Icons.flag_outlined,
+                              CalendarEventType.siteFinish =>
+                                Icons.flag_outlined,
+                              CalendarEventType.manual => Icons.event_outlined,
                             }),
                             title: Text('${event.typeLabel}: ${event.title}'),
                             subtitle: Text([event.siteName, event.trade]

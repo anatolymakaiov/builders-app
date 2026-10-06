@@ -772,6 +772,47 @@ service cloud.firestore {
             .data.employerContextId == employerId);
     }
 
+    match /site_events/{eventId} {
+      function ownsEvent() {
+        return isEmployer() && resource.data.employerContextId == uid();
+      }
+      function validEvent() {
+        return request.resource.data.keys().hasOnly([
+          "eventId", "employerContextId", "siteId", "title", "eventType",
+          "startDateTime", "endDateTime", "allDay", "description",
+          "createdBy", "createdAt", "updatedAt"])
+          && request.resource.data.keys().hasAll([
+            "eventId", "employerContextId", "siteId", "title", "eventType",
+            "startDateTime", "allDay", "description", "createdBy",
+            "createdAt", "updatedAt"])
+          && request.resource.data.eventId == eventId
+          && request.resource.data.employerContextId == uid()
+          && request.resource.data.createdBy == uid()
+          && ownedSiteReference(request.resource.data.siteId, uid())
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 120
+          && request.resource.data.eventType in [
+            "site_induction", "inspection", "material_delivery", "meeting",
+            "client_visit", "safety_briefing", "deadline", "milestone", "other"]
+          && request.resource.data.startDateTime is timestamp
+          && request.resource.data.get("endDateTime",
+            request.resource.data.startDateTime) is timestamp
+          && request.resource.data.get("endDateTime",
+            request.resource.data.startDateTime) >= request.resource.data.startDateTime
+          && request.resource.data.allDay is bool
+          && request.resource.data.description is string
+          && request.resource.data.description.size() <= 1000
+          && request.resource.data.updatedAt == request.time;
+      }
+      allow get, list: if ownsEvent();
+      allow create: if isEmployer() && validEvent()
+        && request.resource.data.createdAt == request.time;
+      allow update: if ownsEvent() && validEvent()
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if ownsEvent();
+    }
+
     match /sites/{siteId} {
       function ownsSite() {
         return isEmployer() && resource.data.employerContextId == uid();

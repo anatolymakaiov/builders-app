@@ -170,4 +170,54 @@ void main() {
     expect(events.first.title, 'Unavailable');
     expect(events.first.siteName, 'Private note');
   });
+
+  test('site milestones are derived, including archived history', () {
+    final archived = {
+      'name': 'Tower',
+      'status': 'archived',
+      'startDate': day(2026, 10, 10),
+      'expectedEndDate': day(2026, 10, 28),
+    };
+    final events = siteMilestoneEvents('site-a', archived, month);
+    expect(events.map((event) => event.type),
+        [CalendarEventType.siteStart, CalendarEventType.siteFinish]);
+    expect(events.every((event) => event.siteId == 'site-a'), isTrue);
+    expect(siteMilestoneEvents('site-a', {'name': 'Undated'}, month), isEmpty);
+  });
+
+  test('manual employer events remain scoped by site and calendar day', () {
+    final linked = manualSiteCalendarEvents(
+        'event-a',
+        {
+          'siteId': 'site-a',
+          'title': 'Inspection',
+          'eventType': 'inspection',
+          'startDateTime': day(2026, 10, 15),
+          'description': 'Scaffold',
+          'allDay': false,
+        },
+        month);
+    final company = manualSiteCalendarEvents(
+        'event-b',
+        {
+          'siteId': '',
+          'title': 'Meeting',
+          'startDateTime': day(2026, 10, 16),
+        },
+        month);
+    expect(linked.single.sourceId, 'event-a');
+    expect(linked.single.description, 'Scaffold');
+    expect(filterCalendarEventsBySite([...linked, ...company], 'site-a'),
+        hasLength(1));
+    expect(
+        filterCalendarEventsBySite([...linked, ...company], ''), hasLength(1));
+    expect(
+        manualSiteCalendarEvents(
+            'event-a',
+            {
+              'startDateTime': day(2026, 12, 15),
+            },
+            month),
+        isEmpty);
+  });
 }

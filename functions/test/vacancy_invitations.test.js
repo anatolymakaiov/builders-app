@@ -28,6 +28,18 @@ test("eligibility, closure and safe invitation display fields", () => {
     "availability_unconfirmed");
   assert.equal(eligibleWorker({...worker, effectiveAvailabilityStatus: "busy"},
     job, now), "availability_unconfirmed");
+  const assigned = {...worker, effectiveAvailabilityStatus: "busy",
+    effectiveAvailabilityReason: "assignment",
+    effectiveAvailableFrom: new Date("2026-10-12")};
+  assert.equal(eligibleWorker(assigned,
+    {...job, startDate: new Date("2026-10-11")}, now), "start_date_mismatch");
+  assert.equal(eligibleWorker(assigned,
+    {...job, startDate: new Date("2026-10-12")}, now), null);
+  assert.equal(eligibleWorker({...worker,
+    effectiveAvailabilityStatus: "available_from",
+    availableFrom: new Date("2026-10-08"),
+    effectiveAvailableFrom: new Date("2026-10-14")},
+    {...job, startDate: new Date("2026-10-12")}, now), "start_date_mismatch");
   assert.equal(eligibleWorker({...worker,
     nextUnavailableFrom: new Date("2026-10-07"),
     nextUnavailableUntil: new Date("2026-10-09")},

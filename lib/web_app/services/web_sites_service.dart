@@ -18,6 +18,16 @@ class WebSitesService {
 
   final FirebaseFirestore _db;
 
+  Future<List<WebSite>> loadEmployerSites(String employerId) async {
+    final snapshot = await _db
+        .collection('sites')
+        .where('employerContextId', isEqualTo: employerId)
+        .get();
+    return snapshot.docs
+        .map((doc) => WebSite(id: doc.id, data: doc.data()))
+        .toList();
+  }
+
   Stream<List<WebSite>> watchEmployerSites(String employerId) => _db
           .collection('sites')
           .where('employerContextId', isEqualTo: employerId)

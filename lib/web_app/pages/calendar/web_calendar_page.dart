@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../services/operational_calendar.dart';
 import '../../../services/calendar_export.dart';
 import '../../../services/worker_assignment_service.dart';
+import '../../../services/site_event_service.dart';
+import 'web_site_event_dialog.dart';
 import '../../services/web_calendar_download_stub.dart'
     if (dart.library.js_interop) '../../services/web_calendar_download.dart';
 import '../../services/web_sites_service.dart';
@@ -55,6 +57,7 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
   CalendarView view = CalendarView.month;
   String? siteId;
   bool exporting = false;
+  late final siteEventService = SiteEventService();
 
   @override
   void initState() {
@@ -182,6 +185,136 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
     }
   }
 
+  Future<void> _editSiteEvent([SiteEvent? initial]) async {
+    try {
+      final availableSites =
+          await WebSitesService().loadEmployerSites(widget.uid);
+      if (!mounted) return;
+      final draft = await showDialog<SiteEventDraft>(
+          context: context,
+          builder: (_) => WebSiteEventDialog(
+              sites: availableSites,
+              initial: initial,
+              initialSiteId: siteId,
+              initialDate: selectedDay));
+      if (draft == null) return;
+      if (initial == null) {
+        await siteEventService.create(widget.uid,
+            title: draft.title,
+            type: draft.type,
+            start: draft.start,
+            end: draft.end,
+            allDay: draft.allDay,
+            siteId: draft.siteId,
+            description: draft.description);
+      } else {
+        await siteEventService.update(widget.uid, initial,
+            title: draft.title,
+            type: draft.type,
+            start: draft.start,
+            end: draft.end,
+            allDay: draft.allDay,
+            siteId: draft.siteId,
+            description: draft.description);
+      }
+      if (mounted) setState(_load);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content:
+                Text('Could not save event. Check the site and try again.')));
+      }
+    }
+  }
+
+  Future<void> _openManualEvent(CalendarEvent event) async {
+    try {
+      final current = await siteEventService.getOwn(widget.uid, event.sourceId);
+      if (!mounted) return;
+      if (current == null) {
+        setState(_load);
+        return;
+      }
+      final availableSites = current.siteId.isEmpty
+          ? <WebSite>[]
+          : await WebSitesService().loadEmployerSites(widget.uid);
+      if (!mounted) return;
+      final siteName = availableSites
+          .where((site) => site.id == current.siteId)
+          .map((site) => site.name)
+          .firstOrNull;
+      final action = await showDialog<String>(
+          context: context,
+          builder: (context) => AlertDialog(
+                title: Text(current.title),
+                content: SizedBox(
+                    width: 420,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(siteEventTypes[current.type] ?? 'Site event'),
+                        Text(siteName ?? 'Company-wide event'),
+                        Text(current.allDay
+                            ? _date(current.start!)
+                            : '${_date(current.start!)} · ${TimeOfDay.fromDateTime(current.start!).format(context)}'),
+                        if (current.end != null)
+                          Text('Ends ${_date(current.end!)}'),
+                        if (current.description.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Text(current.description),
+                        ],
+                      ],
+                    )),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Close')),
+                  if (siteName != null && widget.onOpenSite != null)
+                    TextButton(
+                        onPressed: () => Navigator.pop(context, 'site'),
+                        child: const Text('Open Site')),
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, 'delete'),
+                      child: const Text('Delete')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, 'edit'),
+                      child: const Text('Edit')),
+                ],
+              ));
+      if (!mounted) return;
+      if (action == 'edit') {
+        await _editSiteEvent(current);
+      } else if (action == 'site') {
+        widget.onOpenSite?.call(current.siteId);
+      } else if (action == 'delete') {
+        final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+                  title: const Text('Delete event?'),
+                  content: Text('Delete “${current.title}”?'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Delete')),
+                  ],
+                ));
+        if (confirmed == true) {
+          await siteEventService.delete(widget.uid, current);
+          if (mounted) setState(_load);
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not load or update event. Try again.')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => WebPageContainer(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -206,6 +339,11 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
                 selected: {view},
                 onSelectionChanged: (selection) => _changeView(selection.first),
               ),
+              if (widget.employer)
+                FilledButton.icon(
+                    onPressed: () => _editSiteEvent(),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add event')),
               if (widget.employer)
                 SizedBox(
                     width: 230,
@@ -481,13 +619,20 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
                   Icons.work_history_outlined,
                 CalendarEventType.assignmentFinish => Icons.flag_outlined,
                 CalendarEventType.unavailable => Icons.event_busy_outlined,
+                CalendarEventType.siteStart => Icons.flag_outlined,
+                CalendarEventType.siteFinish => Icons.flag_outlined,
+                CalendarEventType.manual => Icons.event_outlined,
               },
               color: WebTheme.accent),
           title: Text('${event.typeLabel}: ${event.title}'),
-          subtitle: Text([event.siteName, event.trade]
-              .where((part) => part.isNotEmpty)
-              .toSet()
-              .join(' · ')),
+          subtitle: Text([
+            if (event.type == CalendarEventType.manual && !event.allDay)
+              TimeOfDay.fromDateTime(event.date).format(context),
+            event.siteName,
+            event.trade,
+            if (event.type == CalendarEventType.manual)
+              siteEventTypes[event.eventType] ?? 'Other',
+          ].where((part) => part.isNotEmpty).toSet().join(' · ')),
           trailing: !widget.employer &&
                   {
                     CalendarEventType.assignmentStart,
@@ -503,7 +648,9 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
                   ? const Icon(Icons.chevron_right)
                   : null,
           onTap: () {
-            if (widget.employer &&
+            if (widget.employer && event.type == CalendarEventType.manual) {
+              _openManualEvent(event);
+            } else if (widget.employer &&
                 event.type != CalendarEventType.vacancyStart &&
                 event.siteId.isNotEmpty &&
                 widget.onOpenSite != null) {

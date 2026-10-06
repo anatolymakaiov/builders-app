@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../../models/job.dart';
+import '../../../services/operational_calendar.dart';
 import '../../services/web_sites_service.dart';
 import '../../widgets/web_page_container.dart';
 
@@ -27,6 +29,7 @@ class _WebSitesPageState extends State<WebSitesPage> {
   WebSite? selected;
   bool showInactive = false;
   String? requestedSiteId;
+  final Map<String, Future<List<CalendarEvent>>> upcomingBySite = {};
 
   @override
   void initState() {
@@ -40,6 +43,7 @@ class _WebSitesPageState extends State<WebSitesPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.employerId != widget.employerId) {
       selected = null;
+      upcomingBySite.clear();
       sites = service.watchEmployerSites(widget.employerId);
       requestedSiteId = widget.initialSiteId;
     } else if (oldWidget.initialSiteId != widget.initialSiteId) {
@@ -109,13 +113,17 @@ class _WebSitesPageState extends State<WebSitesPage> {
                         return ListTile(
                           selected: current?.id == site.id,
                           title: Text(site.name),
-                          subtitle: Text([site.city, site.postcode]
-                              .where((s) => s.isNotEmpty)
-                              .join(' ')),
+                          subtitle: Text([
+                            site.city,
+                            site.postcode,
+                            if (_date(site.data['expectedEndDate']) != null)
+                              'Finish ${_date(site.data['expectedEndDate'])}'
+                          ].where((s) => s.isNotEmpty).join(' ')),
                           trailing: Text(_statusLabel(site.status)),
                           onTap: () => setState(() {
                             requestedSiteId = null;
                             selected = site;
+                            upcomingBySite.clear();
                           }),
                         );
                       },
@@ -205,6 +213,56 @@ class _WebSitesPageState extends State<WebSitesPage> {
             padding: const EdgeInsets.only(top: 8),
             child: Text(site.data['description'].toString())),
       const SizedBox(height: 16),
+      const Text('Overview',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      Wrap(spacing: 12, runSpacing: 8, children: [
+        _summaryItem('Start', _date(site.data['startDate']) ?? 'Not set'),
+        _summaryItem('Expected finish',
+            _date(site.data['expectedEndDate']) ?? 'Not set'),
+        _summaryItem('Status', _statusLabel(site.status)),
+      ]),
+      const SizedBox(height: 16),
+      Row(children: [
+        const Expanded(
+            child: Text('Upcoming events',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600))),
+        if (widget.onOpenCalendar != null)
+          TextButton.icon(
+              onPressed: () => widget.onOpenCalendar!(site.id),
+              icon: const Icon(Icons.calendar_month_outlined),
+              label: const Text('Open calendar')),
+      ]),
+      FutureBuilder<List<CalendarEvent>>(
+        future: upcomingBySite.putIfAbsent(
+            '${site.id}:${site.data['updatedAt']}',
+            () => OperationalCalendarService().loadSiteUpcoming(
+                employerId: widget.employerId,
+                siteId: site.id,
+                siteData: site.data)),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Text('Could not load site events.');
+          }
+          if (!snapshot.hasData) return const LinearProgressIndicator();
+          final upcoming = snapshot.data!;
+          if (upcoming.isEmpty) return const Text('No upcoming site events.');
+          return Column(children: [
+            const Text('Next scheduled items'),
+            for (final event in upcoming.take(5))
+              ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.event_outlined),
+                  title: Text(event.title),
+                  subtitle: Text(
+                      '${event.typeLabel} · ${event.date.day}/${event.date.month}/${event.date.year}'),
+                  onTap: widget.onOpenCalendar == null
+                      ? null
+                      : () => widget.onOpenCalendar!(site.id)),
+          ]);
+        },
+      ),
+      const SizedBox(height: 16),
       const Text('Vacancies',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -212,17 +270,21 @@ class _WebSitesPageState extends State<WebSitesPage> {
         builder: (context, snapshot) => snapshot.hasError
             ? const Text('Could not load vacancies.')
             : snapshot.hasData
-                ? Column(children: [
-                    for (final doc in snapshot.data!.docs)
-                      ListTile(
-                          title: Text(
-                              (doc.data()['title'] ?? 'Vacancy').toString()),
-                          subtitle:
-                              Text((doc.data()['status'] ?? '').toString()),
-                          onTap: widget.onOpenJob == null
-                              ? null
-                              : () => widget.onOpenJob!(doc.id))
-                  ])
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                        Text(
+                            'Total: ${snapshot.data!.docs.length} · Active: ${snapshot.data!.docs.where((doc) => Job.fromFirestore(doc.id, doc.data()).isPubliclyVisible).length}'),
+                        for (final doc in snapshot.data!.docs)
+                          ListTile(
+                              title: Text((doc.data()['title'] ?? 'Vacancy')
+                                  .toString()),
+                              subtitle:
+                                  Text((doc.data()['status'] ?? '').toString()),
+                              onTap: widget.onOpenJob == null
+                                  ? null
+                                  : () => widget.onOpenJob!(doc.id))
+                      ])
                 : const LinearProgressIndicator(),
       ),
       const SizedBox(height: 16),
@@ -233,24 +295,38 @@ class _WebSitesPageState extends State<WebSitesPage> {
         builder: (context, snapshot) => snapshot.hasError
             ? const Text('Could not load assignments.')
             : snapshot.hasData
-                ? Column(children: [
-                    for (final doc in snapshot.data!.docs)
-                      ListTile(
-                        title: Text(
-                            (doc.data()['workerDisplayName'] ?? 'Worker')
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                        Text('Assigned workers: ${snapshot.data!.docs.where((doc) => [
+                              'active',
+                              'scheduled'
+                            ].contains(doc.data()['status'])).map((doc) => doc.data()['workerId']).where((id) => id != null).toSet().length}'),
+                        for (final doc in snapshot.data!.docs)
+                          ListTile(
+                            title: Text(
+                                (doc.data()['workerDisplayName'] ?? 'Worker')
+                                    .toString()),
+                            subtitle: Text((doc.data()['tradeName'] ??
+                                    doc.data()['tradeId'] ??
+                                    '')
                                 .toString()),
-                        subtitle: Text((doc.data()['tradeName'] ??
-                                doc.data()['tradeId'] ??
-                                '')
-                            .toString()),
-                        trailing: Text(
-                            (doc.data()['status'] ?? 'scheduled').toString()),
-                      ),
-                  ])
+                            trailing: Text((doc.data()['status'] ?? 'scheduled')
+                                .toString()),
+                          ),
+                      ])
                 : const LinearProgressIndicator(),
       ),
     ]);
   }
+
+  Widget _summaryItem(String label, String value) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+            border: Border.all(color: const Color(0xFFD8E0E5)),
+            borderRadius: BorderRadius.circular(4)),
+        child: Text('$label: $value'),
+      );
 
   String? _date(dynamic value) {
     if (value is! Timestamp) return null;

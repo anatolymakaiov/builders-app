@@ -43,6 +43,7 @@ class _WebTalentPageState extends State<WebTalentPage> {
   bool searched = false;
   bool invitesOnly = false;
   WorkerAvailability? availability;
+  DateTime? availableBy;
   WebTalentFilters? filters;
   String? error;
   String? selectedId;
@@ -86,6 +87,7 @@ class _WebTalentPageState extends State<WebTalentPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.employerId != widget.employerId) {
       saved = {};
+      availableBy = null;
       selectedWorkerIds.clear();
       nameController.clear();
       candidates = [];
@@ -134,6 +136,7 @@ class _WebTalentPageState extends State<WebTalentPage> {
             location: locationController.text,
             availability: availability,
             invitesOnly: invitesOnly,
+            availableBy: availableBy,
           );
     final employerId = widget.employerId;
     final currentRequest = ++requestId;
@@ -243,31 +246,24 @@ class _WebTalentPageState extends State<WebTalentPage> {
   }
 
   bool _selectable(WebTalentCandidate candidate) =>
-      candidate.allowsInvites &&
-      candidate.isRecentlyConfirmed(DateTime.now()) &&
-      (candidate.availability == WorkerAvailability.availableNow ||
-          candidate.availability == WorkerAvailability.availableFrom);
+      candidate.canSelectForInvitation(DateTime.now(), byDate: availableBy);
 
-  bool _matchesVacancy(WebTalentCandidate candidate, Job job) {
-    if (!candidate.tradeIds.contains(job.canonicalRoleId)) return false;
-    if (candidate.nextUnavailableFrom != null &&
-        job.startDate != null &&
-        !candidate.nextUnavailableFrom!.isAfter(job.startDate!) &&
-        (candidate.nextUnavailableUntil == null ||
-            !candidate.nextUnavailableUntil!.isBefore(job.startDate!))) {
-      return false;
+  String? _inviteIssue(WebTalentCandidate candidate, Job job) {
+    if (!candidate.tradeIds.contains(job.canonicalRoleId)) {
+      return 'Trade mismatch';
     }
-    if (candidate.availability != WorkerAvailability.availableFrom) return true;
-    final from = candidate.availableFrom;
-    if (from == null) return false;
-    final start = job.startDate;
-    if (start == null) {
-      final today = DateTime.now();
-      return DateTime(from.year, from.month, from.day)
-          .isBefore(DateTime(today.year, today.month, today.day + 1));
+    if (!candidate.allowsInvites) return 'Vacancy invitations disabled';
+    if (!candidate.isRecentlyConfirmed(DateTime.now())) {
+      return 'Availability unknown or stale';
     }
-    return !DateTime(from.year, from.month, from.day)
-        .isAfter(DateTime(start.year, start.month, start.day));
+    if (candidate.availability == WorkerAvailability.notLooking) {
+      return 'Not looking for work';
+    }
+    if (!candidate.availableBy(
+        job.startDate ?? DateTime.now(), DateTime.now())) {
+      return 'Not available by vacancy start';
+    }
+    return null;
   }
 
   Future<void> _inviteSelected() async {
@@ -318,14 +314,23 @@ class _WebTalentPageState extends State<WebTalentPage> {
                               for (final job in jobs)
                                 ListTile(
                                   title: Text(job.displayTitle),
-                                  subtitle: Text(chosen.every((worker) =>
-                                          _matchesVacancy(worker, job))
+                                  subtitle: Text(chosen
+                                          .map((worker) =>
+                                              _inviteIssue(worker, job))
+                                          .whereType<String>()
+                                          .toSet()
+                                          .isEmpty
                                       ? '${job.site} · ${job.remainingPositions} positions left'
-                                      : 'Trade or availability date does not match'),
-                                  enabled: chosen.every(
-                                      (worker) => _matchesVacancy(worker, job)),
+                                      : chosen
+                                          .map((worker) =>
+                                              _inviteIssue(worker, job))
+                                          .whereType<String>()
+                                          .toSet()
+                                          .join(' · ')),
+                                  enabled: chosen.every((worker) =>
+                                      _inviteIssue(worker, job) == null),
                                   onTap: chosen.every((worker) =>
-                                          _matchesVacancy(worker, job))
+                                          _inviteIssue(worker, job) == null)
                                       ? () => Navigator.pop(dialogContext, job)
                                       : null,
                                 ),
@@ -520,6 +525,33 @@ class _WebTalentPageState extends State<WebTalentPage> {
                             setState(() => availability = value),
                       ),
                     ),
+                    SizedBox(
+                      height: WebToolbar.controlHeight,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: availableBy ?? DateTime.now(),
+                            firstDate: DateTime.now(),
+                            lastDate:
+                                DateTime.now().add(const Duration(days: 730)),
+                          );
+                          if (date != null && mounted) {
+                            setState(() => availableBy = date);
+                          }
+                        },
+                        icon: const Icon(Icons.event_available_outlined),
+                        label: Text(availableBy == null
+                            ? 'Available by'
+                            : 'Available by ${availableBy!.day}/${availableBy!.month}/${availableBy!.year}'),
+                      ),
+                    ),
+                    if (availableBy != null)
+                      IconButton(
+                        tooltip: 'Clear available-by date',
+                        onPressed: () => setState(() => availableBy = null),
+                        icon: const Icon(Icons.close),
+                      ),
                     FilterChip(
                       label: const Text('Allows vacancy invitations'),
                       selected: invitesOnly,
@@ -651,22 +683,23 @@ class _WebTalentPageState extends State<WebTalentPage> {
 
   void _showDetail(WebTalentCandidate candidate) => showDialog<void>(
         context: context,
-        builder: (context) => Dialog(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: _CandidateDetail(
-                candidate: candidate,
-                saved: saved.contains(candidate.id),
-                onSave: () {
-                  Navigator.pop(context);
-                  _toggleSave(candidate);
-                },
-              ),
-            ),
-          ),
-        ),
+        builder: (context) => StatefulBuilder(
+            builder: (context, refresh) => Dialog(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 460),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: _CandidateDetail(
+                        candidate: candidate,
+                        saved: saved.contains(candidate.id),
+                        onSave: () async {
+                          await _toggleSave(candidate);
+                          if (context.mounted) refresh(() {});
+                        },
+                      ),
+                    ),
+                  ),
+                )),
       );
 }
 

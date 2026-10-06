@@ -123,4 +123,60 @@ void main() {
     expect(mergeTalentCandidates(first, second).map((item) => item.id),
         ['a', 'b', 'c']);
   });
+
+  test('Available by uses effective date and excludes an active block', () {
+    final from = candidate('from', status: 'available_from');
+    expect(
+        from.matches(
+            WebTalentFilters(
+                tradeId: 'dryliner', availableBy: DateTime(2026, 10, 20)),
+            now),
+        isFalse);
+    expect(
+        from.matches(
+            WebTalentFilters(
+                tradeId: 'dryliner', availableBy: DateTime(2026, 10, 21)),
+            now),
+        isTrue);
+    final early = WebTalentCandidate.fromMap('early', {
+      'effectiveAvailabilityStatus': 'available_from',
+      'effectiveAvailableFrom': Timestamp.fromDate(DateTime.utc(2026, 10, 18)),
+      'availabilityConfirmedAt': Timestamp.fromDate(DateTime.utc(2026, 10, 5)),
+    });
+    final late = WebTalentCandidate.fromMap('late', {
+      'effectiveAvailabilityStatus': 'available_from',
+      'effectiveAvailableFrom': Timestamp.fromDate(DateTime.utc(2026, 10, 25)),
+      'availabilityConfirmedAt': Timestamp.fromDate(DateTime.utc(2026, 10, 5)),
+    });
+    expect(early.availableBy(DateTime(2026, 10, 20), now), isTrue);
+    expect(late.availableBy(DateTime(2026, 10, 20), now), isFalse);
+    final derived = WebTalentCandidate.fromMap('assigned', {
+      'effectiveAvailabilityStatus': 'busy',
+      'effectiveAvailabilityReason': 'assignment',
+      'effectiveAvailableFrom': Timestamp.fromDate(DateTime.utc(2026, 10, 19)),
+      'availabilityConfirmedAt': Timestamp.fromDate(DateTime.utc(2026, 10, 5)),
+    });
+    expect(derived.availableBy(DateTime(2026, 10, 18), now), isFalse);
+    expect(derived.availableBy(DateTime(2026, 10, 20), now), isTrue);
+    expect(derived.canSelectForInvitation(now), isFalse);
+    final invitedDerived = WebTalentCandidate.fromMap('assigned-invited', {
+      'effectiveAvailabilityStatus': 'busy',
+      'effectiveAvailabilityReason': 'assignment',
+      'effectiveAvailableFrom': Timestamp.fromDate(DateTime.utc(2026, 10, 19)),
+      'availabilityConfirmedAt': Timestamp.fromDate(DateTime.utc(2026, 10, 5)),
+      'allowVacancyInvites': true,
+    });
+    expect(invitedDerived.canSelectForInvitation(now), isTrue);
+    expect(
+        invitedDerived.canSelectForInvitation(now,
+            byDate: DateTime(2026, 10, 18)),
+        isFalse);
+    final blocked = WebTalentCandidate.fromMap('blocked', {
+      'effectiveAvailabilityStatus': 'available_now',
+      'availabilityConfirmedAt': Timestamp.fromDate(DateTime.utc(2026, 10, 5)),
+      'nextUnavailableFrom': Timestamp.fromDate(DateTime.utc(2026, 10, 19)),
+      'nextUnavailableUntil': Timestamp.fromDate(DateTime.utc(2026, 10, 22)),
+    });
+    expect(blocked.availableBy(DateTime(2026, 10, 20), now), isFalse);
+  });
 }
