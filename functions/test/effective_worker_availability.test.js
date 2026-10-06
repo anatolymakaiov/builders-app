@@ -32,6 +32,16 @@ test("assignment blocks and returns first safe day", () => {
     "2026-10-12");
 });
 
+test("active or undated scheduled work never leaves worker available now", () => {
+  const active = derive(manual, [{status: "active",
+    startDate: new Date("2026-10-01"),
+    expectedEndDate: new Date("2026-10-05")}]);
+  assert.equal(active.effectiveAvailabilityStatus, "busy");
+  assert.equal(active.effectiveAvailableFrom, null);
+  const undated = derive(manual, [{status: "scheduled"}]);
+  assert.equal(undated.effectiveAvailabilityStatus, "busy");
+});
+
 test("later manual date wins after assignment", () => {
   const result = derive({...manual, availabilityStatus: "available_from",
     availableFrom: new Date("2026-10-20")},

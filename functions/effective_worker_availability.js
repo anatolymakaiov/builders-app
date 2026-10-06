@@ -18,9 +18,14 @@ function intervals(assignments, periods, today) {
   const result = [];
   for (const assignment of assignments) {
     if (!["scheduled", "active"].includes(assignment.status)) continue;
-    const start = day(assignment.startDate);
-    const end = day(assignment.actualEndDate || assignment.expectedEndDate);
-    if (start == null || (end != null && end < today)) continue;
+    const start = assignment.status === "active"
+      ? Math.min(day(assignment.startDate) ?? today, today)
+      : day(assignment.startDate) ?? today;
+    const actualEnd = day(assignment.actualEndDate);
+    const expectedEnd = day(assignment.expectedEndDate);
+    const end = actualEnd ?? (assignment.status === "active" &&
+      expectedEnd != null && expectedEnd < today ? null : expectedEnd);
+    if (end != null && end < today) continue;
     result.push({start, end: end ?? Infinity, source: "assignment"});
   }
   for (const period of periods) {

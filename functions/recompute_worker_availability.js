@@ -19,8 +19,7 @@ async function recomputeWorkerAvailability(db, workerId, now = new Date(),
     db.collection("assignments").where("workerId", "==", workerId)
       .where("status", "==", "active").get(),
     db.collection("assignments").where("workerId", "==", workerId)
-      .where("status", "==", "scheduled")
-      .where("startDate", ">=", new Date(lower.getTime() - 730 * 86400000)).get(),
+      .where("status", "==", "scheduled").get(),
     db.collection("worker_unavailability").where("workerId", "==", workerId)
       .where("endDate", ">=", lower).get(),
   ]);
