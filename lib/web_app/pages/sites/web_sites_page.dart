@@ -248,7 +248,8 @@ class _WebSitesPageState extends State<WebSitesPage> {
           final upcoming = snapshot.data!;
           if (upcoming.isEmpty) return const Text('No upcoming site events.');
           return Column(children: [
-            const Text('Next scheduled items'),
+            Text(
+                'Upcoming events: ${upcoming.length}${upcoming.length == 8 ? '+' : ''} · next 90 days'),
             for (final event in upcoming.take(5))
               ListTile(
                   dense: true,
