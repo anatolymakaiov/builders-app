@@ -23,6 +23,7 @@ class PortraitWebNavigation extends StatelessWidget {
     final visible = PortraitWebSection.values
         .where((section) =>
             (section != PortraitWebSection.talent || isEmployer) &&
+            (section != PortraitWebSection.sites || isEmployer) &&
             (section != PortraitWebSection.opportunities || !isEmployer))
         .toList();
     return NavigationBar(

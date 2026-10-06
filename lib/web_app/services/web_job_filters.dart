@@ -5,6 +5,9 @@ import '../../services/job_taxonomy_service.dart';
 
 enum WebJobSort { nearest, highestPay, newest }
 
+bool matchesSiteFilter(Job job, String? siteFilterId) =>
+    siteFilterId == null || job.siteId == siteFilterId;
+
 /// Web adapter for the matching rules embedded in mobile SmartJobSearchField.
 /// The mobile presentation file cannot be imported into the separate Web app.
 class WebJobFilters {

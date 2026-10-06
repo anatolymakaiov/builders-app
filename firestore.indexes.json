@@ -1,6 +1,22 @@
 {
   "indexes": [
     {
+      "collectionGroup": "jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "siteId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "employerContextId", "order": "ASCENDING" },
+        { "fieldPath": "siteId", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "vacancy_invitations",
       "queryScope": "COLLECTION",
       "fields": [

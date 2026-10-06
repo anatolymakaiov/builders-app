@@ -27,6 +27,7 @@ import '../../widgets/web_remote_image.dart';
 import '../../widgets/web_design_components.dart';
 import 'web_profile_gallery.dart';
 import 'web_worker_reviews.dart';
+import 'web_worker_assignments.dart';
 
 class WebProfilePage extends StatefulWidget {
   const WebProfilePage({
@@ -267,6 +268,8 @@ class _WebProfilePageState extends State<WebProfilePage> {
                     message: 'Could not refresh profile details: $detailsError',
                   ),
                 const SizedBox(height: 22),
+                if (isWorker && ownProfile)
+                  WebWorkerAssignments(workerId: viewedUserId),
                 if (isWorker)
                   WebWorkerReviews(
                       workerId: viewedUserId, ownProfile: ownProfile),

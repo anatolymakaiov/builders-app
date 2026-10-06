@@ -12,6 +12,7 @@ import '../pages/jobs/web_jobs_page.dart';
 import '../pages/jobs/web_post_job_page.dart';
 import '../pages/map/web_map_page.dart';
 import '../pages/talent/web_talent_page.dart';
+import '../pages/sites/web_sites_page.dart';
 import '../pages/opportunities/web_opportunities_page.dart';
 import '../pages/profile/web_admin_profile_page.dart';
 import '../pages/profile/web_profile_page.dart';
@@ -317,6 +318,13 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                 key: ValueKey('portrait-opportunities:${widget.user.uid}'),
                 workerId: widget.user.uid,
                 onOpenJob: _openJob,
+              )
+            : const SizedBox.shrink(),
+        PortraitWebSection.sites => widget.role == 'employer'
+            ? WebSitesPage(
+                key: ValueKey('portrait-sites:${widget.user.uid}'),
+                employerId: widget.user.uid,
+                onOpenJob: (id) => _openJob(id, ownerMode: true),
               )
             : const SizedBox.shrink(),
       };

@@ -29,6 +29,7 @@ const {inviteWorkers, respondToInvitation, closeInvitations,
 const {PLANS: STROYKA_COMMERCIAL_PLANS, planForBilling,
   resolveEmployerEntitlements} =
   require("./employer_entitlements");
+const {createAcceptedAssignments} = require("./site_assignments");
 
 admin.initializeApp();
 
@@ -86,6 +87,13 @@ exports.closeVacancyInvitations = onDocumentWritten("jobs/{jobId}", async (event
 exports.applyVacancyInvitation = onDocumentWritten(
   "applications/{applicationId}", async (event) => {
     await markApplicationInvitations(admin.firestore(), event.data?.after?.data());
+  });
+
+exports.createAcceptedWorkAssignments = onDocumentWritten(
+  "applications/{applicationId}", async (event) => {
+    await createAcceptedAssignments(admin.firestore(), event.params.applicationId,
+      event.data?.before?.data(), event.data?.after?.data(),
+      admin.firestore.FieldValue);
   });
 
 exports.checkRegistrationIdentity = onCall(async (request) => {
@@ -2391,6 +2399,19 @@ function materialJobEditFields(data) {
   );
 }
 
+async function assertOwnedSite(db, siteId, employerId, transaction) {
+  if (siteId === undefined || siteId === null || siteId === "") return;
+  if (typeof siteId !== "string" || siteId.length > 128 ||
+      siteId.includes("/")) {
+    throw new HttpsError("invalid-argument", "Invalid site selection.");
+  }
+  const ref = db.collection("sites").doc(siteId);
+  const site = transaction ? await transaction.get(ref) : await ref.get();
+  if (!site.exists || site.data()?.employerContextId !== employerId) {
+    throw new HttpsError("permission-denied", "Site does not belong to this employer.");
+  }
+}
+
 async function assertEmployerCanUseVacancySlot(employerId, transaction) {
   const firestore = admin.firestore();
   const userRef = firestore.collection("users").doc(employerId);
@@ -3310,6 +3331,7 @@ exports.changeGoCardlessPlan = onCall(
     await firestore.runTransaction(async (transaction) => {
       await transaction.get(lockRef);
       await assertEmployerCanUseVacancySlot(uid, transaction);
+      await assertOwnedSite(firestore, jobData.siteId, uid, transaction);
       transaction.set(lockRef, {
         employerId: uid,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -3370,6 +3392,8 @@ exports.submitVacancyEditReview = onCall(
       if (!isOwner) {
         throw new HttpsError("permission-denied", "You cannot edit this vacancy.");
       }
+
+      await assertOwnedSite(firestore, proposedChanges.siteId, uid, transaction);
 
       transaction.set(reviewRef, {
         originalVacancyId: jobId,

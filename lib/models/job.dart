@@ -6,6 +6,7 @@ class Job {
   final String title;
   final String trade;
   final String site;
+  final String siteId;
   final String canonicalRoleId;
   final String canonicalRoleName;
   final String originalEmployerInput;
@@ -63,6 +64,7 @@ class Job {
     required this.title,
     required this.trade,
     required this.site,
+    this.siteId = '',
     this.canonicalRoleId = "",
     this.canonicalRoleName = "",
     this.originalEmployerInput = "",
@@ -124,6 +126,7 @@ class Job {
       title: title,
       trade: trade,
       site: site,
+      siteId: siteId,
       canonicalRoleId: canonicalRoleId,
       canonicalRoleName: canonicalRoleName,
       originalEmployerInput: originalEmployerInput,
@@ -343,6 +346,7 @@ class Job {
       title: data["title"] ?? "",
       trade: data["trade"] ?? "",
       site: data["site"] ?? "",
+      siteId: (data["siteId"] ?? "").toString(),
       canonicalRoleId: (data["canonicalRoleId"] ??
               data["roleCanonicalId"] ??
               data["roleId"] ??

@@ -85,8 +85,7 @@ void main() {
     expect(find.text('Desktop workspace'), findsOneWidget);
   });
 
-  test(
-      'portrait shell includes role-specific Talent and Opportunities destinations',
+  test('portrait shell includes role-specific Talent, Sites and Opportunities',
       () {
     expect(PortraitWebSection.values.map((section) => section.label), [
       'Jobs',
@@ -95,6 +94,7 @@ void main() {
       'Chats',
       'Profile',
       'Talent',
+      'Sites',
       'Opportunities'
     ]);
   });
@@ -126,7 +126,8 @@ void main() {
     expect(selected, PortraitWebSection.map);
   });
 
-  testWidgets('employer portrait navigation exposes Talent', (tester) async {
+  testWidgets('employer portrait navigation exposes Talent and Sites',
+      (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(390, 844);
     addTearDown(() {
@@ -146,5 +147,7 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.tap(find.byKey(const ValueKey('portrait-nav-talent')));
     expect(selected, PortraitWebSection.talent);
+    await tester.tap(find.byKey(const ValueKey('portrait-nav-sites')));
+    expect(selected, PortraitWebSection.sites);
   });
 }

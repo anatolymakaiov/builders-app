@@ -10,6 +10,7 @@ import '../../services/web_applications_data_service.dart';
 import '../../services/web_job_management_service.dart';
 import '../../services/web_jobs_data_service.dart';
 import '../../services/web_job_filters.dart';
+import '../../services/web_sites_service.dart';
 import '../../services/web_profile_communication.dart';
 import '../../portrait/portrait_employer_presentation.dart';
 import '../../widgets/web_job_filters_dialog.dart';
@@ -74,6 +75,8 @@ class _WebJobsPageState extends State<WebJobsPage> {
   WebJobsMode mode = WebJobsMode.market;
   Set<String> savedJobIds = const <String>{};
   String search = '';
+  String? siteFilterId;
+  late Stream<List<WebSite>> employerSites;
   String? selectedJobId;
   bool applying = false;
   bool managing = false;
@@ -107,6 +110,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
     targetJobId = widget.initialJobId;
     compactDetailVisible = widget.initialJobId != null;
     _resetJobsStream();
+    employerSites = WebSitesService().watchEmployerSites(widget.userId);
     _loadSavedJobs();
     _startWorkerApplications();
   }
@@ -133,6 +137,8 @@ class _WebJobsPageState extends State<WebJobsPage> {
       }
     }
     if (identityChanged) {
+      employerSites = WebSitesService().watchEmployerSites(widget.userId);
+      siteFilterId = null;
       unawaited(_restartWorkerApplications());
     }
   }
@@ -145,11 +151,18 @@ class _WebJobsPageState extends State<WebJobsPage> {
   }
 
   List<Job> filterJobs(List<Job> jobs) {
-    final result = filters.apply(
-        savedOnly
-            ? jobs.where((job) => savedJobIds.contains(job.id)).toList()
-            : jobs,
-        search);
+    final result = filters
+        .apply(
+            savedOnly
+                ? jobs.where((job) => savedJobIds.contains(job.id)).toList()
+                : jobs,
+            search)
+        .where((job) =>
+            !isEmployer ||
+            mode != WebJobsMode.owner ||
+            siteFilterId == null ||
+              matchesSiteFilter(job, siteFilterId))
+        .toList();
     result.sort((a, b) => switch (sort) {
           WebJobSort.highestPay => b.rate.compareTo(a.rate),
           WebJobSort.nearest => _distance(a).compareTo(_distance(b)),
@@ -326,6 +339,37 @@ class _WebJobsPageState extends State<WebJobsPage> {
                         }),
                       ),
                     ),
+                    if (isEmployer && mode == WebJobsMode.owner)
+                      SizedBox(
+                          width: 210,
+                          child: StreamBuilder<List<WebSite>>(
+                            stream: employerSites,
+                            builder: (context, snapshot) {
+                              final all = snapshot.data ?? const <WebSite>[];
+                              return DropdownButtonFormField<String?>(
+                                initialValue: siteFilterId,
+                                decoration: const InputDecoration(
+                                    labelText: 'Site',
+                                    border: OutlineInputBorder()),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                      value: null, child: Text('All sites')),
+                                  for (final item in all)
+                                    DropdownMenuItem<String?>(
+                                        value: item.id,
+                                        child: Text(item.name,
+                                            overflow: TextOverflow.ellipsis)),
+                                  const DropdownMenuItem<String?>(
+                                      value: '',
+                                      child: Text('No site / legacy')),
+                                ],
+                                onChanged: (value) => setState(() {
+                                  siteFilterId = value;
+                                  page = 1;
+                                }),
+                              );
+                            },
+                          )),
                     SizedBox(
                       height: WebToolbar.controlHeight,
                       child: OutlinedButton.icon(

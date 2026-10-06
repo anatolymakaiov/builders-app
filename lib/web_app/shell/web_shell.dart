@@ -10,6 +10,7 @@ import '../pages/jobs/web_jobs_page.dart';
 import '../pages/jobs/web_post_job_page.dart';
 import '../pages/map/web_map_page.dart';
 import '../pages/talent/web_talent_page.dart';
+import '../pages/sites/web_sites_page.dart';
 import '../pages/opportunities/web_opportunities_page.dart';
 import '../../services/application_status_utils.dart';
 import '../../services/multi_account_service.dart';
@@ -182,6 +183,13 @@ class _WebShellState extends State<WebShell> {
           ? WebOpportunitiesPage(
               key: ValueKey('web-opportunities:${widget.user.uid}'),
               workerId: widget.user.uid,
+              onOpenJob: _openJob,
+            )
+          : const SizedBox.shrink(),
+      widget.role == 'employer' && visited.contains(WebSection.sites)
+          ? WebSitesPage(
+              key: ValueKey('web-sites:${widget.user.uid}'),
+              employerId: widget.user.uid,
               onOpenJob: _openJob,
             )
           : const SizedBox.shrink(),

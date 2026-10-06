@@ -734,12 +734,77 @@ service cloud.firestore {
       allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
 
+    function ownedSiteReference(siteId, employerId) {
+      return siteId == ""
+        || (siteId is string && siteId.size() <= 128
+          && exists(/databases/$(database)/documents/sites/$(siteId))
+          && get(/databases/$(database)/documents/sites/$(siteId))
+            .data.employerContextId == employerId);
+    }
+
+    match /sites/{siteId} {
+      function ownsSite() {
+        return isEmployer() && resource.data.employerContextId == uid();
+      }
+      allow get, list: if isAdmin() || ownsSite();
+      allow create: if isAdmin() || (isEmployer()
+        && request.resource.data.keys().hasOnly(["siteId", "employerContextId",
+          "ownerUid", "name", "status", "addressLine1", "addressLine2",
+          "city", "region", "postcode", "country", "description",
+          "startDate", "expectedEndDate", "createdAt", "updatedAt"])
+        && request.resource.data.siteId == siteId
+        && request.resource.data.employerContextId == uid()
+        && request.resource.data.ownerUid == uid()
+        && request.resource.data.status == "active"
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.city is string
+        && request.resource.data.city.size() > 0
+        && request.resource.data.city.size() <= 120
+        && request.resource.data.postcode is string
+        && request.resource.data.postcode.size() > 0
+        && request.resource.data.postcode.size() <= 120
+        && request.resource.data.addressLine1 is string
+        && request.resource.data.addressLine1.size() > 0
+        && request.resource.data.addressLine1.size() <= 120
+        && request.resource.data.region is string
+        && request.resource.data.region.size() > 0
+        && request.resource.data.region.size() <= 120
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time);
+      allow update: if isAdmin() || (ownsSite()
+        && request.resource.data.keys().hasOnly(["siteId", "employerContextId",
+          "ownerUid", "name", "status", "addressLine1", "addressLine2",
+          "city", "region", "postcode", "country", "description",
+          "startDate", "expectedEndDate", "createdAt", "updatedAt",
+          "archivedAt"])
+        && request.resource.data.employerContextId == resource.data.employerContextId
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.siteId == resource.data.siteId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.status in ["active", "completed", "archived"]
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.updatedAt == request.time);
+      allow delete: if false;
+    }
+
+    match /assignments/{assignmentId} {
+      allow get, list: if isAdmin() || (isEmployer()
+        && resource.data.employerContextId == uid())
+        || (isWorker() && resource.data.workerId == uid());
+      allow create, update, delete: if false;
+    }
+
     match /jobs/{jobId} {
       allow create: if isAdmin()
         || (
           isEmployer()
           && !isUserHeld(uid())
           && request.resource.data.ownerId == uid()
+          && ownedSiteReference(request.resource.data.get("siteId", ""), uid())
         );
       allow read: if signedIn()
         && (
@@ -755,6 +820,7 @@ service cloud.firestore {
 	          isEmployer()
 	          && !isUserHeld(uid())
 	          && !protectedJobBillingKeysChanged()
+	          && ownedSiteReference(request.resource.data.get("siteId", ""), uid())
 	          && !(isPublicJob(resource.data) && materialLiveJobKeysChanged())
 	          && (
 	            resource.data.ownerId == uid()

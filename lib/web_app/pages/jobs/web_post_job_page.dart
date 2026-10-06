@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/job.dart';
@@ -7,6 +8,8 @@ import '../../../services/job_taxonomy_service.dart';
 import '../../../services/job_start_date.dart';
 import '../../../services/vacancy_import_service.dart';
 import '../../services/web_job_management_service.dart';
+import '../../services/web_sites_service.dart';
+import '../sites/web_sites_page.dart';
 import '../../services/web_vacancy_import_metadata.dart';
 import '../../portrait/portrait_employer_presentation.dart';
 import '../../theme/web_breakpoints.dart';
@@ -42,6 +45,8 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
   final addressLookup = IdealPostcodesAddressLookupService();
   late final TextEditingController role;
   String? selectedRoleId;
+  String selectedSiteId = '';
+  late Stream<List<WebSite>> employerSites;
   late final TextEditingController site;
   late final TextEditingController duration;
   late final TextEditingController weeklyHours;
@@ -93,6 +98,8 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
           : role.text,
     )?.id;
     site = TextEditingController(text: job?.site ?? '');
+    selectedSiteId = job?.siteId ?? '';
+    employerSites = WebSitesService().watchEmployerSites(widget.userId);
     duration = TextEditingController(text: job?.duration ?? '');
     weeklyHours = TextEditingController(text: job?.weeklyHours ?? '');
     selectedStartDate =
@@ -306,6 +313,70 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 14),
               _input(site, 'Site / project name'),
+              _gap(),
+              StreamBuilder<List<WebSite>>(
+                stream: employerSites,
+                builder: (context, snapshot) {
+                  final active = snapshot.data
+                          ?.where((item) => item.status == 'active')
+                          .toList() ??
+                      const <WebSite>[];
+                  final known =
+                      snapshot.data?.any((item) => item.id == selectedSiteId) ??
+                          false;
+                  return DropdownButtonFormField<String>(
+                    key: ValueKey('vacancy-site-$selectedSiteId'),
+                    initialValue: selectedSiteId,
+                    decoration: const InputDecoration(
+                      labelText: 'Linked Site / Project',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      const DropdownMenuItem(
+                          value: '', child: Text('No site / legacy')),
+                      for (final item in active)
+                        DropdownMenuItem(
+                            value: item.id, child: Text(item.name)),
+                      if (selectedSiteId.isNotEmpty &&
+                          !active.any((item) => item.id == selectedSiteId))
+                        DropdownMenuItem(
+                            value: selectedSiteId,
+                            child: Text(known
+                                ? 'Current inactive site'
+                                : 'Previously linked site')),
+                    ],
+                    onChanged: (value) {
+                      final chosen = snapshot.data
+                          ?.where((item) => item.id == value)
+                          .firstOrNull;
+                      setState(() {
+                        selectedSiteId = value ?? '';
+                        if (chosen != null) {
+                          site.text = chosen.name;
+                          addressLine1.text =
+                              (chosen.data['addressLine1'] ?? '').toString();
+                          addressLine2.text =
+                              (chosen.data['addressLine2'] ?? '').toString();
+                          city.text = chosen.city;
+                          county.text =
+                              (chosen.data['region'] ?? '').toString();
+                          postcode.text = chosen.postcode;
+                          country.text =
+                              (chosen.data['country'] ?? 'United Kingdom')
+                                  .toString();
+                        }
+                      });
+                    },
+                  );
+                },
+              ),
+              Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _createSite,
+                    icon: const Icon(Icons.add_location_alt_outlined),
+                    label: const Text('Create new site'),
+                  )),
               _gap(),
               _input(positions, 'Workers needed',
                   keyboardType: TextInputType.number),
@@ -660,6 +731,33 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
     }
   }
 
+  Future<void> _createSite() async {
+    final data = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => const WebSiteFormDialog(),
+    );
+    if (data == null) return;
+    try {
+      final id = await WebSitesService().create(widget.userId, data);
+      if (!mounted) return;
+      setState(() {
+        selectedSiteId = id;
+        site.text = (data['name'] ?? '').toString();
+        addressLine1.text = (data['addressLine1'] ?? '').toString();
+        addressLine2.text = (data['addressLine2'] ?? '').toString();
+        city.text = (data['city'] ?? '').toString();
+        county.text = (data['region'] ?? '').toString();
+        postcode.text = (data['postcode'] ?? '').toString();
+        country.text = (data['country'] ?? 'United Kingdom').toString();
+      });
+    } on FirebaseException catch (error) {
+      if (mounted) {
+        setState(() => this.error =
+            'Could not create site: ${error.message ?? error.code}');
+      }
+    }
+  }
+
   Future<void> _submit() async {
     final validation = _validate();
     if (validation != null) {
@@ -676,6 +774,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
         ownerId: widget.userId,
         title: role.text.trim(),
         site: site.text.trim(),
+        siteId: selectedSiteId,
         duration: duration.text.trim(),
         weeklyHours: weeklyHours.text.trim(),
         startDate: selectedStartDate,

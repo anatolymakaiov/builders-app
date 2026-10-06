@@ -9,6 +9,7 @@ enum WebSection {
   applications('Applications', Icons.assignment_outlined),
   chats('Chats', Icons.chat_bubble_outline),
   talent('Talent', Icons.groups_outlined),
+  sites('Sites', Icons.location_city_outlined),
   opportunities('Opportunities', Icons.local_offer_outlined);
 
   const WebSection(this.label, this.icon);
@@ -120,6 +121,8 @@ class WebTopNavigation extends StatelessWidget {
                               children: [
                                 for (final section in WebSection.values)
                                   if ((section != WebSection.talent ||
+                                          role == 'employer') &&
+                                      (section != WebSection.sites ||
                                           role == 'employer') &&
                                       (section != WebSection.opportunities ||
                                           role == 'worker'))
