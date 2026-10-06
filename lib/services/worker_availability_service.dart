@@ -73,10 +73,18 @@ class WorkerAvailabilityService {
         WorkerAvailability.unknown => 'Availability not confirmed',
       };
 
-  static String profileLabel(Map<String, dynamic> profile) => label(
-        fromProfile(profile),
-        from: availableFrom(profile),
-      );
+  static String profileLabel(Map<String, dynamic> profile) {
+    if (profile[field] == 'busy' && availableFrom(profile) != null) {
+      return 'Busy until ${_displayDate(availableFrom(profile)!.subtract(const Duration(days: 1)))}';
+    }
+    if (profile[field] == 'unavailable') {
+      final from = availableFrom(profile);
+      return from == null
+          ? 'Unavailable'
+          : 'Unavailable until ${_displayDate(from.subtract(const Duration(days: 1)))}';
+    }
+    return label(fromProfile(profile), from: availableFrom(profile));
+  }
 
   static bool allowsInvites(Map<String, dynamic> profile) =>
       profile[invitesField] == true;

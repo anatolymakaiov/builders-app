@@ -72,6 +72,21 @@ void main() {
         'Available from 21 Oct 2026');
   });
 
+  test('public unavailable projection has a readable label', () {
+    expect(
+        WorkerAvailabilityService.profileLabel({
+          'availabilityStatus': 'unavailable',
+          'availableFrom': Timestamp.fromDate(DateTime.utc(2026, 10, 21)),
+        }),
+        'Unavailable until 20 Oct 2026');
+    expect(
+        WorkerAvailabilityService.profileLabel({
+          'availabilityStatus': 'busy',
+          'availableFrom': Timestamp.fromDate(DateTime.utc(2026, 10, 21)),
+        }),
+        'Busy until 20 Oct 2026');
+  });
+
   test('busy and not looking clear obsolete dates', () {
     for (final status in [
       WorkerAvailability.busy,
