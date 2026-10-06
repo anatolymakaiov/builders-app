@@ -308,6 +308,8 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
             ? WebTalentPage(
                 key: ValueKey('portrait-talent:${widget.user.uid}'),
                 employerId: widget.user.uid,
+                onOpenBilling: () =>
+                    _openAccount(WebAccountDestination.billing),
               )
             : const SizedBox.shrink(),
         PortraitWebSection.opportunities => widget.role == 'worker'

@@ -6,9 +6,10 @@ const {
   invitationId, closureStatus, eligibleWorker, displayFields,
   ACTIVE_STATUSES,
 } = require("./vacancy_invitation_policy");
+const {PLANS, resolveEmployerEntitlements} = require("./employer_entitlements");
 
-const MAX_BATCH = 20;
-const DAILY_LIMIT = 100;
+const MAX_BATCH = Math.max(...Object.values(PLANS)
+  .map((plan) => plan.invitationBatchLimit));
 const timestamp = () => admin.firestore.FieldValue.serverTimestamp();
 
 function isActiveAccount(data, role) {
@@ -40,6 +41,8 @@ async function inviteWorkers(db, uid, input, now = new Date()) {
   const jobRef = db.collection("jobs").doc(vacancyId);
   const quotaRef = db.collection("vacancy_invitation_quotas")
     .doc(`${uid}_${now.toISOString().slice(0, 10)}`);
+  const month = now.toISOString().slice(0, 7).replace("-", "");
+  const usageRef = db.collection("employer_usage").doc(`${uid}_${month}`);
   const invitationRefs = workerIds.map((workerId) =>
     db.collection("vacancy_invitations").doc(invitationId(vacancyId, workerId)));
   const discoveryRefs = workerIds.map((workerId) =>
@@ -51,8 +54,8 @@ async function inviteWorkers(db, uid, input, now = new Date()) {
     const teamQueries = workerIds.map((workerId) => db.collection("applications")
       .where("jobId", "==", vacancyId).where("members", "array-contains", workerId)
       .limit(20));
-    const [employer, job, quota, ...rest] = await Promise.all([
-      tx.get(employerRef), tx.get(jobRef), tx.get(quotaRef),
+    const [employer, job, quota, usage, ...rest] = await Promise.all([
+      tx.get(employerRef), tx.get(jobRef), tx.get(quotaRef), tx.get(usageRef),
       ...discoveryRefs.map((ref) => tx.get(ref)),
       ...invitationRefs.map((ref) => tx.get(ref)),
       ...appliedQueries.map((query) => tx.get(query)),
@@ -60,6 +63,13 @@ async function inviteWorkers(db, uid, input, now = new Date()) {
     ]);
     if (!isActiveAccount(employer.data(), "employer")) {
       throw new HttpsError("permission-denied", "Active employer account required.");
+    }
+    const entitlement = resolveEmployerEntitlements(employer.data(), now);
+    if (!entitlement.canInviteToVacancy) {
+      throw new HttpsError("permission-denied", "Your plan does not include vacancy invitations.");
+    }
+    if (workerIds.length > entitlement.vacancyInviteBatchLimit) {
+      throw new HttpsError("invalid-argument", "Too many workers in one invitation batch.");
     }
     const vacancy = job.data();
     if (!job.exists || vacancy.ownerId !== uid) {
@@ -91,8 +101,12 @@ async function inviteWorkers(db, uid, input, now = new Date()) {
         created++;
       }
     }
-    if (used + created > DAILY_LIMIT) {
+    if (used + created > entitlement.vacancyInviteDailyLimit) {
       throw new HttpsError("resource-exhausted", "Daily invitation limit reached.");
+    }
+    const monthUsed = Number(usage.data()?.vacancyInvitations || 0);
+    if (monthUsed + created > entitlement.vacancyInviteMonthlyLimit) {
+      throw new HttpsError("resource-exhausted", "Monthly invitation allowance reached.");
     }
     for (let index = 0; index < results.length; index++) {
       if (results[index].result !== "invited") continue;
@@ -116,6 +130,10 @@ async function inviteWorkers(db, uid, input, now = new Date()) {
       employerId: uid, date: now.toISOString().slice(0, 10),
       count: used + created, updatedAt: timestamp(),
     });
+    if (created) tx.set(usageRef, {
+      employerId: uid, month, vacancyInvitations: monthUsed + created,
+      updatedAt: timestamp(),
+    }, {merge: true});
     return {created, results};
   });
 }

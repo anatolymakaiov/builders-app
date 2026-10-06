@@ -18,6 +18,7 @@ import '../../../services/job_taxonomy_service.dart';
 import '../../services/web_account_data_service.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_role_identity_service.dart';
+import '../../services/web_employer_entitlements_service.dart';
 import '../../portrait/portrait_employer_presentation.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
@@ -351,6 +352,9 @@ class _BillingView extends StatefulWidget {
 
 class _BillingViewState extends State<_BillingView> {
   final service = WebAccountDataService();
+  final entitlementService = WebEmployerEntitlementsService();
+  WebEmployerEntitlements? entitlements;
+  bool entitlementFailed = false;
   Map<String, dynamic>? overrideBilling;
   Timer? _refreshTimer;
   bool _refreshingBilling = false;
@@ -363,6 +367,7 @@ class _BillingViewState extends State<_BillingView> {
   @override
   void initState() {
     super.initState();
+    _loadEntitlements();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _refresh(showBusy: false);
     });
@@ -375,6 +380,20 @@ class _BillingViewState extends State<_BillingView> {
   void dispose() {
     _refreshTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _loadEntitlements() async {
+    try {
+      final value = await entitlementService.load();
+      if (mounted) {
+        setState(() {
+          entitlements = value;
+          entitlementFailed = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => entitlementFailed = true);
+    }
   }
 
   @override
@@ -394,8 +413,12 @@ class _BillingViewState extends State<_BillingView> {
     final subscriptionEnded = hasMandate &&
         ['cancelled', 'finished', 'paused', 'customer_approval_denied']
             .contains(subscriptionStatus);
-    final plans = BillingService.plansFromBilling(billing);
-    final currentPlan = BillingService.currentPlanId(billing);
+    final plans = entitlements?.plans.isNotEmpty == true
+        ? entitlements!.plans
+        : BillingService.plansFromBilling(billing);
+    final currentPlan = entitlements?.planId.isNotEmpty == true
+        ? entitlements!.planId
+        : BillingService.currentPlanId(billing);
     final totalSlots = BillingService.readInt(
       billing['vacancySlotLimit'] ??
           billing['includedJobSlots'] ??
@@ -491,6 +514,35 @@ class _BillingViewState extends State<_BillingView> {
             BillingService.formatDate(billing['firstPaymentDate'])),
         _InfoRow('Next payment date',
             BillingService.formatDate(billing['nextChargeDate'])),
+        _InfoRow('Current period ends',
+            BillingService.formatDate(billing['currentPeriodEnd'])),
+        if (entitlements == null) ...[
+          if (entitlementFailed)
+            TextButton(
+                onPressed: _loadEntitlements,
+                child: const Text('Could not load feature access. Retry'))
+          else
+            const LinearProgressIndicator(),
+        ] else ...[
+          _InfoRow('Plan access',
+              '${entitlements!.planName} · ${BillingService.formatLabel(entitlements!.status)}'),
+          _InfoRow(
+              'Candidate Search',
+              entitlements!.candidateSearch
+                  ? 'Included'
+                  : 'Growth or Pro required'),
+          _InfoRow('Talent Pool',
+              entitlements!.talentPool ? 'Included' : 'Growth or Pro required'),
+          _InfoRow('Vacancy invitations',
+              '${entitlements!.invitationUsed} used / ${entitlements!.invitationLimit} per month'),
+          _InfoRow(
+              'Talent Outreach',
+              entitlements!.talentOutreach
+                  ? 'Add-on active · ${entitlements!.outreachUsed} / '
+                      '${entitlements!.outreachLimit} reserved credits'
+                  : 'Add-on not active'),
+          const Text('Talent Outreach messaging is not available yet.'),
+        ],
         const SizedBox(height: 18),
         if (!configured && !hasMandate)
           FilledButton.icon(
@@ -567,6 +619,7 @@ class _BillingViewState extends State<_BillingView> {
     try {
       final latest = await service.loadBillingStatus(refresh: refreshProvider);
       if (mounted) setState(() => overrideBilling = latest);
+      if (refreshProvider) await _loadEntitlements();
     } catch (error) {
       debugPrint('WEB BILLING STATUS REFRESH ERROR $error');
       if (showBusy && mounted) {
@@ -638,6 +691,7 @@ class _BillingViewState extends State<_BillingView> {
               BillingService.normalizeBillingDateFields(
                   Map<String, dynamic>.from(result.data as Map)));
         }
+        await _loadEntitlements();
       }
     } catch (error) {
       if (mounted) {
@@ -1699,6 +1753,23 @@ class _PlanCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text('GBP ${(amount / 100).toStringAsFixed(0)}/month'),
             Text('${BillingService.readInt(plan['vacancySlotLimit'])} slots'),
+            if (plan.containsKey('candidateSearch'))
+              Text(plan['candidateSearch'] == true
+                  ? 'Candidate Search included'
+                  : 'Candidate Search locked'),
+            if (plan.containsKey('talentPool'))
+              Text(plan['talentPool'] == true
+                  ? 'Talent Pool included'
+                  : 'Talent Pool locked'),
+            if (plan.containsKey('invitationMonthlyLimit'))
+              Text('${BillingService.readInt(plan['invitationMonthlyLimit'])} '
+                  'vacancy invitations/month'),
+            if (plan.containsKey('advancedEmployerTools'))
+              Text(plan['advancedEmployerTools'] == true
+                  ? 'Advanced tools included'
+                  : 'Advanced tools locked'),
+            if (plan.containsKey('candidateSearch'))
+              const Text('Talent Outreach: separate add-on'),
           ],
         ),
       ),

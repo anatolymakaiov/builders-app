@@ -53,7 +53,8 @@ test("invitation lifecycle in Firestore emulator", {
     .doc(invitationId(vacancyId, workerId));
   try {
     await employer.set({role: "employer", profileComplete: true,
-      companyName: "Construction Ltd"});
+      companyName: "Construction Ltd", billing: {planId: "growth",
+        subscriptionStatus: "active", billingStatus: "active"}});
     await db.collection("users").doc(workerId)
       .set({role: "worker", profileComplete: true});
     await jobRef.set(job);
@@ -65,6 +66,7 @@ test("invitation lifecycle in Firestore emulator", {
       availabilityStatus: "not_looking"});
     await discovery.doc("workerTest005").set(worker);
     await discovery.doc("workerTest006").set(worker);
+    await discovery.doc("workerTest007").set(worker);
     await db.collection("applications").doc("existingApplication001").set({
       jobId: vacancyId, workerId: "workerTest006", status: "pending",
     });
@@ -87,6 +89,8 @@ test("invitation lifecycle in Firestore emulator", {
       {vacancyId, workerIds: [workerId]}, now);
     assert.equal(duplicate.created, 0);
     assert.equal(duplicate.results[0].result, "already_invited");
+    const usageRef = db.collection("employer_usage").doc(`${employerId}_202610`);
+    assert.equal((await usageRef.get()).data().vacancyInvitations, 2);
     const alreadyApplied = await inviteWorkers(db, employerId,
       {vacancyId, workerIds: ["workerTest006"]}, now);
     assert.equal(alreadyApplied.created, 0);
@@ -112,6 +116,16 @@ test("invitation lifecycle in Firestore emulator", {
     const pending = await inviteWorkers(db, employerId,
       {vacancyId, workerIds: ["workerTest005"]}, now);
     assert.equal(pending.created, 1);
+    assert.equal((await usageRef.get()).data().vacancyInvitations, 3);
+    await employer.update({"billing.planId": "starter"});
+    await assert.rejects(inviteWorkers(db, employerId,
+      {vacancyId, workerIds: ["workerTest007"]}, now),
+    {code: "permission-denied"});
+    await employer.update({"billing.planId": "growth"});
+    await usageRef.update({vacancyInvitations: 200});
+    await assert.rejects(inviteWorkers(db, employerId,
+      {vacancyId, workerIds: ["workerTest007"]}, now),
+    {code: "resource-exhausted"});
     await jobRef.update({status: "closed"});
     await closeInvitations(db, vacancyId, (await jobRef.get()).data());
     assert.equal((await appliedRef.get()).data().status, "applied");

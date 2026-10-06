@@ -175,6 +175,7 @@ class _WebShellState extends State<WebShell> {
           ? WebTalentPage(
               key: ValueKey('web-talent:${widget.user.uid}'),
               employerId: widget.user.uid,
+              onOpenBilling: () => _openAccount(WebAccountDestination.billing),
             )
           : const SizedBox.shrink(),
       widget.role == 'worker' && visited.contains(WebSection.opportunities)

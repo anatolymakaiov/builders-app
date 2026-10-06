@@ -32,6 +32,35 @@ service cloud.firestore {
         && get(userPath(uid())).data.get("accountDeleted", false) != true;
     }
 
+    function employerBilling() {
+      return get(userPath(uid())).data.get("billing", {});
+    }
+
+    function employerPaidTalentAccess() {
+      let billing = employerBilling();
+      let plan = billing.get("planId", billing.get("currentPlanId",
+        billing.get("activePlanId", billing.get("currentPlan", ""))));
+      let legacySlots = billing.get("vacancySlotLimit", 0);
+      let status = billing.get("subscriptionStatus",
+        billing.get("trialActive", false) == true
+          || billing.get("trialStatus", "") == "active"
+          ? "trial" : billing.get("billingStatus", "inactive"));
+      let billingStatus = billing.get("billingStatus", "");
+      let trialEnd = billing.get("trialEndsAt", billing.get("trialEndDate", null));
+      let periodEnd = billing.get("currentPeriodEnd", billing.get("activeUntil", null));
+      return isEmployer()
+        && (plan in ["growth", "pro"] || (plan == "" && legacySlots >= 10))
+        && !(billingStatus in ["past_due", "payment_method_required",
+          "suspended", "failed"])
+        && (
+          status == "active"
+          || (status in ["trial", "trialing"] && trialEnd is timestamp
+            && trialEnd > request.time)
+          || (status == "cancelled" && periodEnd is timestamp
+            && periodEnd > request.time)
+        );
+    }
+
     function isWorker() {
       return role() == "worker"
         && registrationComplete(get(userPath(uid())).data)
@@ -350,7 +379,11 @@ service cloud.firestore {
       return [
         "provider",
         "environment",
+        "planId",
+        "planName",
+        "activePlanName",
         "billingStatus",
+        "billingPlanStatus",
         "subscriptionStatus",
         "paymentStatus",
         "directDebitEnabled",
@@ -371,6 +404,7 @@ service cloud.firestore {
         "firstPaymentDate",
         "currentPlan",
         "currentPlanId",
+        "activePlanId",
         "pendingPlan",
         "pendingPlanId",
         "pendingPlanName",
@@ -391,7 +425,12 @@ service cloud.firestore {
 	        "cancelledAt",
 	        "planAmountPence",
 	        "billingInterval",
-	        "vacancySlotLimit",
+        "vacancySlotLimit",
+        "includedJobSlots",
+        "availableJobPosts",
+        "activeUntil",
+        "talentOutreachAddonStatus",
+        "talentOutreachAddonEndsAt",
 	        "occupiedVacancySlots",
 	        "availableVacancySlots",
 	        "paymentActionRequired",
@@ -451,7 +490,9 @@ service cloud.firestore {
         "admin", "isAdmin", "moderator", "isModerator", "permissions",
         "customClaims", "companyId", "employerId", "ownerId",
         "accountOwnerId", "linkedAccountIds", "entitlements",
-        "vacancySlotLimit", "subscriptionStatus", "billingStatus"
+        "vacancySlotLimit", "subscriptionStatus", "billingStatus",
+        "planId", "planName", "activePlanId", "billingPlanStatus",
+        "includedJobSlots", "availableJobPosts", "talentOutreachAddonStatus"
       ]);
     }
 
@@ -515,7 +556,9 @@ service cloud.firestore {
           "admin", "isAdmin", "moderator", "isModerator",
           "permissions", "customClaims", "companyId", "employerId",
           "ownerId", "accountOwnerId", "linkedAccountIds", "entitlements",
-          "vacancySlotLimit", "subscriptionStatus", "billingStatus"
+          "vacancySlotLimit", "subscriptionStatus", "billingStatus",
+          "planId", "planName", "activePlanId", "billingPlanStatus",
+          "includedJobSlots", "availableJobPosts", "talentOutreachAddonStatus"
         ])
         && !request.resource.data.keys().hasAny(["directDebit"])
         && request.resource.data.get("uid", userId) == userId
@@ -613,14 +656,15 @@ service cloud.firestore {
     }
 
     match /public_profiles/{profileId} {
-      allow read: if signedIn();
+      allow get: if signedIn();
+      allow list: if isAdmin() || isWorker() || employerPaidTalentAccess();
       allow create, update, delete: if false;
     }
 
     match /worker_discovery/{workerId} {
       allow get: if isSelf(workerId) || isAdmin()
-        || (isEmployer() && resource.data.discoveryVisible == true);
-      allow list: if isAdmin() || (isEmployer()
+        || (employerPaidTalentAccess() && resource.data.discoveryVisible == true);
+      allow list: if isAdmin() || (employerPaidTalentAccess()
         && resource.data.discoveryVisible == true
         && request.query.limit != null && request.query.limit <= 25);
       allow create, update, delete: if false;
@@ -637,12 +681,19 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /employer_usage/{usageId} {
+      allow get: if isAdmin() || (isEmployer()
+        && resource.data.employerId == uid());
+      allow list, create, update, delete: if false;
+    }
+
     match /employer_talent_pools/{employerId}/workers/{workerId} {
       function ownsTalentPool() {
         return isEmployer() && isSelf(employerId);
       }
-      allow get, list, delete: if ownsTalentPool();
-      allow create: if ownsTalentPool()
+      allow get, list: if ownsTalentPool() && employerPaidTalentAccess();
+      allow delete: if ownsTalentPool();
+      allow create: if ownsTalentPool() && employerPaidTalentAccess()
         && exists(/databases/$(database)/documents/worker_discovery/$(workerId))
         && get(/databases/$(database)/documents/worker_discovery/$(workerId)).data.discoveryVisible == true
         && request.resource.data.keys().hasOnly(["workerId", "savedAt"])

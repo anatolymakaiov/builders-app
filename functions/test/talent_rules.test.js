@@ -20,9 +20,15 @@ test("employer candidate discovery and private Talent Pool", async () => {
     await env.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
       await db.doc("users/employerA").set({role: "employer",
-        companyName: "A", profileComplete: true});
+        companyName: "A", profileComplete: true,
+        billing: {planId: "growth", subscriptionStatus: "active"}});
       await db.doc("users/employerB").set({role: "employer",
-        companyName: "B", profileComplete: true});
+        companyName: "B", profileComplete: true,
+        billing: {planId: "starter", subscriptionStatus: "active"}});
+      await db.doc("users/employerExpired").set({role: "employer",
+        companyName: "Expired", profileComplete: true,
+        billing: {planId: "growth", subscriptionStatus: "expired"}});
+      await db.doc("users/admin").set({role: "admin"});
       await db.doc("users/worker").set({role: "worker",
         name: "Worker", profileComplete: true, phone: "+447700900123"});
       await db.doc("worker_discovery/worker").set({workerId: "worker",
@@ -30,10 +36,17 @@ test("employer candidate discovery and private Talent Pool", async () => {
         displayNameShort: "Worker W."});
       await db.doc("worker_discovery/hidden").set({workerId: "hidden",
         discoveryVisible: false, tradeIds: ["dryliner"]});
+      await db.doc("public_profiles/worker").set({uid: "worker",
+        role: "worker", trade: "Dryliner", availabilityStatus: "available_now"});
+      await db.doc("employer_usage/employerA_202610").set({
+        employerId: "employerA", month: "202610", vacancyInvitations: 3,
+      });
     });
     const a = env.authenticatedContext("employerA").firestore();
     const b = env.authenticatedContext("employerB").firestore();
     const worker = env.authenticatedContext("worker").firestore();
+    const expired = env.authenticatedContext("employerExpired").firestore();
+    const admin = env.authenticatedContext("admin").firestore();
     const guest = env.unauthenticatedContext().firestore();
     const visibleQuery = (db) => db.collection("worker_discovery")
       .where("discoveryVisible", "==", true)
@@ -52,6 +65,28 @@ test("employer candidate discovery and private Talent Pool", async () => {
     await assertSucceeds(worker.doc("worker_discovery/worker").get());
     await assertFails(guest.doc("worker_discovery/worker").get());
     await assertFails(a.doc("worker_discovery/worker").set({phone: "secret"}));
+    await assertFails(visibleQuery(b).get());
+    await assertFails(visibleQuery(expired).get());
+    await assertFails(b.collection("public_profiles").limit(25).get());
+    await assertFails(expired.collection("public_profiles").limit(25).get());
+    await assertSucceeds(b.doc("public_profiles/worker").get());
+    await assertSucceeds(a.collection("public_profiles").limit(25).get());
+    await assertFails(b.doc("worker_discovery/worker").get());
+    await assertSucceeds(admin.doc("worker_discovery/worker").get());
+    await assertSucceeds(a.doc("employer_usage/employerA_202610").get());
+    await assertFails(b.doc("employer_usage/employerA_202610").get());
+    await assertFails(a.doc("employer_usage/employerA_202610")
+      .update({vacancyInvitations: 0}));
+    await assertFails(a.doc("users/employerA")
+      .update({billing: {planId: "pro", subscriptionStatus: "active"}}));
+    await assertFails(a.doc("users/employerA")
+      .update({billing: {vacancySlotLimit: 25}}));
+    await assertFails(a.doc("users/employerA")
+      .update({billing: {talentOutreachAddonStatus: "active"}}));
+    await assertSucceeds(admin.doc("users/employerA")
+      .update({"billing.planId": "pro"}));
+    await assertSucceeds(a.doc("users/employerA")
+      .update({"billing.billingEmail": "billing@example.com"}));
 
     const pool = a.doc("employer_talent_pools/employerA/workers/worker");
     await assertSucceeds(pool.set({workerId: "worker",
@@ -66,6 +101,8 @@ test("employer candidate discovery and private Talent Pool", async () => {
     await assertFails(a.doc("employer_talent_pools/employerA/workers/hidden")
       .set({workerId: "hidden", savedAt: new Date()}));
     await assertFails(b.doc("employer_talent_pools/employerA/workers/worker").get());
+    await assertFails(b.doc("employer_talent_pools/employerB/workers/worker")
+      .set({workerId: "worker", savedAt: new Date()}));
     await assertFails(worker.doc("employer_talent_pools/employerA/workers/worker").get());
     await assertFails(a.doc("users/worker").get());
     await assertSucceeds(pool.delete());

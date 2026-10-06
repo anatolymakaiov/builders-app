@@ -26,12 +26,51 @@ const {publicProfile, workerDiscovery} = require("./profile_projections");
 const {identityInUse} = require("./registration_identity_lookup");
 const {inviteWorkers, respondToInvitation, closeInvitations,
   markApplicationInvitations} = require("./vacancy_invitations");
+const {PLANS: STROYKA_COMMERCIAL_PLANS, planForBilling,
+  resolveEmployerEntitlements} =
+  require("./employer_entitlements");
 
 admin.initializeApp();
 
 exports.inviteWorkersToVacancy = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
   return inviteWorkers(admin.firestore(), request.auth.uid, request.data);
+});
+
+exports.getEmployerEntitlements = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const uid = request.auth.uid;
+  const db = admin.firestore();
+  const now = new Date();
+  const month = now.toISOString().slice(0, 7).replace("-", "");
+  const [user, usage] = await Promise.all([
+    db.collection("users").doc(uid).get(),
+    db.collection("employer_usage").doc(`${uid}_${month}`).get(),
+  ]);
+  if (!user.exists || !["employer", "company"].includes(user.data()?.role)) {
+    throw new HttpsError("permission-denied", "Employer account required.");
+  }
+  return {
+    ...resolveEmployerEntitlements(user.data(), now),
+    plans: publicPlanList(),
+    usage: {
+      vacancyInvitations: Number(usage.data()?.vacancyInvitations || 0),
+      talentOutreach: Number(usage.data()?.talentOutreach || 0),
+      month,
+    },
+  };
+});
+
+exports.createTalentOutreach = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const user = await admin.firestore().collection("users")
+    .doc(request.auth.uid).get();
+  if (!user.exists ||
+      !resolveEmployerEntitlements(user.data()).canUseTalentOutreach) {
+    throw new HttpsError("permission-denied", "Talent Outreach add-on required.");
+  }
+  // No worker outreach consent model exists yet. Fail closed, without messages or charges.
+  throw new HttpsError("failed-precondition", "Talent Outreach is not available yet.");
 });
 
 exports.respondToVacancyInvitation = onCall(async (request) => {
@@ -370,33 +409,6 @@ const CONFIGURED_MANDATE_STATUSES = new Set([
   "active",
   "reinstated",
 ]);
-const STROYKA_COMMERCIAL_PLANS = {
-  starter: {
-    id: "starter",
-    name: "Starter",
-    amountPence: 4900,
-    currency: "GBP",
-    interval: "monthly",
-    vacancySlotLimit: 3,
-  },
-  growth: {
-    id: "growth",
-    name: "Growth",
-    amountPence: 9900,
-    currency: "GBP",
-    interval: "monthly",
-    vacancySlotLimit: 10,
-  },
-  pro: {
-    id: "pro",
-    name: "Pro",
-    amountPence: 19900,
-    currency: "GBP",
-    interval: "monthly",
-    vacancySlotLimit: 25,
-  },
-};
-
 const DEFAULT_NOTIFICATION_PREFERENCES = {
   enabled: true,
   jobAlerts: true,
@@ -2023,13 +2035,7 @@ function billingBlocksNewVacancy(billing) {
 }
 
 function billingPlan(billing) {
-  return planForId(
-    billing.planId ||
-      billing.currentPlanId ||
-      billing.activePlanId ||
-      billing.currentPlan ||
-      billing.pendingPlan,
-  );
+  return planForBilling(billing);
 }
 
 function timestampToDate(value) {
@@ -2404,7 +2410,8 @@ async function assertEmployerCanUseVacancySlot(employerId, transaction) {
   if (!plan) {
     throw new HttpsError("failed-precondition", "Choose a STROYKA billing plan before publishing vacancies.");
   }
-  if (billingBlocksNewVacancy(billing) || !isActiveBillingEntitlement(billing)) {
+  if (billingBlocksNewVacancy(billing) ||
+      !resolveEmployerEntitlements(user).canPostVacancies) {
     throw new HttpsError("failed-precondition", "Billing must be active before publishing a new vacancy.");
   }
 

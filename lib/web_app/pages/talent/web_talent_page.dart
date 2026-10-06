@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -6,14 +8,17 @@ import '../../../models/job.dart';
 import '../../../services/vacancy_invitation_service.dart';
 import '../../../services/worker_availability_service.dart';
 import '../../services/web_talent_service.dart';
+import '../../services/web_employer_entitlements_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_remote_image.dart';
 
 class WebTalentPage extends StatefulWidget {
-  const WebTalentPage({super.key, required this.employerId});
+  const WebTalentPage(
+      {super.key, required this.employerId, this.onOpenBilling});
 
   final String employerId;
+  final VoidCallback? onOpenBilling;
 
   @override
   State<WebTalentPage> createState() => _WebTalentPageState();
@@ -27,6 +32,10 @@ class _WebTalentPageState extends State<WebTalentPage> {
   Set<String> saved = {};
   final Set<String> selectedWorkerIds = {};
   final invitationService = VacancyInvitationService();
+  final entitlementService = WebEmployerEntitlementsService();
+  Timer? entitlementRefresh;
+  WebEmployerEntitlements? entitlements;
+  bool entitlementFailed = false;
   bool inviting = false;
   bool poolMode = false;
   bool loading = false;
@@ -42,6 +51,37 @@ class _WebTalentPageState extends State<WebTalentPage> {
   int requestId = 0;
 
   @override
+  void initState() {
+    super.initState();
+    _loadEntitlements();
+    entitlementRefresh = Timer.periodic(
+      const Duration(minutes: 1), (_) => _loadEntitlements());
+  }
+
+  Future<void> _loadEntitlements() async {
+    final uid = widget.employerId;
+    try {
+      final value = await entitlementService.load();
+      if (mounted && uid == widget.employerId) {
+        setState(() {
+          entitlements = value;
+          entitlementFailed = false;
+          if (poolMode ? !value.talentPool : !value.candidateSearch) {
+            candidates = [];
+            selectedWorkerIds.clear();
+            selectedId = null;
+            requestId++;
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted && uid == widget.employerId) {
+        setState(() => entitlementFailed = true);
+      }
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant WebTalentPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.employerId != widget.employerId) {
@@ -54,12 +94,16 @@ class _WebTalentPageState extends State<WebTalentPage> {
       searched = false;
       loading = false;
       requestId++;
+      entitlements = null;
+      entitlementFailed = false;
+      _loadEntitlements();
     }
   }
 
   @override
   void dispose() {
     requestId++;
+    entitlementRefresh?.cancel();
     tradeController.dispose();
     nameController.dispose();
     locationController.dispose();
@@ -67,6 +111,12 @@ class _WebTalentPageState extends State<WebTalentPage> {
   }
 
   Future<void> _search({bool more = false}) async {
+    if (entitlements == null ||
+        (poolMode
+            ? !entitlements!.talentPool
+            : !entitlements!.candidateSearch)) {
+      return;
+    }
     final enteredTrade = tradeController.text.trim();
     final selectedTrade = more ? filters?.tradeId ?? '' : enteredTrade;
     final role = selectedTrade.isEmpty
@@ -157,7 +207,7 @@ class _WebTalentPageState extends State<WebTalentPage> {
       loading = false;
       requestId++;
     });
-    if (pool) _search();
+    if (pool && entitlements?.talentPool == true) _search();
   }
 
   Future<void> _toggleSave(WebTalentCandidate candidate) async {
@@ -214,6 +264,11 @@ class _WebTalentPageState extends State<WebTalentPage> {
   }
 
   Future<void> _inviteSelected() async {
+    if (entitlements?.vacancyInvites != true ||
+        entitlements!.invitationUsed >= entitlements!.invitationLimit) {
+      setState(() => error = 'Monthly invitation allowance reached.');
+      return;
+    }
     final chosen = candidates
         .where((item) => selectedWorkerIds.contains(item.id))
         .toList(growable: false);
@@ -296,6 +351,7 @@ class _WebTalentPageState extends State<WebTalentPage> {
         '$created invitation(s) sent.'
         '${outcomes.isEmpty ? '' : ' Skipped: ${outcomes.join(', ').replaceAll('_', ' ')}.'}',
       )));
+      if (created > 0) _loadEntitlements();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -309,6 +365,19 @@ class _WebTalentPageState extends State<WebTalentPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (entitlements == null) {
+      return Center(
+        child: entitlementFailed
+            ? Column(mainAxisSize: MainAxisSize.min, children: [
+                const Text('Could not load plan access.'),
+                TextButton(
+                    onPressed: _loadEntitlements, child: const Text('Retry')),
+              ])
+            : const CircularProgressIndicator(),
+      );
+    }
+    final locked =
+        poolMode ? !entitlements!.talentPool : !entitlements!.candidateSearch;
     final selected = selectedId == null
         ? null
         : candidates.where((item) => item.id == selectedId).firstOrNull;
@@ -335,210 +404,238 @@ class _WebTalentPageState extends State<WebTalentPage> {
               onSelectionChanged: (value) => _switchMode(value.first),
             ),
             const SizedBox(height: 16),
-            LayoutBuilder(builder: (context, bounds) {
-              final width = bounds.maxWidth < 640 ? bounds.maxWidth : 245.0;
-              return Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (poolMode)
+            if (locked) ...[
+              Text(poolMode
+                  ? 'Talent Pool is available on Growth and Pro.'
+                  : 'Candidate Search is available on Growth and Pro.'),
+              if (widget.onOpenBilling != null)
+                TextButton.icon(
+                  onPressed: widget.onOpenBilling,
+                  icon: const Icon(Icons.workspace_premium_outlined),
+                  label: const Text('View plans'),
+                ),
+            ] else ...[
+              Text('Vacancy invitations: ${entitlements!.invitationUsed} / '
+                  '${entitlements!.invitationLimit} this month'),
+              const SizedBox(height: 8),
+              Text(entitlements!.talentOutreach
+                  ? 'Talent Outreach add-on: ${entitlements!.outreachUsed} / '
+                      '${entitlements!.outreachLimit} credits reserved. '
+                      'Messaging is not available yet.'
+                  : 'Talent Outreach: add-on required. Messaging is not available yet.'),
+              const SizedBox(height: 12),
+              LayoutBuilder(builder: (context, bounds) {
+                final width = bounds.maxWidth < 640 ? bounds.maxWidth : 245.0;
+                return Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (poolMode)
+                      SizedBox(
+                        width: width,
+                        height: WebToolbar.controlHeight,
+                        child: TextField(
+                          controller: nameController,
+                          onSubmitted: (_) => _search(),
+                          decoration: const InputDecoration(
+                            hintText: 'Search saved workers by name',
+                            prefixIcon: Icon(Icons.person_search_outlined),
+                          ),
+                        ),
+                      ),
+                    SizedBox(
+                      width: width,
+                      height: WebToolbar.controlHeight,
+                      child: Autocomplete<ConstructionRole>(
+                        displayStringForOption: (role) => role.canonical,
+                        optionsBuilder: (value) => value.text.trim().isEmpty
+                            ? const Iterable<ConstructionRole>.empty()
+                            : JobTaxonomyService.suggestions(value.text),
+                        onSelected: (role) =>
+                            tradeController.text = role.canonical,
+                        fieldViewBuilder:
+                            (context, controller, focusNode, onSubmit) {
+                          return TextField(
+                            controller: controller,
+                            focusNode: focusNode,
+                            onChanged: (value) => tradeController.text = value,
+                            onSubmitted: (_) => _search(),
+                            decoration: InputDecoration(
+                              hintText: poolMode
+                                  ? 'Trade (optional)'
+                                  : 'Trade, e.g. fixer',
+                              prefixIcon:
+                                  const Icon(Icons.construction_outlined),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                     SizedBox(
                       width: width,
                       height: WebToolbar.controlHeight,
                       child: TextField(
-                        controller: nameController,
+                        controller: locationController,
                         onSubmitted: (_) => _search(),
                         decoration: const InputDecoration(
-                          hintText: 'Search saved workers by name',
-                          prefixIcon: Icon(Icons.person_search_outlined),
+                          hintText: 'City or region',
+                          prefixIcon: Icon(Icons.location_on_outlined),
                         ),
                       ),
                     ),
-                  SizedBox(
-                    width: width,
-                    height: WebToolbar.controlHeight,
-                    child: Autocomplete<ConstructionRole>(
-                      displayStringForOption: (role) => role.canonical,
-                      optionsBuilder: (value) => value.text.trim().isEmpty
-                          ? const Iterable<ConstructionRole>.empty()
-                          : JobTaxonomyService.suggestions(value.text),
-                      onSelected: (role) =>
-                          tradeController.text = role.canonical,
-                      fieldViewBuilder:
-                          (context, controller, focusNode, onSubmit) {
-                        return TextField(
-                          controller: controller,
-                          focusNode: focusNode,
-                          onChanged: (value) => tradeController.text = value,
-                          onSubmitted: (_) => _search(),
-                          decoration: InputDecoration(
-                            hintText: poolMode
-                                ? 'Trade (optional)'
-                                : 'Trade, e.g. fixer',
-                            prefixIcon: const Icon(Icons.construction_outlined),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    height: WebToolbar.controlHeight,
-                    child: TextField(
-                      controller: locationController,
-                      onSubmitted: (_) => _search(),
-                      decoration: const InputDecoration(
-                        hintText: 'City or region',
-                        prefixIcon: Icon(Icons.location_on_outlined),
+                    SizedBox(
+                      width: width,
+                      height: WebToolbar.controlHeight,
+                      child: DropdownButtonFormField<WorkerAvailability?>(
+                        initialValue: availability,
+                        decoration:
+                            const InputDecoration(labelText: 'Availability'),
+                        items: const [
+                          DropdownMenuItem(value: null, child: Text('All')),
+                          DropdownMenuItem(
+                              value: WorkerAvailability.availableNow,
+                              child: Text('Available now')),
+                          DropdownMenuItem(
+                              value: WorkerAvailability.availableFrom,
+                              child: Text('Available from')),
+                          DropdownMenuItem(
+                              value: WorkerAvailability.busy,
+                              child: Text('Busy')),
+                          DropdownMenuItem(
+                              value: WorkerAvailability.notLooking,
+                              child: Text('Not looking')),
+                          DropdownMenuItem(
+                              value: WorkerAvailability.unknown,
+                              child: Text('Unknown / stale')),
+                        ],
+                        onChanged: (value) =>
+                            setState(() => availability = value),
                       ),
                     ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    height: WebToolbar.controlHeight,
-                    child: DropdownButtonFormField<WorkerAvailability?>(
-                      initialValue: availability,
-                      decoration:
-                          const InputDecoration(labelText: 'Availability'),
-                      items: const [
-                        DropdownMenuItem(value: null, child: Text('All')),
-                        DropdownMenuItem(
-                            value: WorkerAvailability.availableNow,
-                            child: Text('Available now')),
-                        DropdownMenuItem(
-                            value: WorkerAvailability.availableFrom,
-                            child: Text('Available from')),
-                        DropdownMenuItem(
-                            value: WorkerAvailability.busy,
-                            child: Text('Busy')),
-                        DropdownMenuItem(
-                            value: WorkerAvailability.notLooking,
-                            child: Text('Not looking')),
-                        DropdownMenuItem(
-                            value: WorkerAvailability.unknown,
-                            child: Text('Unknown / stale')),
-                      ],
-                      onChanged: (value) =>
-                          setState(() => availability = value),
+                    FilterChip(
+                      label: const Text('Allows vacancy invitations'),
+                      selected: invitesOnly,
+                      onSelected: (value) =>
+                          setState(() => invitesOnly = value),
                     ),
-                  ),
-                  FilterChip(
-                    label: const Text('Allows vacancy invitations'),
-                    selected: invitesOnly,
-                    onSelected: (value) => setState(() => invitesOnly = value),
-                  ),
-                  SizedBox(
-                    height: WebToolbar.controlHeight,
-                    child: FilledButton.icon(
-                      onPressed: loading ? null : () => _search(),
-                      icon: const Icon(Icons.search),
-                      label: const Text('Search'),
+                    SizedBox(
+                      height: WebToolbar.controlHeight,
+                      child: FilledButton.icon(
+                        onPressed: loading ? null : () => _search(),
+                        icon: const Icon(Icons.search),
+                        label: const Text('Search'),
+                      ),
                     ),
-                  ),
-                ],
-              );
-            }),
-            if (error != null) ...[
-              const SizedBox(height: 12),
-              Text(error!, style: const TextStyle(color: WebTheme.danger)),
-            ],
-            if (loading) const LinearProgressIndicator(),
-            if (candidates.isNotEmpty) ...[
-              Wrap(
-                spacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text('${selectedWorkerIds.length} selected'),
-                  TextButton(
-                      onPressed: () => setState(() {
-                            selectedWorkerIds.clear();
-                            for (final candidate in candidates) {
-                              if (_selectable(candidate) &&
-                                  selectedWorkerIds.length < 20) {
-                                selectedWorkerIds.add(candidate.id);
+                  ],
+                );
+              }),
+              if (error != null) ...[
+                const SizedBox(height: 12),
+                Text(error!, style: const TextStyle(color: WebTheme.danger)),
+              ],
+              if (loading) const LinearProgressIndicator(),
+              if (candidates.isNotEmpty) ...[
+                Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text('${selectedWorkerIds.length} selected'),
+                    TextButton(
+                        onPressed: () => setState(() {
+                              selectedWorkerIds.clear();
+                              for (final candidate in candidates) {
+                                if (_selectable(candidate) &&
+                                    selectedWorkerIds.length < 20) {
+                                  selectedWorkerIds.add(candidate.id);
+                                }
                               }
-                            }
-                          }),
-                      child: const Text('Select visible eligible')),
-                  TextButton(
-                      onPressed: selectedWorkerIds.isEmpty
+                            }),
+                        child: const Text('Select visible eligible')),
+                    TextButton(
+                        onPressed: selectedWorkerIds.isEmpty
+                            ? null
+                            : () => setState(selectedWorkerIds.clear),
+                        child: const Text('Clear')),
+                    FilledButton.icon(
+                      onPressed: selectedWorkerIds.isEmpty ||
+                              inviting ||
+                              !entitlements!.vacancyInvites ||
+                              entitlements!.invitationUsed >=
+                                  entitlements!.invitationLimit
                           ? null
-                          : () => setState(selectedWorkerIds.clear),
-                      child: const Text('Clear')),
-                  FilledButton.icon(
-                    onPressed: selectedWorkerIds.isEmpty || inviting
-                        ? null
-                        : _inviteSelected,
-                    icon: const Icon(Icons.send_outlined),
-                    label: const Text('Invite to vacancy'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-            ],
-            const SizedBox(height: 16),
-            if (!searched)
-              Text(
-                  poolMode
-                      ? 'Your saved workers appear here.'
-                      : 'Choose a trade to find workers.',
-                  style: const TextStyle(color: WebTheme.muted)),
-            if (searched && candidates.isEmpty && !loading)
-              Text(
-                  hasMore
-                      ? 'No matches in this batch. Load more to continue.'
-                      : 'No workers match these filters.',
-                  style: const TextStyle(color: WebTheme.muted)),
-            if (candidates.isNotEmpty)
-              LayoutBuilder(
-                  builder: (context, bounds) => Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                              child: Column(children: [
-                            for (final candidate in candidates)
-                              _CandidateCard(
-                                candidate: candidate,
-                                checked:
-                                    selectedWorkerIds.contains(candidate.id),
-                                selectable: _selectable(candidate) &&
-                                    (selectedWorkerIds.length < 20 ||
-                                        selectedWorkerIds
-                                            .contains(candidate.id)),
-                                onChecked: (checked) => setState(() {
-                                  if (checked == true) {
-                                    selectedWorkerIds.add(candidate.id);
-                                  } else {
-                                    selectedWorkerIds.remove(candidate.id);
-                                  }
-                                }),
-                                saved: saved.contains(candidate.id),
-                                selected: selectedId == candidate.id,
-                                onOpen: () => bounds.maxWidth < 800
-                                    ? _showDetail(candidate)
-                                    : setState(() => selectedId = candidate.id),
-                                onSave: () => _toggleSave(candidate),
-                              ),
-                          ])),
-                          if (bounds.maxWidth >= 800 && selected != null) ...[
-                            const SizedBox(width: 16),
-                            SizedBox(
-                                width: 340,
-                                child: _CandidateDetail(
-                                  candidate: selected,
-                                  saved: saved.contains(selected.id),
-                                  onSave: () => _toggleSave(selected),
-                                )),
+                          : _inviteSelected,
+                      icon: const Icon(Icons.send_outlined),
+                      label: const Text('Invite to vacancy'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+              const SizedBox(height: 16),
+              if (!searched)
+                Text(
+                    poolMode
+                        ? 'Your saved workers appear here.'
+                        : 'Choose a trade to find workers.',
+                    style: const TextStyle(color: WebTheme.muted)),
+              if (searched && candidates.isEmpty && !loading)
+                Text(
+                    hasMore
+                        ? 'No matches in this batch. Load more to continue.'
+                        : 'No workers match these filters.',
+                    style: const TextStyle(color: WebTheme.muted)),
+              if (candidates.isNotEmpty)
+                LayoutBuilder(
+                    builder: (context, bounds) => Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                                child: Column(children: [
+                              for (final candidate in candidates)
+                                _CandidateCard(
+                                  candidate: candidate,
+                                  checked:
+                                      selectedWorkerIds.contains(candidate.id),
+                                  selectable: _selectable(candidate) &&
+                                      (selectedWorkerIds.length < 20 ||
+                                          selectedWorkerIds
+                                              .contains(candidate.id)),
+                                  onChecked: (checked) => setState(() {
+                                    if (checked == true) {
+                                      selectedWorkerIds.add(candidate.id);
+                                    } else {
+                                      selectedWorkerIds.remove(candidate.id);
+                                    }
+                                  }),
+                                  saved: saved.contains(candidate.id),
+                                  selected: selectedId == candidate.id,
+                                  onOpen: () => bounds.maxWidth < 800
+                                      ? _showDetail(candidate)
+                                      : setState(
+                                          () => selectedId = candidate.id),
+                                  onSave: () => _toggleSave(candidate),
+                                ),
+                            ])),
+                            if (bounds.maxWidth >= 800 && selected != null) ...[
+                              const SizedBox(width: 16),
+                              SizedBox(
+                                  width: 340,
+                                  child: _CandidateDetail(
+                                    candidate: selected,
+                                    saved: saved.contains(selected.id),
+                                    onSave: () => _toggleSave(selected),
+                                  )),
+                            ],
                           ],
-                        ],
-                      )),
-            if (hasMore)
-              TextButton.icon(
-                onPressed: loading ? null : () => _search(more: true),
-                icon: const Icon(Icons.expand_more),
-                label: const Text('Load more'),
-              ),
+                        )),
+              if (hasMore)
+                TextButton.icon(
+                  onPressed: loading ? null : () => _search(more: true),
+                  icon: const Icon(Icons.expand_more),
+                  label: const Text('Load more'),
+                ),
+            ],
           ],
         ),
       ),
