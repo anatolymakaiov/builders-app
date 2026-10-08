@@ -31,8 +31,72 @@ const {PLANS: STROYKA_COMMERCIAL_PLANS, planForBilling,
   require("./employer_entitlements");
 const {createAcceptedAssignments} = require("./site_assignments");
 const {recomputeWorkerAvailability} = require("./recompute_worker_availability");
+const {validOffsets, syncReminders, deliverDueReminders} =
+  require("./operational_reminders");
 
 admin.initializeApp();
+
+exports.syncSiteEventReminders = onDocumentWritten("site_events/{eventId}", async (event) => {
+  await syncReminders(admin.firestore(), "site_event", event.params.eventId,
+    event.data?.after?.data(), admin.firestore.FieldValue);
+});
+
+exports.syncAssignmentReminders = onDocumentWritten("assignments/{assignmentId}", async (event) => {
+  await syncReminders(admin.firestore(), "assignment", event.params.assignmentId,
+    event.data?.after?.data(), admin.firestore.FieldValue);
+});
+
+exports.deliverOperationalReminders = onSchedule({
+  schedule: "every 1 minutes", timeZone: "Etc/UTC",
+}, async () => {
+  await deliverDueReminders(admin.firestore(), new Date(), admin.firestore.FieldValue);
+});
+
+exports.setAssignmentReminderPreferences = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const {assignmentId, startOffsets, finishOffsets} = request.data || {};
+  if (typeof assignmentId !== "string" ||
+      !/^[A-Za-z0-9_-]{10,150}$/.test(assignmentId) ||
+      !validOffsets(startOffsets) || !validOffsets(finishOffsets)) {
+    throw new HttpsError("invalid-argument", "Invalid reminder preferences.");
+  }
+  const db = admin.firestore();
+  const [user, assignment] = await Promise.all([
+    db.collection("users").doc(request.auth.uid).get(),
+    db.collection("assignments").doc(assignmentId).get(),
+  ]);
+  if (!["employer", "company"].includes(user.data()?.role) ||
+      assignment.data()?.employerContextId !== request.auth.uid) {
+    throw new HttpsError("permission-denied", "Assignment owner required.");
+  }
+  await assignment.ref.update({startReminderOffsetsMinutes: startOffsets,
+    finishReminderOffsetsMinutes: finishOffsets,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()});
+  return {updated: true};
+});
+
+exports.getAssignmentReminderPreferences = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const assignmentId = request.data?.assignmentId;
+  if (typeof assignmentId !== "string" ||
+      !/^[A-Za-z0-9_-]{10,150}$/.test(assignmentId)) {
+    throw new HttpsError("invalid-argument", "Invalid assignment.");
+  }
+  const db = admin.firestore();
+  const [user, assignment] = await Promise.all([
+    db.collection("users").doc(request.auth.uid).get(),
+    db.collection("assignments").doc(assignmentId).get(),
+  ]);
+  if (!["employer", "company"].includes(user.data()?.role) ||
+      assignment.data()?.employerContextId !== request.auth.uid) {
+    throw new HttpsError("permission-denied", "Assignment owner required.");
+  }
+  const data = assignment.data();
+  return {
+    startOffsets: data.startReminderOffsetsMinutes ?? [2880, 1440],
+    finishOffsets: data.finishReminderOffsetsMinutes ?? [1440],
+  };
+});
 
 exports.inviteWorkersToVacancy = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");

@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -74,6 +75,7 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
   int applicationsRequest = 0;
   int chatsRequest = 0;
   String? calendarSiteId;
+  DateTime? calendarTargetDate;
   String? selectedSiteId;
   int siteRequestId = 0;
   PortraitWebSection calendarReturn = PortraitWebSection.jobs;
@@ -83,6 +85,7 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
   PortraitWebSection workforceReturn = PortraitWebSection.jobs;
   WorkforceTalentRequest? workforceTalentRequest;
   int talentRequestId = 0;
+  String? postJobSiteId;
 
   @override
   void initState() {
@@ -113,6 +116,7 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
       applicationJobId = null;
       chatId = null;
       calendarSiteId = null;
+      calendarTargetDate = null;
       selectedSiteId = null;
       siteRequestId = 0;
       calendarReturn = PortraitWebSection.jobs;
@@ -371,6 +375,8 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
                 initialSiteId: selectedSiteId,
                 onOpenCalendar: _openSiteCalendar,
                 onOpenWorkforce: _openWorkforce,
+                onFindWorkers: _openTalentFromWorkforce,
+                onAddVacancy: _openPostJobForSite,
               )
             : const SizedBox.shrink(),
         PortraitWebSection.workforce => widget.role == 'employer'
@@ -390,6 +396,7 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
             uid: widget.user.uid,
             employer: widget.role == 'employer',
             initialSiteId: calendarSiteId,
+            initialDate: calendarTargetDate,
             refreshToken: calendarRefresh,
             onOpenJob: _openJob,
             onOpenSite: _openSite,
@@ -459,6 +466,7 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
           ),
         _PortraitOverlay.postJob => WebPostJobPage(
             userId: widget.user.uid,
+            initialSiteId: postJobSiteId,
             onCancel: _closeOverlay,
             onDone: (_) => setState(() {
               overlay = null;
@@ -493,6 +501,7 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
   void _openSiteCalendar(String siteId) => setState(() {
         calendarReturn = selected;
         calendarSiteId = siteId;
+        calendarTargetDate = null;
         calendarRefresh++;
         _activate(PortraitWebSection.calendar);
       });
@@ -601,7 +610,14 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
         _activate(PortraitWebSection.chats);
       });
 
-  void _openPostJob() => setState(() => overlay = _PortraitOverlay.postJob);
+  void _openPostJob() => setState(() {
+        postJobSiteId = null;
+        overlay = _PortraitOverlay.postJob;
+      });
+  void _openPostJobForSite(String siteId) => setState(() {
+        postJobSiteId = siteId;
+        overlay = _PortraitOverlay.postJob;
+      });
   void _openNotifications() =>
       setState(() => overlay = _PortraitOverlay.notifications);
   void _openAccount(WebAccountDestination destination) => setState(() {
@@ -618,6 +634,7 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
     if (action == 'calendar') {
       setState(() {
         if (selected != PortraitWebSection.calendar) calendarReturn = selected;
+        calendarTargetDate = null;
         calendarRefresh++;
         _activate(PortraitWebSection.calendar);
       });
@@ -666,6 +683,22 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
     final data = notification.data;
     final type =
         (data['targetType'] ?? data['type'] ?? '').toString().toLowerCase();
+    if (type == 'calendar') {
+      final reminderSiteId = _cleanId(data['siteId']);
+      final eventAt = data['eventAt'];
+      if (reminderSiteId != null) {
+        _openSiteCalendar(reminderSiteId);
+      } else {
+        _selectMenuAction('calendar');
+      }
+      if (eventAt is Timestamp) {
+        setState(() {
+          calendarTargetDate = eventAt.toDate();
+          calendarRefresh++;
+        });
+      }
+      return;
+    }
     if (type == 'vacancy_invitation' && widget.role == 'worker') {
       _selectSection(PortraitWebSection.opportunities);
       return;

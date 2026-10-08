@@ -14,6 +14,47 @@ import '../../widgets/web_page_container.dart';
 import '../../widgets/web_remote_image.dart';
 import '../../services/workforce_talent_request.dart';
 
+class TalentInviteChoice {
+  const TalentInviteChoice(this.job, this.allowRelevanceMismatch);
+  final Job job;
+  final bool allowRelevanceMismatch;
+}
+
+class TalentInviteAssessment {
+  const TalentInviteAssessment(this.hardBlock, this.warnings);
+  final String? hardBlock;
+  final List<String> warnings;
+  bool get recommended => hardBlock == null && warnings.isEmpty;
+}
+
+TalentInviteAssessment assessTalentInvite(
+    Iterable<WebTalentCandidate> workers, Job job, DateTime now) {
+  final warnings = <String>{};
+  for (final worker in workers) {
+    if (!worker.allowsInvites) {
+      return const TalentInviteAssessment('Vacancy invitations disabled', []);
+    }
+    if (worker.confirmedAt == null ||
+        worker.availability == WorkerAvailability.unknown ||
+        worker.availability == WorkerAvailability.notLooking) {
+      return const TalentInviteAssessment(
+          'Worker is not open to invitations', []);
+    }
+    final roleId = JobTaxonomyService.roleFor(job.canonicalRoleId)?.id ??
+        JobTaxonomyService.bestRoleFor(job.trade)?.id;
+    if (roleId == null || !worker.tradeIds.contains(roleId)) {
+      warnings.add('Trade does not match candidate profile');
+    }
+    if (!worker.isRecentlyConfirmed(now)) {
+      warnings.add('Availability not recently confirmed');
+    }
+    if (!worker.availableBy(job.startDate ?? now, now)) {
+      warnings.add('Worker may not be available by vacancy start');
+    }
+  }
+  return TalentInviteAssessment(null, warnings.toList());
+}
+
 class WebTalentPage extends StatefulWidget {
   const WebTalentPage(
       {super.key,
@@ -279,46 +320,20 @@ class _WebTalentPageState extends State<WebTalentPage> {
   }
 
   bool _selectable(WebTalentCandidate candidate) =>
-      candidate.canSelectForInvitation(DateTime.now(), byDate: availableBy);
-
-  String? _inviteIssue(WebTalentCandidate candidate, Job job) {
-    if (!candidate.tradeIds.contains(job.canonicalRoleId)) {
-      return 'Trade mismatch';
-    }
-    if (!candidate.allowsInvites) return 'Vacancy invitations disabled';
-    if (!candidate.isRecentlyConfirmed(DateTime.now())) {
-      return 'Availability unknown or stale';
-    }
-    if (candidate.availability == WorkerAvailability.notLooking) {
-      return 'Not looking for work';
-    }
-    if (!candidate.availableBy(
-        job.startDate ?? DateTime.now(), DateTime.now())) {
-      return 'Not available by vacancy start';
-    }
-    return null;
-  }
+      candidate.allowsInvites &&
+      candidate.confirmedAt != null &&
+      candidate.availability != WorkerAvailability.unknown &&
+      candidate.availability != WorkerAvailability.notLooking;
 
   Future<List<Job>> _invitableJobs() async {
     final jobs = FirebaseFirestore.instance.collection('jobs');
     final snapshot = await jobs
         .where('ownerId', isEqualTo: widget.employerId)
-        .orderBy('createdAt', descending: true)
-        .limit(50)
-        .get();
+        .where('status', whereIn: ['active', 'published', 'open']).get();
     final visible = snapshot.docs
         .map((doc) => Job.fromFirestore(doc.id, doc.data()))
         .toList();
     final requestedId = widget.workforceRequest?.vacancyId;
-    if (requestedId != null &&
-        requestedId.isNotEmpty &&
-        !visible.any((job) => job.id == requestedId)) {
-      final requested = await jobs.doc(requestedId).get();
-      if (requested.exists &&
-          requested.data()?['ownerId'] == widget.employerId) {
-        visible.insert(0, Job.fromFirestore(requested.id, requested.data()!));
-      }
-    }
     visible.removeWhere((job) =>
         job.ownerId != widget.employerId ||
         !job.isPubliclyVisible ||
@@ -341,14 +356,72 @@ class _WebTalentPageState extends State<WebTalentPage> {
         .toList(growable: false);
     if (chosen.isEmpty || inviting) return;
     final inviteJobsFuture = _invitableJobs();
-    final vacancy = await showDialog<Job>(
+    final choice = await showDialog<TalentInviteChoice>(
       context: context,
       builder: (dialogContext) => FutureBuilder(
         future: inviteJobsFuture,
         builder: (context, snapshot) {
           final jobs = snapshot.data ?? const <Job>[];
+          final now = DateTime.now();
+          final recommended = jobs
+              .where((job) => assessTalentInvite(chosen, job, now).recommended)
+              .toList();
+          final others = jobs
+              .where((job) => !assessTalentInvite(chosen, job, now).recommended)
+              .toList();
+          Widget vacancyTile(Job job) {
+            final assessment = assessTalentInvite(chosen, job, now);
+            final details = [
+              JobTaxonomyService.canonicalFor(job.canonicalRoleId.isNotEmpty
+                  ? job.canonicalRoleId
+                  : job.trade),
+              job.site,
+              job.city,
+              if (job.startDate != null)
+                'Starts ${MaterialLocalizations.of(context).formatMediumDate(job.startDate!)}',
+              '${job.remainingPositions} positions left',
+            ].where((part) => part.trim().isNotEmpty).join(' · ');
+            return ListTile(
+              title: Text(job.displayTitle),
+              subtitle: Text([
+                details,
+                ...assessment.warnings,
+                if (assessment.hardBlock != null) assessment.hardBlock!
+              ].join('\n')),
+              isThreeLine: assessment.warnings.isNotEmpty ||
+                  assessment.hardBlock != null,
+              enabled: assessment.hardBlock == null,
+              onTap: assessment.hardBlock != null
+                  ? null
+                  : () async {
+                      if (!assessment.recommended) {
+                        final confirmed = await showDialog<bool>(
+                          context: dialogContext,
+                          builder: (confirmContext) => AlertDialog(
+                            title: const Text('Invite despite mismatch?'),
+                            content: Text(assessment.warnings.join('\n')),
+                            actions: [
+                              TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(confirmContext, false),
+                                  child: const Text('Cancel')),
+                              FilledButton(
+                                  onPressed: () =>
+                                      Navigator.pop(confirmContext, true),
+                                  child: const Text('Invite anyway')),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true || !dialogContext.mounted) return;
+                      }
+                      Navigator.pop(dialogContext,
+                          TalentInviteChoice(job, !assessment.recommended));
+                    },
+            );
+          }
+
           return AlertDialog(
-            title: const Text('Invite to vacancy'),
+            title: const Text('Invite selected workers'),
             content: SizedBox(
               width: 450,
               height: 350,
@@ -360,29 +433,17 @@ class _WebTalentPageState extends State<WebTalentPage> {
                           ? const Center(
                               child: Text('No active vacancies available.'))
                           : ListView(children: [
-                              for (final job in jobs)
-                                ListTile(
-                                  title: Text(job.displayTitle),
-                                  subtitle: Text(chosen
-                                          .map((worker) =>
-                                              _inviteIssue(worker, job))
-                                          .whereType<String>()
-                                          .toSet()
-                                          .isEmpty
-                                      ? '${job.site} · ${job.remainingPositions} positions left'
-                                      : chosen
-                                          .map((worker) =>
-                                              _inviteIssue(worker, job))
-                                          .whereType<String>()
-                                          .toSet()
-                                          .join(' · ')),
-                                  enabled: chosen.every((worker) =>
-                                      _inviteIssue(worker, job) == null),
-                                  onTap: chosen.every((worker) =>
-                                          _inviteIssue(worker, job) == null)
-                                      ? () => Navigator.pop(dialogContext, job)
-                                      : null,
-                                ),
+                              const ListTile(
+                                  title: Text('Recommended vacancies')),
+                              if (recommended.isEmpty)
+                                const ListTile(
+                                    title: Text(
+                                        'No close matches. You can still choose an active vacancy below.')),
+                              for (final job in recommended) vacancyTile(job),
+                              const Divider(),
+                              const ListTile(
+                                  title: Text('Other active vacancies')),
+                              for (final job in others) vacancyTile(job),
                             ]),
             ),
             actions: [
@@ -394,11 +455,12 @@ class _WebTalentPageState extends State<WebTalentPage> {
         },
       ),
     );
-    if (!mounted || vacancy == null) return;
+    if (!mounted || choice == null) return;
     setState(() => inviting = true);
     try {
       final result = await invitationService.invite(
-          vacancy.id, chosen.map((item) => item.id).toList());
+          choice.job.id, chosen.map((item) => item.id).toList(),
+          allowRelevanceMismatch: choice.allowRelevanceMismatch);
       if (!mounted) return;
       final created = (result['created'] as num?)?.toInt() ?? 0;
       final outcomes = (result['results'] as List<dynamic>? ?? const [])

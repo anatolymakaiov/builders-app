@@ -22,6 +22,15 @@ void main() {
     expect(dayRange.contains(DateTime(2026, 10, 16)), isFalse);
   });
 
+  test('week boundaries remain local midnight across UK DST change', () {
+    final week = CalendarRange.week(DateTime(2026, 10, 25));
+    expect(week.start.weekday, DateTime.monday);
+    expect(week.start.hour, 0);
+    expect(week.end.weekday, DateTime.monday);
+    expect(week.end.hour, 0);
+    expect(week.contains(DateTime(2026, 10, 25, 23)), isTrue);
+  });
+
   test('vacancy start derives only from a real date and meaningful status', () {
     final data = {
       'startDate': day(2026, 10, 15),

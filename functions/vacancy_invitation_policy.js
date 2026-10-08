@@ -89,29 +89,39 @@ function availabilityFresh(worker, now) {
   return elapsedDays < 1;
 }
 
-function eligibleWorker(worker, job, now) {
+function eligibleWorker(worker, job, now, options = {}) {
   if (!worker || worker.discoveryVisible !== true) return "not_discoverable";
   if (worker.allowVacancyInvites !== true) return "invites_disabled";
-  const tradeId = vacancyTradeId(job);
-  if (!tradeId) return "vacancy_trade_missing";
-  if (!Array.isArray(worker.tradeIds) ||
-      !worker.tradeIds.includes(tradeId)) return "trade_mismatch";
   const status = String(worker.effectiveAvailabilityStatus || "unknown");
-  if (!["available_now", "available_from", "busy", "unavailable"].includes(status) ||
-      !availabilityFresh(worker, now)) return "availability_unconfirmed";
+  if (status === "not_looking") return "not_looking";
+  if (!["available_now", "available_from", "busy", "unavailable"]
+    .includes(status) || !asDate(worker.availabilityConfirmedAt)) {
+    return "availability_unconfirmed";
+  }
+  const tradeId = vacancyTradeId(job);
+  if (!tradeId && !options.allowRelevanceMismatch) {
+    return "vacancy_trade_missing";
+  }
+  if (!Array.isArray(worker.tradeIds) ||
+      !worker.tradeIds.includes(tradeId)) {
+    if (!options.allowRelevanceMismatch) return "trade_mismatch";
+  }
+  if (!availabilityFresh(worker, now) && !options.allowRelevanceMismatch) {
+    return "availability_unconfirmed";
+  }
   const nextBlock = asDate(worker.nextUnavailableFrom);
   const nextBlockEnd = asDate(worker.nextUnavailableUntil);
   const startDate = asDate(job.startDate);
   if (nextBlock && startDate && dateOnly(nextBlock) <= dateOnly(startDate) &&
       (!nextBlockEnd || dateOnly(startDate) <= dateOnly(nextBlockEnd))) {
-    return "start_date_mismatch";
+    if (!options.allowRelevanceMismatch) return "start_date_mismatch";
   }
   if (status !== "available_now") {
     const from = asDate(worker.effectiveAvailableFrom || worker.availableFrom);
     const start = asDate(job.startDate);
     if (!from || (!start && dateOnly(from) > dateOnly(now)) ||
         (start && dateOnly(from) > dateOnly(start))) {
-      return "start_date_mismatch";
+      if (!options.allowRelevanceMismatch) return "start_date_mismatch";
     }
   }
   return null;

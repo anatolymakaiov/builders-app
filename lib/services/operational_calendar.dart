@@ -22,21 +22,25 @@ class CalendarRange {
 
   static CalendarRange month(DateTime date) {
     final first = DateTime(date.year, date.month);
-    final monday = first.subtract(Duration(days: first.weekday - 1));
+    final monday =
+        DateTime(first.year, first.month, first.day - (first.weekday - 1));
     final next = DateTime(date.year, date.month + 1);
-    final last = next.subtract(const Duration(days: 1));
-    return CalendarRange(monday, last.add(Duration(days: 8 - last.weekday)));
+    final last = DateTime(next.year, next.month, next.day - 1);
+    return CalendarRange(
+        monday, DateTime(last.year, last.month, last.day + 8 - last.weekday));
   }
 
   static CalendarRange week(DateTime date) {
-    final monday = DateTime(date.year, date.month, date.day)
-        .subtract(Duration(days: date.weekday - 1));
-    return CalendarRange(monday, monday.add(const Duration(days: 7)));
+    final monday =
+        DateTime(date.year, date.month, date.day - (date.weekday - 1));
+    return CalendarRange(
+        monday, DateTime(monday.year, monday.month, monday.day + 7));
   }
 
   static CalendarRange day(DateTime date) {
     final start = DateTime(date.year, date.month, date.day);
-    return CalendarRange(start, start.add(const Duration(days: 1)));
+    return CalendarRange(
+        start, DateTime(start.year, start.month, start.day + 1));
   }
 
   bool contains(DateTime date) {

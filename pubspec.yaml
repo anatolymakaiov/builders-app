@@ -34,6 +34,7 @@ dependencies:
 
   # NETWORK
   http: ^1.2.0
+  crypto: ^3.0.7
   file_picker: ^8.1.7
   image: ^4.8.0
   pdf: ^3.11.1

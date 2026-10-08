@@ -12,7 +12,15 @@ const siteEventTypes = <String, String>{
   'safety_briefing': 'Safety briefing',
   'deadline': 'Deadline',
   'milestone': 'Milestone',
+  'reminder': 'Reminder',
   'other': 'Other',
+};
+
+const siteReminderChoices = <int, String>{
+  0: 'At event time',
+  60: '1 hour before',
+  1440: '1 day before',
+  2880: '2 days before',
 };
 
 class SiteEvent {
@@ -27,6 +35,10 @@ class SiteEvent {
   bool get allDay => data['allDay'] == true;
   DateTime? get start => calendarDate(data['startDateTime']);
   DateTime? get end => calendarDate(data['endDateTime']);
+  List<int> get reminderOffsetsMinutes =>
+      (data['reminderOffsetsMinutes'] as List<dynamic>? ?? const [])
+          .whereType<int>()
+          .toList();
 }
 
 class SiteEventService {
@@ -97,9 +109,11 @@ class SiteEventService {
     required bool allDay,
     String siteId = '',
     String description = '',
+    List<int> reminderOffsetsMinutes = const [],
   }) async {
     _assertOwner(employerId);
     _validate(title, type, start, end, description);
+    _validateReminders(reminderOffsetsMinutes);
     final ref = _db.collection('site_events').doc();
     await ref.set({
       'eventId': ref.id,
@@ -111,6 +125,7 @@ class SiteEventService {
       if (end != null) 'endDateTime': Timestamp.fromDate(end),
       'allDay': allDay,
       'description': description.trim(),
+      'reminderOffsetsMinutes': reminderOffsetsMinutes,
       'createdBy': employerId,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -128,12 +143,14 @@ class SiteEventService {
     required bool allDay,
     String siteId = '',
     String description = '',
+    List<int> reminderOffsetsMinutes = const [],
   }) async {
     _assertOwner(employerId);
     if (event.data['employerContextId'] != employerId) {
       throw StateError('Cannot edit another employer event.');
     }
     _validate(title, type, start, end, description);
+    _validateReminders(reminderOffsetsMinutes);
     await _db.collection('site_events').doc(event.id).update({
       'siteId': siteId,
       'title': title.trim(),
@@ -143,6 +160,7 @@ class SiteEventService {
           end == null ? FieldValue.delete() : Timestamp.fromDate(end),
       'allDay': allDay,
       'description': description.trim(),
+      'reminderOffsetsMinutes': reminderOffsetsMinutes,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -163,6 +181,14 @@ class SiteEventService {
         description.trim().length > 1000 ||
         (end != null && end.isBefore(start))) {
       throw ArgumentError('Check the event title, type and dates.');
+    }
+  }
+
+  static void _validateReminders(List<int> offsets) {
+    if (offsets.length > 5 ||
+        offsets.toSet().length != offsets.length ||
+        offsets.any((minutes) => minutes < 0 || minutes > 43200)) {
+      throw ArgumentError('Choose up to five reminders within 30 days.');
     }
   }
 }

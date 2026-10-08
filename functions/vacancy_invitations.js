@@ -31,10 +31,13 @@ function validIds(value) {
 async function inviteWorkers(db, uid, input, now = new Date()) {
   const vacancyId = input?.vacancyId;
   const workerIds = input?.workerIds;
+  const allowRelevanceMismatch = input?.allowRelevanceMismatch === true;
   if (typeof vacancyId !== "string" ||
       !/^[A-Za-z0-9_-]{10,150}$/.test(vacancyId) ||
-      !validIds(workerIds) || Object.keys(input).some((key) =>
-        !["vacancyId", "workerIds"].includes(key))) {
+      !validIds(workerIds) || (input?.allowRelevanceMismatch != null &&
+        typeof input.allowRelevanceMismatch !== "boolean") ||
+      Object.keys(input).some((key) =>
+        !["vacancyId", "workerIds", "allowRelevanceMismatch"].includes(key))) {
     throw new HttpsError("invalid-argument", "Choose a vacancy and up to 20 workers.");
   }
   const employerRef = db.collection("users").doc(uid);
@@ -87,7 +90,8 @@ async function inviteWorkers(db, uid, input, now = new Date()) {
       const existing = rest[workerIds.length + index];
       const individual = rest[workerIds.length * 2 + index];
       const team = rest[workerIds.length * 3 + index];
-      const reason = eligibleWorker(discovery, vacancy, now);
+      const reason = eligibleWorker(discovery, vacancy, now,
+        {allowRelevanceMismatch});
       if (existing.exists) {
         results.push({workerId, result: "already_invited"});
       } else if ([...individual.docs, ...team.docs].some((doc) =>

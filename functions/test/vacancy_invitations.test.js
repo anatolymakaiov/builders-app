@@ -25,7 +25,7 @@ test("eligibility, closure and safe invitation display fields", () => {
   assert.equal(eligibleWorker({...worker, allowVacancyInvites: false}, job, now),
     "invites_disabled");
   assert.equal(eligibleWorker({...worker, effectiveAvailabilityStatus: "not_looking"}, job, now),
-    "availability_unconfirmed");
+    "not_looking");
   assert.equal(eligibleWorker({...worker, effectiveAvailabilityStatus: "busy"},
     job, now), "availability_unconfirmed");
   const assigned = {...worker, effectiveAvailabilityStatus: "busy",
@@ -50,9 +50,18 @@ test("eligibility, closure and safe invitation display fields", () => {
   {...job, startDate: new Date("2026-10-12")}, now), null);
   assert.equal(eligibleWorker({...worker, tradeIds: ["plasterer"]}, job, now),
     "trade_mismatch");
+  assert.equal(eligibleWorker({...worker, tradeIds: ["plasterer"]}, job, now,
+    {allowRelevanceMismatch: true}), null);
+  assert.equal(eligibleWorker({...worker, allowVacancyInvites: false}, job, now,
+    {allowRelevanceMismatch: true}), "invites_disabled");
+  assert.equal(eligibleWorker({...worker, effectiveAvailabilityStatus: "not_looking"}, job,
+    now, {allowRelevanceMismatch: true}), "not_looking");
   assert.equal(eligibleWorker({...worker,
     availabilityConfirmedAt: new Date("2026-09-01")}, job, now),
   "availability_unconfirmed");
+  assert.equal(eligibleWorker({...worker,
+    availabilityConfirmedAt: new Date("2026-09-01")}, job, now,
+  {allowRelevanceMismatch: true}), null);
   assert.equal(closureStatus({...job, status: "closed"}), "vacancy_closed");
   assert.equal(closureStatus({...job, filledPositions: 3}), "vacancy_filled");
   const display = displayFields({...job, city: "12 Manchester Road"},
@@ -99,7 +108,7 @@ test("invitation lifecycle in Firestore emulator", {
         "workerTest003", "workerTest004"]}, now);
     assert.equal(first.created, 2);
     assert.deepEqual(first.results.map((result) => result.result),
-      ["invited", "invited", "invites_disabled", "availability_unconfirmed"]);
+      ["invited", "invited", "invites_disabled", "not_looking"]);
     const stored = (await invitationRef.get()).data();
     assert.equal(stored.status, "pending");
     assert.equal(stored.workerId, workerId);

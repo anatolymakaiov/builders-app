@@ -25,6 +25,7 @@ class WebPostJobPage extends StatefulWidget {
     super.key,
     required this.userId,
     this.existingJob,
+    this.initialSiteId,
     this.onDone,
     this.onCancel,
     this.onOpenBilling,
@@ -32,6 +33,7 @@ class WebPostJobPage extends StatefulWidget {
 
   final String userId;
   final Job? existingJob;
+  final String? initialSiteId;
   final ValueChanged<String?>? onDone;
   final VoidCallback? onCancel;
   final VoidCallback? onOpenBilling;
@@ -98,7 +100,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
           : role.text,
     )?.id;
     site = TextEditingController(text: job?.site ?? '');
-    selectedSiteId = job?.siteId ?? '';
+    selectedSiteId = job?.siteId ?? widget.initialSiteId ?? '';
     employerSites = WebSitesService().watchEmployerSites(widget.userId);
     duration = TextEditingController(text: job?.duration ?? '');
     weeklyHours = TextEditingController(text: job?.weeklyHours ?? '');
@@ -126,6 +128,28 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
     photos = List<String>.from(job?.photos ?? const <String>[]);
     lat = job?.lat ?? 0;
     lng = job?.lng ?? 0;
+    if (job == null && selectedSiteId.isNotEmpty) {
+      _loadInitialSite(selectedSiteId);
+    }
+  }
+
+  Future<void> _loadInitialSite(String id) async {
+    try {
+      final sites = await WebSitesService().loadEmployerSites(widget.userId);
+      final chosen = sites.where((item) => item.id == id).firstOrNull;
+      if (!mounted || chosen == null || selectedSiteId != id) return;
+      setState(() {
+        site.text = chosen.name;
+        addressLine1.text = (chosen.data['addressLine1'] ?? '').toString();
+        addressLine2.text = (chosen.data['addressLine2'] ?? '').toString();
+        city.text = chosen.city;
+        county.text = (chosen.data['region'] ?? '').toString();
+        postcode.text = chosen.postcode;
+        country.text = (chosen.data['country'] ?? 'United Kingdom').toString();
+      });
+    } catch (_) {
+      if (mounted) setState(() => error = 'Could not load the selected site.');
+    }
   }
 
   @override
@@ -769,6 +793,21 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
       error = null;
     });
     try {
+      if (!editing) {
+        await BillingService().assertEmployerCanPost(widget.userId);
+      }
+      if (selectedSiteId.isEmpty) {
+        final resolved = await WebSitesService().resolveOrCreateVacancySite(
+          widget.userId,
+          name: site.text,
+          addressLine1: addressLine1.text,
+          city: city.text,
+          postcode: addressLookup.normalizePostcode(postcode.text),
+          region: county.text,
+          country: country.text,
+        );
+        if (resolved != null) selectedSiteId = resolved;
+      }
       final companyName = await service.companyName(widget.userId);
       final data = service.buildJobData(
         ownerId: widget.userId,

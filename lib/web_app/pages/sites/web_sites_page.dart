@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 
 import '../../../models/job.dart';
 import '../../../services/operational_calendar.dart';
+import '../../../services/worker_assignment_service.dart';
+import '../../services/site_recruitment_report.dart';
 import '../../services/web_sites_service.dart';
-import '../../services/workforce_planning_service.dart';
+import '../../services/workforce_talent_request.dart';
 import '../../widgets/web_page_container.dart';
 
 class WebSitesPage extends StatefulWidget {
@@ -12,15 +14,19 @@ class WebSitesPage extends StatefulWidget {
       {super.key,
       required this.employerId,
       this.onOpenJob,
+      this.onAddVacancy,
       this.initialSiteId,
       this.onOpenCalendar,
-      this.onOpenWorkforce});
+      this.onOpenWorkforce,
+      this.onFindWorkers});
 
   final String employerId;
   final ValueChanged<String>? onOpenJob;
+  final ValueChanged<String>? onAddVacancy;
   final String? initialSiteId;
   final ValueChanged<String>? onOpenCalendar;
   final ValueChanged<String>? onOpenWorkforce;
+  final ValueChanged<WorkforceTalentRequest>? onFindWorkers;
 
   @override
   State<WebSitesPage> createState() => _WebSitesPageState();
@@ -33,7 +39,11 @@ class _WebSitesPageState extends State<WebSitesPage> {
   bool showInactive = false;
   String? requestedSiteId;
   final Map<String, Future<List<CalendarEvent>>> upcomingBySite = {};
-  final Map<String, Future<WorkforcePlan>> workforceBySite = {};
+  final Map<String, Stream<QuerySnapshot<Map<String, dynamic>>>> jobsBySite =
+      {};
+  final Map<String, Stream<QuerySnapshot<Map<String, dynamic>>>>
+      assignmentsBySite = {};
+  bool linkingLegacy = false;
 
   @override
   void initState() {
@@ -48,7 +58,8 @@ class _WebSitesPageState extends State<WebSitesPage> {
     if (oldWidget.employerId != widget.employerId) {
       selected = null;
       upcomingBySite.clear();
-      workforceBySite.clear();
+      jobsBySite.clear();
+      assignmentsBySite.clear();
       sites = service.watchEmployerSites(widget.employerId);
       requestedSiteId = widget.initialSiteId;
     } else if (oldWidget.initialSiteId != widget.initialSiteId) {
@@ -92,6 +103,18 @@ class _WebSitesPageState extends State<WebSitesPage> {
                     icon: const Icon(Icons.add),
                     label: const Text('Add site'),
                   ),
+                  PopupMenuButton<String>(
+                    tooltip: 'Site actions',
+                    enabled: !linkingLegacy,
+                    onSelected: (action) {
+                      if (action == 'link_legacy') _linkLegacy();
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                          value: 'link_legacy',
+                          child: Text('Link matching legacy vacancies')),
+                    ],
+                  ),
                 ]),
                 const SizedBox(height: 12),
                 SegmentedButton<bool>(
@@ -129,7 +152,6 @@ class _WebSitesPageState extends State<WebSitesPage> {
                             requestedSiteId = null;
                             selected = site;
                             upcomingBySite.clear();
-                            workforceBySite.clear();
                           }),
                         );
                       },
@@ -164,16 +186,20 @@ class _WebSitesPageState extends State<WebSitesPage> {
       );
 
   Widget _detail(WebSite site, {VoidCallback? onBack}) {
-    final jobs = FirebaseFirestore.instance
-        .collection('jobs')
-        .where('ownerId', isEqualTo: widget.employerId)
-        .where('siteId', isEqualTo: site.id)
-        .snapshots();
-    final assignments = FirebaseFirestore.instance
-        .collection('assignments')
-        .where('employerContextId', isEqualTo: widget.employerId)
-        .where('siteId', isEqualTo: site.id)
-        .snapshots();
+    final jobs = jobsBySite.putIfAbsent(
+        site.id,
+        () => FirebaseFirestore.instance
+            .collection('jobs')
+            .where('ownerId', isEqualTo: widget.employerId)
+            .where('siteId', isEqualTo: site.id)
+            .snapshots());
+    final assignments = assignmentsBySite.putIfAbsent(
+        site.id,
+        () => FirebaseFirestore.instance
+            .collection('assignments')
+            .where('employerContextId', isEqualTo: widget.employerId)
+            .where('siteId', isEqualTo: site.id)
+            .snapshots());
     return ListView(padding: const EdgeInsets.all(16), children: [
       if (onBack != null)
         Align(
@@ -200,8 +226,16 @@ class _WebSitesPageState extends State<WebSitesPage> {
         if (widget.onOpenCalendar != null)
           IconButton(
               tooltip: 'View in Calendar',
-              onPressed: () => widget.onOpenCalendar!(site.id),
+              onPressed: () {
+                upcomingBySite.clear();
+                widget.onOpenCalendar!(site.id);
+              },
               icon: const Icon(Icons.calendar_month_outlined)),
+        if (widget.onAddVacancy != null)
+          IconButton(
+              tooltip: 'Add Vacancy for this Site',
+              onPressed: () => widget.onAddVacancy!(site.id),
+              icon: const Icon(Icons.add_business_outlined)),
       ]),
       Text([
         site.data['addressLine1'],
@@ -238,35 +272,8 @@ class _WebSitesPageState extends State<WebSitesPage> {
               onPressed: () => widget.onOpenWorkforce!(site.id),
               icon: const Icon(Icons.groups_2_outlined),
               label: const Text('Open Workforce Planning')),
-        IconButton(
-            tooltip: 'Refresh workforce summary',
-            onPressed: () => setState(() => workforceBySite.remove(site.id)),
-            icon: const Icon(Icons.refresh)),
       ]),
-      FutureBuilder<WorkforcePlan>(
-        future: workforceBySite.putIfAbsent(site.id, () {
-          final now = DateTime.now();
-          return WorkforcePlanningService().load(
-              employerId: widget.employerId,
-              window: PlanningWindow.nextDays(now, 14),
-              now: now,
-              siteId: site.id);
-        }),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const Text('Could not load workforce summary.');
-          }
-          if (!snapshot.hasData) return const LinearProgressIndicator();
-          final summary = snapshot.data!.siteSummaries
-              .where((item) => item.siteId == site.id)
-              .firstOrNull;
-          if (summary == null) return const Text('No workforce activity.');
-          return Text('${summary.currentWorkers} working  ·  '
-              '${summary.starting} starting  ·  ${summary.finishing} finishing  ·  '
-              '${summary.openPositions} open positions  ·  '
-              '${snapshot.data!.gapCount} to fill');
-        },
-      ),
+      _siteRecruitmentContent(site, jobs, assignments),
       const SizedBox(height: 16),
       Row(children: [
         const Expanded(
@@ -274,7 +281,10 @@ class _WebSitesPageState extends State<WebSitesPage> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600))),
         if (widget.onOpenCalendar != null)
           TextButton.icon(
-              onPressed: () => widget.onOpenCalendar!(site.id),
+              onPressed: () {
+                upcomingBySite.clear();
+                widget.onOpenCalendar!(site.id);
+              },
               icon: const Icon(Icons.calendar_month_outlined),
               label: const Text('Open calendar')),
       ]),
@@ -304,67 +314,151 @@ class _WebSitesPageState extends State<WebSitesPage> {
                       '${event.typeLabel} · ${event.date.day}/${event.date.month}/${event.date.year}'),
                   onTap: widget.onOpenCalendar == null
                       ? null
-                      : () => widget.onOpenCalendar!(site.id)),
+                      : () {
+                          upcomingBySite.clear();
+                          widget.onOpenCalendar!(site.id);
+                        }),
           ]);
         },
       ),
-      const SizedBox(height: 16),
-      const Text('Vacancies',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: jobs,
-        builder: (context, snapshot) => snapshot.hasError
-            ? const Text('Could not load vacancies.')
-            : snapshot.hasData
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                        Text(
-                            'Total: ${snapshot.data!.docs.length} · Active: ${snapshot.data!.docs.where((doc) => Job.fromFirestore(doc.id, doc.data()).isPubliclyVisible).length}'),
-                        for (final doc in snapshot.data!.docs)
-                          ListTile(
-                              title: Text((doc.data()['title'] ?? 'Vacancy')
-                                  .toString()),
-                              subtitle:
-                                  Text((doc.data()['status'] ?? '').toString()),
-                              onTap: widget.onOpenJob == null
-                                  ? null
-                                  : () => widget.onOpenJob!(doc.id))
-                      ])
-                : const LinearProgressIndicator(),
-      ),
-      const SizedBox(height: 16),
-      const Text('Workers / Assignments',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: assignments,
-        builder: (context, snapshot) => snapshot.hasError
-            ? const Text('Could not load assignments.')
-            : snapshot.hasData
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                        Text('Assigned workers: ${snapshot.data!.docs.where((doc) => [
-                              'active',
-                              'scheduled'
-                            ].contains(doc.data()['status'])).map((doc) => doc.data()['workerId']).where((id) => id != null).toSet().length}'),
-                        for (final doc in snapshot.data!.docs)
-                          ListTile(
-                            title: Text(
-                                (doc.data()['workerDisplayName'] ?? 'Worker')
-                                    .toString()),
-                            subtitle: Text((doc.data()['tradeName'] ??
-                                    doc.data()['tradeId'] ??
-                                    '')
-                                .toString()),
-                            trailing: Text((doc.data()['status'] ?? 'scheduled')
-                                .toString()),
-                          ),
-                      ])
-                : const LinearProgressIndicator(),
-      ),
     ]);
   }
+
+  Widget _siteRecruitmentContent(
+    WebSite site,
+    Stream<QuerySnapshot<Map<String, dynamic>>> jobs,
+    Stream<QuerySnapshot<Map<String, dynamic>>> assignments,
+  ) =>
+      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: jobs,
+        builder: (context, jobSnapshot) =>
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: assignments,
+          builder: (context, assignmentSnapshot) {
+            if (jobSnapshot.hasError || assignmentSnapshot.hasError) {
+              return const Text('Could not load the Site recruitment report.');
+            }
+            if (!jobSnapshot.hasData || !assignmentSnapshot.hasData) {
+              return const LinearProgressIndicator();
+            }
+            final vacancies = [
+              for (final doc in jobSnapshot.data!.docs)
+                Job.fromFirestore(doc.id, doc.data()),
+            ];
+            final workers = [
+              for (final doc in assignmentSnapshot.data!.docs)
+                WorkerAssignment(doc.id, doc.data()),
+            ];
+            final today = DateTime.now();
+            final report = siteRecruitmentReport(vacancies, workers, today);
+            return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (report.isEmpty)
+                    const Text(
+                        'No published vacancies or current assignments.'),
+                  for (final row in report)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Wrap(
+                        spacing: 14,
+                        runSpacing: 5,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          SizedBox(
+                              width: 120,
+                              child: Text(row.tradeName,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600))),
+                          Text('Required ${row.required}'),
+                          Text('Filled ${row.filled}'),
+                          Text('Starting ${row.starting}'),
+                          Text('Working ${row.active}'),
+                          Text('Finishing ${row.finishing}'),
+                          Text('Remaining ${row.remaining}'),
+                          if (row.remaining > 0 && widget.onFindWorkers != null)
+                            TextButton(
+                              onPressed: () {
+                                final dates = row.vacancies
+                                    .map((job) => job.startDate)
+                                    .whereType<DateTime>()
+                                    .toList()
+                                  ..sort();
+                                widget.onFindWorkers!(WorkforceTalentRequest(
+                                  tradeId: row.tradeId,
+                                  location: site.city.isNotEmpty
+                                      ? site.city
+                                      : (site.data['region'] ?? '').toString(),
+                                  availableBy:
+                                      dates.isEmpty ? today : dates.first,
+                                  siteId: site.id,
+                                  vacancyId: row.vacancies.first.id,
+                                ));
+                              },
+                              child: const Text('Find Workers'),
+                            ),
+                        ],
+                      ),
+                    ),
+                  const Divider(),
+                  const Text('Open Vacancies',
+                      style:
+                          TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                  for (final job
+                      in vacancies.where((job) => job.isPubliclyVisible))
+                    ListTile(
+                      dense: true,
+                      title: Text(job.displayTitle),
+                      subtitle: Text(
+                          '${job.filledPositions}/${job.positions} filled · '
+                          '${job.remainingPositions} remaining'),
+                      onTap: widget.onOpenJob == null
+                          ? null
+                          : () => widget.onOpenJob!(job.id),
+                    ),
+                  const SizedBox(height: 10),
+                  const Text('Current Workforce',
+                      style:
+                          TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                  for (final assignment in workers.where(
+                      (item) => {'active', 'scheduled'}.contains(item.status)))
+                    ListTile(
+                      dense: true,
+                      title: Text(
+                          (assignment.data['workerDisplayName'] ?? 'Worker')
+                              .toString()),
+                      subtitle: Text(
+                          '${assignment.tradeName} · ${assignment.status}'),
+                      trailing: Text(assignment.startDate == null
+                          ? ''
+                          : '${assignment.startDate!.day}/${assignment.startDate!.month}'),
+                    ),
+                  const SizedBox(height: 10),
+                  const Text('Finishing Soon',
+                      style:
+                          TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                  for (final assignment in workers.where((item) {
+                    final end = item.actualEndDate ?? item.expectedEndDate;
+                    return end != null &&
+                        !end.isBefore(today) &&
+                        end.isBefore(
+                            DateTime(today.year, today.month, today.day + 14));
+                  }))
+                    ListTile(
+                      dense: true,
+                      title: Text(
+                          (assignment.data['workerDisplayName'] ?? 'Worker')
+                              .toString()),
+                      subtitle: Text(assignment.tradeName),
+                      trailing: Text(_formatDate(assignment.actualEndDate ??
+                          assignment.expectedEndDate!)),
+                    ),
+                ]);
+          },
+        ),
+      );
+
+  String _formatDate(DateTime date) => '${date.day}/${date.month}/${date.year}';
 
   Widget _summaryItem(String label, String value) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -386,6 +480,27 @@ class _WebSitesPageState extends State<WebSitesPage> {
         'archived' => 'Archived',
         _ => status,
       };
+
+  Future<void> _linkLegacy() async {
+    setState(() => linkingLegacy = true);
+    try {
+      final result = await service.linkLegacyVacancies(widget.employerId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            'Linked ${result.linked} vacancies; created ${result.created} Sites. '
+            '${result.skipped} ambiguous or incomplete records skipped.'),
+      ));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not link legacy vacancies. Try again.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => linkingLegacy = false);
+    }
+  }
 
   Future<void> _changeStatus(WebSite site, String status) async {
     if (status == site.status) return;

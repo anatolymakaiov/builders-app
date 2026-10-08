@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../../services/operational_calendar.dart';
 import '../../../services/calendar_export.dart';
@@ -19,6 +20,7 @@ class WebCalendarPage extends StatefulWidget {
       required this.uid,
       required this.employer,
       this.initialSiteId,
+      this.initialDate,
       this.onOpenJob,
       this.onOpenSite,
       this.refreshToken = 0,
@@ -32,6 +34,7 @@ class WebCalendarPage extends StatefulWidget {
   final String uid;
   final bool employer;
   final String? initialSiteId;
+  final DateTime? initialDate;
   final ValueChanged<String>? onOpenJob;
   final ValueChanged<String>? onOpenSite;
   final int refreshToken;
@@ -63,6 +66,7 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
   void initState() {
     super.initState();
     siteId = widget.initialSiteId;
+    selectedDay = widget.initialDate ?? DateTime.now();
     sites = widget.employerSites ??
         (widget.employer
             ? WebSitesService().watchEmployerSites(widget.uid)
@@ -76,7 +80,7 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.uid != widget.uid || oldWidget.employer != widget.employer) {
       siteId = widget.initialSiteId;
-      selectedDay = DateTime.now();
+      selectedDay = widget.initialDate ?? DateTime.now();
       sites = widget.employerSites ??
           (widget.employer
               ? WebSitesService().watchEmployerSites(widget.uid)
@@ -85,6 +89,10 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
       if (!widget.employer) _loadCurrentNext();
     } else if (oldWidget.initialSiteId != widget.initialSiteId) {
       siteId = widget.initialSiteId;
+    }
+    if (oldWidget.initialDate != widget.initialDate &&
+        widget.initialDate != null) {
+      selectedDay = widget.initialDate!;
     }
     if (oldWidget.refreshToken != widget.refreshToken) {
       _load();
@@ -98,8 +106,10 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
         CalendarView.day => CalendarRange.day(selectedDay),
       };
 
-  void _load() => events = widget.loadEvents?.call(range) ??
-      service.load(uid: widget.uid, employer: widget.employer, range: range);
+  void _load() {
+    events = widget.loadEvents?.call(range) ??
+        service.load(uid: widget.uid, employer: widget.employer, range: range);
+  }
 
   void _loadCurrentNext() => currentNext =
       widget.loadCurrentNext?.call() ?? service.loadCurrentNext(widget.uid);
@@ -206,7 +216,8 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
             end: draft.end,
             allDay: draft.allDay,
             siteId: draft.siteId,
-            description: draft.description);
+            description: draft.description,
+            reminderOffsetsMinutes: draft.reminderOffsetsMinutes);
       } else {
         await siteEventService.update(widget.uid, initial,
             title: draft.title,
@@ -215,7 +226,8 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
             end: draft.end,
             allDay: draft.allDay,
             siteId: draft.siteId,
-            description: draft.description);
+            description: draft.description,
+            reminderOffsetsMinutes: draft.reminderOffsetsMinutes);
       }
       if (mounted) setState(_load);
     } catch (_) {
@@ -311,6 +323,83 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Could not load or update event. Try again.')));
+      }
+    }
+  }
+
+  Future<void> _editAssignmentReminders(CalendarEvent event) async {
+    try {
+      final functions = FirebaseFunctions.instance;
+      final response = await functions
+          .httpsCallable('getAssignmentReminderPreferences')
+          .call<Map<String, dynamic>>({'assignmentId': event.sourceId});
+      if (!mounted) return;
+      final start = (response.data['startOffsets'] as List<dynamic>)
+          .whereType<int>()
+          .toSet();
+      final finish = (response.data['finishOffsets'] as List<dynamic>)
+          .whereType<int>()
+          .toSet();
+      final save = await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(builder: (context, update) {
+          Widget choices(String label, Set<int> offsets) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: Theme.of(context).textTheme.titleSmall),
+                  Wrap(spacing: 8, children: [
+                    for (final choice in siteReminderChoices.entries)
+                      FilterChip(
+                        label: Text(choice.value),
+                        selected: offsets.contains(choice.key),
+                        onSelected: (selected) => update(() {
+                          if (selected) {
+                            offsets.add(choice.key);
+                          } else {
+                            offsets.remove(choice.key);
+                          }
+                        }),
+                      ),
+                  ]),
+                ],
+              );
+          return AlertDialog(
+            title: const Text('Assignment reminders'),
+            content: SizedBox(
+              width: 430,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                choices('Worker start', start),
+                const SizedBox(height: 12),
+                choices('Expected finish', finish),
+              ]),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Save')),
+            ],
+          );
+        }),
+      );
+      if (save != true) return;
+      await functions.httpsCallable('setAssignmentReminderPreferences').call({
+        'assignmentId': event.sourceId,
+        'startOffsets': start.toList()..sort(),
+        'finishOffsets': finish.toList()..sort(),
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Assignment reminders updated.'),
+        ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not update assignment reminders.'),
+        ));
       }
     }
   }
@@ -583,13 +672,13 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
   Widget _week(List<CalendarEvent> events) => Column(children: [
         for (var day = range.start;
             day.isBefore(range.end);
-            day = day.add(const Duration(days: 1)))
+            day = DateTime(day.year, day.month, day.day + 1))
           Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_date(day),
+                  Text(MaterialLocalizations.of(context).formatFullDate(day),
                       style: const TextStyle(fontWeight: FontWeight.w600)),
                   _agenda(events, day),
                 ],
@@ -650,6 +739,12 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
           onTap: () {
             if (widget.employer && event.type == CalendarEventType.manual) {
               _openManualEvent(event);
+            } else if (widget.employer &&
+                {
+                  CalendarEventType.assignmentStart,
+                  CalendarEventType.assignmentFinish
+                }.contains(event.type)) {
+              _editAssignmentReminders(event);
             } else if (widget.employer &&
                 event.type != CalendarEventType.vacancyStart &&
                 event.siteId.isNotEmpty &&

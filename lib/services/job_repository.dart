@@ -53,9 +53,8 @@ class JobRepository {
   Future<bool> _isOwnerActive(String ownerId) async {
     if (ownerId.trim().isEmpty || ownerId == "unknown") return false;
 
-    final ownerDoc = await SafeProfileService(firestore: _db)
-        .profile(ownerId)
-        .get();
+    final ownerDoc =
+        await SafeProfileService(firestore: _db).profile(ownerId).get();
     if (!ownerDoc.exists) return false;
 
     final data = ownerDoc.data() ?? <String, dynamic>{};
@@ -135,6 +134,21 @@ class JobRepository {
             requirePublicVisibility: true,
           ),
         );
+  }
+
+  Future<void> refreshPublicJobs() async {
+    await _db
+        .collection('jobs')
+        .where('moderationStatus', isEqualTo: 'approved')
+        .where('status', whereIn: ['active', 'published', 'open']).get(
+            const GetOptions(source: Source.server));
+  }
+
+  Future<void> refreshOwnerJobs(String ownerId) async {
+    await _db
+        .collection('jobs')
+        .where('ownerId', isEqualTo: ownerId)
+        .get(const GetOptions(source: Source.server));
   }
 
   /// 🔥 JOBS ПО РАБОТОДАТЕЛЮ (НОВОЕ)

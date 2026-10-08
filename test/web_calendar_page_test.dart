@@ -26,6 +26,40 @@ void main() {
     expect(WebSection.calendar.label, 'Calendar');
   });
 
+  testWidgets('reminder opens its month and updates an open calendar',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 900);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+    final first = DateTime(2026, 11, 2, 9);
+    final second = DateTime(2026, 12, 3, 9);
+    final ranges = <CalendarRange>[];
+    Widget page(DateTime date, int token) => MaterialApp(
+          home: Scaffold(
+            body: WebCalendarPage(
+              uid: 'employer-a',
+              employer: true,
+              initialDate: date,
+              refreshToken: token,
+              employerSites: const Stream<List<WebSite>>.empty(),
+              loadEvents: (range) async {
+                ranges.add(range);
+                return [event('Dryliner', 'site-a', date)];
+              },
+            ),
+          ),
+        );
+    await tester.pumpWidget(page(first, 0));
+    await tester.pumpAndSettle();
+    expect(ranges.last.contains(first), isTrue);
+    await tester.pumpWidget(page(second, 1));
+    await tester.pumpAndSettle();
+    expect(ranges.last.contains(second), isTrue);
+  });
+
   testWidgets('employer switches views, filters by site and opens vacancy',
       (tester) async {
     tester.view.devicePixelRatio = 1;
@@ -68,6 +102,17 @@ void main() {
     await tester.tap(find.text('Week'));
     await tester.pumpAndSettle();
     expect(ranges.last.end.difference(ranges.last.start).inDays, 7);
+    for (final name in const [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday'
+    ]) {
+      expect(find.textContaining(name), findsWidgets);
+    }
     await tester.tap(find.text('Day'));
     await tester.pumpAndSettle();
     expect(ranges.last.end.difference(ranges.last.start).inDays, 1);

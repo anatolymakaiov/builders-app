@@ -52,6 +52,21 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
     );
   }
 
+  Future<void> refreshJobs(String ownerId) async {
+    try {
+      await jobRepository.refreshOwnerJobs(ownerId);
+      if (!showOnlyMyJobs) await jobRepository.refreshPublicJobs();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content:
+            const Text('Could not refresh vacancies. Showing current results.'),
+        action: SnackBarAction(
+            label: 'Retry', onPressed: () => refreshJobs(ownerId)),
+      ));
+    }
+  }
+
   Widget buildCompanyAvatar(Job job, Map<String, dynamic>? employerData) {
     final avatarUrl = employerData?["companyLogo"] ??
         employerData?["photo"] ??
@@ -736,34 +751,41 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                           },
                         ),
                         Expanded(
-                          child: pageJobs.isEmpty
-                              ? Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(24),
-                                    child: Text(
-                                      emptyMessage,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        color: AppColors.ink,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
+                          child: RefreshIndicator(
+                            onRefresh: () => refreshJobs(ownerId),
+                            child: pageJobs.isEmpty
+                                ? ListView(
+                                    physics:
+                                        const AlwaysScrollableScrollPhysics(),
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.all(24),
+                                        child: Text(emptyMessage,
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              color: AppColors.ink,
+                                              fontWeight: FontWeight.w800,
+                                            )),
+                                      )
+                                    ],
+                                  )
+                                : ListView.builder(
+                                    physics:
+                                        const AlwaysScrollableScrollPhysics(),
+                                    itemCount: pageJobs.length,
+                                    itemBuilder: (context, index) {
+                                      return buildJobCard(
+                                        context,
+                                        pageJobs[index],
+                                        ownerJobIds.contains(pageJobs[index].id)
+                                            ? employerData
+                                            : null,
+                                        ownerId,
+                                        ownerJobIds,
+                                      );
+                                    },
                                   ),
-                                )
-                              : ListView.builder(
-                                  itemCount: pageJobs.length,
-                                  itemBuilder: (context, index) {
-                                    return buildJobCard(
-                                      context,
-                                      pageJobs[index],
-                                      ownerJobIds.contains(pageJobs[index].id)
-                                          ? employerData
-                                          : null,
-                                      ownerId,
-                                      ownerJobIds,
-                                    );
-                                  },
-                                ),
+                          ),
                         ),
                         JobPagination(
                           currentPage: safePage,

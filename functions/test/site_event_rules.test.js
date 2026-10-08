@@ -41,6 +41,21 @@ test("site events are employer-owned and linked only to owned sites", {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()};
     const ref = a.doc("site_events/eventA");
     await assertSucceeds(ref.set(fields));
+    await assertSucceeds(ref.update({
+      eventType: "reminder", reminderOffsetsMinutes: [0, 75, 1440],
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }));
+    await assertFails(ref.update({
+      reminderOffsetsMinutes: [-1],
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }));
+    await assertFails(ref.update({
+      reminderOffsetsMinutes: [0, 60, 120, 180, 240, 300],
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }));
+    await assertFails(a.doc("event_reminders/private").set({status: "pending"}));
+    await assertFails(a.doc("event_reminders/private").get());
+    await assertFails(b.doc("event_reminders/private").get());
     await assertSucceeds(ref.get());
     await assertSucceeds(a.collection("site_events")
       .where("employerContextId", "==", "employerA")

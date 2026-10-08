@@ -11,7 +11,8 @@ class SiteEventDraft {
       required this.end,
       required this.allDay,
       required this.siteId,
-      required this.description});
+      required this.description,
+      required this.reminderOffsetsMinutes});
 
   final String title;
   final String type;
@@ -20,6 +21,7 @@ class SiteEventDraft {
   final bool allDay;
   final String siteId;
   final String description;
+  final List<int> reminderOffsetsMinutes;
 }
 
 class WebSiteEventDialog extends StatefulWidget {
@@ -52,11 +54,15 @@ class _WebSiteEventDialogState extends State<WebSiteEventDialog> {
   late TimeOfDay time =
       TimeOfDay.fromDateTime(widget.initial?.start ?? DateTime.now());
   late DateTime? end = widget.initial?.end;
+  late Set<int> reminderOffsets =
+      widget.initial?.reminderOffsetsMinutes.toSet() ?? <int>{};
+  final customMinutes = TextEditingController();
 
   @override
   void dispose() {
     title.dispose();
     description.dispose();
+    customMinutes.dispose();
     super.dispose();
   }
 
@@ -118,7 +124,8 @@ class _WebSiteEventDialogState extends State<WebSiteEventDialog> {
             end: end,
             allDay: allDay,
             siteId: siteId,
-            description: description.text.trim()));
+            description: description.text.trim(),
+            reminderOffsetsMinutes: reminderOffsets.toList()..sort()));
   }
 
   @override
@@ -218,6 +225,63 @@ class _WebSiteEventDialogState extends State<WebSiteEventDialog> {
                       maxLines: 3,
                       decoration: const InputDecoration(
                           labelText: 'Description (optional)')),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Reminders',
+                        style: Theme.of(context).textTheme.titleSmall),
+                  ),
+                  Wrap(spacing: 8, children: [
+                    for (final choice in siteReminderChoices.entries)
+                      FilterChip(
+                        label: Text(choice.value),
+                        selected: reminderOffsets.contains(choice.key),
+                        onSelected: (selected) => setState(() {
+                          if (selected && reminderOffsets.length < 5) {
+                            reminderOffsets.add(choice.key);
+                          } else if (!selected) {
+                            reminderOffsets.remove(choice.key);
+                          }
+                        }),
+                      ),
+                    for (final minutes in reminderOffsets.where(
+                        (value) => !siteReminderChoices.containsKey(value)))
+                      InputChip(
+                        label: Text('$minutes min before'),
+                        onDeleted: () =>
+                            setState(() => reminderOffsets.remove(minutes)),
+                      ),
+                  ]),
+                  Row(children: [
+                    Expanded(
+                      child: TextField(
+                        controller: customMinutes,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                            labelText: 'Custom minutes before'),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Add custom reminder',
+                      icon: const Icon(Icons.add_alert_outlined),
+                      onPressed: () {
+                        final value = int.tryParse(customMinutes.text.trim());
+                        if (value == null ||
+                            value < 0 ||
+                            value > 43200 ||
+                            reminderOffsets.length >= 5) {
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(const SnackBar(
+                            content: Text(
+                                'Choose 0–43200 minutes, up to five reminders.'),
+                          ));
+                          return;
+                        }
+                        setState(() => reminderOffsets.add(value));
+                        customMinutes.clear();
+                      },
+                    ),
+                  ]),
                 ])))),
         actions: [
           TextButton(

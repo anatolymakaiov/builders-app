@@ -773,6 +773,10 @@ service cloud.firestore {
     }
 
     match /site_events/{eventId} {
+      function validReminderOffset(offsets, index) {
+        return offsets.size() <= index || (offsets[index] is int
+          && offsets[index] >= 0 && offsets[index] <= 43200);
+      }
       function ownsEvent() {
         return isEmployer() && resource.data.employerContextId == uid();
       }
@@ -780,6 +784,7 @@ service cloud.firestore {
         return request.resource.data.keys().hasOnly([
           "eventId", "employerContextId", "siteId", "title", "eventType",
           "startDateTime", "endDateTime", "allDay", "description",
+          "reminderOffsetsMinutes",
           "createdBy", "createdAt", "updatedAt"])
           && request.resource.data.keys().hasAll([
             "eventId", "employerContextId", "siteId", "title", "eventType",
@@ -794,7 +799,14 @@ service cloud.firestore {
           && request.resource.data.title.size() <= 120
           && request.resource.data.eventType in [
             "site_induction", "inspection", "material_delivery", "meeting",
-            "client_visit", "safety_briefing", "deadline", "milestone", "other"]
+            "client_visit", "safety_briefing", "deadline", "milestone", "reminder", "other"]
+          && request.resource.data.get("reminderOffsetsMinutes", []) is list
+          && request.resource.data.get("reminderOffsetsMinutes", []).size() <= 5
+          && validReminderOffset(request.resource.data.get("reminderOffsetsMinutes", []), 0)
+          && validReminderOffset(request.resource.data.get("reminderOffsetsMinutes", []), 1)
+          && validReminderOffset(request.resource.data.get("reminderOffsetsMinutes", []), 2)
+          && validReminderOffset(request.resource.data.get("reminderOffsetsMinutes", []), 3)
+          && validReminderOffset(request.resource.data.get("reminderOffsetsMinutes", []), 4)
           && request.resource.data.startDateTime is timestamp
           && request.resource.data.get("endDateTime",
             request.resource.data.startDateTime) is timestamp
@@ -860,6 +872,10 @@ service cloud.firestore {
         && request.resource.data.name.size() <= 120
         && request.resource.data.updatedAt == request.time);
       allow delete: if false;
+    }
+
+    match /event_reminders/{reminderId} {
+      allow read, write: if false;
     }
 
     match /assignments/{assignmentId} {

@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -62,7 +63,9 @@ class _WebShellState extends State<WebShell> {
   bool profileCoveredByJob = false;
   int mapSavedJobsRefreshToken = 0;
   bool postingJob = false;
+  String? postJobSiteId;
   String? calendarSiteId;
+  DateTime? calendarTargetDate;
   String? selectedSiteId;
   int siteRequestId = 0;
   int calendarRefresh = 0;
@@ -114,6 +117,7 @@ class _WebShellState extends State<WebShell> {
       initialMapJobId = null;
       secondaryRoute = null;
       calendarSiteId = null;
+      calendarTargetDate = null;
       selectedSiteId = null;
       siteRequestId = 0;
       calendarRefresh = 0;
@@ -205,9 +209,11 @@ class _WebShellState extends State<WebShell> {
               key: ValueKey('web-sites:${widget.user.uid}:$siteRequestId'),
               employerId: widget.user.uid,
               onOpenJob: _openJob,
+              onAddVacancy: _openPostJobForSite,
               initialSiteId: selectedSiteId,
               onOpenCalendar: _openSiteCalendar,
               onOpenWorkforce: _openWorkforce,
+              onFindWorkers: _openTalentFromWorkforce,
             )
           : const SizedBox.shrink(),
       widget.role == 'employer' && visited.contains(WebSection.workforce)
@@ -229,6 +235,7 @@ class _WebShellState extends State<WebShell> {
               uid: widget.user.uid,
               employer: widget.role == 'employer',
               initialSiteId: calendarSiteId,
+              initialDate: calendarTargetDate,
               refreshToken: calendarRefresh,
               onOpenJob: _openJob,
               onOpenSite: _openSite,
@@ -246,6 +253,7 @@ class _WebShellState extends State<WebShell> {
     final postJobPage = postingJob
         ? WebPostJobPage(
             userId: widget.user.uid,
+            initialSiteId: postJobSiteId,
             onCancel: () => setState(() => postingJob = false),
             onDone: (_) => setState(() {
               postingJob = false;
@@ -489,6 +497,7 @@ class _WebShellState extends State<WebShell> {
 
   void _openPostJob() {
     setState(() {
+      postJobSiteId = null;
       selected = WebSection.jobs;
       profileRoute = null;
       profileHistory.clear();
@@ -497,6 +506,11 @@ class _WebShellState extends State<WebShell> {
       secondaryRoute = null;
       postingJob = true;
     });
+  }
+
+  void _openPostJobForSite(String siteId) {
+    _openPostJob();
+    setState(() => postJobSiteId = siteId);
   }
 
   void _openApplications(
@@ -532,7 +546,10 @@ class _WebShellState extends State<WebShell> {
       if (value == WebSection.talent) {
         workforceTalentRequest = null;
       }
-      if (value == WebSection.calendar) calendarRefresh++;
+      if (value == WebSection.calendar) {
+        calendarTargetDate = null;
+        calendarRefresh++;
+      }
       profileRoute = null;
       profileCoveredByJob = false;
       jobReturnTarget = null;
@@ -543,6 +560,7 @@ class _WebShellState extends State<WebShell> {
 
   void _openSiteCalendar(String siteId) => setState(() {
         calendarSiteId = siteId;
+        calendarTargetDate = null;
         calendarRefresh++;
         selected = WebSection.calendar;
         visited.add(selected);
@@ -640,6 +658,22 @@ class _WebShellState extends State<WebShell> {
   void _routeNotification(WebNotificationItem notification) {
     final data = notification.data;
     final targetType = _targetTypeFor(data);
+    if (targetType == 'calendar') {
+      final reminderSiteId = _cleanId(data['siteId']);
+      final eventAt = data['eventAt'];
+      if (reminderSiteId != null) {
+        _openSiteCalendar(reminderSiteId);
+      } else {
+        _selectSection(WebSection.calendar);
+      }
+      if (eventAt is Timestamp) {
+        setState(() {
+          calendarTargetDate = eventAt.toDate();
+          calendarRefresh++;
+        });
+      }
+      return;
+    }
     if (targetType == 'vacancy_invitation' && widget.role == 'worker') {
       _selectSection(WebSection.opportunities);
       return;

@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/job.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'edit_profile_screen.dart';
+import 'employer_calendar_screen.dart';
 import '../widgets/job_card.dart';
 import '../services/billing_service.dart';
 import '../services/job_repository.dart';
@@ -706,8 +707,27 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                             final jobs = snapshot.data ?? const <Job>[];
 
                             if (jobs.isEmpty) {
-                              return const Center(
-                                child: Text("No vacancies to display."),
+                              return Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text("No vacancies to display."),
+                                    if (isMyCompany)
+                                      TextButton.icon(
+                                        icon: const Icon(
+                                            Icons.calendar_month_outlined),
+                                        label: const Text('Calendar'),
+                                        onPressed: () =>
+                                            Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                              builder: (_) =>
+                                                  EmployerCalendarScreen(
+                                                      employerId:
+                                                          widget.userId)),
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               );
                             }
 
@@ -719,13 +739,30 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                                   return StroykaSurface(
                                     margin: const EdgeInsets.only(bottom: 10),
                                     padding: const EdgeInsets.all(14),
-                                    child: Text(
-                                      "${jobs.length} ${jobs.length == 1 ? "vacancy" : "vacancies"}",
-                                      style: const TextStyle(
-                                        color: AppColors.ink,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
+                                    child: Row(children: [
+                                      Expanded(
+                                          child: Text(
+                                        "${jobs.length} ${jobs.length == 1 ? "vacancy" : "vacancies"}",
+                                        style: const TextStyle(
+                                          color: AppColors.ink,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      )),
+                                      if (isMyCompany)
+                                        TextButton.icon(
+                                          icon: const Icon(
+                                              Icons.calendar_month_outlined),
+                                          label: const Text('Calendar'),
+                                          onPressed: () =>
+                                              Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                                builder: (_) =>
+                                                    EmployerCalendarScreen(
+                                                        employerId:
+                                                            widget.userId)),
+                                          ),
+                                        ),
+                                    ]),
                                   );
                                 }
 

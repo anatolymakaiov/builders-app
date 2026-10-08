@@ -21,7 +21,22 @@ enum SortType {
 }
 
 class JobListScreen extends StatefulWidget {
-  const JobListScreen({super.key});
+  const JobListScreen({
+    super.key,
+    this.jobsStream,
+    this.savedJobsStream,
+    this.appliedJobsStream,
+    this.refreshAction,
+    this.userIdProvider,
+    this.lookupLocation = true,
+  });
+
+  final Stream<List<Job>>? jobsStream;
+  final Stream<Set<String>>? savedJobsStream;
+  final Stream<Set<String>>? appliedJobsStream;
+  final Future<void> Function()? refreshAction;
+  final String? Function()? userIdProvider;
+  final bool lookupLocation;
 
   @override
   State<JobListScreen> createState() => _JobListScreenState();
@@ -30,8 +45,8 @@ class JobListScreen extends StatefulWidget {
 class _JobListScreenState extends State<JobListScreen> {
   static const int _jobsPerPage = 10;
 
-  final jobRepository = JobRepository();
-  final jobAlertService = JobAlertService();
+  late final jobRepository = JobRepository();
+  late final jobAlertService = JobAlertService();
   final geocodingService = GeocodingService();
 
   double? userLat;
@@ -50,7 +65,9 @@ class _JobListScreenState extends State<JobListScreen> {
   List<ConstructionRole> selectedRoles = [];
   JobSearchFilters searchFilters = const JobSearchFilters();
   int currentPage = 1;
-  int refreshTick = 0;
+  late Stream<List<Job>> jobsStream;
+  Stream<Set<String>>? savedJobsStream;
+  String? savedJobsUid;
   bool showSavedOnly = false;
   Stream<Set<String>>? appliedJobsStream;
   String? appliedJobsUid;
@@ -66,30 +83,43 @@ class _JobListScreenState extends State<JobListScreen> {
   @override
   void initState() {
     super.initState();
-    getUserLocation();
+    jobsStream = widget.jobsStream ?? jobRepository.getJobs();
+    if (widget.lookupLocation) getUserLocation();
+  }
+
+  Stream<Set<String>> savedJobsStreamFor(String uid) {
+    if (savedJobsUid != uid || savedJobsStream == null) {
+      savedJobsUid = uid;
+      savedJobsStream = jobRepository.getSavedJobsStream(uid);
+    }
+    return savedJobsStream!;
   }
 
   Future<void> getUserLocation() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
 
-    LocationPermission permission = await Geolocator.checkPermission();
+      LocationPermission permission = await Geolocator.checkPermission();
 
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.deniedForever) return;
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        userLat = position.latitude;
+        userLng = position.longitude;
+      });
+    } catch (_) {
+      // Location is optional; a permission or device failure cannot hide Jobs.
     }
-
-    if (permission == LocationPermission.deniedForever) return;
-
-    Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-
-    if (!mounted) return;
-    setState(() {
-      userLat = position.latitude;
-      userLng = position.longitude;
-    });
   }
 
   double calculateDistance(double lat, double lng) {
@@ -188,9 +218,16 @@ class _JobListScreenState extends State<JobListScreen> {
   }
 
   Future<void> refreshJobs() async {
-    await getUserLocation();
-    if (!mounted) return;
-    setState(() => refreshTick++);
+    try {
+      await (widget.refreshAction?.call() ?? jobRepository.refreshPublicJobs());
+      if (widget.lookupLocation) getUserLocation();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Could not refresh jobs. Showing current results.'),
+        action: SnackBarAction(label: 'Retry', onPressed: refreshJobs),
+      ));
+    }
   }
 
   Widget buildJobCard(Job job, bool isSaved, bool isApplied) {
@@ -215,7 +252,10 @@ class _JobListScreenState extends State<JobListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
+    final userId = widget.userIdProvider?.call() ??
+        (widget.userIdProvider == null
+            ? FirebaseAuth.instance.currentUser?.uid
+            : null);
 
     return Scaffold(
       appBar: AppBar(
@@ -246,24 +286,34 @@ class _JobListScreenState extends State<JobListScreen> {
           children: [
             Expanded(
               child: StreamBuilder<Set<String>>(
+                key: ValueKey('saved-$userId'),
                 stream: userId == null
-                    ? Stream.value(<String>{})
-                    : jobRepository.getSavedJobsStream(userId),
+                    ? (widget.savedJobsStream ?? Stream.value(<String>{}))
+                    : (widget.savedJobsStream ?? savedJobsStreamFor(userId)),
                 builder: (context, savedSnapshot) {
                   final savedJobIds = savedSnapshot.data ?? <String>{};
 
                   return StreamBuilder<List<Job>>(
-                    key: ValueKey('jobs-$refreshTick'),
-                    stream: jobRepository.getJobs(),
+                    stream: jobsStream,
                     builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Center(
+                            child: TextButton(
+                          onPressed: () => setState(() => jobsStream =
+                              widget.jobsStream ?? jobRepository.getJobs()),
+                          child: const Text('Could not load jobs. Retry'),
+                        ));
+                      }
                       if (!snapshot.hasData) {
                         return const Center(child: CircularProgressIndicator());
                       }
                       return StreamBuilder<Set<String>>(
                         key: ValueKey('applied-$userId'),
                         stream: userId == null
-                            ? Stream.value(<String>{})
-                            : appliedJobsStreamFor(userId),
+                            ? (widget.appliedJobsStream ??
+                                Stream.value(<String>{}))
+                            : (widget.appliedJobsStream ??
+                                appliedJobsStreamFor(userId)),
                         builder: (context, appliedSnapshot) {
                           if (appliedSnapshot.hasError) {
                             return Center(

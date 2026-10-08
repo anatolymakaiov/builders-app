@@ -73,12 +73,13 @@ class VacancyInvitationService {
           .map(VacancyInvitation.fromDocument)
           .toList(growable: false));
 
-  Future<Map<String, dynamic>> invite(
-      String vacancyId, List<String> workerIds) async {
+  Future<Map<String, dynamic>> invite(String vacancyId, List<String> workerIds,
+      {bool allowRelevanceMismatch = false}) async {
     final result =
         await functions.httpsCallable('inviteWorkersToVacancy').call({
       'vacancyId': vacancyId,
       'workerIds': workerIds,
+      if (allowRelevanceMismatch) 'allowRelevanceMismatch': true,
     });
     return Map<String, dynamic>.from(result.data as Map);
   }
