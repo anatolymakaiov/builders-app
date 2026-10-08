@@ -10,6 +10,7 @@ enum WebSection {
   chats('Chats', Icons.chat_bubble_outline),
   talent('Talent', Icons.groups_outlined),
   sites('Sites', Icons.location_city_outlined),
+  workforce('Workforce', Icons.groups_2_outlined),
   calendar('Calendar', Icons.calendar_month_outlined),
   opportunities('Opportunities', Icons.local_offer_outlined);
 
@@ -90,7 +91,8 @@ class WebTopNavigation extends StatelessWidget {
             LayoutBuilder(
               builder: (context, constraints) {
                 final showLabels =
-                    WebBreakpoints.isLargeDesktop(constraints.maxWidth);
+                    WebBreakpoints.isLargeDesktop(constraints.maxWidth) &&
+                        (role != 'employer' || constraints.maxWidth >= 1600);
                 final gutter = WebBreakpoints.gutter(constraints.maxWidth);
                 final brandSpace = showLabels
                     ? 350.0
@@ -125,8 +127,11 @@ class WebTopNavigation extends StatelessWidget {
                                           role == 'employer') &&
                                       (section != WebSection.sites ||
                                           role == 'employer') &&
+                                      (section != WebSection.workforce ||
+                                          role == 'employer') &&
                                       (section != WebSection.calendar ||
-                                          role == 'worker' || role == 'employer') &&
+                                          role == 'worker' ||
+                                          role == 'employer') &&
                                       (section != WebSection.opportunities ||
                                           role == 'worker'))
                                     Padding(

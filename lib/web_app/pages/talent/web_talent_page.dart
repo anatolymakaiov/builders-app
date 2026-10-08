@@ -12,13 +12,20 @@ import '../../services/web_employer_entitlements_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 import '../../widgets/web_remote_image.dart';
+import '../../services/workforce_talent_request.dart';
 
 class WebTalentPage extends StatefulWidget {
   const WebTalentPage(
-      {super.key, required this.employerId, this.onOpenBilling});
+      {super.key,
+      required this.employerId,
+      this.onOpenBilling,
+      this.workforceRequest,
+      this.navigationRequestId = 0});
 
   final String employerId;
   final VoidCallback? onOpenBilling;
+  final WorkforceTalentRequest? workforceRequest;
+  final int navigationRequestId;
 
   @override
   State<WebTalentPage> createState() => _WebTalentPageState();
@@ -50,10 +57,12 @@ class _WebTalentPageState extends State<WebTalentPage> {
   List<WebTalentCandidate> candidates = [];
   QueryDocumentSnapshot<Map<String, dynamic>>? cursor;
   int requestId = 0;
+  bool prefillNeedsSearch = false;
 
   @override
   void initState() {
     super.initState();
+    _applyWorkforceRequest();
     _loadEntitlements();
     entitlementRefresh =
         Timer.periodic(const Duration(minutes: 1), (_) => _loadEntitlements());
@@ -74,6 +83,10 @@ class _WebTalentPageState extends State<WebTalentPage> {
             requestId++;
           }
         });
+        if (prefillNeedsSearch && value.candidateSearch) {
+          prefillNeedsSearch = false;
+          unawaited(_search());
+        }
       }
     } catch (_) {
       if (mounted && uid == widget.employerId) {
@@ -98,8 +111,28 @@ class _WebTalentPageState extends State<WebTalentPage> {
       requestId++;
       entitlements = null;
       entitlementFailed = false;
+      _applyWorkforceRequest();
       _loadEntitlements();
+    } else if (oldWidget.navigationRequestId != widget.navigationRequestId) {
+      _applyWorkforceRequest();
+      if (entitlements?.candidateSearch == true) {
+        prefillNeedsSearch = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_search());
+        });
+      }
     }
+  }
+
+  void _applyWorkforceRequest() {
+    final request = widget.workforceRequest;
+    if (request == null) return;
+    tradeController.text =
+        JobTaxonomyService.roleFor(request.tradeId)?.canonical ?? '';
+    locationController.text = request.location;
+    availableBy = request.availableBy;
+    poolMode = false;
+    prefillNeedsSearch = true;
   }
 
   @override
@@ -266,6 +299,37 @@ class _WebTalentPageState extends State<WebTalentPage> {
     return null;
   }
 
+  Future<List<Job>> _invitableJobs() async {
+    final jobs = FirebaseFirestore.instance.collection('jobs');
+    final snapshot = await jobs
+        .where('ownerId', isEqualTo: widget.employerId)
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .get();
+    final visible = snapshot.docs
+        .map((doc) => Job.fromFirestore(doc.id, doc.data()))
+        .toList();
+    final requestedId = widget.workforceRequest?.vacancyId;
+    if (requestedId != null &&
+        requestedId.isNotEmpty &&
+        !visible.any((job) => job.id == requestedId)) {
+      final requested = await jobs.doc(requestedId).get();
+      if (requested.exists &&
+          requested.data()?['ownerId'] == widget.employerId) {
+        visible.insert(0, Job.fromFirestore(requested.id, requested.data()!));
+      }
+    }
+    visible.removeWhere((job) =>
+        job.ownerId != widget.employerId ||
+        !job.isPubliclyVisible ||
+        job.remainingPositions <= 0);
+    if (requestedId != null) {
+      visible.sort((a, b) =>
+          (b.id == requestedId ? 1 : 0).compareTo(a.id == requestedId ? 1 : 0));
+    }
+    return visible;
+  }
+
   Future<void> _inviteSelected() async {
     if (entitlements?.vacancyInvites != true ||
         entitlements!.invitationUsed >= entitlements!.invitationLimit) {
@@ -276,28 +340,13 @@ class _WebTalentPageState extends State<WebTalentPage> {
         .where((item) => selectedWorkerIds.contains(item.id))
         .toList(growable: false);
     if (chosen.isEmpty || inviting) return;
+    final inviteJobsFuture = _invitableJobs();
     final vacancy = await showDialog<Job>(
       context: context,
       builder: (dialogContext) => FutureBuilder(
-        future: FirebaseFirestore.instance
-            .collection('jobs')
-            .where('ownerId', isEqualTo: widget.employerId)
-            .orderBy('createdAt', descending: true)
-            .limit(50)
-            .get(),
+        future: inviteJobsFuture,
         builder: (context, snapshot) {
-          final jobs = snapshot.data?.docs
-                  .map((doc) => Job.fromFirestore(doc.id, doc.data()))
-                  .where((job) =>
-                      job.moderationStatus == 'approved' &&
-                      ['active', 'published', 'open'].contains(job.status) &&
-                      job.active &&
-                      !job.deleted &&
-                      !job.employerDeleted &&
-                      !job.companyDeleted &&
-                      job.remainingPositions > 0)
-                  .toList() ??
-              const <Job>[];
+          final jobs = snapshot.data ?? const <Job>[];
           return AlertDialog(
             title: const Text('Invite to vacancy'),
             content: SizedBox(
@@ -460,6 +509,10 @@ class _WebTalentPageState extends State<WebTalentPage> {
                       width: width,
                       height: WebToolbar.controlHeight,
                       child: Autocomplete<ConstructionRole>(
+                        key: ValueKey(
+                            'talent-trade:${widget.employerId}:${widget.navigationRequestId}'),
+                        initialValue:
+                            TextEditingValue(text: tradeController.text),
                         displayStringForOption: (role) => role.canonical,
                         optionsBuilder: (value) => value.text.trim().isEmpty
                             ? const Iterable<ConstructionRole>.empty()

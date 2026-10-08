@@ -94,6 +94,7 @@ void main() {
       'Profile',
       'Talent',
       'Sites',
+      'Workforce',
       'Calendar',
       'Opportunities'
     ]);

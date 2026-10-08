@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../models/job.dart';
 import '../../../services/operational_calendar.dart';
 import '../../services/web_sites_service.dart';
+import '../../services/workforce_planning_service.dart';
 import '../../widgets/web_page_container.dart';
 
 class WebSitesPage extends StatefulWidget {
@@ -12,12 +13,14 @@ class WebSitesPage extends StatefulWidget {
       required this.employerId,
       this.onOpenJob,
       this.initialSiteId,
-      this.onOpenCalendar});
+      this.onOpenCalendar,
+      this.onOpenWorkforce});
 
   final String employerId;
   final ValueChanged<String>? onOpenJob;
   final String? initialSiteId;
   final ValueChanged<String>? onOpenCalendar;
+  final ValueChanged<String>? onOpenWorkforce;
 
   @override
   State<WebSitesPage> createState() => _WebSitesPageState();
@@ -30,6 +33,7 @@ class _WebSitesPageState extends State<WebSitesPage> {
   bool showInactive = false;
   String? requestedSiteId;
   final Map<String, Future<List<CalendarEvent>>> upcomingBySite = {};
+  final Map<String, Future<WorkforcePlan>> workforceBySite = {};
 
   @override
   void initState() {
@@ -44,6 +48,7 @@ class _WebSitesPageState extends State<WebSitesPage> {
     if (oldWidget.employerId != widget.employerId) {
       selected = null;
       upcomingBySite.clear();
+      workforceBySite.clear();
       sites = service.watchEmployerSites(widget.employerId);
       requestedSiteId = widget.initialSiteId;
     } else if (oldWidget.initialSiteId != widget.initialSiteId) {
@@ -124,6 +129,7 @@ class _WebSitesPageState extends State<WebSitesPage> {
                             requestedSiteId = null;
                             selected = site;
                             upcomingBySite.clear();
+                            workforceBySite.clear();
                           }),
                         );
                       },
@@ -222,6 +228,45 @@ class _WebSitesPageState extends State<WebSitesPage> {
             _date(site.data['expectedEndDate']) ?? 'Not set'),
         _summaryItem('Status', _statusLabel(site.status)),
       ]),
+      const SizedBox(height: 16),
+      Row(children: [
+        const Expanded(
+            child: Text('Workforce',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600))),
+        if (widget.onOpenWorkforce != null)
+          TextButton.icon(
+              onPressed: () => widget.onOpenWorkforce!(site.id),
+              icon: const Icon(Icons.groups_2_outlined),
+              label: const Text('Open Workforce Planning')),
+        IconButton(
+            tooltip: 'Refresh workforce summary',
+            onPressed: () => setState(() => workforceBySite.remove(site.id)),
+            icon: const Icon(Icons.refresh)),
+      ]),
+      FutureBuilder<WorkforcePlan>(
+        future: workforceBySite.putIfAbsent(site.id, () {
+          final now = DateTime.now();
+          return WorkforcePlanningService().load(
+              employerId: widget.employerId,
+              window: PlanningWindow.nextDays(now, 14),
+              now: now,
+              siteId: site.id);
+        }),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Text('Could not load workforce summary.');
+          }
+          if (!snapshot.hasData) return const LinearProgressIndicator();
+          final summary = snapshot.data!.siteSummaries
+              .where((item) => item.siteId == site.id)
+              .firstOrNull;
+          if (summary == null) return const Text('No workforce activity.');
+          return Text('${summary.currentWorkers} working  ·  '
+              '${summary.starting} starting  ·  ${summary.finishing} finishing  ·  '
+              '${summary.openPositions} open positions  ·  '
+              '${snapshot.data!.gapCount} to fill');
+        },
+      ),
       const SizedBox(height: 16),
       Row(children: [
         const Expanded(

@@ -411,6 +411,21 @@ class OperationalCalendarService {
     return assignments;
   }
 
+  Future<List<WorkerAssignment>> loadEmployerPlanningAssignments(
+      String employerId, CalendarRange range) async {
+    final lower = Timestamp.fromDate(
+        range.start.toUtc().subtract(const Duration(days: 1)));
+    final upper =
+        Timestamp.fromDate(range.end.toUtc().add(const Duration(days: 1)));
+    final unique = await _assignmentData(employerId, true, lower, upper);
+    return [
+      for (final entry in unique.entries)
+        if (entry.value['employerContextId'] == employerId &&
+            {'active', 'scheduled'}.contains(entry.value['status']))
+          WorkerAssignment(entry.key, entry.value),
+    ];
+  }
+
   Future<List<CalendarEvent>> load({
     required String uid,
     required bool employer,

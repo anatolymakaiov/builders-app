@@ -11,6 +11,8 @@ import '../pages/jobs/web_post_job_page.dart';
 import '../pages/map/web_map_page.dart';
 import '../pages/talent/web_talent_page.dart';
 import '../pages/sites/web_sites_page.dart';
+import '../pages/workforce/web_workforce_page.dart';
+import '../services/workforce_talent_request.dart';
 import '../pages/calendar/web_calendar_page.dart';
 import '../pages/opportunities/web_opportunities_page.dart';
 import '../../services/application_status_utils.dart';
@@ -64,6 +66,10 @@ class _WebShellState extends State<WebShell> {
   String? selectedSiteId;
   int siteRequestId = 0;
   int calendarRefresh = 0;
+  String? workforceSiteId;
+  int workforceRequestId = 0;
+  WorkforceTalentRequest? workforceTalentRequest;
+  int talentRequestId = 0;
   _SecondaryRoute? secondaryRoute;
   late Stream<WebDataState<WebShellBadges>> badgesStream;
   late Map<String, dynamic> liveProfile;
@@ -111,6 +117,10 @@ class _WebShellState extends State<WebShell> {
       selectedSiteId = null;
       siteRequestId = 0;
       calendarRefresh = 0;
+      workforceSiteId = null;
+      workforceRequestId = 0;
+      workforceTalentRequest = null;
+      talentRequestId = 0;
       badgesStream = WebAccountDataService().badges(
         uid: widget.user.uid,
         role: widget.role,
@@ -186,6 +196,8 @@ class _WebShellState extends State<WebShell> {
               key: ValueKey('web-talent:${widget.user.uid}'),
               employerId: widget.user.uid,
               onOpenBilling: () => _openAccount(WebAccountDestination.billing),
+              workforceRequest: workforceTalentRequest,
+              navigationRequestId: talentRequestId,
             )
           : const SizedBox.shrink(),
       widget.role == 'employer' && visited.contains(WebSection.sites)
@@ -195,6 +207,20 @@ class _WebShellState extends State<WebShell> {
               onOpenJob: _openJob,
               initialSiteId: selectedSiteId,
               onOpenCalendar: _openSiteCalendar,
+              onOpenWorkforce: _openWorkforce,
+            )
+          : const SizedBox.shrink(),
+      widget.role == 'employer' && visited.contains(WebSection.workforce)
+          ? WebWorkforcePage(
+              key: ValueKey('web-workforce:${widget.user.uid}'),
+              employerId: widget.user.uid,
+              initialSiteId: workforceSiteId,
+              navigationRequestId: workforceRequestId,
+              onOpenSite: _openSite,
+              onOpenCalendar: (id) => _openSiteCalendar(id ?? ''),
+              onOpenJob: (id) => _openJob(id,
+                  ownerMode: true, returnTarget: _JobReturnTarget.workforce),
+              onFindWorkers: _openTalentFromWorkforce,
             )
           : const SizedBox.shrink(),
       visited.contains(WebSection.calendar)
@@ -499,6 +525,13 @@ class _WebShellState extends State<WebShell> {
     setState(() {
       profileHistory.clear();
       selected = value;
+      if (value == WebSection.workforce) {
+        workforceSiteId = null;
+        workforceRequestId++;
+      }
+      if (value == WebSection.talent) {
+        workforceTalentRequest = null;
+      }
       if (value == WebSection.calendar) calendarRefresh++;
       profileRoute = null;
       profileCoveredByJob = false;
@@ -519,6 +552,20 @@ class _WebShellState extends State<WebShell> {
         selectedSiteId = siteId;
         siteRequestId++;
         selected = WebSection.sites;
+        visited.add(selected);
+      });
+
+  void _openWorkforce(String siteId) => setState(() {
+        workforceSiteId = siteId;
+        workforceRequestId++;
+        selected = WebSection.workforce;
+        visited.add(selected);
+      });
+
+  void _openTalentFromWorkforce(WorkforceTalentRequest request) => setState(() {
+        workforceTalentRequest = request;
+        talentRequestId++;
+        selected = WebSection.talent;
         visited.add(selected);
       });
 
@@ -690,6 +737,7 @@ enum _JobReturnTarget {
   map('Back to Jobs Map', WebSection.map),
   applications('Back to Applications', WebSection.applications),
   chats('Back to Chats', WebSection.chats),
+  workforce('Back to Workforce', WebSection.workforce),
   profile('Back to profile', null);
 
   const _JobReturnTarget(this.label, this.section);
