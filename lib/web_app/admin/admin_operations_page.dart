@@ -134,6 +134,7 @@ class _AdminOperationsPageState extends State<AdminOperationsPage> {
           _text(row, 'trade'),
           _text(row, 'site'),
           '${data['filledPositions'] ?? 0}/${data['positions'] ?? 1} filled',
+          '${data['applicantsCount'] ?? 0} applicants',
           _text(row, 'status'),
           'Start ${_date(data['startDate'])}',
         ],

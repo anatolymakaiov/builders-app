@@ -51,6 +51,7 @@ class _CommandService extends AdminCommandService {
         'siteId': 'site-1',
         'positions': 3,
         'filledPositions': 1,
+        'applicantsCount': 4,
       }),
     ], 'job-1');
   }
@@ -78,6 +79,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.text('Dryliner'), findsOneWidget);
+    expect(find.textContaining('4 applicants'), findsOneWidget);
     expect(service.calls, [(AdminOperationalView.jobs, null)]);
     await tester.tap(find.text('Employer').first);
     expect(employer, 'employer-1');
