@@ -24,6 +24,7 @@ class WebTeamPage extends StatefulWidget {
     required this.onBack,
     required this.onProfile,
     required this.onChat,
+    this.adminPreview = false,
   });
 
   final String teamId;
@@ -31,6 +32,7 @@ class WebTeamPage extends StatefulWidget {
   final VoidCallback onBack;
   final void Function(String, String) onProfile;
   final ValueChanged<String> onChat;
+  final bool adminPreview;
 
   @override
   State<WebTeamPage> createState() => _WebTeamPageState();
@@ -113,8 +115,8 @@ class _WebTeamPageState extends State<WebTeamPage> {
                 setState(() => future = service.loadTeam(widget.teamId)),
           );
         }
-        final leader = actions.leader(team.data);
-        final member =
+        final leader = !widget.adminPreview && actions.leader(team.data);
+        final member = !widget.adminPreview &&
             WebTeamActions.memberIds(team.data).contains(actions.uid);
         final contactPhones = _contactPhones(team);
         return WebPageContainer(
@@ -167,8 +169,10 @@ class _WebTeamPageState extends State<WebTeamPage> {
                   );
                   final side = Column(
                     children: [
-                      WebPanel(child: _actionsPanel(team, leader, member)),
-                      const SizedBox(height: WebSpacing.lg),
+                      if (!widget.adminPreview) ...[
+                        WebPanel(child: _actionsPanel(team, leader, member)),
+                        const SizedBox(height: WebSpacing.lg),
+                      ],
                       WebPanel(child: _contacts(contactPhones)),
                     ],
                   );

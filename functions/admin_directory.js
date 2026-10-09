@@ -64,6 +64,11 @@ function filterDirectoryRecord(id, data, filters, postcodeCoordinates) {
   if (filters.role === "worker" && !matchesProfession(data, filters.professionTerms)) {
     return null;
   }
+  if (filters.role === "employer" && filters.plan && filters.plan !== "all") {
+    const billing = data.billing || {};
+    const plan = String(billing.activePlanId || billing.planId || "").toLowerCase();
+    if (plan !== filters.plan) return null;
+  }
   if (filters.status === "active" &&
       (data.active === false || data.deleted === true || data.accountDeleted === true ||
       data.moderationHold === true || data.profileSuspended === true ||
@@ -83,16 +88,26 @@ function filterDirectoryRecord(id, data, filters, postcodeCoordinates) {
     return null;
   }
   const summaryFields = ["role", "name", "displayName", "firstName", "lastName",
-    "companyName", "businessName", "email", "phone", "phoneNumber",
+    "companyName", "businessName",
     "trade", "position", "registrationPosition", "profession", "trades",
     "location", "city", "townCity", "postcode", "postCode", "active",
     "deleted", "accountDeleted", "moderationHold", "profileSuspended",
     "profileHold", "accountOnHold", "status", "photo", "avatarUrl",
     "photoUrl", "profilePhotoUrl", "companyLogo", "companyLogoUrl",
-    "companyAvatarUrl", "logo", "employerAvatarUrl"];
-  return {id, data: Object.fromEntries(summaryFields
+    "companyAvatarUrl", "logo", "employerAvatarUrl", "createdAt",
+    "availabilityStatus", "effectiveAvailabilityStatus", "ratingAverage",
+    "ratingCount", "reviewCount", "averageRating", "totalReviews",
+    "availableFrom"];
+  const summary = Object.fromEntries(summaryFields
     .filter((field) => data[field] != null)
-    .map((field) => [field, data[field]])), distanceKm: distance};
+    .map((field) => [field, data[field]]));
+  if (filters.role === "employer") {
+    const billing = data.billing || {};
+    summary.planId = billing.activePlanId || billing.planId || "";
+    summary.subscriptionStatus = billing.subscriptionStatus || "";
+    summary.usedJobPosts = billing.usedJobPosts ?? 0;
+  }
+  return {id, data: summary, distanceKm: distance};
 }
 
 module.exports = {normalized, matchesProfession, distanceKm, filterDirectoryRecord,

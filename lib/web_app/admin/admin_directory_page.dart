@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/job_taxonomy_service.dart';
+import '../../services/worker_availability_service.dart';
 import '../services/web_admin_profile_service.dart';
 import '../services/web_profile_data_service.dart';
 import '../theme/web_theme.dart';
@@ -32,6 +33,7 @@ class _AdminDirectoryPageState extends State<AdminDirectoryPage> {
   final entries = <AdminDirectoryEntry>[];
   String? nextCursor;
   String status = 'all';
+  String plan = 'all';
   int? radiusKm;
   bool loading = false;
   bool loaded = false;
@@ -75,6 +77,7 @@ class _AdminDirectoryPageState extends State<AdminDirectoryPage> {
         location: location.text,
         radiusKm: radiusKm,
         status: status,
+        plan: plan,
         professions: selectedRoles,
         cursor: more ? nextCursor : null,
       );
@@ -186,6 +189,24 @@ class _AdminDirectoryPageState extends State<AdminDirectoryPage> {
                       onChanged: (value) =>
                           setState(() => status = value ?? 'all'),
                     )),
+                if (!workers)
+                  SizedBox(
+                      width: 150,
+                      child: DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        initialValue: plan,
+                        decoration: const InputDecoration(labelText: 'Plan'),
+                        items: const [
+                          DropdownMenuItem(value: 'all', child: Text('All')),
+                          DropdownMenuItem(
+                              value: 'starter', child: Text('Starter')),
+                          DropdownMenuItem(
+                              value: 'growth', child: Text('Growth')),
+                          DropdownMenuItem(value: 'pro', child: Text('Pro')),
+                        ],
+                        onChanged: (value) =>
+                            setState(() => plan = value ?? 'all'),
+                      )),
                 FilledButton.icon(
                     onPressed: loading ? null : () => _load(),
                     icon: const Icon(Icons.tune),
@@ -246,6 +267,13 @@ class _AdminDirectoryPageState extends State<AdminDirectoryPage> {
     final blocked = entry.record.data['moderationHold'] == true ||
         entry.record.data['profileSuspended'] == true ||
         const ['suspended', 'on_hold'].contains(entry.record.data['status']);
+    final data = entry.record.data;
+    final rating = data['ratingAverage'] ?? data['averageRating'];
+    final reviews =
+        data['ratingCount'] ?? data['reviewCount'] ?? data['totalReviews'];
+    final availability = WorkerAvailabilityService.profileLabel(data);
+    final plan = (data['planId'] ?? '').toString();
+    final subscription = (data['subscriptionStatus'] ?? '').toString();
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -265,15 +293,27 @@ class _AdminDirectoryPageState extends State<AdminDirectoryPage> {
               if (widget.role == 'worker' && trade.isNotEmpty) trade,
               if (place.isNotEmpty) place,
               if (entry.distanceKm != null)
-                '${entry.distanceKm!.toStringAsFixed(1)} km away'
+                '${entry.distanceKm!.toStringAsFixed(1)} km away',
+              if (widget.role == 'worker') availability,
+              if (widget.role == 'worker' && rating is num)
+                '${rating.toStringAsFixed(1)} / 5${reviews is num ? ' · $reviews reviews' : ''}',
+              if (widget.role != 'worker' && plan.isNotEmpty) 'Plan: $plan',
+              if (widget.role != 'worker' && subscription.isNotEmpty)
+                subscription,
+              if (widget.role != 'worker')
+                '${data['usedJobPosts'] ?? 0} vacancy slots used',
             ].join(' · '),
-            maxLines: 2,
+            maxLines: 3,
             overflow: TextOverflow.ellipsis),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
           if (blocked)
             const Tooltip(
                 message: 'Blocked',
                 child: Icon(Icons.block, color: Colors.red)),
+          if (!blocked)
+            const Tooltip(
+                message: 'Active',
+                child: Icon(Icons.check_circle_outline, color: Colors.green)),
           const Icon(Icons.chevron_right),
         ]),
         onTap: () async {

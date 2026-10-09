@@ -44,6 +44,7 @@ class WebProfilePage extends StatefulWidget {
     this.onOpenJob,
     this.onAdminInbox,
     this.onOwnProfileChanged,
+    this.adminPreview = false,
   });
 
   final User user;
@@ -57,6 +58,7 @@ class WebProfilePage extends StatefulWidget {
   final void Function(String jobId, bool ownerView)? onOpenJob;
   final VoidCallback? onAdminInbox;
   final ValueChanged<Map<String, dynamic>>? onOwnProfileChanged;
+  final bool adminPreview;
 
   @override
   State<WebProfilePage> createState() => _WebProfilePageState();
@@ -164,6 +166,7 @@ class _WebProfilePageState extends State<WebProfilePage> {
         }
         final held = ModerationHoldService.isProfileHeld(current.data);
         if (!ownProfile &&
+            !widget.adminPreview &&
             WebProfileCommunication.unavailable(
                 current.data.isEmpty ? null : current.data)) {
           return Center(
@@ -234,8 +237,9 @@ class _WebProfilePageState extends State<WebProfilePage> {
                           child: const Text('View Administrator Message'))
                     ],
                   ),
-                if (!ownProfile) const SizedBox(height: WebSpacing.md),
-                if (!ownProfile)
+                if (!ownProfile && !widget.adminPreview)
+                  const SizedBox(height: WebSpacing.md),
+                if (!ownProfile && !widget.adminPreview)
                   Wrap(spacing: 10, children: [
                     OutlinedButton.icon(
                         onPressed: () async {

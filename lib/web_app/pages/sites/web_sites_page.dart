@@ -18,7 +18,8 @@ class WebSitesPage extends StatefulWidget {
       this.initialSiteId,
       this.onOpenCalendar,
       this.onOpenWorkforce,
-      this.onFindWorkers});
+      this.onFindWorkers,
+      this.adminPreview = false});
 
   final String employerId;
   final ValueChanged<String>? onOpenJob;
@@ -27,6 +28,7 @@ class WebSitesPage extends StatefulWidget {
   final ValueChanged<String>? onOpenCalendar;
   final ValueChanged<String>? onOpenWorkforce;
   final ValueChanged<WorkforceTalentRequest>? onFindWorkers;
+  final bool adminPreview;
 
   @override
   State<WebSitesPage> createState() => _WebSitesPageState();
@@ -98,23 +100,25 @@ class _WebSitesPageState extends State<WebSitesPage> {
                         style: TextStyle(
                             fontSize: 26, fontWeight: FontWeight.w700)),
                   ),
-                  FilledButton.icon(
-                    onPressed: () => _edit(),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add site'),
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: 'Site actions',
-                    enabled: !linkingLegacy,
-                    onSelected: (action) {
-                      if (action == 'link_legacy') _linkLegacy();
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                          value: 'link_legacy',
-                          child: Text('Link matching legacy vacancies')),
-                    ],
-                  ),
+                  if (!widget.adminPreview)
+                    FilledButton.icon(
+                      onPressed: () => _edit(),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add site'),
+                    ),
+                  if (!widget.adminPreview)
+                    PopupMenuButton<String>(
+                      tooltip: 'Site actions',
+                      enabled: !linkingLegacy,
+                      onSelected: (action) {
+                        if (action == 'link_legacy') _linkLegacy();
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                            value: 'link_legacy',
+                            child: Text('Link matching legacy vacancies')),
+                      ],
+                    ),
                 ]),
                 const SizedBox(height: 12),
                 SegmentedButton<bool>(
@@ -211,18 +215,20 @@ class _WebSitesPageState extends State<WebSitesPage> {
             child: Text(site.name,
                 style: const TextStyle(
                     fontSize: 22, fontWeight: FontWeight.w700))),
-        IconButton(
-            tooltip: 'Edit site',
-            onPressed: () => _edit(site),
-            icon: const Icon(Icons.edit_outlined)),
-        PopupMenuButton<String>(
-          tooltip: 'Site status',
-          onSelected: (status) => _changeStatus(site, status),
-          itemBuilder: (_) => [
-            for (final status in const ['active', 'completed', 'archived'])
-              PopupMenuItem(value: status, child: Text(_statusLabel(status))),
-          ],
-        ),
+        if (!widget.adminPreview)
+          IconButton(
+              tooltip: 'Edit site',
+              onPressed: () => _edit(site),
+              icon: const Icon(Icons.edit_outlined)),
+        if (!widget.adminPreview)
+          PopupMenuButton<String>(
+            tooltip: 'Site status',
+            onSelected: (status) => _changeStatus(site, status),
+            itemBuilder: (_) => [
+              for (final status in const ['active', 'completed', 'archived'])
+                PopupMenuItem(value: status, child: Text(_statusLabel(status))),
+            ],
+          ),
         if (widget.onOpenCalendar != null)
           IconButton(
               tooltip: 'View in Calendar',

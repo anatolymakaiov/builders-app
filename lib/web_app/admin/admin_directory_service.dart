@@ -29,6 +29,7 @@ class AdminDirectoryService {
     required String location,
     required String status,
     required List<ConstructionRole> professions,
+    String plan = 'all',
     int? radiusKm,
     String? cursor,
   }) async {
@@ -43,6 +44,7 @@ class AdminDirectoryService {
       'search': search.trim(),
       'location': location.trim(),
       'status': status,
+      if (role == 'employer') 'plan': plan,
       'professionTerms': terms,
       if (radiusKm != null && location.trim().isNotEmpty) 'radiusKm': radiusKm,
       if (cursor != null) 'cursor': cursor,

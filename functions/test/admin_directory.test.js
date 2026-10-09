@@ -49,6 +49,28 @@ test("directory payload omits private fields not needed by list rows", () => {
   assert.equal(entry.data.firstName, "Alex");
   assert.equal(entry.data.privateSessionToken, undefined);
   assert.equal(entry.data.billing, undefined);
+  assert.equal(entry.data.email, undefined);
+  assert.equal(entry.data.phone, undefined);
+});
+
+test("employer directory exposes plan summary but not billing secrets", () => {
+  const filters = {role: "employer", search: "", status: "all",
+    professionTerms: [], location: "", origin: null};
+  const entry = filterDirectoryRecord("employer-1", {
+    role: "employer", companyName: "Build Co",
+    billing: {activePlanId: "growth", subscriptionStatus: "active",
+      usedJobPosts: 2, directDebitMandateId: "secret"},
+  }, filters, new Map());
+  assert.equal(entry.data.planId, "growth");
+  assert.equal(entry.data.usedJobPosts, 2);
+  assert.equal(entry.data.billing, undefined);
+  assert.equal(entry.data.directDebitMandateId, undefined);
+  assert.ok(filterDirectoryRecord("employer-1", {
+    role: "employer", billing: {activePlanId: "growth"},
+  }, {...filters, plan: "growth"}, new Map()));
+  assert.equal(filterDirectoryRecord("employer-1", {
+    role: "employer", billing: {activePlanId: "growth"},
+  }, {...filters, plan: "starter"}, new Map()), null);
 });
 
 test("full names and formatted phone numbers match directory search", () => {

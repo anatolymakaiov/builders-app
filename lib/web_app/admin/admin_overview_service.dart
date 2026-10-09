@@ -30,7 +30,23 @@ class AdminOverviewService {
     final queries = <String, Query<Map<String, dynamic>>>{
       'Users': _db.collection('users'),
       'Workers': _db.collection('users').where('role', isEqualTo: 'worker'),
-      'Employers': _db.collection('users').where('role', isEqualTo: 'employer'),
+      'Employers': _db
+          .collection('users')
+          .where('role', whereIn: const ['employer', 'company']),
+      'Open vacancies': _db
+          .collection('jobs')
+          .where('moderationStatus', isEqualTo: 'approved')
+          .where('status', whereIn: const ['active', 'published', 'open']),
+      'Active sites':
+          _db.collection('sites').where('status', isEqualTo: 'active'),
+      'Active assignments':
+          _db.collection('assignments').where('status', isEqualTo: 'active'),
+      'Scheduled starts':
+          _db.collection('assignments').where('status', isEqualTo: 'scheduled'),
+      'Open reports':
+          _db.collection('reports').where('status', isEqualTo: 'open'),
+      'Suspended profiles':
+          _db.collection('users').where('moderationHold', isEqualTo: true),
       'New users (7d)': _db.collection('users').where('createdAt',
           isGreaterThanOrEqualTo: Timestamp.fromDate(weekStart)),
       'Incomplete registrations': _db.collection('pending_registrations'),
@@ -69,6 +85,15 @@ class AdminOverviewService {
       'Active subscriptions': _db
           .collection('users')
           .where('billing.subscriptionStatus', isEqualTo: 'active'),
+      'Starter plans': _db
+          .collection('users')
+          .where('billing.activePlanId', isEqualTo: 'starter'),
+      'Growth plans': _db
+          .collection('users')
+          .where('billing.activePlanId', isEqualTo: 'growth'),
+      'Pro plans': _db
+          .collection('users')
+          .where('billing.activePlanId', isEqualTo: 'pro'),
       'Trials': _db
           .collection('users')
           .where('billing.subscriptionStatus', isEqualTo: 'trial'),
@@ -94,6 +119,70 @@ class AdminOverviewService {
     }));
 
     return counts;
+  }
+
+  Future<List<AdminActivity>> loadRecentActivity(String uid) async {
+    if (!await _admin.isAuthorized(uid)) {
+      throw StateError('Administrator access required.');
+    }
+    final results = await Future.wait([
+      _db
+          .collection('users')
+          .orderBy('createdAt', descending: true)
+          .limit(6)
+          .get(),
+      _db
+          .collection('jobs')
+          .orderBy('createdAt', descending: true)
+          .limit(6)
+          .get(),
+      _db
+          .collection('assignments')
+          .orderBy('createdAt', descending: true)
+          .limit(6)
+          .get(),
+    ]);
+    final activity = <AdminActivity>[
+      for (final doc in results[0].docs)
+        AdminActivity(
+          type: doc.data()['role'] == 'worker'
+              ? 'Worker joined'
+              : const ['employer', 'company'].contains(doc.data()['role'])
+                  ? 'Employer joined'
+                  : 'Account created',
+          title: (doc.data()['companyName'] ??
+                  [doc.data()['firstName'], doc.data()['lastName']]
+                      .whereType<String>()
+                      .join(' '))
+              .toString(),
+          date: doc.data()['createdAt'] is Timestamp
+              ? doc.data()['createdAt'] as Timestamp
+              : null,
+          userId: doc.id,
+        ),
+      for (final doc in results[1].docs)
+        AdminActivity(
+          type: 'Vacancy posted',
+          title: (doc.data()['title'] ?? doc.data()['trade'] ?? 'Vacancy')
+              .toString(),
+          date: doc.data()['createdAt'] is Timestamp
+              ? doc.data()['createdAt'] as Timestamp
+              : null,
+          jobId: doc.id,
+        ),
+      for (final doc in results[2].docs)
+        AdminActivity(
+          type: 'Assignment created',
+          title: (doc.data()['workerDisplayName'] ?? 'Worker').toString(),
+          date: doc.data()['createdAt'] is Timestamp
+              ? doc.data()['createdAt'] as Timestamp
+              : null,
+          siteId: doc.data()['siteId']?.toString(),
+        ),
+    ];
+    activity.sort((a, b) => (b.date?.millisecondsSinceEpoch ?? 0)
+        .compareTo(a.date?.millisecondsSinceEpoch ?? 0));
+    return activity.take(12).toList(growable: false);
   }
 
   Future<Map<String, List<int>>> loadTrends(String uid, {int days = 30}) async {
@@ -132,4 +221,21 @@ class AdminOverviewService {
     }));
     return trends;
   }
+}
+
+class AdminActivity {
+  const AdminActivity(
+      {required this.type,
+      required this.title,
+      this.date,
+      this.userId,
+      this.jobId,
+      this.siteId});
+
+  final String type;
+  final String title;
+  final Timestamp? date;
+  final String? userId;
+  final String? jobId;
+  final String? siteId;
 }

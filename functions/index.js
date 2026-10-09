@@ -22,6 +22,7 @@ const {report: adminAnalyticsReport} = require("./admin_analytics");
 const {normalized: adminDirectoryNormalized, filterDirectoryRecord,
   broadcastTargetId, matchesBroadcastAudience} =
   require("./admin_directory");
+const {adminSubscriptionSummary} = require("./admin_subscription_summary");
 const {publicProfile} = require("./profile_projections");
 const {identityInUse} = require("./registration_identity_lookup");
 const {inviteWorkers, respondToInvitation, closeInvitations,
@@ -346,6 +347,8 @@ exports.listAdminDirectory = onCall({timeoutSeconds: 120, memory: "512MiB"}, asy
     role, location, origin, radiusKm,
     search: cleanText(input.search).slice(0, 100),
     status: ["active", "blocked"].includes(input.status) ? input.status : "all",
+    plan: role === "employer" && ["starter", "growth", "pro"].includes(input.plan) ?
+      input.plan : "all",
     professionTerms: role === "worker" && Array.isArray(input.professionTerms)
       ? input.professionTerms.slice(0, 80).map((term) => cleanText(term).slice(0, 80)) : [],
   };
@@ -357,7 +360,7 @@ exports.listAdminDirectory = onCall({timeoutSeconds: 120, memory: "512MiB"}, asy
     let query = db.collection("users")
       .where("role", role === "employer" ? "in" : "==",
         role === "employer" ? ["employer", "company"] : role)
-      .orderBy(admin.firestore.FieldPath.documentId()).limit(80);
+      .orderBy(admin.firestore.FieldPath.documentId()).limit(30);
     if (cursor) query = query.startAfter(cursor);
     const snapshot = await query.get();
     if (snapshot.empty) { hasMore = false; break; }
@@ -365,13 +368,46 @@ exports.listAdminDirectory = onCall({timeoutSeconds: 120, memory: "512MiB"}, asy
     const coordinates = origin ? await adminPostcodeCoordinates(snapshot.docs) : new Map();
     for (const doc of snapshot.docs) {
       const match = filterDirectoryRecord(doc.id, doc.data(), filters, coordinates);
-      if (match) records.push(match);
+      if (match) {
+        records.push(match);
+        if (records.length === 30) {
+          cursor = doc.id;
+          hasMore = snapshot.size === 30 ||
+            doc.id !== snapshot.docs[snapshot.docs.length - 1].id;
+          break;
+        }
+      }
     }
-    hasMore = snapshot.size === 80;
-    if (!hasMore || records.length >= 30) break;
+    if (records.length === 30) break;
+    hasMore = snapshot.size === 30;
+    if (!hasMore) break;
   }
   if (origin) records.sort((a, b) => a.distanceKm - b.distanceKm);
   return {records, nextCursor: hasMore ? cursor : null};
+});
+
+exports.listAdminSubscriptions = onCall(async (request) => {
+  await requireWebAdmin(request);
+  const cursor = cleanText(request.data?.cursor).slice(0, 150);
+  if (cursor && !/^[A-Za-z0-9_-]+$/.test(cursor)) {
+    throw new HttpsError("invalid-argument", "Invalid page cursor.");
+  }
+  const db = admin.firestore();
+  const now = new Date();
+  const month = now.toISOString().slice(0, 7).replace("-", "");
+  let query = db.collection("users").where("role", "in", ["employer", "company"])
+    .orderBy(admin.firestore.FieldPath.documentId()).limit(25);
+  if (cursor) query = query.startAfter(cursor);
+  const snapshot = await query.get();
+  const usageRefs = snapshot.docs.map((doc) =>
+    db.collection("employer_usage").doc(`${doc.id}_${month}`));
+  const usage = usageRefs.length ? await db.getAll(...usageRefs) : [];
+  return {
+    records: snapshot.docs.map((doc, index) =>
+      adminSubscriptionSummary(doc.id, doc.data(), usage[index].data(), now)),
+    nextCursor: snapshot.docs.length === 25 ?
+      snapshot.docs[snapshot.docs.length - 1].id : null,
+  };
 });
 
 exports.createAdminBroadcast = onCall(async (request) => {

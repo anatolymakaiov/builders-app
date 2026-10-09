@@ -12,7 +12,7 @@ class _DirectoryService extends AdminDirectoryService {
   Future<AdminDirectoryPageResult> load({required String role,
     required String search, required String location, required String status,
     required List<ConstructionRole> professions, int? radiusKm,
-    String? cursor}) async {
+    String? cursor, String plan = 'all'}) async {
     calls++;
     if (cursor != null) {
       return const AdminDirectoryPageResult([

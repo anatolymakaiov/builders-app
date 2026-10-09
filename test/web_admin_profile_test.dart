@@ -17,8 +17,15 @@ void main() {
   });
 
   test('Admin shell exposes directory and operational sections', () {
-    expect(AdminWorkspace.values.map((section) => section.name),
-        ['overview', 'requests', 'workers', 'employers', 'search', 'view']);
+    expect(AdminWorkspace.values.map((section) => section.name), [
+      'overview',
+      'workers',
+      'employers',
+      'operations',
+      'requests',
+      'search',
+      'view'
+    ]);
   });
 
   test('overview trend buckets use real calendar days', () {
