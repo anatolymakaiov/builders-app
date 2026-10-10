@@ -55,24 +55,35 @@ void main() {
 
   test('legacy Site match needs a unique exact address and postcode', () {
     const site = WebSite(id: 'site-a', data: {
+      'employerContextId': 'employer-a',
       'name': 'Manchester Tower',
       'addressLine1': '1 High Street',
       'postcode': 'M1 1AA',
     });
     expect(
         WebSitesService.exactVacancySiteMatch([site],
+            employerId: 'employer-a',
             name: ' Manchester Tower ',
             addressLine1: '1  High Street',
             postcode: 'm11aa'),
         'site-a');
     expect(
         WebSitesService.exactVacancySiteMatch([site],
+            employerId: 'employer-a',
             name: 'Manchester Tower',
             addressLine1: '2 High Street',
             postcode: 'M1 1AA'),
         isNull);
     expect(
         WebSitesService.exactVacancySiteMatch([site, site],
+            employerId: 'employer-a',
+            name: 'Manchester Tower',
+            addressLine1: '1 High Street',
+            postcode: 'M1 1AA'),
+        isNull);
+    expect(
+        WebSitesService.exactVacancySiteMatch([site],
+            employerId: 'employer-b',
             name: 'Manchester Tower',
             addressLine1: '1 High Street',
             postcode: 'M1 1AA'),

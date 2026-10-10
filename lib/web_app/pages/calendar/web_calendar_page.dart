@@ -415,27 +415,36 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SegmentedButton<CalendarView>(
-                segments: [
-                  const ButtonSegment(
-                      value: CalendarView.month, label: Text('Month')),
-                  if (widget.employer)
+              SizedBox(
+                height: WebToolbar.controlHeight,
+                child: SegmentedButton<CalendarView>(
+                  style: WebToolbar.segmentStyle,
+                  segments: [
                     const ButtonSegment(
-                        value: CalendarView.week, label: Text('Week')),
-                  const ButtonSegment(
-                      value: CalendarView.day, label: Text('Day')),
-                ],
-                selected: {view},
-                onSelectionChanged: (selection) => _changeView(selection.first),
+                        value: CalendarView.month, label: Text('Month')),
+                    if (widget.employer)
+                      const ButtonSegment(
+                          value: CalendarView.week, label: Text('Week')),
+                    const ButtonSegment(
+                        value: CalendarView.day, label: Text('Day')),
+                  ],
+                  selected: {view},
+                  onSelectionChanged: (selection) =>
+                      _changeView(selection.first),
+                ),
               ),
               if (widget.employer)
-                FilledButton.icon(
-                    onPressed: () => _editSiteEvent(),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add event')),
+                SizedBox(
+                  height: WebToolbar.controlHeight,
+                  child: FilledButton.icon(
+                      onPressed: () => _editSiteEvent(),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add event')),
+                ),
               if (widget.employer)
                 SizedBox(
                     width: 230,
+                    height: WebToolbar.controlHeight,
                     child: StreamBuilder<List<WebSite>>(
                       stream: sites,
                       builder: (context, snapshot) =>
@@ -443,7 +452,11 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
                         key: ValueKey('site-filter:${siteId ?? 'all'}'),
                         isExpanded: true,
                         initialValue: siteId,
-                        decoration: const InputDecoration(labelText: 'Site'),
+                        decoration: const InputDecoration(
+                          labelText: 'Site',
+                          isDense: true,
+                          contentPadding: WebToolbar.fieldPadding,
+                        ),
                         items: [
                           const DropdownMenuItem(
                               value: null, child: Text('All Sites')),
@@ -465,23 +478,34 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
                         onChanged: (value) => setState(() => siteId = value),
                       ),
                     )),
-              IconButton(
-                  tooltip: 'Previous period',
-                  onPressed: () => _move(-1),
-                  icon: const Icon(Icons.chevron_left)),
-              OutlinedButton(
+              SizedBox(
+                height: WebToolbar.controlHeight,
+                width: WebToolbar.controlHeight,
+                child: IconButton(
+                    tooltip: 'Previous period',
+                    onPressed: () => _move(-1),
+                    icon: const Icon(Icons.chevron_left)),
+              ),
+              SizedBox(
+                height: WebToolbar.controlHeight,
+                child: OutlinedButton(
+                    onPressed: () => setState(() {
+                          selectedDay = DateTime.now();
+                          _load();
+                        }),
+                    child: const Text('Today')),
+              ),
+              SizedBox(
+                height: WebToolbar.controlHeight,
+                width: WebToolbar.controlHeight,
+                child: IconButton(
+                  tooltip: 'Refresh calendar',
                   onPressed: () => setState(() {
-                        selectedDay = DateTime.now();
-                        _load();
-                      }),
-                  child: const Text('Today')),
-              IconButton(
-                tooltip: 'Refresh calendar',
-                onPressed: () => setState(() {
-                  _load();
-                  if (!widget.employer) _loadCurrentNext();
-                }),
-                icon: const Icon(Icons.refresh),
+                    _load();
+                    if (!widget.employer) _loadCurrentNext();
+                  }),
+                  icon: const Icon(Icons.refresh),
+                ),
               ),
               if (widget.employer)
                 PopupMenuButton<String>(
@@ -500,11 +524,12 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
                         value: 'all', child: Text('Export all sites')),
                   ],
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
+                    height: WebToolbar.controlHeight,
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
                       border: Border.all(color: WebTheme.border),
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(WebRadii.button),
                     ),
                     child: const Row(mainAxisSize: MainAxisSize.min, children: [
                       Icon(Icons.download_outlined, size: 19),
@@ -516,15 +541,21 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
                   ),
                 )
               else
-                OutlinedButton.icon(
-                  onPressed: exporting ? null : () => _export(),
-                  icon: const Icon(Icons.download_outlined),
-                  label: const Text('Export visible period'),
+                SizedBox(
+                  height: WebToolbar.controlHeight,
+                  child: OutlinedButton.icon(
+                      onPressed: exporting ? null : () => _export(),
+                      icon: const Icon(Icons.download_outlined),
+                      label: const Text('Export visible period')),
                 ),
-              IconButton(
-                  tooltip: 'Next period',
-                  onPressed: () => _move(1),
-                  icon: const Icon(Icons.chevron_right)),
+              SizedBox(
+                height: WebToolbar.controlHeight,
+                width: WebToolbar.controlHeight,
+                child: IconButton(
+                    tooltip: 'Next period',
+                    onPressed: () => _move(1),
+                    icon: const Icon(Icons.chevron_right)),
+              ),
               Text(
                   view == CalendarView.day
                       ? _date(selectedDay)

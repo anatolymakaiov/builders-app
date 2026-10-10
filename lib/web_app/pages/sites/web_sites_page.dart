@@ -7,6 +7,7 @@ import '../../../services/worker_assignment_service.dart';
 import '../../services/site_recruitment_report.dart';
 import '../../services/web_sites_service.dart';
 import '../../services/workforce_talent_request.dart';
+import '../../theme/web_theme.dart';
 import '../../widgets/web_page_container.dart';
 
 class WebSitesPage extends StatefulWidget {
@@ -101,37 +102,47 @@ class _WebSitesPageState extends State<WebSitesPage> {
                             fontSize: 26, fontWeight: FontWeight.w700)),
                   ),
                   if (!widget.adminPreview)
-                    FilledButton.icon(
-                      onPressed: () => _edit(),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add site'),
+                    SizedBox(
+                      height: WebToolbar.controlHeight,
+                      child: FilledButton.icon(
+                          onPressed: () => _edit(),
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add site')),
                     ),
                   if (!widget.adminPreview)
-                    PopupMenuButton<String>(
-                      tooltip: 'Site actions',
-                      enabled: !linkingLegacy,
-                      onSelected: (action) {
-                        if (action == 'link_legacy') _linkLegacy();
-                      },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(
-                            value: 'link_legacy',
-                            child: Text('Link matching legacy vacancies')),
-                      ],
+                    SizedBox(
+                      height: WebToolbar.controlHeight,
+                      width: WebToolbar.controlHeight,
+                      child: PopupMenuButton<String>(
+                        tooltip: 'Site actions',
+                        enabled: !linkingLegacy,
+                        onSelected: (action) {
+                          if (action == 'link_legacy') _linkLegacy();
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                              value: 'link_legacy',
+                              child: Text('Link matching legacy vacancies')),
+                        ],
+                      ),
                     ),
                 ]),
                 const SizedBox(height: 12),
-                SegmentedButton<bool>(
-                  segments: const [
-                    ButtonSegment(value: false, label: Text('Active')),
-                    ButtonSegment(
-                        value: true, label: Text('Completed / Archived')),
-                  ],
-                  selected: {showInactive},
-                  onSelectionChanged: (value) => setState(() {
-                    showInactive = value.first;
-                    selected = null;
-                  }),
+                SizedBox(
+                  height: WebToolbar.controlHeight,
+                  child: SegmentedButton<bool>(
+                    style: WebToolbar.segmentStyle,
+                    segments: const [
+                      ButtonSegment(value: false, label: Text('Active')),
+                      ButtonSegment(
+                          value: true, label: Text('Completed / Archived')),
+                    ],
+                    selected: {showInactive},
+                    onSelectionChanged: (value) => setState(() {
+                      showInactive = value.first;
+                      selected = null;
+                    }),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Expanded(
@@ -571,8 +582,9 @@ class _WebSitesPageState extends State<WebSitesPage> {
 }
 
 class WebSiteFormDialog extends StatefulWidget {
-  const WebSiteFormDialog({super.key, this.initial});
+  const WebSiteFormDialog({super.key, this.initial, this.prefill});
   final Map<String, dynamic>? initial;
+  final Map<String, dynamic>? prefill;
 
   @override
   State<WebSiteFormDialog> createState() => _SiteFormState();
@@ -593,7 +605,9 @@ class _SiteFormState extends State<WebSiteFormDialog> {
       'country',
       'description'
     ])
-      key: TextEditingController(text: (widget.initial?[key] ?? '').toString()),
+      key: TextEditingController(
+          text:
+              (widget.initial?[key] ?? widget.prefill?[key] ?? '').toString()),
   };
 
   @override

@@ -5,6 +5,7 @@ import 'package:test_app/web_app/pages/workforce/web_workforce_page.dart';
 import 'package:test_app/web_app/services/web_sites_service.dart';
 import 'package:test_app/web_app/services/workforce_planning_service.dart';
 import 'package:test_app/web_app/services/workforce_talent_request.dart';
+import 'package:test_app/web_app/theme/web_theme.dart';
 
 void main() {
   final sites = [
@@ -79,6 +80,15 @@ void main() {
     ))));
     await tester.pumpAndSettle();
     expect(find.text('Workforce'), findsOneWidget);
+    expect(tester.getSize(find.byKey(const ValueKey('workforce-site:'))).height,
+        WebToolbar.controlHeight);
+    expect(
+        tester
+            .getSize(find
+                .byWidgetPredicate((widget) => widget is SegmentedButton)
+                .first)
+            .height,
+        WebToolbar.controlHeight);
     expect(find.text('Staffing Gaps'), findsOneWidget);
     expect(find.text('3'), findsWidgets);
     await tester.ensureVisible(find.text('Find Workers'));

@@ -204,6 +204,7 @@ class _WebWorkforcePageState extends State<WebWorkforcePage> {
         children: [
           SizedBox(
               width: 220,
+              height: WebToolbar.controlHeight,
               child: DropdownButtonFormField<String>(
                 key: ValueKey('workforce-site:${selectedSite ?? ''}'),
                 isExpanded: true,
@@ -211,6 +212,7 @@ class _WebWorkforcePageState extends State<WebWorkforcePage> {
                 decoration: const InputDecoration(
                     labelText: 'Site',
                     isDense: true,
+                    contentPadding: WebToolbar.fieldPadding,
                     border: OutlineInputBorder()),
                 items: [
                   const DropdownMenuItem(value: '', child: Text('All Sites')),
@@ -232,6 +234,7 @@ class _WebWorkforcePageState extends State<WebWorkforcePage> {
               )),
           SizedBox(
               width: 220,
+              height: WebToolbar.controlHeight,
               child: Autocomplete<String>(
                 key: ValueKey('workforce-trade:${tradeId ?? ''}'),
                 initialValue: TextEditingValue(
@@ -259,8 +262,12 @@ class _WebWorkforcePageState extends State<WebWorkforcePage> {
                         decoration: InputDecoration(
                             labelText: 'Trade',
                             isDense: true,
+                            contentPadding: WebToolbar.fieldPadding,
+                            suffixIconConstraints: WebToolbar.iconConstraints,
                             border: const OutlineInputBorder(),
                             suffixIcon: IconButton(
+                                constraints: WebToolbar.iconConstraints,
+                                padding: EdgeInsets.zero,
                                 tooltip: 'All trades',
                                 onPressed: () {
                                   controller.clear();
@@ -275,29 +282,37 @@ class _WebWorkforcePageState extends State<WebWorkforcePage> {
                           _load();
                         }),
               )),
-          SegmentedButton<_Horizon>(
-              showSelectedIcon: false,
-              segments: const [
-                ButtonSegment(value: _Horizon.week, label: Text('This week')),
-                ButtonSegment(value: _Horizon.twoWeeks, label: Text('2 weeks')),
-                ButtonSegment(
-                    value: _Horizon.fourWeeks, label: Text('4 weeks')),
-                ButtonSegment(value: _Horizon.custom, label: Text('Custom')),
-              ],
-              selected: {horizon},
-              onSelectionChanged: (values) {
-                if (values.first == _Horizon.custom) {
-                  _chooseCustomRange();
-                  return;
-                }
-                setState(() => horizon = values.first);
-                _load();
-              }),
+          SizedBox(
+            height: WebToolbar.controlHeight,
+            child: SegmentedButton<_Horizon>(
+                style: WebToolbar.segmentStyle,
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: _Horizon.week, label: Text('This week')),
+                  ButtonSegment(
+                      value: _Horizon.twoWeeks, label: Text('2 weeks')),
+                  ButtonSegment(
+                      value: _Horizon.fourWeeks, label: Text('4 weeks')),
+                  ButtonSegment(value: _Horizon.custom, label: Text('Custom')),
+                ],
+                selected: {horizon},
+                onSelectionChanged: (values) {
+                  if (values.first == _Horizon.custom) {
+                    _chooseCustomRange();
+                    return;
+                  }
+                  setState(() => horizon = values.first);
+                  _load();
+                }),
+          ),
           if (horizon == _Horizon.custom && customRange != null)
-            TextButton(
-                onPressed: _chooseCustomRange,
-                child: Text(
-                    '${_date(customRange!.start)} – ${_date(customRange!.end)}')),
+            SizedBox(
+              height: WebToolbar.controlHeight,
+              child: TextButton(
+                  onPressed: _chooseCustomRange,
+                  child: Text(
+                      '${_date(customRange!.start)} – ${_date(customRange!.end)}')),
+            ),
         ]);
   }
 

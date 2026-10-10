@@ -7,6 +7,7 @@ import 'package:test_app/services/worker_assignment_service.dart';
 import 'package:test_app/web_app/pages/calendar/web_calendar_page.dart';
 import 'package:test_app/web_app/services/web_sites_service.dart';
 import 'package:test_app/web_app/shell/web_top_navigation.dart';
+import 'package:test_app/web_app/theme/web_theme.dart';
 
 CalendarEvent event(String id, String siteId, DateTime date) => CalendarEvent(
       id: id,
@@ -91,6 +92,14 @@ void main() {
     ))));
     await tester.pumpAndSettle();
     expect(find.text('Vacancy: Vacancy starts — Dryliner'), findsOneWidget);
+    expect(tester.getSize(find.byKey(const ValueKey('site-filter:all'))).height,
+        WebToolbar.controlHeight);
+    expect(
+        tester
+            .getSize(find.ancestor(
+                of: find.text('Today'), matching: find.byType(OutlinedButton)))
+            .height,
+        WebToolbar.controlHeight);
     await tester.tap(find.text('All Sites'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Site A').last);

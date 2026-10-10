@@ -161,7 +161,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
             !isEmployer ||
             mode != WebJobsMode.owner ||
             siteFilterId == null ||
-              matchesSiteFilter(job, siteFilterId))
+            matchesSiteFilter(job, siteFilterId))
         .toList();
     result.sort((a, b) => switch (sort) {
           WebJobSort.highestPay => b.rate.compareTo(a.rate),
@@ -342,6 +342,7 @@ class _WebJobsPageState extends State<WebJobsPage> {
                     if (isEmployer && mode == WebJobsMode.owner)
                       SizedBox(
                           width: 210,
+                          height: WebToolbar.controlHeight,
                           child: StreamBuilder<List<WebSite>>(
                             stream: employerSites,
                             builder: (context, snapshot) {
@@ -350,6 +351,8 @@ class _WebJobsPageState extends State<WebJobsPage> {
                                 initialValue: siteFilterId,
                                 decoration: const InputDecoration(
                                     labelText: 'Site',
+                                    isDense: true,
+                                    contentPadding: WebToolbar.fieldPadding,
                                     border: OutlineInputBorder()),
                                 items: [
                                   const DropdownMenuItem<String?>(

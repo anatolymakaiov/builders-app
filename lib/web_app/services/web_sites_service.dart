@@ -26,6 +26,7 @@ class WebSitesService {
 
   static String? exactVacancySiteMatch(
     Iterable<WebSite> sites, {
+    required String employerId,
     required String name,
     required String addressLine1,
     required String postcode,
@@ -36,6 +37,7 @@ class WebSitesService {
       return null;
     }
     final matches = sites.where((site) =>
+        site.data['employerContextId'] == employerId &&
         _normal(site.name) == _normal(name) &&
         _normal((site.data['addressLine1'] ?? '').toString()) ==
             _normal(addressLine1) &&
@@ -78,7 +80,10 @@ class WebSitesService {
         continue;
       }
       final match = exactVacancySiteMatch(sites,
-          name: name, addressLine1: address, postcode: postcode);
+          employerId: employerId,
+          name: name,
+          addressLine1: address,
+          postcode: postcode);
       if (match == null) {
         final identity = vacancySiteId(employerId, name, address, postcode);
         unresolved.putIfAbsent(identity, () => []).add(job);
@@ -119,6 +124,7 @@ class WebSitesService {
       }
       created++;
       sites.add(WebSite(id: id, data: {
+        'employerContextId': employerId,
         'name': name,
         'addressLine1': address,
         'postcode': postcode,
@@ -146,16 +152,23 @@ class WebSitesService {
     required String region,
     required String country,
     List<WebSite>? knownSites,
+    Map<String, dynamic> additionalFields = const {},
   }) async {
     final existing = knownSites ?? await loadEmployerSites(employerId);
     final match = exactVacancySiteMatch(existing,
-        name: name, addressLine1: addressLine1, postcode: postcode);
+        employerId: employerId,
+        name: name,
+        addressLine1: addressLine1,
+        postcode: postcode);
     if (match != null) return match;
-    final sameNameAndPostcode = existing.any((site) =>
-        _normal(site.name) == _normal(name) &&
+    final possibleSameSite = existing.any((site) =>
+        site.data['employerContextId'] == employerId &&
         _normal(site.postcode).replaceAll(' ', '') ==
-            _normal(postcode).replaceAll(' ', ''));
-    if (sameNameAndPostcode ||
+            _normal(postcode).replaceAll(' ', '') &&
+        (_normal(site.name) == _normal(name) ||
+            _normal((site.data['addressLine1'] ?? '').toString()) ==
+                _normal(addressLine1)));
+    if (possibleSameSite ||
         _normal(name).length < 4 ||
         {'site', 'project', 'construction site', 'main site'}
             .contains(_normal(name)) ||
@@ -181,12 +194,18 @@ class WebSitesService {
         'name': name.trim(),
         'status': 'active',
         'addressLine1': addressLine1.trim(),
-        'addressLine2': '',
+        'addressLine2':
+            (additionalFields['addressLine2'] ?? '').toString().trim(),
         'city': city.trim(),
         'region': region.trim(),
         'postcode': postcode.trim(),
         'country': country.trim().isEmpty ? 'United Kingdom' : country.trim(),
-        'description': '',
+        'description':
+            (additionalFields['description'] ?? '').toString().trim(),
+        if (additionalFields['startDate'] is Timestamp)
+          'startDate': additionalFields['startDate'],
+        if (additionalFields['expectedEndDate'] is Timestamp)
+          'expectedEndDate': additionalFields['expectedEndDate'],
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });

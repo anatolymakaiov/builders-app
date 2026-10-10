@@ -48,6 +48,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
   late final TextEditingController role;
   String? selectedRoleId;
   String selectedSiteId = '';
+  int sitePickerRevision = 0;
   late Stream<List<WebSite>> employerSites;
   late final TextEditingController site;
   late final TextEditingController duration;
@@ -128,7 +129,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
     photos = List<String>.from(job?.photos ?? const <String>[]);
     lat = job?.lat ?? 0;
     lng = job?.lng ?? 0;
-    if (job == null && selectedSiteId.isNotEmpty) {
+    if (selectedSiteId.isNotEmpty) {
       _loadInitialSite(selectedSiteId);
     }
   }
@@ -336,8 +337,6 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
               Text('Work details',
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 14),
-              _input(site, 'Site / project name'),
-              _gap(),
               StreamBuilder<List<WebSite>>(
                 stream: employerSites,
                 builder: (context, snapshot) {
@@ -349,18 +348,25 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
                       snapshot.data?.any((item) => item.id == selectedSiteId) ??
                           false;
                   return DropdownButtonFormField<String>(
-                    key: ValueKey('vacancy-site-$selectedSiteId'),
+                    key: ValueKey(
+                        'vacancy-site-$selectedSiteId-$sitePickerRevision'),
                     initialValue: selectedSiteId,
                     decoration: const InputDecoration(
-                      labelText: 'Linked Site / Project',
+                      labelText: 'Site / Project',
                       border: OutlineInputBorder(),
                     ),
                     items: [
                       const DropdownMenuItem(
-                          value: '', child: Text('No site / legacy')),
+                          value: '', child: Text('Select existing Site')),
                       for (final item in active)
                         DropdownMenuItem(
-                            value: item.id, child: Text(item.name)),
+                            value: item.id,
+                            child: Text(
+                              [item.name, item.city, item.postcode]
+                                  .where((value) => value.isNotEmpty)
+                                  .join(' · '),
+                              overflow: TextOverflow.ellipsis,
+                            )),
                       if (selectedSiteId.isNotEmpty &&
                           !active.any((item) => item.id == selectedSiteId))
                         DropdownMenuItem(
@@ -368,13 +374,21 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
                             child: Text(known
                                 ? 'Current inactive site'
                                 : 'Previously linked site')),
+                      const DropdownMenuItem(
+                          value: '__create_site__',
+                          child: Text('+ Create new Site')),
                     ],
                     onChanged: (value) {
+                      if (value == '__create_site__') {
+                        _createSite();
+                        return;
+                      }
                       final chosen = snapshot.data
                           ?.where((item) => item.id == value)
                           .firstOrNull;
                       setState(() {
                         selectedSiteId = value ?? '';
+                        error = null;
                         if (chosen != null) {
                           site.text = chosen.name;
                           addressLine1.text =
@@ -388,19 +402,19 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
                           country.text =
                               (chosen.data['country'] ?? 'United Kingdom')
                                   .toString();
+                          addressLine3.clear();
+                          lat = 0;
+                          lng = 0;
                         }
                       });
                     },
                   );
                 },
               ),
-              Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: _createSite,
-                    icon: const Icon(Icons.add_location_alt_outlined),
-                    label: const Text('Create new site'),
-                  )),
+              if (selectedSiteId.isEmpty) ...[
+                _gap(),
+                _input(site, 'Site / project name'),
+              ],
               _gap(),
               _input(positions, 'Workers needed',
                   keyboardType: TextInputType.number),
@@ -457,11 +471,15 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
               const SizedBox(height: 14),
               Row(
                 children: [
-                  Expanded(child: _input(postcode, 'UK postcode')),
+                  Expanded(
+                      child: _input(postcode, 'UK postcode',
+                          readOnly: selectedSiteId.isNotEmpty)),
                   const SizedBox(width: 8),
                   IconButton.filledTonal(
                     tooltip: 'Find address',
-                    onPressed: lookingUp ? null : _lookupAddress,
+                    onPressed: lookingUp || selectedSiteId.isNotEmpty
+                        ? null
+                        : _lookupAddress,
                     icon: lookingUp
                         ? const SizedBox(
                             width: 16,
@@ -473,17 +491,18 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
                 ],
               ),
               _gap(),
-              _input(addressLine1, 'Address Line 1'),
+              _input(addressLine1, 'Address Line 1',
+                  readOnly: selectedSiteId.isNotEmpty),
               _gap(),
               _input(addressLine2, 'Address Line 2'),
               _gap(),
               _input(addressLine3, 'Address Line 3'),
               _gap(),
-              _input(city, 'Town / City'),
+              _input(city, 'Town / City', readOnly: selectedSiteId.isNotEmpty),
               _gap(),
-              _input(county, 'County'),
+              _input(county, 'County', readOnly: selectedSiteId.isNotEmpty),
               _gap(),
-              _input(country, 'Country'),
+              _input(country, 'Country', readOnly: selectedSiteId.isNotEmpty),
             ],
           ),
         ),
@@ -578,9 +597,11 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
     String label, {
     int lines = 1,
     TextInputType? keyboardType,
+    bool readOnly = false,
   }) {
     return TextField(
       controller: controller,
+      readOnly: readOnly,
       minLines: lines,
       maxLines: lines,
       keyboardType: keyboardType,
@@ -758,14 +779,39 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
   Future<void> _createSite() async {
     final data = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => const WebSiteFormDialog(),
+      builder: (_) => WebSiteFormDialog(prefill: {
+        'name': site.text,
+        'addressLine1': addressLine1.text,
+        'addressLine2': addressLine2.text,
+        'city': city.text,
+        'region': county.text,
+        'postcode': postcode.text,
+        'country': country.text,
+      }),
     );
+    if (mounted) setState(() => sitePickerRevision++);
     if (data == null) return;
     try {
-      final id = await WebSitesService().create(widget.userId, data);
+      final id = await WebSitesService().resolveOrCreateVacancySite(
+        widget.userId,
+        name: (data['name'] ?? '').toString(),
+        addressLine1: (data['addressLine1'] ?? '').toString(),
+        city: (data['city'] ?? '').toString(),
+        postcode: addressLookup
+            .normalizePostcode((data['postcode'] ?? '').toString()),
+        region: (data['region'] ?? '').toString(),
+        country: (data['country'] ?? '').toString(),
+        additionalFields: data,
+      );
       if (!mounted) return;
+      if (id == null) {
+        setState(() => error =
+            'This Site may already exist with different details. Select it or review the address.');
+        return;
+      }
       setState(() {
         selectedSiteId = id;
+        error = null;
         site.text = (data['name'] ?? '').toString();
         addressLine1.text = (data['addressLine1'] ?? '').toString();
         addressLine2.text = (data['addressLine2'] ?? '').toString();
@@ -773,11 +819,19 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
         county.text = (data['region'] ?? '').toString();
         postcode.text = (data['postcode'] ?? '').toString();
         country.text = (data['country'] ?? 'United Kingdom').toString();
+        addressLine3.clear();
+        lat = 0;
+        lng = 0;
       });
     } on FirebaseException catch (error) {
       if (mounted) {
         setState(() => this.error =
             'Could not create site: ${error.message ?? error.code}');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => error =
+            'Could not create this Site. Your vacancy details are unchanged.');
       }
     }
   }
@@ -807,6 +861,10 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
           country: country.text,
         );
         if (resolved != null) selectedSiteId = resolved;
+      }
+      if (!editing && selectedSiteId.isEmpty) {
+        throw StateError(
+            'Choose an existing Site or create one before posting.');
       }
       final companyName = await service.companyName(widget.userId);
       final data = service.buildJobData(

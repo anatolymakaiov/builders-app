@@ -249,6 +249,17 @@ class WebSpacing {
 class WebToolbar {
   static const controlHeight = 42.0;
   static const segmentLabelHeight = controlHeight - 16.0;
+  static const fieldPadding =
+      EdgeInsets.symmetric(horizontal: WebSpacing.sm, vertical: WebSpacing.xs);
+  static const iconConstraints =
+      BoxConstraints(minWidth: controlHeight, minHeight: controlHeight);
+  static const segmentStyle = ButtonStyle(
+    minimumSize: WidgetStatePropertyAll(Size(0, controlHeight)),
+    padding:
+        WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: WebSpacing.sm)),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    visualDensity: VisualDensity.compact,
+  );
 }
 
 class WebRadii {

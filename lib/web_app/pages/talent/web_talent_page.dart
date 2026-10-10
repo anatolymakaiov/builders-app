@@ -564,6 +564,8 @@ class _WebTalentPageState extends State<WebTalentPage> {
                           decoration: const InputDecoration(
                             hintText: 'Search saved workers by name',
                             prefixIcon: Icon(Icons.person_search_outlined),
+                            contentPadding: WebToolbar.fieldPadding,
+                            prefixIconConstraints: WebToolbar.iconConstraints,
                           ),
                         ),
                       ),
@@ -594,6 +596,8 @@ class _WebTalentPageState extends State<WebTalentPage> {
                                   : 'Trade, e.g. fixer',
                               prefixIcon:
                                   const Icon(Icons.construction_outlined),
+                              contentPadding: WebToolbar.fieldPadding,
+                              prefixIconConstraints: WebToolbar.iconConstraints,
                             ),
                           );
                         },
@@ -608,6 +612,8 @@ class _WebTalentPageState extends State<WebTalentPage> {
                         decoration: const InputDecoration(
                           hintText: 'City or region',
                           prefixIcon: Icon(Icons.location_on_outlined),
+                          contentPadding: WebToolbar.fieldPadding,
+                          prefixIconConstraints: WebToolbar.iconConstraints,
                         ),
                       ),
                     ),
@@ -616,8 +622,10 @@ class _WebTalentPageState extends State<WebTalentPage> {
                       height: WebToolbar.controlHeight,
                       child: DropdownButtonFormField<WorkerAvailability?>(
                         initialValue: availability,
-                        decoration:
-                            const InputDecoration(labelText: 'Availability'),
+                        decoration: const InputDecoration(
+                          labelText: 'Availability',
+                          contentPadding: WebToolbar.fieldPadding,
+                        ),
                         items: const [
                           DropdownMenuItem(value: null, child: Text('All')),
                           DropdownMenuItem(
@@ -667,11 +675,14 @@ class _WebTalentPageState extends State<WebTalentPage> {
                         onPressed: () => setState(() => availableBy = null),
                         icon: const Icon(Icons.close),
                       ),
-                    FilterChip(
-                      label: const Text('Allows vacancy invitations'),
-                      selected: invitesOnly,
-                      onSelected: (value) =>
-                          setState(() => invitesOnly = value),
+                    SizedBox(
+                      height: WebToolbar.controlHeight,
+                      child: FilterChip(
+                        label: const Text('Allows vacancy invitations'),
+                        selected: invitesOnly,
+                        onSelected: (value) =>
+                            setState(() => invitesOnly = value),
+                      ),
                     ),
                     SizedBox(
                       height: WebToolbar.controlHeight,
