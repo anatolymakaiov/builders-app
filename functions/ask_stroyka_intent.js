@@ -133,6 +133,18 @@ function responseText(payload) {
   return parts[0].text;
 }
 
+function failureCategory(error) {
+  const message = error?.message || "";
+  const status = /^Assistant provider status (\d{3})$/.exec(message);
+  if (status) return `provider_http_${status[1]}`;
+  if (message.startsWith("Invalid assistant") ||
+      message === "Unexpected assistant fields") return "invalid_structured_output";
+  if (error?.name === "TimeoutError" || error?.name === "AbortError") {
+    return "provider_timeout";
+  }
+  return "provider_or_network_error";
+}
+
 async function interpretWithOpenAI({apiKey, text, state, profile, now, fetcher = fetch}) {
   const response = await fetcher("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -163,4 +175,4 @@ async function interpretWithOpenAI({apiKey, text, state, profile, now, fetcher =
 
 module.exports = {OUTPUT_SCHEMA, safeState, safeProfile, safeUserText,
   requestProblem, rateLimitExceeded, ukDateIso, validatedOutput,
-  interpretWithOpenAI};
+  interpretWithOpenAI, failureCategory};

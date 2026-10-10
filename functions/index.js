@@ -35,7 +35,8 @@ const {recomputeWorkerAvailability} = require("./recompute_worker_availability")
 const {validOffsets, syncReminders, deliverDueReminders} =
   require("./operational_reminders");
 const {safeState: safeAskState, safeProfile: safeAskProfile,
-  interpretWithOpenAI, requestProblem: askRequestProblem,
+  interpretWithOpenAI, failureCategory: askFailureCategory,
+  requestProblem: askRequestProblem,
   rateLimitExceeded: askRateLimitExceeded, ukDateIso} =
   require("./ask_stroyka_intent");
 
@@ -100,7 +101,7 @@ exports.interpretAskStroyka = onCall({secrets: [askStroykaApiKey],
           context.availableFrom : null)};
   } catch (error) {
     console.warn("ASK_STROYKA_FAILED", {latencyMs: Date.now() - started,
-      reason: error.name || "provider_error"});
+      reason: askFailureCategory(error)});
     throw new HttpsError("unavailable", "Ask STROYKA is temporarily unavailable.");
   }
 });
