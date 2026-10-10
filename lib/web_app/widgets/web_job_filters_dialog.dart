@@ -19,6 +19,9 @@ class _WebJobFiltersDialogState extends State<WebJobFiltersDialog> {
   late final roles = [...widget.current.roles];
   late final types = {...widget.current.employmentTypes};
   late double distance = widget.current.distance;
+  late final double distanceMaximum = widget.current.distance > 50 ? 200 : 50;
+  late final double payMaximum =
+      widget.current.maxPay > 50 ? widget.current.maxPay : 50;
   late RangeValues pay =
       RangeValues(widget.current.minPay, widget.current.maxPay);
 
@@ -69,16 +72,16 @@ class _WebJobFiltersDialogState extends State<WebJobFiltersDialog> {
                   Text('Distance from city: ${distance.toInt()} miles'),
                   Slider(
                       min: 5,
-                      max: 50,
-                      divisions: 9,
+                      max: distanceMaximum,
+                      divisions: distanceMaximum == 50 ? 9 : 39,
                       value: distance,
                       onChanged: (value) => setState(() => distance = value)),
                   Text(
                       'Hourly pay: GBP ${pay.start.toInt()} - ${pay.end.toInt()}'),
                   RangeSlider(
                       min: 0,
-                      max: 50,
-                      divisions: 50,
+                      max: payMaximum,
+                      divisions: payMaximum.clamp(1, 200).toInt(),
                       values: pay,
                       onChanged: (value) => setState(() => pay = value)),
                   Wrap(

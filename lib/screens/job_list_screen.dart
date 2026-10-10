@@ -8,10 +8,12 @@ import 'package:test_app/services/worker_job_application_status.dart';
 import '../models/job.dart';
 import '../services/geocoding_service.dart';
 import '../services/job_taxonomy_service.dart';
+import '../services/ask_stroyka_service.dart';
 import 'filter_sheet.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/job_card.dart';
 import '../widgets/job_pagination.dart';
+import '../widgets/ask_stroyka_sheet.dart';
 import '../widgets/smart_job_search.dart';
 
 enum SortType {
@@ -64,6 +66,9 @@ class _JobListScreenState extends State<JobListScreen> {
   String searchQuery = "";
   List<ConstructionRole> selectedRoles = [];
   JobSearchFilters searchFilters = const JobSearchFilters();
+  AiFindJobIntent? aiSearch;
+  String? aiOwnerId;
+  String? filtersOwnerId;
   int currentPage = 1;
   late Stream<List<Job>> jobsStream;
   Stream<Set<String>>? savedJobsStream;
@@ -120,6 +125,36 @@ class _JobListScreenState extends State<JobListScreen> {
     } catch (_) {
       // Location is optional; a permission or device failure cannot hide Jobs.
     }
+  }
+
+  Future<void> _openAskStroyka() async {
+    final ownerId = FirebaseAuth.instance.currentUser?.uid;
+    if (ownerId == null) return;
+    final intent = await showAskStroyka(context);
+    if (!mounted ||
+        intent == null ||
+        FirebaseAuth.instance.currentUser?.uid != ownerId) {
+      return;
+    }
+    setState(() {
+      aiOwnerId = ownerId;
+      aiSearch = intent;
+      selectedRoles = [intent.trade];
+      searchQuery = intent.keywords;
+      searchFilters = JobSearchFilters(
+        city: intent.location,
+        distance: intent.radiusMiles ?? 50,
+        minPay: intent.rateMin ?? 0,
+        maxPay: intent.rateMin != null && intent.rateMin! > 50
+            ? (intent.rateMin! > 200 ? intent.rateMin! : 200)
+            : 50,
+        employmentTypes:
+            intent.paymentType == null ? const {} : {intent.paymentType!},
+      );
+      showSavedOnly = false;
+      sortType = SortType.newest;
+      currentPage = 1;
+    });
   }
 
   double calculateDistance(double lat, double lng) {
@@ -256,6 +291,17 @@ class _JobListScreenState extends State<JobListScreen> {
         (widget.userIdProvider == null
             ? FirebaseAuth.instance.currentUser?.uid
             : null);
+    if (filtersOwnerId != userId) {
+      filtersOwnerId = userId;
+      aiOwnerId = null;
+      aiSearch = null;
+      selectedRoles = [];
+      searchQuery = '';
+      searchFilters = const JobSearchFilters();
+      filters = FilterResult(trade: 'All', jobType: 'All', distance: 50);
+      showSavedOnly = false;
+      currentPage = 1;
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -348,11 +394,14 @@ class _JobListScreenState extends State<JobListScreen> {
                                 selectedRoles = value.roles;
                                 searchQuery = value.query;
                                 searchFilters = value.filters;
+                                aiSearch = null;
                                 currentPage = 1;
                               });
                             },
                           );
 
+                          final effectiveAi =
+                              aiOwnerId == userId ? aiSearch : null;
                           final filteredJobs = sourceJobs.where((job) {
                             if (!jobMatchesSearch(
                               job,
@@ -397,6 +446,16 @@ class _JobListScreenState extends State<JobListScreen> {
                             filteredJobs.sort((a, b) =>
                                 (b.createdAt ?? DateTime.now())
                                     .compareTo(a.createdAt ?? DateTime.now()));
+                            if (effectiveAi?.availableFrom != null) {
+                              filteredJobs.sort((a, b) {
+                                final tier = AiJobCompatibility.compare(
+                                    a, b, effectiveAi!.availableFrom);
+                                return tier != 0
+                                    ? tier
+                                    : (b.createdAt ?? DateTime(1970)).compareTo(
+                                        a.createdAt ?? DateTime(1970));
+                              });
+                            }
                           }
 
                           final totalPages =
@@ -412,7 +471,75 @@ class _JobListScreenState extends State<JobListScreen> {
 
                           return Column(
                             children: [
+                              if (AskStroykaFeature.enabled)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Padding(
+                                    padding:
+                                        const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                                    child: OutlinedButton.icon(
+                                      key: const Key('ask-stroyka-mobile'),
+                                      onPressed: _openAskStroyka,
+                                      icon: const Icon(
+                                          Icons.auto_awesome_outlined),
+                                      label: const Text('Ask STROYKA'),
+                                    ),
+                                  ),
+                                ),
                               searchField,
+                              if (effectiveAi != null)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12),
+                                  child: Wrap(
+                                      spacing: 6,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        InputChip(
+                                            label: Text('Location: '
+                                                '${searchFilters.city}'),
+                                            onDeleted: () => setState(() {
+                                                  searchFilters = searchFilters
+                                                      .copyWith(city: '');
+                                                  aiSearch = null;
+                                                })),
+                                        if (effectiveAi.availableFrom != null)
+                                          InputChip(
+                                              label: Text('Available from: '
+                                                  '${effectiveAi.availableFrom!.day}/'
+                                                  '${effectiveAi.availableFrom!.month}'),
+                                              onDeleted: () => setState(
+                                                  () => aiSearch = null)),
+                                        Text(
+                                            '${filteredJobs.length} matching jobs'),
+                                      ]),
+                                ),
+                              if (effectiveAi != null && filteredJobs.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12),
+                                  child: Wrap(spacing: 8, children: [
+                                    const Text('No matching jobs found.'),
+                                    TextButton(
+                                        onPressed: () => setState(() {
+                                              searchFilters = searchFilters
+                                                  .copyWith(city: '');
+                                              aiSearch = null;
+                                              currentPage = 1;
+                                            }),
+                                        child: const Text('Expand location')),
+                                    TextButton(
+                                        onPressed: _openAskStroyka,
+                                        child: const Text('Change trade')),
+                                    if (effectiveAi.availableFrom != null)
+                                      TextButton(
+                                          onPressed: () =>
+                                              setState(() => aiSearch = null),
+                                          child: const Text(
+                                              'Remove date preference')),
+                                  ]),
+                                ),
                               Expanded(
                                 child: RefreshIndicator(
                                   onRefresh: refreshJobs,

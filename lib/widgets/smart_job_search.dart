@@ -711,8 +711,8 @@ class _SmartJobFilterSheetState extends State<SmartJobFilterSheet> {
                   ),
                   Slider(
                     min: 5,
-                    max: 50,
-                    divisions: 9,
+                    max: filters.distance > 50 ? 200 : 50,
+                    divisions: filters.distance > 50 ? 39 : 9,
                     value: filters.distance,
                     onChanged: (value) {
                       setState(
@@ -739,8 +739,10 @@ class _SmartJobFilterSheetState extends State<SmartJobFilterSheet> {
                   ),
                   RangeSlider(
                     min: 0,
-                    max: 50,
-                    divisions: 50,
+                    max: filters.maxPay > 50 ? filters.maxPay : 50,
+                    divisions: (filters.maxPay > 50 ? filters.maxPay : 50)
+                        .clamp(1, 200)
+                        .toInt(),
                     values: RangeValues(filters.minPay, filters.maxPay),
                     labels: RangeLabels(
                       "£${filters.minPay.toInt()}",

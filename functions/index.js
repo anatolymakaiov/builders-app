@@ -34,8 +34,76 @@ const {createAcceptedAssignments} = require("./site_assignments");
 const {recomputeWorkerAvailability} = require("./recompute_worker_availability");
 const {validOffsets, syncReminders, deliverDueReminders} =
   require("./operational_reminders");
+const {safeState: safeAskState, safeProfile: safeAskProfile,
+  interpretWithOpenAI, requestProblem: askRequestProblem,
+  rateLimitExceeded: askRateLimitExceeded, ukDateIso} =
+  require("./ask_stroyka_intent");
 
 admin.initializeApp();
+
+const askStroykaApiKey = defineSecret("ASK_STROYKA_OPENAI_API_KEY");
+
+exports.interpretAskStroyka = onCall({secrets: [askStroykaApiKey],
+  timeoutSeconds: 25, memory: "256MiB"}, async (request) => {
+  const text = request.data?.text;
+  const requestError = askRequestProblem(request.auth, request.data);
+  if (requestError === "unauthenticated") {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+  if (requestError) {
+    throw new HttpsError("invalid-argument", "Enter a short job search request.");
+  }
+  const uid = request.auth.uid;
+  const db = admin.firestore();
+  const [profile, settings] = await Promise.all([
+    db.collection("users").doc(uid).get(),
+    db.collection("feature_flags").doc("ask_stroyka").get(),
+  ]);
+  if (!profile.exists || profile.get("role") !== "worker") {
+    throw new HttpsError("permission-denied", "Worker account required.");
+  }
+  if (settings.get("enabled") === false || !askStroykaApiKey.value()) {
+    throw new HttpsError("unavailable", "Ask STROYKA is temporarily unavailable.");
+  }
+  const now = new Date();
+  const day = ukDateIso(now);
+  const minute = Math.floor(now.getTime() / 60000);
+  const limitRef = db.collection("ai_request_limits").doc(`${uid}_${day}`);
+  await db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(limitRef);
+    const count = snapshot.get("count") || 0;
+    const minuteCount = snapshot.get("minute") === minute ?
+      snapshot.get("minuteCount") || 0 : 0;
+    if (askRateLimitExceeded(count, minuteCount)) {
+      throw new HttpsError("resource-exhausted", "Please try again later.");
+    }
+    tx.set(limitRef, {count: count + 1, minute,
+      minuteCount: minuteCount + 1,
+      expiresAt: admin.firestore.Timestamp.fromMillis(now.getTime() + 172800000)},
+    {merge: true});
+  });
+  const started = Date.now();
+  try {
+    const context = safeAskProfile(profile.data());
+    const result = await interpretWithOpenAI({apiKey: askStroykaApiKey.value(),
+      text: text.trim(), state: safeAskState(request.data.state),
+      profile: context, now: day});
+    console.info("ASK_STROYKA", {intent: result.intent.intent,
+      latencyMs: Date.now() - started, tokens: result.usage});
+    if (result.intent.intent !== "find_job") return result.intent;
+    return {...result.intent,
+      tradePhrase: result.intent.tradePhrase || context.primaryTradeId ||
+        context.tradeIds[0] || null,
+      location: result.intent.location || context.city || context.region || null,
+      availableFrom: result.intent.availableFrom ||
+        (context.availabilityStatus === "available_from" ?
+          context.availableFrom : null)};
+  } catch (error) {
+    console.warn("ASK_STROYKA_FAILED", {latencyMs: Date.now() - started,
+      reason: error.name || "provider_error"});
+    throw new HttpsError("unavailable", "Ask STROYKA is temporarily unavailable.");
+  }
+});
 
 exports.syncSiteEventReminders = onDocumentWritten("site_events/{eventId}", async (event) => {
   await syncReminders(admin.firestore(), "site_event", event.params.eventId,
