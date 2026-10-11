@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/ask_stroyka_service.dart';
@@ -16,23 +19,36 @@ Future<AiFindJobIntent?> showAskStroykaVoice(BuildContext context) =>
           session:
               AiAssistantSession(interpreter: FirebaseAiIntentInterpreter()),
         ),
+        ownerUid: FirebaseAuth.instance.currentUser?.uid,
+        accountUids:
+            FirebaseAuth.instance.authStateChanges().map((user) => user?.uid),
       ),
     );
 
 class AskStroykaVoiceSheet extends StatefulWidget {
-  const AskStroykaVoiceSheet({super.key, required this.controller});
+  const AskStroykaVoiceSheet(
+      {super.key, required this.controller, this.ownerUid, this.accountUids});
   final AskStroykaVoiceController controller;
+  final String? ownerUid;
+  final Stream<String?>? accountUids;
 
   @override
   State<AskStroykaVoiceSheet> createState() => _AskStroykaVoiceSheetState();
 }
 
 class _AskStroykaVoiceSheetState extends State<AskStroykaVoiceSheet> {
+  StreamSubscription<String?>? _accountSubscription;
+
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_refresh);
     widget.controller.checkPermission();
+    if (widget.accountUids != null) {
+      _accountSubscription = widget.accountUids!.listen((uid) {
+        if (uid != widget.ownerUid && mounted) _close();
+      });
+    }
   }
 
   void _refresh() {
@@ -41,6 +57,7 @@ class _AskStroykaVoiceSheetState extends State<AskStroykaVoiceSheet> {
 
   @override
   void dispose() {
+    _accountSubscription?.cancel();
     widget.controller.removeListener(_refresh);
     widget.controller.dispose();
     super.dispose();
@@ -52,7 +69,8 @@ class _AskStroykaVoiceSheetState extends State<AskStroykaVoiceSheet> {
   Widget build(BuildContext context) {
     final voice = widget.controller;
     final intent = voice.turn?.intent;
-    final busy = voice.phase == VoicePhase.transcribing ||
+    final busy = voice.phase == VoicePhase.cancelling ||
+        voice.phase == VoicePhase.transcribing ||
         voice.phase == VoicePhase.interpreting;
     final recording = voice.phase == VoicePhase.recording;
     return Padding(
@@ -76,8 +94,8 @@ class _AskStroykaVoiceSheetState extends State<AskStroykaVoiceSheet> {
                 "Hi, I'm your voice assistant. I can help you find jobs. "
                 'Tell me the trade, where you want to work, and when you can start.',
                 textAlign: TextAlign.center),
-          if (voice.turn?.question != null)
-            Text(voice.turn!.question!,
+          if (voice.turn?.question != null || voice.prompt != null)
+            Text(voice.turn?.question ?? voice.prompt!,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontWeight: FontWeight.w600)),
           if (voice.heard != null) ...[
@@ -112,6 +130,9 @@ class _AskStroykaVoiceSheetState extends State<AskStroykaVoiceSheet> {
             Text(voice.error!,
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+          if (voice.phase == VoicePhase.error) ...[
+            TextButton(onPressed: voice.retry, child: const Text('Try again')),
           ],
           if (voice.isClosed && intent == null)
             const Text('Voice session ended. Close and reopen to try again.'),

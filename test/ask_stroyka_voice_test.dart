@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -52,22 +53,34 @@ class FakeInterpreter implements AiIntentInterpreter {
     lastState = state;
     return {
       'intent': 'find_job',
-      'tradePhrase': 'dryliner',
-      'location': text == 'Dryliner' ? null : 'Manchester',
-      'availableFrom': text.contains('14 October') ? '2026-10-14' : null,
+      'tradePhrase': state['tradePhrase'] ?? 'dryliner',
+      'location': text == 'Dryliner'
+          ? null
+          : text.contains('Liverpool')
+              ? 'Liverpool'
+              : state['location'] ?? 'Manchester',
+      'availableFrom': text.contains('14 October') ||
+              text.contains('14 октября') ||
+              text.contains('14 października') ||
+              text.contains('14 жовтня')
+          ? '2026-10-14'
+          : text.contains('Monday')
+              ? '2026-10-12'
+              : state['availableFrom'],
     };
   }
 }
 
 AskStroykaVoiceController controller(
         FakeCapture capture, FakeSpeech speech, FakeInterpreter interpreter,
-        {Duration? maxDuration}) =>
+        {Duration? maxDuration, Duration? sessionLifetime}) =>
     AskStroykaVoiceController(
       capture: capture,
       transcription: speech,
       session: AiAssistantSession(
           interpreter: interpreter, clock: () => DateTime(2026, 10, 10)),
       maxDuration: maxDuration ?? const Duration(seconds: 30),
+      sessionLifetime: sessionLifetime ?? const Duration(minutes: 5),
     );
 
 void main() {
@@ -104,13 +117,60 @@ void main() {
     await voice.press();
     await voice.release();
     expect(voice.turn!.question, 'Where would you like to work?');
-    voice.change();
     speech.text = 'Manchester';
     await voice.press();
     await voice.release();
     expect(interpreter.lastState?['tradePhrase'], 'dryliner');
     expect(voice.turn!.readyToSearch, isTrue);
     voice.dispose();
+  });
+
+  test('voice correction keeps trade and date while changing location',
+      () async {
+    final capture = FakeCapture();
+    final speech = FakeSpeech();
+    final interpreter = FakeInterpreter();
+    final voice = controller(capture, speech, interpreter);
+    await voice.press();
+    await voice.release();
+    voice.change();
+    expect(voice.prompt, 'What would you like to change?');
+    speech.text = 'Make it Liverpool';
+    await voice.press();
+    await voice.release();
+    expect(interpreter.lastState?['tradePhrase'], 'dryliner');
+    expect(interpreter.lastState?['availableFrom'], '2026-10-14');
+    expect(voice.turn!.intent!.location, 'Liverpool');
+    expect(voice.turn!.intent!.availableFrom, DateTime(2026, 10, 14));
+    voice.dispose();
+  });
+
+  test('multilingual and mixed transcripts use the same canonical intent path',
+      () async {
+    const requests = [
+      'Dryliner in Manchester from 14 October',
+      'Ищу работу драйлайнером в Манчестере с 14 октября',
+      'Szukam pracy jako dryliner w Manchesterze od 14 października',
+      'Шукаю роботу драйлайнером у Манчестері з 14 жовтня',
+      'Dryliner работа Manchester с Monday',
+    ];
+    for (final request in requests) {
+      final capture = FakeCapture();
+      final speech = FakeSpeech()..text = request;
+      final interpreter = FakeInterpreter();
+      final voice = controller(capture, speech, interpreter);
+      await voice.press();
+      await voice.release();
+      expect(voice.turn!.intent!.tradeId, 'dryliner');
+      expect(voice.turn!.intent!.location, 'Manchester');
+      expect(
+          voice.turn!.intent!.availableFrom,
+          request.contains('Monday')
+              ? DateTime(2026, 10, 12)
+              : DateTime(2026, 10, 14));
+      expect(interpreter.calls, 1);
+      voice.dispose();
+    }
   });
 
   test('cancel drops recording; empty speech never calls interpreter',
@@ -127,6 +187,9 @@ void main() {
     await voice.release();
     expect(interpreter.calls, 0);
     expect(voice.phase, VoicePhase.error);
+    voice.retry();
+    expect(voice.phase, VoicePhase.idle);
+    expect(voice.error, isNull);
     voice.dispose();
   });
 
@@ -170,6 +233,44 @@ void main() {
     await tester.pump();
     expect(capture.stops, 1);
     expect(find.text('Yes, find jobs'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('voice sheet closes and discards state when account changes',
+      (tester) async {
+    final accounts = StreamController<String?>.broadcast();
+    final voice = controller(FakeCapture(), FakeSpeech(), FakeInterpreter());
+    await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) {
+      return Scaffold(
+          body: TextButton(
+              onPressed: () => showModalBottomSheet<void>(
+                  context: context,
+                  builder: (_) => AskStroykaVoiceSheet(
+                      controller: voice,
+                      ownerUid: 'worker-one',
+                      accountUids: accounts.stream)),
+              child: const Text('Open')));
+    })));
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ask STROYKA'), findsOneWidget);
+    accounts.add('worker-two');
+    await tester.pumpAndSettle();
+    expect(find.text('Ask STROYKA'), findsNothing);
+    expect(voice.isClosed, isTrue);
+    await accounts.close();
+  });
+
+  testWidgets('session timeout closes idle search without persistence',
+      (tester) async {
+    final voice = controller(FakeCapture(), FakeSpeech(), FakeInterpreter(),
+        sessionLifetime: const Duration(seconds: 3));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: AskStroykaVoiceSheet(controller: voice))));
+    await tester.pump(const Duration(seconds: 3));
+    expect(voice.isClosed, isTrue);
+    expect(find.text('Voice session ended. Close and reopen to try again.'),
+        findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

@@ -9,8 +9,10 @@ import 'ask_stroyka_service.dart';
 enum VoicePhase {
   idle,
   recording,
+  cancelling,
   transcribing,
   interpreting,
+  clarifying,
   confirming,
   error
 }
@@ -62,7 +64,7 @@ class AskStroykaVoiceController extends ChangeNotifier {
     this.sessionLifetime = const Duration(minutes: 5),
     this.maxTurns = 5,
   }) {
-    _expiry = Timer(sessionLifetime, close);
+    _renewExpiry();
   }
 
   final VoiceCaptureService capture;
@@ -82,9 +84,15 @@ class AskStroykaVoiceController extends ChangeNotifier {
   AiAssistantTurn? turn;
   String? heard;
   String? error;
+  String? prompt;
 
   int get turnsRemaining => maxTurns - _turns;
   bool get isClosed => _closed;
+
+  void _renewExpiry() {
+    _expiry?.cancel();
+    _expiry = Timer(sessionLifetime, close);
+  }
 
   Future<void> checkPermission() async {
     try {
@@ -103,12 +111,14 @@ class AskStroykaVoiceController extends ChangeNotifier {
     if (_closed ||
         _pressed ||
         phase == VoicePhase.recording ||
+        phase == VoicePhase.cancelling ||
         phase == VoicePhase.transcribing ||
         phase == VoicePhase.interpreting ||
         turnsRemaining <= 0) {
       return;
     }
     _pressed = true;
+    _renewExpiry();
     error = null;
     try {
       permissionState = await capture.permission(request: true);
@@ -168,11 +178,14 @@ class AskStroykaVoiceController extends ChangeNotifier {
         return;
       }
       heard = transcript;
+      prompt = null;
       phase = VoicePhase.interpreting;
       notifyListeners();
       turn = await session.send(transcript);
       if (_closed) return;
-      phase = VoicePhase.confirming;
+      phase =
+          turn!.readyToSearch ? VoicePhase.confirming : VoicePhase.clarifying;
+      _renewExpiry();
       notifyListeners();
     } catch (_) {
       if (_closed) return;
@@ -187,22 +200,39 @@ class AskStroykaVoiceController extends ChangeNotifier {
     _pressed = false;
     _recordingLimit?.cancel();
     if (phase != VoicePhase.recording) return;
-    phase = VoicePhase.idle;
+    phase = VoicePhase.cancelling;
+    if (!_disposed) notifyListeners();
     try {
       await capture.cancel();
     } catch (_) {
       // Cancellation is best-effort; the native service still deletes its file.
     }
     if (_closed) return;
+    phase = VoicePhase.idle;
     if (!_disposed) notifyListeners();
   }
 
   void change() {
-    if (_closed || phase != VoicePhase.confirming) return;
-    if (turn?.intent != null) session.clear();
+    if (_closed ||
+        (phase != VoicePhase.confirming && phase != VoicePhase.clarifying)) {
+      return;
+    }
+    prompt = turn?.readyToSearch == true
+        ? 'What would you like to change?'
+        : turn?.question;
     turn = null;
     heard = null;
     phase = VoicePhase.idle;
+    _renewExpiry();
+    if (!_disposed) notifyListeners();
+  }
+
+  void retry() {
+    if (_closed || phase != VoicePhase.error) return;
+    error = null;
+    prompt = 'Hold the microphone to try again.';
+    phase = VoicePhase.idle;
+    _renewExpiry();
     if (!_disposed) notifyListeners();
   }
 
@@ -222,6 +252,7 @@ class AskStroykaVoiceController extends ChangeNotifier {
     session.clear();
     turn = null;
     heard = null;
+    prompt = null;
     try {
       if (phase == VoicePhase.recording) await capture.cancel();
       await capture.dispose();
