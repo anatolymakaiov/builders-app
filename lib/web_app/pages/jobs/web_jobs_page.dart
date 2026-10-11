@@ -5,7 +5,6 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../../models/job.dart';
 import '../../../services/ask_stroyka_service.dart';
-import '../../../widgets/ask_stroyka_sheet.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_application_actions_service.dart';
 import '../../services/web_applications_data_service.dart';
@@ -190,33 +189,6 @@ class _WebJobsPageState extends State<WebJobsPage> {
       });
     }
     return result;
-  }
-
-  Future<void> _openAskStroyka() async {
-    final ownerId = widget.userId;
-    final intent = await showAskStroyka(context);
-    if (!mounted || intent == null || widget.userId != ownerId || !isWorker) {
-      return;
-    }
-    setState(() {
-      aiSearch = intent;
-      filters = WebJobFilters(
-        roles: [intent.trade],
-        city: intent.location,
-        distance: intent.radiusMiles ?? 50,
-        minPay: intent.rateMin ?? 0,
-        maxPay: (intent.rateMin ?? 0) > 50
-            ? (intent.rateMin! > 200 ? intent.rateMin! : 200)
-            : 50,
-        employmentTypes:
-            intent.paymentType == null ? const {} : {intent.paymentType!},
-      );
-      search = intent.keywords;
-      searchController.text = search;
-      sort = WebJobSort.newest;
-      page = 1;
-      savedOnly = false;
-    });
   }
 
   double _distance(Job job) => location == null
@@ -459,15 +431,6 @@ class _WebJobsPageState extends State<WebJobsPage> {
                           label: const Text('Subscriptions'),
                         ),
                       ),
-                    if (isWorker && AskStroykaFeature.enabled)
-                      SizedBox(
-                        height: WebToolbar.controlHeight,
-                        child: OutlinedButton.icon(
-                          onPressed: _openAskStroyka,
-                          icon: const Icon(Icons.auto_awesome_outlined),
-                          label: const Text('Ask STROYKA'),
-                        ),
-                      ),
                     if (isWorker)
                       SizedBox(
                         height: WebToolbar.controlHeight,
@@ -563,9 +526,6 @@ class _WebJobsPageState extends State<WebJobsPage> {
                       }),
                       child: const Text('Expand location'),
                     ),
-                    TextButton(
-                        onPressed: _openAskStroyka,
-                        child: const Text('Change trade')),
                     if (aiSearch!.availableFrom != null)
                       TextButton(
                           onPressed: () => setState(() => aiSearch = null),

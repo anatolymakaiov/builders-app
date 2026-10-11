@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/job.dart';
 import 'job_taxonomy_service.dart';
@@ -12,8 +13,8 @@ enum AiAssistantIntent {
 }
 
 class AskStroykaFeature {
-  static const enabled =
-      bool.fromEnvironment('ASK_STROYKA_ENABLED', defaultValue: false);
+  static const enabled = !kIsWeb &&
+      bool.fromEnvironment('ASK_STROYKA_ENABLED', defaultValue: true);
 }
 
 class AiFindJobIntent {

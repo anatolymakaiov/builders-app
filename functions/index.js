@@ -39,10 +39,63 @@ const {safeState: safeAskState, safeProfile: safeAskProfile,
   requestProblem: askRequestProblem,
   rateLimitExceeded: askRateLimitExceeded, ukDateIso} =
   require("./ask_stroyka_intent");
+const {validateVoiceRequest, transcribeWithOpenAI} =
+  require("./ask_stroyka_voice");
 
 admin.initializeApp();
 
 const askStroykaApiKey = defineSecret("ASK_STROYKA_OPENAI_API_KEY");
+
+exports.transcribeAskStroykaVoice = onCall({secrets: [askStroykaApiKey],
+  timeoutSeconds: 30, memory: "256MiB"}, async (request) => {
+  const validation = validateVoiceRequest(request.auth, request.data);
+  if (validation.problem) {
+    throw new HttpsError(validation.problem,
+      validation.problem === "unauthenticated" ? "Sign in required." :
+        "Record a short voice request of up to 30 seconds.");
+  }
+  const uid = request.auth.uid;
+  const db = admin.firestore();
+  const [profile, settings] = await Promise.all([
+    db.collection("users").doc(uid).get(),
+    db.collection("feature_flags").doc("ask_stroyka").get(),
+  ]);
+  if (!profile.exists || profile.get("role") !== "worker") {
+    throw new HttpsError("permission-denied", "Worker account required.");
+  }
+  if (settings.get("enabled") === false || !askStroykaApiKey.value()) {
+    throw new HttpsError("unavailable", "Voice search is temporarily unavailable.");
+  }
+  const now = new Date();
+  const day = ukDateIso(now);
+  const minute = Math.floor(now.getTime() / 60000);
+  const limitRef = db.collection("ai_voice_limits").doc(`${uid}_${day}`);
+  await db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(limitRef);
+    const count = snapshot.get("count") || 0;
+    const minuteCount = snapshot.get("minute") === minute ?
+      snapshot.get("minuteCount") || 0 : 0;
+    if (count >= 40 || minuteCount >= 5) {
+      throw new HttpsError("resource-exhausted", "Please try again later.");
+    }
+    tx.set(limitRef, {count: count + 1, minute,
+      minuteCount: minuteCount + 1,
+      expiresAt: admin.firestore.Timestamp.fromMillis(now.getTime() + 172800000)},
+    {merge: true});
+  });
+  const started = Date.now();
+  try {
+    const text = await transcribeWithOpenAI({apiKey: askStroykaApiKey.value(),
+      audio: validation.audio});
+    console.info("ASK_STROYKA_VOICE", {ok: true,
+      latencyMs: Date.now() - started, durationMs: validation.durationMs});
+    return {text};
+  } catch (error) {
+    console.warn("ASK_STROYKA_VOICE_FAILED", {latencyMs: Date.now() - started,
+      reason: askFailureCategory(error)});
+    throw new HttpsError("unavailable", "Voice search is temporarily unavailable.");
+  }
+});
 
 exports.interpretAskStroyka = onCall({secrets: [askStroykaApiKey],
   timeoutSeconds: 25, memory: "256MiB"}, async (request) => {

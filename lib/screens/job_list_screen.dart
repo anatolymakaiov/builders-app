@@ -13,7 +13,7 @@ import 'filter_sheet.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/job_card.dart';
 import '../widgets/job_pagination.dart';
-import '../widgets/ask_stroyka_sheet.dart';
+import '../widgets/ask_stroyka_voice_sheet.dart';
 import '../widgets/smart_job_search.dart';
 
 enum SortType {
@@ -130,7 +130,7 @@ class _JobListScreenState extends State<JobListScreen> {
   Future<void> _openAskStroyka() async {
     final ownerId = FirebaseAuth.instance.currentUser?.uid;
     if (ownerId == null) return;
-    final intent = await showAskStroyka(context);
+    final intent = await showAskStroykaVoice(context);
     if (!mounted ||
         intent == null ||
         FirebaseAuth.instance.currentUser?.uid != ownerId) {
@@ -480,8 +480,7 @@ class _JobListScreenState extends State<JobListScreen> {
                                     child: OutlinedButton.icon(
                                       key: const Key('ask-stroyka-mobile'),
                                       onPressed: _openAskStroyka,
-                                      icon: const Icon(
-                                          Icons.auto_awesome_outlined),
+                                      icon: const Icon(Icons.mic_outlined),
                                       label: const Text('Ask STROYKA'),
                                     ),
                                   ),
