@@ -39,6 +39,27 @@ class ChatService {
     );
   }
 
+  static String _safeChatName(String value, String fallback) {
+    final name = value.trim();
+    if (name.isEmpty ||
+        name.contains('@') ||
+        RegExp(r'^\+?[\d\s()\-]{7,}$').hasMatch(name)) {
+      return fallback;
+    }
+    return name;
+  }
+
+  static bool _hasVacancy(
+      Map<String, dynamic> chatData, Map<String, dynamic>? jobData) {
+    final title =
+        firstText(chatData, ['jobTitle', 'position', 'canonicalRoleName']);
+    return firstText(chatData, ['jobId', 'vacancyId']).isNotEmpty ||
+        jobData != null ||
+        (title.isNotEmpty &&
+            title.toLowerCase() != 'general' &&
+            title.toLowerCase() != 'job');
+  }
+
   static String chatDisplayName({
     required Map<String, dynamic> chatData,
     required Map<String, dynamic>? participantData,
@@ -48,6 +69,8 @@ class ChatService {
     required bool showTeamAvatar,
   }) {
     final title = jobTitle(chatData, jobData);
+    final hasVacancy = _hasVacancy(chatData, jobData);
+    String withVacancy(String name) => hasVacancy ? '${name}_$title' : name;
 
     if (isInternalTeamChat) {
       final teamName = firstText(
@@ -55,7 +78,7 @@ class ChatService {
         ["teamName"],
         fallback: firstText(participantData, ["name"], fallback: "Team"),
       );
-      return "${teamName}_$title";
+      return withVacancy(_safeChatName(teamName, 'Team'));
     }
 
     if (showTeamAvatar) {
@@ -64,7 +87,7 @@ class ChatService {
         ["name", "teamName"],
         fallback: firstText(chatData, ["teamName"], fallback: "Team"),
       );
-      return "${teamName}_$title";
+      return withVacancy(_safeChatName(teamName, 'Team'));
     }
 
     final participantName = currentUserIsWorker
@@ -87,7 +110,21 @@ class ChatService {
             ),
           );
 
-    return "${participantName}_$title";
+    return withVacancy(_safeChatName(
+        participantName, currentUserIsWorker ? 'Company' : 'Worker'));
+  }
+
+  static String directChatDisplayName({
+    required Map<String, dynamic> chatData,
+    required Map<String, dynamic>? participantData,
+    required Map<String, dynamic>? jobData,
+  }) {
+    final name = _safeChatName(
+        firstText(participantData, ['companyName', 'name', 'displayName'],
+            fallback: 'User'),
+        'User');
+    final hasVacancy = _hasVacancy(chatData, jobData);
+    return hasVacancy ? '${name}_${jobTitle(chatData, jobData)}' : name;
   }
 
   static Future<String> getOrCreateChat({

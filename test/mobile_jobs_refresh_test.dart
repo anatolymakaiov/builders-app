@@ -4,8 +4,34 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/models/job.dart';
 import 'package:test_app/screens/job_list_screen.dart';
+import 'package:test_app/widgets/smart_job_search.dart';
 
 void main() {
+  testWidgets('Jobs search is compact and Ask STROYKA is in the app bar',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+    await tester.pumpWidget(MaterialApp(
+        home: JobListScreen(
+      jobsStream: Stream.value(const <Job>[]),
+      savedJobsStream: Stream.value(<String>{}),
+      appliedJobsStream: Stream.value(<String>{}),
+      userIdProvider: () => 'worker-a',
+      lookupLocation: false,
+    )));
+    await tester.pumpAndSettle();
+    final search = find.byType(SmartJobSearchField);
+    expect(search, findsOneWidget);
+    expect(tester.getSize(search).height, inInclusiveRange(48, 64));
+    final ask = find.byKey(const Key('ask-stroyka-mobile'));
+    expect(ask, findsOneWidget);
+    expect(
+        find.ancestor(of: ask, matching: find.byType(AppBar)), findsOneWidget);
+  });
   testWidgets('refresh keeps Jobs mounted after success, failure and retry',
       (tester) async {
     tester.view.devicePixelRatio = 1;

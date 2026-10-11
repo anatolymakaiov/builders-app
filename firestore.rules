@@ -603,6 +603,47 @@ service cloud.firestore {
         allow read, update, delete: if isAdmin() || isSelf(userId);
       }
 
+      match /calendar_events/{eventId} {
+        function validPersonalEvent() {
+          return request.resource.data.keys().hasOnly([
+            "eventId", "workerId", "title", "eventType", "startDateTime",
+            "endDateTime", "description", "reminderOffsetsMinutes",
+            "createdAt", "updatedAt"
+          ])
+          && request.resource.data.keys().hasAll([
+            "eventId", "workerId", "title", "eventType", "startDateTime",
+            "endDateTime", "description", "reminderOffsetsMinutes",
+            "createdAt", "updatedAt"
+          ])
+          && request.resource.data.eventId == eventId
+          && request.resource.data.workerId == userId
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 120
+          && request.resource.data.eventType in ["event", "reminder"]
+          && request.resource.data.startDateTime is timestamp
+          && request.resource.data.endDateTime is timestamp
+          && request.resource.data.endDateTime >= request.resource.data.startDateTime
+          && request.resource.data.description is string
+          && request.resource.data.description.size() <= 1000
+          && request.resource.data.reminderOffsetsMinutes is list
+          && request.resource.data.reminderOffsetsMinutes.size() <= 1
+          && (request.resource.data.reminderOffsetsMinutes.size() == 0
+            || (request.resource.data.reminderOffsetsMinutes[0] is int
+              && request.resource.data.reminderOffsetsMinutes[0] in
+                [0, 5, 10, 15, 30, 60, 120, 1440, 2880, 10080]))
+          && request.resource.data.updatedAt == request.time;
+        }
+        allow get, list: if isSelf(userId) && isWorker();
+        allow create: if isSelf(userId) && isWorker()
+          && validPersonalEvent()
+          && request.resource.data.createdAt == request.time;
+        allow update: if isSelf(userId) && isWorker()
+          && validPersonalEvent()
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isSelf(userId) && isWorker();
+      }
+
       match /deviceTokens/{tokenId} {
         allow create, update: if signedIn()
           && isSelf(userId)

@@ -2439,11 +2439,11 @@ class _ChatScreenState extends State<ChatScreen> {
             (isWorker ? typingEmployer : typingWorker) &&
             isOnline;
         final name = isGenericDirectChat
-            ? "${ChatService.firstText(
-                userData,
-                ["companyName", "name", "displayName"],
-                fallback: "User",
-              )}_${ChatService.jobTitle(chatData, jobData)}"
+            ? ChatService.directChatDisplayName(
+                chatData: chatData,
+                participantData: userData,
+                jobData: jobData,
+              )
             : ChatService.chatDisplayName(
                 chatData: chatData,
                 participantData: userData,
@@ -2900,11 +2900,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     chatData["workerId"] == null &&
                     chatData["employerId"] == null;
                 final name = isGenericDirectChat
-                    ? "${ChatService.firstText(
-                        userData,
-                        ["companyName", "name", "displayName"],
-                        fallback: "User",
-                      )}_${ChatService.jobTitle(chatData, jobData)}"
+                    ? ChatService.directChatDisplayName(
+                        chatData: chatData,
+                        participantData: userData,
+                        jobData: jobData,
+                      )
                     : ChatService.chatDisplayName(
                         chatData: chatData,
                         participantData: userData,

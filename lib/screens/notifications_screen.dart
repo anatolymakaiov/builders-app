@@ -8,6 +8,7 @@ import 'job_details_screen.dart';
 import 'worker_profile_screen.dart';
 import 'worker_opportunities_screen.dart';
 import 'employer_calendar_screen.dart';
+import 'worker_calendar_screen.dart';
 import '../models/job.dart';
 import '../services/calendar_service.dart';
 import '../services/app_navigation.dart';
@@ -500,6 +501,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               initialDate: eventAt is Timestamp ? eventAt.toDate() : null,
             ),
           ));
+      return;
+    }
+
+    if (targetType == 'calendar' && role == 'worker' && uid != null) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WorkerCalendarScreen(
+            workerId: uid,
+            initialDate: data['eventAt'] is Timestamp
+                ? (data['eventAt'] as Timestamp).toDate()
+                : null,
+          ),
+        ),
+      );
       return;
     }
 

@@ -47,7 +47,7 @@ void main() {
       },
     )));
     await tester.pumpAndSettle();
-    expect(find.textContaining('John M. starts'), findsOneWidget);
+    expect(find.textContaining('John M. starts'), findsNWidgets(2));
     expect(find.textContaining('Manchester Tower'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, 320));
     await tester.pumpAndSettle();

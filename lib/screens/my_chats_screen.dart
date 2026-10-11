@@ -279,8 +279,10 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
 
   Future<List<_ChatSearchResult>> searchUsers(String query, String uid) async {
     final normalizedQuery = normalizeSearch(query);
-    final snap =
-        await FirebaseFirestore.instance.collection("public_profiles").limit(250).get();
+    final snap = await FirebaseFirestore.instance
+        .collection("public_profiles")
+        .limit(250)
+        .get();
 
     final results = <_ChatSearchResult>[];
     for (final doc in snap.docs) {
@@ -687,11 +689,11 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                 data["workerId"] == null &&
                 data["employerId"] == null;
             final chatName = isGenericDirectChat
-                ? "${ChatService.firstText(
-                    displayData,
-                    ["companyName", "name", "displayName"],
-                    fallback: "User",
-                  )}_${ChatService.jobTitle(data, jobData)}"
+                ? ChatService.directChatDisplayName(
+                    chatData: data,
+                    participantData: displayData,
+                    jobData: jobData,
+                  )
                 : ChatService.chatDisplayName(
                     chatData: data,
                     participantData: displayData,
@@ -994,15 +996,11 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                                       data["workerId"] == null &&
                                       data["employerId"] == null;
                                   final chatName = isGenericDirectChat
-                                      ? "${ChatService.firstText(
-                                          displayData,
-                                          [
-                                            "companyName",
-                                            "name",
-                                            "displayName"
-                                          ],
-                                          fallback: "User",
-                                        )}_${ChatService.jobTitle(data, jobData)}"
+                                      ? ChatService.directChatDisplayName(
+                                          chatData: data,
+                                          participantData: displayData,
+                                          jobData: jobData,
+                                        )
                                       : ChatService.chatDisplayName(
                                           chatData: data,
                                           participantData: displayData,

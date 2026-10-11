@@ -7,6 +7,21 @@ Timestamp day(int year, int month, int date) =>
     Timestamp.fromDate(DateTime(year, month, date, 12));
 
 void main() {
+  test('worker personal event remains distinct from unavailability', () {
+    final date = DateTime(2026, 10, 11, 9);
+    final events = personalCalendarEvents(
+        'mine',
+        {
+          'title': 'Private appointment',
+          'startDateTime': date,
+          'endDateTime': date.add(const Duration(hours: 1)),
+          'eventType': 'event',
+        },
+        CalendarRange.month(date));
+    expect(events, hasLength(1));
+    expect(events.single.type, CalendarEventType.manual);
+    expect(events.single.siteId, isEmpty);
+  });
   final month = CalendarRange.month(DateTime(2026, 10, 15));
 
   test('month week day ranges have inclusive dates and exclusive end', () {

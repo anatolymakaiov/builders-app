@@ -58,12 +58,6 @@ class WorkerProfileScreen extends StatelessWidget {
   Widget _buildOwnAssignments(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextButton.icon(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => WorkerCalendarScreen(workerId: userId))),
-            icon: const Icon(Icons.calendar_month_outlined),
-            label: const Text('Calendar'),
-          ),
           StreamBuilder<List<WorkerAssignment>>(
             stream: WorkerAssignmentService().watchOwn(userId),
             builder: (context, snapshot) {
@@ -1762,7 +1756,7 @@ class WorkerProfileScreen extends StatelessWidget {
           }
 
           return DefaultTabController(
-            length: 4,
+            length: isMyProfile ? 5 : 4,
             child: StroykaScreenBody(
               child: Column(
                 children: [
@@ -1808,9 +1802,7 @@ class WorkerProfileScreen extends StatelessWidget {
                     ),
                   StroykaProfileHeader(
                     title: name.toString(),
-                    subtitle: isMyProfile
-                        ? null
-                        : WorkerAvailabilityService.profileLabel(data),
+                    subtitle: WorkerAvailabilityService.profileLabel(data),
                     avatarUrl: photo is String ? photo : null,
                     headerImageUrl: headerImage,
                     fallbackIcon: Icons.person,
@@ -1865,7 +1857,8 @@ class WorkerProfileScreen extends StatelessWidget {
                             : isMyProfile
                                 ? Align(
                                     alignment: Alignment.centerRight,
-                                    child: TextButton.icon(
+                                    child: IconButton(
+                                      tooltip: 'Edit availability',
                                       onPressed: profileHeld
                                           ? null
                                           : () async {
@@ -1892,16 +1885,18 @@ class WorkerProfileScreen extends StatelessWidget {
                                               }
                                             },
                                       icon: const Icon(Icons.edit_outlined),
-                                      label: Text(
-                                        WorkerAvailabilityService.profileLabel(
-                                            data),
-                                      ),
                                     ),
                                   )
                                 : null,
                   ),
-                  const StroykaTabBar(
-                    labels: ["Info", "Contacts", "Photos", "Teams"],
+                  StroykaTabBar(
+                    labels: [
+                      "Info",
+                      "Contacts",
+                      "Photos",
+                      if (isMyProfile) "Calendar",
+                      "Teams",
+                    ],
                   ),
                   const SizedBox(height: 10),
                   Expanded(
@@ -1985,6 +1980,11 @@ class WorkerProfileScreen extends StatelessWidget {
                             ),
                           ],
                         ),
+                        if (isMyProfile)
+                          WorkerCalendarScreen(
+                            workerId: userId,
+                            embedded: true,
+                          ),
                         ListView(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
                           children: [

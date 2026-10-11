@@ -965,7 +965,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget buildTopNotificationBell(int notifCount) {
     return Positioned(
-      left: 8,
+      left: role == 'worker' && currentIndex == 0 ? null : 8,
+      right: role == 'worker' && currentIndex == 0 ? 8 : null,
       top: 0,
       child: SafeArea(
         child: SizedBox(

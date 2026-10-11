@@ -65,6 +65,7 @@ class CalendarEvent {
     this.end,
     this.allDay = true,
     this.eventType = '',
+    this.alertMinutes = -1,
   });
 
   final String id;
@@ -81,6 +82,7 @@ class CalendarEvent {
   final DateTime? end;
   final bool allDay;
   final String eventType;
+  final int alertMinutes;
 
   String get typeLabel => switch (type) {
         CalendarEventType.vacancyStart => 'Vacancy',
@@ -140,6 +142,38 @@ List<CalendarEvent> manualSiteCalendarEvents(
       end: calendarDate(data['endDateTime']),
       allDay: data['allDay'] == true,
       eventType: (data['eventType'] ?? 'other').toString(),
+      alertMinutes: (data['reminderOffsetsMinutes'] is List &&
+              (data['reminderOffsetsMinutes'] as List).isNotEmpty)
+          ? (data['reminderOffsetsMinutes'] as List).first as int
+          : -1,
+    )
+  ];
+}
+
+List<CalendarEvent> personalCalendarEvents(
+    String id, Map<String, dynamic> data, CalendarRange range) {
+  final start = calendarDate(data['startDateTime']);
+  if (start == null || !range.contains(start)) return const [];
+  return [
+    CalendarEvent(
+      id: 'personal:$id',
+      type: CalendarEventType.manual,
+      date: start,
+      title: (data['title'] ?? 'Event').toString(),
+      sourceId: id,
+      vacancyId: '',
+      siteId: '',
+      siteName: '',
+      trade: '',
+      status: '',
+      description: (data['description'] ?? '').toString(),
+      end: calendarDate(data['endDateTime']),
+      allDay: false,
+      eventType: (data['eventType'] ?? 'event').toString(),
+      alertMinutes: (data['reminderOffsetsMinutes'] is List &&
+              (data['reminderOffsetsMinutes'] as List).isNotEmpty)
+          ? (data['reminderOffsetsMinutes'] as List).first as int
+          : -1,
     )
   ];
 }
@@ -467,6 +501,16 @@ class OperationalCalendarService {
         events.addAll(manualSiteCalendarEvents(entry.key, entry.value, range));
       }
     } else {
+      final personal = await _db
+          .collection('users')
+          .doc(uid)
+          .collection('calendar_events')
+          .where('startDateTime', isGreaterThanOrEqualTo: lower)
+          .where('startDateTime', isLessThan: upper)
+          .get();
+      for (final doc in personal.docs) {
+        events.addAll(personalCalendarEvents(doc.id, doc.data(), range));
+      }
       final periods = await _db
           .collection('worker_unavailability')
           .where('workerId', isEqualTo: uid)

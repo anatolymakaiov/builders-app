@@ -164,6 +164,15 @@ exports.syncSiteEventReminders = onDocumentWritten("site_events/{eventId}", asyn
     event.data?.after?.data(), admin.firestore.FieldValue);
 });
 
+exports.syncWorkerCalendarReminders = onDocumentWritten(
+  "users/{workerId}/calendar_events/{eventId}", async (event) => {
+    const data = event.data?.after?.data();
+    await syncReminders(admin.firestore(), "worker_event",
+      `${event.params.workerId}:${event.params.eventId}`,
+      data?.workerId === event.params.workerId ? data : null,
+      admin.firestore.FieldValue);
+  });
+
 exports.syncAssignmentReminders = onDocumentWritten("assignments/{assignmentId}", async (event) => {
   await syncReminders(admin.firestore(), "assignment", event.params.assignmentId,
     event.data?.after?.data(), admin.firestore.FieldValue);

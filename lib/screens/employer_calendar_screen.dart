@@ -1,21 +1,29 @@
 import 'package:flutter/material.dart';
 
 import '../services/operational_calendar.dart';
+import '../services/site_event_service.dart';
+import '../widgets/mobile_calendar_view.dart';
 
 class EmployerCalendarScreen extends StatefulWidget {
-  const EmployerCalendarScreen(
-      {super.key, required this.employerId, this.initialDate, this.loadEvents});
+  const EmployerCalendarScreen({
+    super.key,
+    required this.employerId,
+    this.initialDate,
+    this.loadEvents,
+    this.embedded = false,
+  });
 
   final String employerId;
   final DateTime? initialDate;
   final Future<List<CalendarEvent>> Function(CalendarRange)? loadEvents;
+  final bool embedded;
 
   @override
   State<EmployerCalendarScreen> createState() => _EmployerCalendarScreenState();
 }
 
 class _EmployerCalendarScreenState extends State<EmployerCalendarScreen> {
-  DateTime selected = DateTime.now();
+  late DateTime selected;
   late Future<List<CalendarEvent>> events;
 
   @override
@@ -25,94 +33,105 @@ class _EmployerCalendarScreenState extends State<EmployerCalendarScreen> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant EmployerCalendarScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.employerId != widget.employerId) {
+      selected = widget.initialDate ?? DateTime.now();
+      _load();
+    }
+  }
+
   void _load() {
     events = widget.loadEvents?.call(CalendarRange.month(selected)) ??
         OperationalCalendarService().load(
-            uid: widget.employerId,
-            employer: true,
-            range: CalendarRange.month(selected));
+          uid: widget.employerId,
+          employer: true,
+          range: CalendarRange.month(selected),
+        );
   }
-
-  void _move(int months) => setState(() {
-        selected = DateTime(selected.year, selected.month + months);
-        _load();
-      });
 
   Future<void> _refresh() async {
     setState(_load);
     await events;
   }
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Calendar')),
-        body: Column(children: [
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            IconButton(
-                tooltip: 'Previous month',
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () => _move(-1)),
-            Text(MaterialLocalizations.of(context).formatMonthYear(selected),
-                style: Theme.of(context).textTheme.titleMedium),
-            IconButton(
-                tooltip: 'Next month',
-                icon: const Icon(Icons.chevron_right),
-                onPressed: () => _move(1)),
-          ]),
-          Expanded(
-              child: FutureBuilder<List<CalendarEvent>>(
-            future: events,
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(
-                    child: TextButton.icon(
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Could not load calendar. Retry'),
-                  onPressed: () => setState(_load),
-                ));
-              }
-              if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final entries = snapshot.data!
-                  .where((item) =>
-                      item.date.year == selected.year &&
-                      item.date.month == selected.month)
-                  .toList()
-                ..sort((a, b) => a.date.compareTo(b.date));
-              return RefreshIndicator(
-                onRefresh: _refresh,
-                child: entries.isEmpty
-                    ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: const [
-                          ListTile(title: Text('No events this month.'))
-                        ],
-                      )
-                    : ListView.builder(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        itemCount: entries.length,
-                        itemBuilder: (context, index) {
-                          final event = entries[index];
-                          return ListTile(
-                            leading:
-                                CircleAvatar(child: Text('${event.date.day}')),
-                            title: Text('${event.typeLabel} · ${event.title}'),
-                            subtitle: Text([
-                              MaterialLocalizations.of(context)
-                                  .formatMediumDate(event.date),
-                              event.siteName,
-                              event.trade,
-                            ]
-                                .where((text) => text.isNotEmpty)
-                                .toSet()
-                                .join(' · ')),
-                          );
-                        },
-                      ),
-              );
-            },
-          )),
-        ]),
+  Future<void> _create(MobileCalendarDraft draft) async {
+    try {
+      await SiteEventService().create(
+        widget.employerId,
+        title: draft.title,
+        type: draft.reminder ? 'reminder' : 'other',
+        start: draft.start,
+        end: draft.end,
+        allDay: false,
+        description: draft.notes,
+        reminderOffsetsMinutes:
+            draft.alertMinutes < 0 ? [] : [draft.alertMinutes],
       );
+      if (mounted) await _refresh();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not save calendar entry. Try again.')));
+      }
+    }
+  }
+
+  Future<void> _edit(CalendarEvent event, MobileCalendarDraft draft) async {
+    if (!event.id.startsWith('manual:')) return;
+    try {
+      final original =
+          await SiteEventService().getOwn(widget.employerId, event.sourceId);
+      if (original == null) return;
+      await SiteEventService().update(widget.employerId, original,
+          title: draft.title,
+          type: draft.reminder ? 'reminder' : 'other',
+          start: draft.start,
+          end: draft.end,
+          allDay: false,
+          siteId: original.siteId,
+          description: draft.notes,
+          reminderOffsetsMinutes:
+              draft.alertMinutes < 0 ? [] : [draft.alertMinutes]);
+      if (mounted) await _refresh();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not update calendar entry.')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final calendar = MobileCalendarView(
+      key: ValueKey('${widget.employerId}-${selected.year}-${selected.month}'),
+      selected: selected,
+      events: events,
+      onSelect: (day) => setState(() {
+        final monthChanged =
+            day.month != selected.month || day.year != selected.year;
+        selected = day;
+        if (monthChanged) _load();
+      }),
+      onMove: (delta) => setState(() {
+        selected = DateTime(selected.year, selected.month + delta, 1);
+        _load();
+      }),
+      onRefresh: _refresh,
+      onCreate: _create,
+      onEditManual: _edit,
+      canEditManual: (event) =>
+          event.id.startsWith('manual:') &&
+          event.siteId.isEmpty &&
+          {'other', 'reminder'}.contains(event.eventType),
+    );
+    return widget.embedded
+        ? calendar
+        : Scaffold(
+            backgroundColor: const Color(0xFF08293A),
+            appBar: AppBar(title: const Text('Calendar')),
+            body: SafeArea(child: calendar));
+  }
 }

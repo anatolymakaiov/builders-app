@@ -45,6 +45,18 @@ test("manual custom reminders, cancellation and rescheduling are deterministic",
   assert.equal(validOffsets([-1]), false);
 });
 
+test("worker personal reminder addresses only its owner", () => {
+  const event = {workerId: "worker-a", title: "Private appointment",
+    eventType: "reminder", startDateTime: start,
+    reminderOffsetsMinutes: [15]};
+  const specs = reminderSpecs("worker_event", "worker-a:event-a", event);
+  assert.equal(specs.length, 1);
+  assert.equal(specs[0].employerId, "worker-a");
+  assert.equal(specs[0].sourceId, "worker-a:event-a");
+  assert.deepEqual(reminderSpecs("worker_event", "worker-a:event-a",
+    {...event, workerId: null}), []);
+});
+
 test("past offsets are not scheduled for a late-created event", async () => {
   const writes = [];
   const db = {collection: () => ({
@@ -91,6 +103,25 @@ test("reconciliation and delivery are idempotent in Firestore emulator", {
     const pending = await db.collection("event_reminders")
       .where("status", "==", "pending").get();
     assert.equal(pending.empty, true);
+
+    const workerEvent = {workerId: "worker-a", title: "Private appointment",
+      eventType: "reminder", startDateTime: new Date("2026-11-03T09:00:00Z"),
+      reminderOffsetsMinutes: [15]};
+    await db.collection("users").doc("worker-a").collection("calendar_events")
+      .doc("personal-a").set(workerEvent);
+    const workerSource = "worker-a:personal-a";
+    assert.equal(await syncReminders(db, "worker_event", workerSource,
+      workerEvent, fieldValue, new Date("2026-11-03T08:00:00Z")), 1);
+    assert.equal(await deliverDueReminders(db,
+      new Date("2026-11-03T08:46:00Z"), fieldValue), 1);
+    const workerSpec = reminderSpecs("worker_event", workerSource,
+      workerEvent)[0];
+    const workerNotice = await db.collection("users").doc("worker-a")
+      .collection("notifications").doc(`reminder_${workerSpec.id}`).get();
+    assert.equal(workerNotice.exists, true);
+    assert.equal((await db.collection("users").doc("employer-reminders")
+      .collection("notifications").doc(`reminder_${workerSpec.id}`)
+      .get()).exists, false);
   } finally {
     await app.delete();
   }

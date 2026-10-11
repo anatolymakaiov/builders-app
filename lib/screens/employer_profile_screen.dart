@@ -527,8 +527,10 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
               .where((value) => value.isNotEmpty)
               .toList();
           final showBilling = isMyCompany && role == "employer";
-          final tabCount = showBilling ? 5 : 4;
-          final initialTab = widget.initialTab.clamp(0, tabCount - 1).toInt();
+          final tabCount = showBilling ? 6 : 4;
+          final requestedTab =
+              showBilling && widget.initialTab == 4 ? 5 : widget.initialTab;
+          final initialTab = requestedTab.clamp(0, tabCount - 1).toInt();
           final profileHeld = ModerationHoldService.isProfileHeld(data) ||
               (!isMyCompany && data["active"] == false);
           final isAdminViewer = viewerRole == "admin";
@@ -650,6 +652,7 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                       "Contacts",
                       "Vacancies",
                       "Photos",
+                      if (showBilling) "Calendar",
                       if (showBilling) "Billing",
                     ],
                   ),
@@ -707,25 +710,11 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                             final jobs = snapshot.data ?? const <Job>[];
 
                             if (jobs.isEmpty) {
-                              return Center(
+                              return const Center(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Text("No vacancies to display."),
-                                    if (isMyCompany)
-                                      TextButton.icon(
-                                        icon: const Icon(
-                                            Icons.calendar_month_outlined),
-                                        label: const Text('Calendar'),
-                                        onPressed: () =>
-                                            Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                              builder: (_) =>
-                                                  EmployerCalendarScreen(
-                                                      employerId:
-                                                          widget.userId)),
-                                        ),
-                                      ),
+                                    Text("No vacancies to display."),
                                   ],
                                 ),
                               );
@@ -748,20 +737,6 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                                           fontWeight: FontWeight.w900,
                                         ),
                                       )),
-                                      if (isMyCompany)
-                                        TextButton.icon(
-                                          icon: const Icon(
-                                              Icons.calendar_month_outlined),
-                                          label: const Text('Calendar'),
-                                          onPressed: () =>
-                                              Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                                builder: (_) =>
-                                                    EmployerCalendarScreen(
-                                                        employerId:
-                                                            widget.userId)),
-                                          ),
-                                        ),
                                     ]),
                                   );
                                 }
@@ -820,6 +795,11 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                               ),
                           ],
                         ),
+                        if (showBilling)
+                          EmployerCalendarScreen(
+                            employerId: widget.userId,
+                            embedded: true,
+                          ),
                         if (showBilling)
                           _BillingSection(
                             employerId: widget.userId,

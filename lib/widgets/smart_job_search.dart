@@ -92,6 +92,7 @@ class SmartJobSearchField extends StatelessWidget {
   final bool showOnlyMyJobs;
   final String? currentUserId;
   final bool showFilterButton;
+  final double? compactHeight;
 
   const SmartJobSearchField({
     super.key,
@@ -106,6 +107,7 @@ class SmartJobSearchField extends StatelessWidget {
     this.showOnlyMyJobs = false,
     this.currentUserId,
     this.showFilterButton = true,
+    this.compactHeight,
   }) : showJobScopeToggleInField =
             showJobScopeToggleInField ?? showJobScopeToggle;
 
@@ -117,8 +119,12 @@ class SmartJobSearchField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StroykaSurface(
-      margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-      padding: const EdgeInsets.all(8),
+      margin: compactHeight == null
+          ? const EdgeInsets.fromLTRB(12, 10, 12, 6)
+          : const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      padding: compactHeight == null
+          ? const EdgeInsets.all(8)
+          : const EdgeInsets.symmetric(horizontal: 8),
       child: Column(
         children: [
           if (showJobScopeToggleInField) ...[
@@ -140,67 +146,71 @@ class SmartJobSearchField extends StatelessWidget {
           InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: () => _openSearch(context),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const Icon(Icons.search, color: AppColors.ink),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      for (final role in selectedRoles)
-                        _SearchChip(
-                          label: role.canonical,
-                          onDeleted: () {
-                            final next = [...selectedRoles]..remove(role);
-                            onChanged(
-                              SmartJobSearchValue(
-                                roles: next,
-                                query: query,
-                                filters: filters,
-                                showOnlyMyJobs: showOnlyMyJobs,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: compactHeight ?? 0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const Icon(Icons.search, color: AppColors.ink),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        for (final role in selectedRoles)
+                          _SearchChip(
+                            label: role.canonical,
+                            onDeleted: () {
+                              final next = [...selectedRoles]..remove(role);
+                              onChanged(
+                                SmartJobSearchValue(
+                                  roles: next,
+                                  query: query,
+                                  filters: filters,
+                                  showOnlyMyJobs: showOnlyMyJobs,
+                                ),
+                              );
+                            },
+                          ),
+                        if (selectedRoles.isEmpty && query.trim().isEmpty)
+                          Padding(
+                            padding: EdgeInsets.symmetric(
+                                vertical: compactHeight == null ? 9 : 2),
+                            child: Text(
+                              hintText,
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w700,
                               ),
-                            );
-                          },
-                        ),
-                      if (selectedRoles.isEmpty && query.trim().isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 9),
-                          child: Text(
-                            hintText,
-                            style: const TextStyle(
-                              color: AppColors.muted,
-                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                        ),
-                      if (query.trim().isNotEmpty)
-                        _SearchChip(
-                          label: query.trim(),
-                          icon: Icons.business_outlined,
-                          onDeleted: () {
-                            onChanged(
-                              SmartJobSearchValue(
-                                roles: selectedRoles,
-                                query: "",
-                                filters: filters,
-                                showOnlyMyJobs: showOnlyMyJobs,
-                              ),
-                            );
-                          },
-                        ),
-                    ],
+                        if (query.trim().isNotEmpty)
+                          _SearchChip(
+                            label: query.trim(),
+                            icon: Icons.business_outlined,
+                            onDeleted: () {
+                              onChanged(
+                                SmartJobSearchValue(
+                                  roles: selectedRoles,
+                                  query: "",
+                                  filters: filters,
+                                  showOnlyMyJobs: showOnlyMyJobs,
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                if (showFilterButton)
-                  _FilterIconButton(
-                    count: filters.activeCount,
-                    onPressed: () => _openFilters(context),
-                  ),
-              ],
+                  if (showFilterButton)
+                    _FilterIconButton(
+                      count: filters.activeCount,
+                      onPressed: () => _openFilters(context),
+                    ),
+                ],
+              ),
             ),
           ),
         ],

@@ -329,6 +329,14 @@ class _JobListScreenState extends State<JobListScreen> {
               });
             },
           ),
+          if (AskStroykaFeature.enabled)
+            IconButton(
+              key: const Key('ask-stroyka-mobile'),
+              tooltip: 'Ask STROYKA',
+              icon: const Icon(Icons.auto_awesome_outlined),
+              onPressed: _openAskStroyka,
+            ),
+          const SizedBox(width: 56),
         ],
       ),
       body: StroykaScreenBody(
@@ -389,6 +397,7 @@ class _JobListScreenState extends State<JobListScreen> {
                               : jobs;
 
                           final searchField = SmartJobSearchField(
+                            compactHeight: 48,
                             selectedRoles: selectedRoles,
                             query: searchQuery,
                             filters: searchFilters,
@@ -465,20 +474,6 @@ class _JobListScreenState extends State<JobListScreen> {
 
                           return Column(
                             children: [
-                              if (AskStroykaFeature.enabled)
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Padding(
-                                    padding:
-                                        const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                                    child: OutlinedButton.icon(
-                                      key: const Key('ask-stroyka-mobile'),
-                                      onPressed: _openAskStroyka,
-                                      icon: const Icon(Icons.mic_outlined),
-                                      label: const Text('Ask STROYKA'),
-                                    ),
-                                  ),
-                                ),
                               searchField,
                               if (matches.hasSimilarButNoBest)
                                 Padding(

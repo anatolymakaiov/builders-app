@@ -509,6 +509,7 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
               SmartJobSearchField(
+                compactHeight: 56,
                 selectedRoles: selectedRoles,
                 query: searchQuery,
                 filters: const JobSearchFilters(),

@@ -23,7 +23,8 @@ function reminderId(sourceKey, kind, date, offset) {
 }
 
 function reminderSpecs(sourceType, sourceId, data) {
-  if (!data || !data.employerContextId) return [];
+  if (!data || (sourceType === "worker_event" ?
+    !data.workerId : !data.employerContextId)) return [];
   if (sourceType === "assignment" &&
       !["scheduled", "active"].includes(String(data.status || ""))) return [];
   const sourceKey = `${sourceType}:${sourceId}`;
@@ -42,7 +43,7 @@ function reminderSpecs(sourceType, sourceId, data) {
       specs.push({
         id: reminderId(sourceKey, kind, date, offset),
         sourceKey, sourceType, sourceId, kind, offset,
-        employerId: data.employerContextId,
+        employerId: sourceType === "worker_event" ? data.workerId : data.employerContextId,
         scheduledFor,
         eventAt: date,
         siteId: data.siteId || "",
@@ -106,11 +107,17 @@ async function deliverReminder(db, reminderRef, now, fieldValue) {
     const data = reminder.data();
     if (!data || data.status !== "pending" ||
         !asDate(data.scheduledFor) || asDate(data.scheduledFor) > now) return false;
-    const collection = data.sourceType === "assignment" ? "assignments" : "site_events";
-    const source = await tx.get(db.collection(collection).doc(data.sourceId));
+    const sourceRef = data.sourceType === "worker_event" ?
+      db.collection("users").doc(data.employerId).collection("calendar_events")
+        .doc(data.sourceId.split(":").at(-1)) :
+      db.collection(data.sourceType === "assignment" ? "assignments" :
+        "site_events").doc(data.sourceId);
+    const source = await tx.get(sourceRef);
     const specs = reminderSpecs(data.sourceType, data.sourceId, source.data());
     if (!specs.some((spec) => spec.id === reminderRef.id &&
-        spec.employerId === data.employerId)) {
+        spec.employerId === data.employerId) ||
+        (data.sourceType === "worker_event" &&
+          !data.sourceId.startsWith(`${data.employerId}:`))) {
       tx.update(reminderRef, {status: "cancelled", updatedAt: fieldValue.serverTimestamp()});
       return false;
     }
