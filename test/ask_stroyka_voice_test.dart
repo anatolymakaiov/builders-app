@@ -33,6 +33,14 @@ class FakeCapture implements VoiceCaptureService {
   Future<void> dispose() async => disposed = true;
 }
 
+class DelayedPermissionCapture extends FakeCapture {
+  final Completer<VoicePermission> permissionResult = Completer();
+
+  @override
+  Future<VoicePermission> permission({bool request = false}) =>
+      permissionResult.future;
+}
+
 class FakeSpeech implements SpeechTranscriptionService {
   String text = 'Dryliner in Manchester from 14 October';
   int calls = 0;
@@ -84,6 +92,37 @@ AskStroykaVoiceController controller(
     );
 
 void main() {
+  test('quick release during permission cannot start a second recording',
+      () async {
+    final capture = DelayedPermissionCapture();
+    final speech = FakeSpeech();
+    final interpreter = FakeInterpreter();
+    final voice = controller(capture, speech, interpreter);
+    final first = voice.press();
+    await voice.release();
+    await voice.press();
+    capture.permissionResult.complete(VoicePermission.granted);
+    await first;
+    expect(capture.starts, 1);
+    expect(capture.stops, 1);
+    expect(speech.calls, 1);
+    expect(interpreter.calls, 1);
+    expect(voice.phase, VoicePhase.confirming);
+    voice.dispose();
+  });
+
+  test('permission cancellation recovers without recording', () async {
+    final capture = DelayedPermissionCapture();
+    final voice = controller(capture, FakeSpeech(), FakeInterpreter());
+    final pending = voice.press();
+    await voice.cancelTurn();
+    capture.permissionResult.complete(VoicePermission.granted);
+    await pending;
+    expect(capture.starts, 0);
+    expect(voice.phase, VoicePhase.idle);
+    voice.dispose();
+  });
+
   test('hold starts once, release transcribes once, confirmation gates search',
       () async {
     final capture = FakeCapture();

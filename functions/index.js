@@ -37,7 +37,8 @@ const {validOffsets, syncReminders, deliverDueReminders} =
 const {safeState: safeAskState, safeProfile: safeAskProfile,
   interpretWithOpenAI, failureCategory: askFailureCategory,
   requestProblem: askRequestProblem,
-  rateLimitExceeded: askRateLimitExceeded, ukDateIso} =
+  rateLimitExceeded: askRateLimitExceeded, ukDateIso,
+  requestLocalDate: askRequestLocalDate} =
   require("./ask_stroyka_intent");
 const {validateVoiceRequest, transcribeWithOpenAI} =
   require("./ask_stroyka_voice");
@@ -141,7 +142,7 @@ exports.interpretAskStroyka = onCall({secrets: [askStroykaApiKey],
     const context = safeAskProfile(profile.data());
     const result = await interpretWithOpenAI({apiKey: askStroykaApiKey.value(),
       text: text.trim(), state: safeAskState(request.data.state),
-      profile: context, now: day});
+      profile: context, now: askRequestLocalDate(request.data, now)});
     console.info("ASK_STROYKA", {intent: result.intent.intent,
       latencyMs: Date.now() - started, tokens: result.usage});
     if (result.intent.intent !== "find_job") return result.intent;

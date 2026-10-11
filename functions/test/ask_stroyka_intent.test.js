@@ -3,7 +3,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {safeProfile, safeState, safeUserText, validatedOutput,
-  interpretWithOpenAI, failureCategory, requestProblem, rateLimitExceeded, ukDateIso} =
+  interpretWithOpenAI, failureCategory, requestProblem, rateLimitExceeded,
+  ukDateIso, requestLocalDate} =
   require("../ask_stroyka_intent");
 
 const valid = {intent: "find_job", tradePhrase: "dry liner",
@@ -61,6 +62,10 @@ test("callable policy rejects unauthenticated, wrong role and oversized input", 
 
 test("natural dates use the UK day during British Summer Time", () => {
   assert.equal(ukDateIso(new Date("2026-10-10T23:30:00Z")), "2026-10-11");
+  assert.equal(requestLocalDate({clientLocalDate: "2026-10-11",
+    utcOffsetMinutes: 60}, new Date("2026-10-10T23:30:00Z")), "2026-10-11");
+  assert.equal(requestLocalDate({clientLocalDate: "2026-10-19",
+    utcOffsetMinutes: 60}, new Date("2026-10-10T23:30:00Z")), "2026-10-11");
 });
 
 test("failure logging categorizes errors without exposing provider details", () => {

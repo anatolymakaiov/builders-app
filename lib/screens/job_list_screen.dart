@@ -480,7 +480,11 @@ class _JobListScreenState extends State<JobListScreen> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 12),
                                   child: Text(
-                                      'No best matches. Found ${filteredJobs.length} similar jobs.'),
+                                      'No best matches. Found ${filteredJobs.length} similar jobs.',
+                                      style: TextStyle(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface)),
                                 ),
                               if (effectiveAi != null)
                                 Padding(

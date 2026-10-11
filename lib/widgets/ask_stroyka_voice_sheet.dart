@@ -36,12 +36,14 @@ class AskStroykaVoiceSheet extends StatefulWidget {
   State<AskStroykaVoiceSheet> createState() => _AskStroykaVoiceSheetState();
 }
 
-class _AskStroykaVoiceSheetState extends State<AskStroykaVoiceSheet> {
+class _AskStroykaVoiceSheetState extends State<AskStroykaVoiceSheet>
+    with WidgetsBindingObserver {
   StreamSubscription<String?>? _accountSubscription;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.controller.addListener(_refresh);
     widget.controller.checkPermission();
     if (widget.accountUids != null) {
@@ -57,6 +59,7 @@ class _AskStroykaVoiceSheetState extends State<AskStroykaVoiceSheet> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _accountSubscription?.cancel();
     widget.controller.removeListener(_refresh);
     widget.controller.dispose();
@@ -64,6 +67,11 @@ class _AskStroykaVoiceSheetState extends State<AskStroykaVoiceSheet> {
   }
 
   void _close() => Navigator.pop(context);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) widget.controller.cancelTurn();
+  }
 
   @override
   Widget build(BuildContext context) {

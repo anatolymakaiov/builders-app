@@ -66,8 +66,17 @@ class FirebaseAiIntentInterpreter implements AiIntentInterpreter {
   @override
   Future<Map<String, dynamic>> interpret(
       String text, Map<String, dynamic> state) async {
+    final localNow = DateTime.now();
     final response = await _functions.httpsCallable('interpretAskStroyka').call(
-      {'intent': 'find_job', 'text': text, 'state': state},
+      {
+        'intent': 'find_job',
+        'text': text,
+        'state': state,
+        'clientLocalDate': '${localNow.year.toString().padLeft(4, '0')}-'
+            '${localNow.month.toString().padLeft(2, '0')}-'
+            '${localNow.day.toString().padLeft(2, '0')}',
+        'utcOffsetMinutes': localNow.timeZoneOffset.inMinutes,
+      },
     );
     return Map<String, dynamic>.from(response.data as Map);
   }
@@ -144,10 +153,27 @@ class AiAssistantSession {
     }
     if (location.length > 80) throw const FormatException('Invalid location');
     final rawDate = next['availableFrom']?.toString();
-    final date = AiDateParser.parse(message, now: _clock()) ??
-        (rawDate == null ? null : DateTime.tryParse(rawDate));
+    final parsedLocalDate = AiDateParser.parse(message, now: _clock());
+    final serverDate = rawDate == null ? null : DateTime.tryParse(rawDate);
+    final date = parsedLocalDate ?? serverDate;
+    if (date != null &&
+        date.isBefore(DateTime(_clock().year, _clock().month, _clock().day))) {
+      _state.remove('availableFrom');
+      return const AiAssistantTurn(
+          question: 'Did you mean a future start date?');
+    }
+    if (AiDateParser.mentionsDate(message) && parsedLocalDate == null) {
+      _state.remove('availableFrom');
+      return const AiAssistantTurn(question: 'Which future date did you mean?');
+    }
     if (rawDate != null && date == null) {
+      _state.remove('availableFrom');
       return const AiAssistantTurn(question: 'When can you start?');
+    }
+    if (date != null) {
+      _state['availableFrom'] = '${date.year.toString().padLeft(4, '0')}-'
+          '${date.month.toString().padLeft(2, '0')}-'
+          '${date.day.toString().padLeft(2, '0')}';
     }
     final rate = next['rateMin'];
     final radius = next['radiusMiles'];
@@ -175,11 +201,27 @@ class AiAssistantSession {
 }
 
 class AiDateParser {
+  static bool mentionsDate(String input) => RegExp(
+        r'\b(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|in (?:\d{1,2}|one|two|three|four) weeks?|january|february|march|april|may|june|july|august|september|october|november|december)\b|'
+        r'сегодня|завтра|понедельник|понедельника|недел|тижн|понеділ|сьогодні|dziś|jutro|poniedział|tydzień|tygodn|październik|октябр|жовтн|\b\d{1,2}[./]\d{1,2}',
+        caseSensitive: false,
+      ).hasMatch(input);
+
   static DateTime? parse(String input, {required DateTime now}) {
     final text = input.toLowerCase();
     final today = DateTime(now.year, now.month, now.day);
-    if (RegExp(r'\btomorrow\b').hasMatch(text)) {
-      return today.add(const Duration(days: 1));
+    if (RegExp(r'\btoday\b|сегодня|сьогодні|\bdziś\b').hasMatch(text)) {
+      return today;
+    }
+    if (RegExp(r'\btomorrow\b|завтра|\bjutro\b').hasMatch(text)) {
+      return DateTime(today.year, today.month, today.day + 1);
+    }
+    if (RegExp(
+            r'\bnext week\b|на следующей неделе|наступного тижня|w przyszłym tygodniu')
+        .hasMatch(text)) {
+      final delta = (DateTime.monday - today.weekday + 7) % 7;
+      return DateTime(today.year, today.month,
+          today.day + (delta == 0 ? 7 : delta));
     }
     final inWeeks = RegExp(
       r'\bin (\d{1,2}|one|two|three|four) weeks?\b',
@@ -188,7 +230,7 @@ class AiDateParser {
       const words = {'one': 1, 'two': 2, 'three': 3, 'four': 4};
       final count =
           int.tryParse(inWeeks.group(1)!) ?? words[inWeeks.group(1)!]!;
-      return today.add(Duration(days: 7 * count));
+      return DateTime(today.year, today.month, today.day + 7 * count);
     }
     const weekdays = [
       'monday',
@@ -201,11 +243,13 @@ class AiDateParser {
     ];
     for (var index = 0; index < weekdays.length; index++) {
       final day = weekdays[index];
-      if (RegExp('\\b(?:next )?$day\\b').hasMatch(text)) {
+      if (RegExp('\\b(?:(?:next|this) )?$day\\b').hasMatch(text) ||
+          (day == 'monday' &&
+              RegExp('понедельник|понедельника|понеділ|poniedział')
+                  .hasMatch(text))) {
         var delta = (index + 1 - today.weekday + 7) % 7;
         if (delta == 0) delta = 7;
-        if (text.contains('next $day') && delta < 7) delta += 7;
-        return today.add(Duration(days: delta));
+        return DateTime(today.year, today.month, today.day + delta);
       }
     }
     const months = [
@@ -231,6 +275,31 @@ class AiDateParser {
       var date = DateTime(today.year, month, day);
       if (date.month != month || date.day != day) return null;
       if (date.isBefore(today)) date = DateTime(today.year + 1, month, day);
+      return date;
+    }
+    final localizedOctober = RegExp(
+      r'(\d{1,2})\s+(?:октября|жовтня|października)',
+    ).firstMatch(text);
+    if (localizedOctober != null) {
+      final day = int.parse(localizedOctober.group(1)!);
+      var date = DateTime(today.year, 10, day);
+      if (date.month != 10 || date.day != day) return null;
+      if (date.isBefore(today)) date = DateTime(today.year + 1, 10, day);
+      return date;
+    }
+    final numeric =
+        RegExp(r'\b(\d{1,2})[./](\d{1,2})(?:[./](\d{4}))?\b').firstMatch(text);
+    if (numeric != null) {
+      final day = int.parse(numeric.group(1)!);
+      final month = int.parse(numeric.group(2)!);
+      final year = int.tryParse(numeric.group(3) ?? '') ?? today.year;
+      var date = DateTime(year, month, day);
+      if (date.year != year || date.month != month || date.day != day) {
+        return null;
+      }
+      if (numeric.group(3) == null && date.isBefore(today)) {
+        date = DateTime(year + 1, month, day);
+      }
       return date;
     }
     return null;

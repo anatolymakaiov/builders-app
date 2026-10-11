@@ -14,6 +14,7 @@ enum VoicePhase {
   interpreting,
   clarifying,
   confirming,
+  searching,
   error
 }
 
@@ -76,6 +77,9 @@ class AskStroykaVoiceController extends ChangeNotifier {
   Timer? _expiry;
   Timer? _recordingLimit;
   bool _pressed = false;
+  bool _starting = false;
+  bool _releaseRequested = false;
+  bool _cancelRequested = false;
   bool _closed = false;
   bool _disposed = false;
   int _turns = 0;
@@ -109,20 +113,26 @@ class AskStroykaVoiceController extends ChangeNotifier {
 
   Future<void> press() async {
     if (_closed ||
+        _starting ||
         _pressed ||
         phase == VoicePhase.recording ||
         phase == VoicePhase.cancelling ||
         phase == VoicePhase.transcribing ||
         phase == VoicePhase.interpreting ||
+        phase == VoicePhase.confirming ||
+        phase == VoicePhase.searching ||
         turnsRemaining <= 0) {
       return;
     }
     _pressed = true;
+    _starting = true;
+    _releaseRequested = false;
+    _cancelRequested = false;
     _renewExpiry();
     error = null;
     try {
       permissionState = await capture.permission(request: true);
-      if (_closed || !_pressed) return;
+      if (_closed || _cancelRequested) return;
       if (permissionState != VoicePermission.granted) {
         phase = VoicePhase.error;
         error = permissionState == VoicePermission.permanentlyDenied
@@ -132,12 +142,17 @@ class AskStroykaVoiceController extends ChangeNotifier {
         return;
       }
       await capture.start();
-      if (_closed || !_pressed) {
+      if (_closed || _cancelRequested) {
         await capture.cancel();
         return;
       }
       phase = VoicePhase.recording;
       notifyListeners();
+      if (_releaseRequested) {
+        _starting = false;
+        await release();
+        return;
+      }
       final cutoffMs = maxDuration.inMilliseconds > 500
           ? maxDuration.inMilliseconds - 500
           : maxDuration.inMilliseconds;
@@ -148,11 +163,18 @@ class AskStroykaVoiceController extends ChangeNotifier {
       phase = VoicePhase.error;
       error = 'Could not start recording. Try again or use normal job search.';
       notifyListeners();
+    } finally {
+      _starting = false;
+      if (phase != VoicePhase.recording) _pressed = false;
     }
   }
 
   Future<void> release() async {
     _pressed = false;
+    if (_starting) {
+      _releaseRequested = true;
+      return;
+    }
     if (_closed || phase != VoicePhase.recording) return;
     _recordingLimit?.cancel();
     phase = VoicePhase.transcribing;
@@ -198,6 +220,10 @@ class AskStroykaVoiceController extends ChangeNotifier {
 
   Future<void> cancelTurn() async {
     _pressed = false;
+    if (_starting) {
+      _cancelRequested = true;
+      return;
+    }
     _recordingLimit?.cancel();
     if (phase != VoicePhase.recording) return;
     phase = VoicePhase.cancelling;
@@ -239,7 +265,11 @@ class AskStroykaVoiceController extends ChangeNotifier {
   AiFindJobIntent? confirm() {
     if (_closed || phase != VoicePhase.confirming) return null;
     final intent = turn?.intent;
-    if (intent != null) unawaited(close());
+    if (intent != null) {
+      phase = VoicePhase.searching;
+      notifyListeners();
+      unawaited(close());
+    }
     return intent;
   }
 
@@ -247,6 +277,7 @@ class AskStroykaVoiceController extends ChangeNotifier {
     if (_closed) return;
     _closed = true;
     _pressed = false;
+    _cancelRequested = true;
     _expiry?.cancel();
     _recordingLimit?.cancel();
     session.clear();

@@ -126,7 +126,19 @@ void main() {
   test('natural dates and started-but-open ranking', () {
     final now = DateTime(2026, 10, 10);
     expect(AiDateParser.parse('tomorrow', now: now), DateTime(2026, 10, 11));
-    expect(AiDateParser.parse('next Monday', now: now), DateTime(2026, 10, 19));
+    expect(AiDateParser.parse('next Monday', now: now), DateTime(2026, 10, 12));
+    expect(AiDateParser.parse('next Monday', now: DateTime(2026, 10, 11)),
+        DateTime(2026, 10, 12));
+    expect(AiDateParser.parse('this Monday', now: now), DateTime(2026, 10, 12));
+    expect(AiDateParser.parse('today', now: now), now);
+    expect(AiDateParser.parse('next week', now: now), DateTime(2026, 10, 12));
+    expect(AiDateParser.parse('in one week', now: now), DateTime(2026, 10, 17));
+    expect(AiDateParser.parse('31/02/2026', now: now), isNull);
+    expect(
+        AiDateParser.parse('с понедельника', now: now), DateTime(2026, 10, 12));
+    expect(AiDateParser.parse('od poniedziałku', now: now),
+        DateTime(2026, 10, 12));
+    expect(AiDateParser.parse('з понеділка', now: now), DateTime(2026, 10, 12));
     expect(AiDateParser.parse('14 October', now: now), DateTime(2026, 10, 14));
     expect(
         AiDateParser.parse('in two weeks', now: now), DateTime(2026, 10, 24));
@@ -146,6 +158,24 @@ void main() {
             job('filled', DateTime(2026, 10, 14), positions: 1, filled: 1),
             available),
         AiJobDateMatch.filled);
+  });
+
+  test('relative local date overrides incorrect model date', () async {
+    final session = AiAssistantSession(
+        interpreter: _FakeInterpreter((_) => result(date: '2026-10-19')),
+        clock: () => DateTime(2026, 10, 10));
+    final turn = await session.send('fixer Manchester next Monday');
+    expect(turn.intent!.tradeId, 'dryliner');
+    expect(turn.intent!.availableFrom, DateTime(2026, 10, 12));
+  });
+
+  test('invalid explicit date asks for clarification', () async {
+    final session = AiAssistantSession(
+        interpreter: _FakeInterpreter((_) => result(date: '2026-10-19')),
+        clock: () => DateTime(2026, 10, 10));
+    final turn = await session.send('fixer Manchester 31/02/2026');
+    expect(turn.readyToSearch, isFalse);
+    expect(turn.question, contains('future date'));
   });
 
   test('existing Jobs filter determines real zero count', () {
