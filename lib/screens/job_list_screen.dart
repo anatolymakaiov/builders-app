@@ -8,6 +8,7 @@ import 'package:test_app/services/worker_job_application_status.dart';
 import '../models/job.dart';
 import '../services/geocoding_service.dart';
 import '../services/job_taxonomy_service.dart';
+import '../services/job_matching_service.dart';
 import '../services/ask_stroyka_service.dart';
 import 'filter_sheet.dart';
 import '../theme/stroyka_background.dart';
@@ -150,6 +151,7 @@ class _JobListScreenState extends State<JobListScreen> {
             : 50,
         employmentTypes:
             intent.paymentType == null ? const {} : {intent.paymentType!},
+        availableFrom: intent.availableFrom,
       );
       showSavedOnly = false;
       sortType = SortType.newest;
@@ -265,12 +267,14 @@ class _JobListScreenState extends State<JobListScreen> {
     }
   }
 
-  Widget buildJobCard(Job job, bool isSaved, bool isApplied) {
+  Widget buildJobCard(Job job, bool isSaved, bool isApplied,
+      {String? matchLabel}) {
     final distance = calculateDistance(job.lat, job.lng);
     return JobCard(
       job: job,
       compactWorkerLayout: true,
       workerApplied: isApplied,
+      statusText: matchLabel,
       detailText: distance == double.infinity
           ? null
           : "${distance.toStringAsFixed(1)} miles away",
@@ -402,17 +406,7 @@ class _JobListScreenState extends State<JobListScreen> {
 
                           final effectiveAi =
                               aiOwnerId == userId ? aiSearch : null;
-                          final filteredJobs = sourceJobs.where((job) {
-                            if (!jobMatchesSearch(
-                              job,
-                              roles: selectedRoles,
-                              query: searchQuery,
-                              filters: searchFilters,
-                              originJobs: sourceJobs,
-                            )) {
-                              return false;
-                            }
-
+                          final eligibleJobs = sourceJobs.where((job) {
                             if (filters.trade != "All" &&
                                 !JobTaxonomyService.matchesTradeFilter(
                                   job,
@@ -429,34 +423,34 @@ class _JobListScreenState extends State<JobListScreen> {
 
                             return true;
                           }).toList();
-
-                          /// SORT
-                          if (sortType == SortType.nearest) {
-                            filteredJobs.sort((a, b) => calculateDistance(
-                                    a.lat, a.lng)
-                                .compareTo(calculateDistance(b.lat, b.lng)));
-                          }
-
-                          if (sortType == SortType.highestPay) {
-                            filteredJobs
-                                .sort((a, b) => b.rate.compareTo(a.rate));
-                          }
-
-                          if (sortType == SortType.newest) {
-                            filteredJobs.sort((a, b) =>
-                                (b.createdAt ?? DateTime.now())
-                                    .compareTo(a.createdAt ?? DateTime.now()));
-                            if (effectiveAi?.availableFrom != null) {
-                              filteredJobs.sort((a, b) {
-                                final tier = AiJobCompatibility.compare(
-                                    a, b, effectiveAi!.availableFrom);
-                                return tier != 0
-                                    ? tier
-                                    : (b.createdAt ?? DateTime(1970)).compareTo(
-                                        a.createdAt ?? DateTime(1970));
-                              });
-                            }
-                          }
+                          final matches = JobMatchingService.rank(
+                            eligibleJobs,
+                            JobMatchCriteria(
+                              roles: selectedRoles,
+                              query: searchQuery,
+                              locations: searchFilters.city,
+                              radiusMiles: searchFilters.distance,
+                              minPay: searchFilters.minPay,
+                              maxPay: searchFilters.maxPay,
+                              employmentTypes: searchFilters.employmentTypes,
+                              availableFrom: searchFilters.availableFrom,
+                            ),
+                            withinCategory: (a, b) => switch (sortType) {
+                              SortType.nearest =>
+                                calculateDistance(a.lat, a.lng)
+                                    .compareTo(calculateDistance(b.lat, b.lng)),
+                              SortType.highestPay => b.rate.compareTo(a.rate),
+                              SortType.newest => (b.createdAt ?? DateTime(1970))
+                                  .compareTo(a.createdAt ?? DateTime(1970)),
+                            },
+                          );
+                          final filteredJobs = matches.entries
+                              .map((entry) => entry.job)
+                              .toList();
+                          final labels = {
+                            for (final entry in matches.entries)
+                              entry.job.id: JobMatchingService.labelFor(entry),
+                          };
 
                           final totalPages =
                               (filteredJobs.length / _jobsPerPage).ceil();
@@ -486,6 +480,13 @@ class _JobListScreenState extends State<JobListScreen> {
                                   ),
                                 ),
                               searchField,
+                              if (matches.hasSimilarButNoBest)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12),
+                                  child: Text(
+                                      'No best matches. Found ${filteredJobs.length} similar jobs.'),
+                                ),
                               if (effectiveAi != null)
                                 Padding(
                                   padding: const EdgeInsets.symmetric(
@@ -503,13 +504,18 @@ class _JobListScreenState extends State<JobListScreen> {
                                                       .copyWith(city: '');
                                                   aiSearch = null;
                                                 })),
-                                        if (effectiveAi.availableFrom != null)
+                                        if (searchFilters.availableFrom != null)
                                           InputChip(
                                               label: Text('Available from: '
-                                                  '${effectiveAi.availableFrom!.day}/'
-                                                  '${effectiveAi.availableFrom!.month}'),
-                                              onDeleted: () => setState(
-                                                  () => aiSearch = null)),
+                                                  '${searchFilters.availableFrom!.day}/'
+                                                  '${searchFilters.availableFrom!.month}'),
+                                              onDeleted: () => setState(() {
+                                                    searchFilters =
+                                                        searchFilters.copyWith(
+                                                            clearAvailableFrom:
+                                                                true);
+                                                    aiSearch = null;
+                                                  })),
                                         Text(
                                             '${filteredJobs.length} matching jobs'),
                                       ]),
@@ -552,10 +558,28 @@ class _JobListScreenState extends State<JobListScreen> {
                                                       .height *
                                                   0.42,
                                               child: Center(
-                                                child: Text(
-                                                  showSavedOnly
-                                                      ? "No saved jobs yet."
-                                                      : "No jobs found.",
+                                                child: Column(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Text(showSavedOnly
+                                                        ? 'No saved jobs yet.'
+                                                        : 'No jobs found.'),
+                                                    if (!showSavedOnly)
+                                                      TextButton(
+                                                        onPressed: () =>
+                                                            setState(() {
+                                                          selectedRoles = [];
+                                                          searchQuery = '';
+                                                          searchFilters =
+                                                              const JobSearchFilters();
+                                                          aiSearch = null;
+                                                          currentPage = 1;
+                                                        }),
+                                                        child: const Text(
+                                                            'Clear search filters'),
+                                                      ),
+                                                  ],
                                                 ),
                                               ),
                                             ),
@@ -572,6 +596,13 @@ class _JobListScreenState extends State<JobListScreen> {
                                               job,
                                               savedJobIds.contains(job.id),
                                               appliedJobIds.contains(job.id),
+                                              matchLabel: searchFilters
+                                                              .availableFrom !=
+                                                          null ||
+                                                      matches
+                                                          .hasSimilarButNoBest
+                                                  ? labels[job.id]
+                                                  : null,
                                             );
                                           },
                                         ),

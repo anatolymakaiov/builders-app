@@ -24,6 +24,13 @@ class _WebJobFiltersDialogState extends State<WebJobFiltersDialog> {
       widget.current.maxPay > 50 ? widget.current.maxPay : 50;
   late RangeValues pay =
       RangeValues(widget.current.minPay, widget.current.maxPay);
+  DateTime? availableFrom;
+
+  @override
+  void initState() {
+    super.initState();
+    availableFrom = widget.current.availableFrom;
+  }
 
   @override
   void dispose() {
@@ -67,7 +74,9 @@ class _WebJobFiltersDialogState extends State<WebJobFiltersDialog> {
                 if (!widget.rolesOnly) ...[
                   TextField(
                       controller: city,
-                      decoration: const InputDecoration(labelText: 'City')),
+                      decoration: const InputDecoration(
+                          labelText: 'Cities',
+                          hintText: 'Manchester, Leeds, Liverpool')),
                   const SizedBox(height: 12),
                   Text('Distance from city: ${distance.toInt()} miles'),
                   Slider(
@@ -76,6 +85,33 @@ class _WebJobFiltersDialogState extends State<WebJobFiltersDialog> {
                       divisions: distanceMaximum == 50 ? 9 : 39,
                       value: distance,
                       onChanged: (value) => setState(() => distance = value)),
+                  Row(children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: availableFrom ?? DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2100),
+                          );
+                          if (picked != null && mounted) {
+                            setState(() => availableFrom = picked);
+                          }
+                        },
+                        icon: const Icon(Icons.calendar_today_outlined),
+                        label: Text(availableFrom == null
+                            ? 'Available from: Any date'
+                            : 'Available from: ${availableFrom!.day}/${availableFrom!.month}/${availableFrom!.year}'),
+                      ),
+                    ),
+                    if (availableFrom != null)
+                      IconButton(
+                        tooltip: 'Clear available-from date',
+                        onPressed: () => setState(() => availableFrom = null),
+                        icon: const Icon(Icons.close),
+                      ),
+                  ]),
                   Text(
                       'Hourly pay: GBP ${pay.start.toInt()} - ${pay.end.toInt()}'),
                   RangeSlider(
@@ -120,7 +156,8 @@ class _WebJobFiltersDialogState extends State<WebJobFiltersDialog> {
                       distance: distance,
                       minPay: pay.start,
                       maxPay: pay.end,
-                      employmentTypes: types)),
+                      employmentTypes: types,
+                      availableFrom: availableFrom)),
               child: const Text('Apply filters')),
         ],
       );

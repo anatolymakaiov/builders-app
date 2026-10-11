@@ -13,6 +13,7 @@ class WebJobListPanel extends StatelessWidget {
   const WebJobListPanel({
     super.key,
     required this.jobs,
+    this.matchLabels = const {},
     required this.selectedJobId,
     required this.onSelected,
     required this.searchController,
@@ -26,9 +27,11 @@ class WebJobListPanel extends StatelessWidget {
     this.onToggleSaved,
     this.onViewVacancy,
     this.showSearch = true,
+    this.onClearFilters,
   });
 
   final List<Job> jobs;
+  final Map<String, String> matchLabels;
   final String? selectedJobId;
   final ValueChanged<Job> onSelected;
   final TextEditingController searchController;
@@ -42,6 +45,7 @@ class WebJobListPanel extends StatelessWidget {
   final ValueChanged<Job>? onToggleSaved;
   final ValueChanged<Job>? onViewVacancy;
   final bool showSearch;
+  final VoidCallback? onClearFilters;
 
   @override
   Widget build(BuildContext context) {
@@ -74,10 +78,16 @@ class WebJobListPanel extends StatelessWidget {
           const Divider(height: 1, color: WebTheme.border),
           Expanded(
             child: jobs.isEmpty
-                ? const WebEmptyState(
+                ? WebEmptyState(
                     icon: Icons.work_outline,
                     title: 'No vacancies to display',
                     message: 'Try adjusting your search or filters.',
+                    action: onClearFilters == null
+                        ? null
+                        : TextButton(
+                            onPressed: onClearFilters,
+                            child: const Text('Clear search filters'),
+                          ),
                   )
                 : ListView.separated(
                     padding: EdgeInsets.all(portraitWeb ? 8 : 12),
@@ -88,6 +98,7 @@ class WebJobListPanel extends StatelessWidget {
                       return WebWorkerVacancyCard(
                         key: ValueKey<String>('web-job-card:${job.id}'),
                         job: job,
+                        matchLabel: matchLabels[job.id],
                         selected: job.id == selectedJobId,
                         saved: savedJobIds.contains(job.id),
                         applicationStatus: applicationStatuses[job.id],

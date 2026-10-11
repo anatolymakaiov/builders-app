@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../models/job.dart';
+import '../../../services/job_matching_service.dart';
 import '../../../services/ask_stroyka_service.dart';
 import '../../services/web_data_state.dart';
 import '../../services/web_application_actions_service.dart';
@@ -166,7 +167,8 @@ class _WebJobsPageState extends State<WebJobsPage> {
             savedOnly
                 ? jobs.where((job) => savedJobIds.contains(job.id)).toList()
                 : jobs,
-            search)
+            search,
+            requirePublic: !isEmployer || mode != WebJobsMode.owner)
         .where((job) =>
             !isEmployer ||
             mode != WebJobsMode.owner ||
@@ -179,15 +181,6 @@ class _WebJobsPageState extends State<WebJobsPage> {
           WebJobSort.newest => (b.createdAt ?? DateTime(1970))
               .compareTo(a.createdAt ?? DateTime(1970)),
         });
-    if (aiSearch?.availableFrom != null && sort == WebJobSort.newest) {
-      result.sort((a, b) {
-        final tier = AiJobCompatibility.compare(a, b, aiSearch!.availableFrom);
-        return tier != 0
-            ? tier
-            : (b.createdAt ?? DateTime(1970))
-                .compareTo(a.createdAt ?? DateTime(1970));
-      });
-    }
     return result;
   }
 
@@ -253,7 +246,29 @@ class _WebJobsPageState extends State<WebJobsPage> {
             lastJobsResult ??
             const WebJobsResult(publicJobs: <Job>[], ownerJobs: <Job>[]);
         final permittedJobs = result.jobsForMode(mode, widget.role);
-        final jobs = filterJobs(permittedJobs);
+        final matches = isWorker
+            ? JobMatchingService.rank(
+                savedOnly
+                    ? permittedJobs
+                        .where((job) => savedJobIds.contains(job.id))
+                        .toList()
+                    : permittedJobs,
+                filters.criteria(search),
+                withinCategory: (a, b) => switch (sort) {
+                  WebJobSort.highestPay => b.rate.compareTo(a.rate),
+                  WebJobSort.nearest => _distance(a).compareTo(_distance(b)),
+                  WebJobSort.newest => (b.createdAt ?? DateTime(1970))
+                      .compareTo(a.createdAt ?? DateTime(1970)),
+                },
+              )
+            : null;
+        final jobs = matches == null
+            ? filterJobs(permittedJobs)
+            : matches.entries.map((entry) => entry.job).toList();
+        final matchLabels = {
+          for (final entry in matches?.entries ?? const <RankedJob>[])
+            entry.job.id: JobMatchingService.labelFor(entry),
+        };
         final pages = (jobs.length / 10).ceil();
         final currentPage = page.clamp(1, pages == 0 ? 1 : pages);
         final pageJobs = jobs.skip((currentPage - 1) * 10).take(10).toList();
@@ -476,6 +491,15 @@ class _WebJobsPageState extends State<WebJobsPage> {
                 ),
               if (!employerPortraitDetail)
                 const SizedBox(height: WebSpacing.xs),
+              if (matches?.hasSimilarButNoBest == true &&
+                  !employerPortraitDetail)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: WebSpacing.xs),
+                  child: Text(
+                    'No best matches. Found ${jobs.length} similar jobs.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
               if (isWorker && aiSearch != null && !employerPortraitDetail) ...[
                 Wrap(spacing: 6, runSpacing: 4, children: [
                   InputChip(
@@ -540,6 +564,19 @@ class _WebJobsPageState extends State<WebJobsPage> {
                         constraints.maxWidth < WebBreakpoints.compactWidth;
                     final list = WebJobListPanel(
                       jobs: pageJobs,
+                      matchLabels: filters.availableFrom != null ||
+                              matches?.hasSimilarButNoBest == true
+                          ? matchLabels
+                          : const {},
+                      onClearFilters: isWorker
+                          ? () => setState(() {
+                                filters = const WebJobFilters();
+                                search = '';
+                                searchController.clear();
+                                aiSearch = null;
+                                page = 1;
+                              })
+                          : null,
                       selectedJobId: selectedJobId,
                       searchController: searchController,
                       onSearchChanged: (value) => setState(() {

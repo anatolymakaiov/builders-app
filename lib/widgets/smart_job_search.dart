@@ -1,8 +1,7 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../models/job.dart';
+import '../services/job_matching_service.dart';
 import '../services/job_taxonomy_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
@@ -13,6 +12,19 @@ class JobSearchFilters {
   final double maxPay;
   final String city;
   final Set<String> employmentTypes;
+  final DateTime? availableFrom;
+
+  JobMatchCriteria criteria(List<ConstructionRole> roles, String query) =>
+      JobMatchCriteria(
+        roles: roles,
+        query: query,
+        locations: city,
+        radiusMiles: distance,
+        minPay: minPay,
+        maxPay: maxPay,
+        employmentTypes: employmentTypes,
+        availableFrom: availableFrom,
+      );
 
   const JobSearchFilters({
     this.distance = 50,
@@ -20,6 +32,7 @@ class JobSearchFilters {
     this.maxPay = 50,
     this.city = "",
     this.employmentTypes = const {},
+    this.availableFrom,
   });
 
   int get activeCount {
@@ -28,6 +41,7 @@ class JobSearchFilters {
     if (city.trim().isNotEmpty && distance < 50) count++;
     if (minPay > 0 || maxPay < 50) count++;
     count += employmentTypes.length;
+    if (availableFrom != null) count++;
     return count;
   }
 
@@ -37,6 +51,8 @@ class JobSearchFilters {
     double? maxPay,
     String? city,
     Set<String>? employmentTypes,
+    DateTime? availableFrom,
+    bool clearAvailableFrom = false,
   }) {
     return JobSearchFilters(
       distance: distance ?? this.distance,
@@ -44,6 +60,8 @@ class JobSearchFilters {
       maxPay: maxPay ?? this.maxPay,
       city: city ?? this.city,
       employmentTypes: employmentTypes ?? this.employmentTypes,
+      availableFrom:
+          clearAvailableFrom ? null : availableFrom ?? this.availableFrom,
     );
   }
 }
@@ -218,16 +236,10 @@ class SmartJobSearchField extends StatelessWidget {
       builder: (_) => SmartJobFilterSheet(
         current: filters,
         jobs: _jobsForScope(showOnlyMyJobs),
-        resultCountBuilder: (next) =>
-            _jobsForScope(showOnlyMyJobs).where((job) {
-          return jobMatchesSearch(
-            job,
-            roles: selectedRoles,
-            query: query,
-            filters: next,
-            originJobs: _jobsForScope(showOnlyMyJobs),
-          );
-        }).length,
+        resultCountBuilder: (next) => JobMatchingService.rank(
+          _jobsForScope(showOnlyMyJobs),
+          next.criteria(selectedRoles, query),
+        ).entries.length,
       ),
     );
 
@@ -426,15 +438,10 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
         .toList();
   }
 
-  int get resultCount => scopedJobs.where((job) {
-        return jobMatchesSearch(
-          job,
-          roles: selectedRoles,
-          query: controller.text,
-          filters: filters,
-          originJobs: scopedJobs,
-        );
-      }).length;
+  int get resultCount => JobMatchingService.rank(
+        scopedJobs,
+        filters.criteria(selectedRoles, controller.text),
+      ).entries.length;
 
   void _select(ConstructionRole role) {
     setState(() {
@@ -451,15 +458,10 @@ class _SmartSearchModalState extends State<_SmartSearchModal> {
       builder: (_) => SmartJobFilterSheet(
         current: filters,
         jobs: scopedJobs,
-        resultCountBuilder: (next) => scopedJobs.where((job) {
-          return jobMatchesSearch(
-            job,
-            roles: selectedRoles,
-            query: controller.text,
-            filters: next,
-            originJobs: scopedJobs,
-          );
-        }).length,
+        resultCountBuilder: (next) => JobMatchingService.rank(
+          scopedJobs,
+          next.criteria(selectedRoles, controller.text),
+        ).entries.length,
       ),
     );
     if (result != null && mounted) setState(() => filters = result);
@@ -680,11 +682,11 @@ class _SmartJobFilterSheetState extends State<SmartJobFilterSheet> {
             ),
             const SizedBox(height: 16),
             _FilterSection(
-              title: "City",
+              title: "Cities",
               child: TextField(
                 controller: cityController,
                 decoration: AppInputFields.decoration(
-                  hint: "City",
+                  hint: "Manchester, Leeds, Liverpool",
                   icon: Icons.location_city_outlined,
                 ),
                 onChanged: (value) {
@@ -702,7 +704,7 @@ class _SmartJobFilterSheetState extends State<SmartJobFilterSheet> {
                   Text(
                     filters.city.trim().isEmpty
                         ? "Enter a city first to use distance."
-                        : "Radius from ${filters.city.trim()}",
+                        : "Radius from each selected city",
                     style: const TextStyle(
                       color: AppColors.muted,
                       fontSize: 12,
@@ -722,6 +724,38 @@ class _SmartJobFilterSheetState extends State<SmartJobFilterSheet> {
                   ),
                 ],
               ),
+            ),
+            _FilterSection(
+              title: 'Available from',
+              child: Row(children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: filters.availableFrom ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null && mounted) {
+                        setState(() =>
+                            filters = filters.copyWith(availableFrom: picked));
+                      }
+                    },
+                    icon: const Icon(Icons.calendar_today_outlined),
+                    label: Text(filters.availableFrom == null
+                        ? 'Any start date'
+                        : '${filters.availableFrom!.day}/${filters.availableFrom!.month}/${filters.availableFrom!.year}'),
+                  ),
+                ),
+                if (filters.availableFrom != null)
+                  IconButton(
+                    tooltip: 'Clear available-from date',
+                    onPressed: () => setState(() =>
+                        filters = filters.copyWith(clearAvailableFrom: true)),
+                    icon: const Icon(Icons.close),
+                  ),
+              ]),
             ),
             _FilterSection(
               title: "Salary / Pay",
@@ -1049,94 +1083,9 @@ bool jobMatchesSearch(
   required JobSearchFilters filters,
   List<Job>? originJobs,
 }) {
-  if (!JobTaxonomyService.matchesAnyRole(job, roles)) return false;
-
-  if (query.trim().isNotEmpty && !JobTaxonomyService.matchesJob(job, query)) {
-    return false;
-  }
-
-  if (filters.employmentTypes.isNotEmpty &&
-      !filters.employmentTypes.contains(job.jobType)) {
-    return false;
-  }
-
-  final cityQuery = filters.city.trim();
-  if (cityQuery.isNotEmpty) {
-    final origin = _cityOrigin(cityQuery, originJobs ?? const <Job>[]);
-    if (origin != null && _hasCoordinates(job)) {
-      final distance = _distanceMiles(
-        origin.lat,
-        origin.lng,
-        job.lat,
-        job.lng,
-      );
-      if (distance > filters.distance) {
-        return false;
-      }
-    } else if (!_jobMatchesCity(job, cityQuery)) {
-      return false;
-    }
-  }
-
-  if (job.jobType == "hourly" && job.rate > 0) {
-    if (job.rate < filters.minPay || job.rate > filters.maxPay) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-({double lat, double lng})? _cityOrigin(String city, List<Job> jobs) {
-  final matches = jobs.where((job) {
-    return _jobMatchesCity(job, city) && _hasCoordinates(job);
-  }).toList();
-
-  if (matches.isEmpty) return null;
-
-  final lat =
-      matches.map((job) => job.lat).reduce((a, b) => a + b) / matches.length;
-  final lng =
-      matches.map((job) => job.lng).reduce((a, b) => a + b) / matches.length;
-  return (lat: lat, lng: lng);
-}
-
-bool _jobMatchesCity(Job job, String city) {
-  final query = city.toLowerCase().trim();
-  if (query.isEmpty) return true;
-
-  return [
-    job.city,
-    job.location,
-    job.fullAddress,
-    job.postcode,
-  ].any((value) => value.toLowerCase().contains(query));
-}
-
-bool _hasCoordinates(Job job) {
-  return job.lat != 0 && job.lng != 0;
-}
-
-double _distanceMiles(
-  double startLat,
-  double startLng,
-  double endLat,
-  double endLng,
-) {
-  const earthRadiusMiles = 3958.8;
-  final dLat = _degreesToRadians(endLat - startLat);
-  final dLng = _degreesToRadians(endLng - startLng);
-  final a = _sinSquared(dLat / 2) +
-      math.cos(_degreesToRadians(startLat)) *
-          math.cos(_degreesToRadians(endLat)) *
-          _sinSquared(dLng / 2);
-  final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-  return earthRadiusMiles * c;
-}
-
-double _degreesToRadians(double degrees) => degrees * 0.017453292519943295;
-
-double _sinSquared(double value) {
-  final sin = math.sin(value);
-  return sin * sin;
+  final criteria = filters.criteria(roles, query);
+  return JobMatchingService.rank(
+    originJobs ?? [job],
+    criteria,
+  ).entries.any((entry) => entry.job.id == job.id);
 }

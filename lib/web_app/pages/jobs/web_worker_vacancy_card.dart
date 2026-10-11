@@ -13,6 +13,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
   const WebWorkerVacancyCard({
     super.key,
     required this.job,
+    this.matchLabel,
     required this.selected,
     required this.saved,
     required this.onTap,
@@ -27,6 +28,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
   });
 
   final Job job;
+  final String? matchLabel;
   final bool selected;
   final bool saved;
   final VoidCallback onTap;
@@ -194,6 +196,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
               spacing: 8,
               runSpacing: compact ? 3 : 5,
               children: [
+                if (matchLabel != null) _FactChip(label: matchLabel!),
                 _FactChip(label: webJobWorkFormat(job)),
                 if (rate != null) _FactChip(label: rate),
                 if (job.duration.trim().isNotEmpty)
