@@ -109,6 +109,7 @@ class _EmployerCalendarScreenState extends State<EmployerCalendarScreen> {
       key: ValueKey('${widget.employerId}-${selected.year}-${selected.month}'),
       selected: selected,
       events: events,
+      compactSearch: true,
       onSelect: (day) => setState(() {
         final monthChanged =
             day.month != selected.month || day.year != selected.year;

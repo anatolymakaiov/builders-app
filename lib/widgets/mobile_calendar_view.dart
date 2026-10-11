@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/mobile_control_sizes.dart';
 
 import '../services/operational_calendar.dart';
 
@@ -232,6 +233,7 @@ class MobileCalendarView extends StatefulWidget {
     this.onExportAssignment,
     this.onEditManual,
     this.canEditManual,
+    this.compactSearch = false,
   });
 
   final DateTime selected;
@@ -244,6 +246,7 @@ class MobileCalendarView extends StatefulWidget {
   final ValueChanged<CalendarEvent>? onExportAssignment;
   final Future<void> Function(CalendarEvent, MobileCalendarDraft)? onEditManual;
   final bool Function(CalendarEvent)? canEditManual;
+  final bool compactSearch;
 
   @override
   State<MobileCalendarView> createState() => _MobileCalendarViewState();
@@ -324,9 +327,20 @@ class _MobileCalendarViewState extends State<MobileCalendarView> {
               if (searching)
                 TextField(
                   autofocus: true,
-                  decoration: const InputDecoration(
-                      hintText: 'Search event titles',
-                      prefixIcon: Icon(Icons.search)),
+                  decoration: widget.compactSearch
+                      ? const InputDecoration(
+                          hintText: 'Search event titles',
+                          prefixIcon: Icon(Icons.search),
+                          isDense: true,
+                          constraints: BoxConstraints(
+                              minHeight: mobileCompactControlHeight),
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: mobileCompactControlHorizontalPadding,
+                              vertical: mobileCompactControlVerticalPadding),
+                        )
+                      : const InputDecoration(
+                          hintText: 'Search event titles',
+                          prefixIcon: Icon(Icons.search)),
                   onChanged: (value) => setState(() => query = value),
                 ),
               Row(children: [

@@ -39,10 +39,11 @@ abstract class SpeechTranscriptionService {
 }
 
 class FirebaseSpeechTranscriptionService implements SpeechTranscriptionService {
-  FirebaseSpeechTranscriptionService({FirebaseFunctions? functions})
+  FirebaseSpeechTranscriptionService({FirebaseFunctions? functions, this.mode})
       : _functions = functions ?? FirebaseFunctions.instance;
 
   final FirebaseFunctions _functions;
+  final String? mode;
 
   @override
   Future<String> transcribe(VoiceClip clip) async {
@@ -51,6 +52,7 @@ class FirebaseSpeechTranscriptionService implements SpeechTranscriptionService {
       'audioBase64': base64Encode(clip.bytes),
       'mimeType': 'audio/mp4',
       'durationMs': clip.duration.inMilliseconds,
+      if (mode != null) 'mode': mode,
     });
     return ((response.data as Map)['text'] ?? '').toString().trim();
   }

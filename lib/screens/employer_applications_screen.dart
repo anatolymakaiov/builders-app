@@ -9,6 +9,7 @@ import '../services/application_activity_service.dart';
 import '../services/application_status_utils.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../theme/mobile_control_sizes.dart';
 
 class EmployerApplicationsScreen extends StatefulWidget {
   final String? initialJobId;
@@ -229,6 +230,11 @@ class _EmployerApplicationsScreenState
                         hintText: "Status",
                         border: StroykaInputBorder(),
                         isDense: true,
+                        constraints: BoxConstraints(
+                            minHeight: mobileCompactControlHeight),
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: mobileCompactControlHorizontalPadding,
+                            vertical: mobileCompactControlVerticalPadding),
                         filled: true,
                         fillColor: Colors.white,
                       ),
@@ -268,6 +274,11 @@ class _EmployerApplicationsScreenState
                         hintText: "Trade",
                         border: StroykaInputBorder(),
                         isDense: true,
+                        constraints: BoxConstraints(
+                            minHeight: mobileCompactControlHeight),
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: mobileCompactControlHorizontalPadding,
+                            vertical: mobileCompactControlVerticalPadding),
                         filled: true,
                         fillColor: Colors.white,
                       ),
@@ -296,6 +307,11 @@ class _EmployerApplicationsScreenState
                         hintText: "Site",
                         border: StroykaInputBorder(),
                         isDense: true,
+                        constraints: BoxConstraints(
+                            minHeight: mobileCompactControlHeight),
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: mobileCompactControlHorizontalPadding,
+                            vertical: mobileCompactControlVerticalPadding),
                         filled: true,
                         fillColor: Colors.white,
                       ),

@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const {validateVoiceRequest, transcribeWithOpenAI} =
+const {validateVoiceRequest, transcribeWithOpenAI, voiceRoleAllowed} =
   require("../ask_stroyka_voice");
 
 function exampleMp4(durationMs = 2000) {
@@ -40,6 +40,22 @@ test("voice request requires auth and valid bounded audio", () => {
   }
 });
 
+test("employer dictation alone permits a 60-second clip", () => {
+  const employerClip = {audioBase64: exampleMp4(59000).toString("base64"),
+    mimeType: "audio/mp4", durationMs: 59000, mode: "employer_dictation"};
+  assert.equal(validateVoiceRequest({uid: "employer"}, employerClip).problem,
+    undefined);
+  assert.equal(validateVoiceRequest({uid: "worker"},
+    {...employerClip, mode: undefined}).problem, "invalid-argument");
+  assert.equal(validateVoiceRequest({uid: "employer"},
+    {...employerClip, durationMs: 60001}).problem, "invalid-argument");
+  assert.equal(voiceRoleAllowed("employer", "employer_dictation"), true);
+  assert.equal(voiceRoleAllowed("company", "employer_dictation"), true);
+  assert.equal(voiceRoleAllowed("worker", "employer_dictation"), false);
+  assert.equal(voiceRoleAllowed("employer", null), false);
+  assert.equal(voiceRoleAllowed("worker", null), true);
+});
+
 test("transcription sends bounded media to mini model and returns text only", async () => {
   let body;
   const text = await transcribeWithOpenAI({apiKey: "test-key",
@@ -52,6 +68,20 @@ test("transcription sends bounded media to mini model and returns text only", as
   assert.equal(body.get("model"), "gpt-4o-mini-transcribe");
   assert.equal(body.get("response_format"), "json");
   assert.equal(text, "Dryliner in Manchester");
+});
+
+test("dictation returns multilingual text without translation", async () => {
+  for (const spoken of [
+    "Монтаж гипсокартона в Манчестере",
+    "Montaż płyt gipsowych w Manchesterze",
+    "Монтаж гіпсокартону у Манчестері",
+    "Install boards, потом проверь уровень",
+  ]) {
+    const text = await transcribeWithOpenAI({apiKey: "test-key",
+      audio: Buffer.alloc(512, 1),
+      fetcher: async () => ({ok: true, json: async () => ({text: spoken})})});
+    assert.equal(text, spoken);
+  }
 });
 
 test("empty speech and provider failure do not expose provider body", async () => {

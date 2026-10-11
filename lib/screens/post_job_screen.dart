@@ -18,6 +18,7 @@ import '../services/vacancy_import_service.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/smart_job_search.dart';
 import '../widgets/uk_postal_address_form.dart';
+import '../widgets/employer_field_dictation_sheet.dart';
 import 'employer_profile_screen.dart';
 import 'vacancy_import_preview_screen.dart';
 
@@ -26,11 +27,17 @@ class PostJobScreen extends StatefulWidget {
 
   /// 🔥 NEW: edit mode
   final Job? existingJob;
+  final Future<void> Function()? postingAccessCheck;
+  final Future<String?> Function(BuildContext, String)? dictationLauncher;
+  final AddressLookupService? addressLookupService;
 
   const PostJobScreen({
     super.key,
     required this.onJobCreated,
     this.existingJob,
+    this.postingAccessCheck,
+    this.dictationLauncher,
+    this.addressLookupService,
   });
 
   @override
@@ -59,6 +66,9 @@ class _PostJobScreenState extends State<PostJobScreen> {
   bool loading = false;
   bool pickingPhotos = false;
   bool importingVacancy = false;
+  bool checkingPostingAccess = false;
+  String? postingAccessMessage;
+  bool postingAccessLimited = false;
   double? postcodeLatitude;
   double? postcodeLongitude;
   DateTime? selectedStartDate;
@@ -75,6 +85,14 @@ class _PostJobScreenState extends State<PostJobScreen> {
   @override
   void initState() {
     super.initState();
+    addressLookupService =
+        widget.addressLookupService ?? IdealPostcodesAddressLookupService();
+
+    if (widget.existingJob == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) checkPostingAccess();
+      });
+    }
 
     /// 🔥 ЕСЛИ EDIT MODE
     if (widget.existingJob != null) {
@@ -112,6 +130,72 @@ class _PostJobScreenState extends State<PostJobScreen> {
       existingPhotos = job.photos;
     }
   }
+
+  Future<void> checkPostingAccess() async {
+    final userId = widget.postingAccessCheck == null
+        ? FirebaseAuth.instance.currentUser?.uid
+        : null;
+    if ((userId == null && widget.postingAccessCheck == null) ||
+        checkingPostingAccess) {
+      return;
+    }
+    setState(() {
+      checkingPostingAccess = true;
+      postingAccessMessage = null;
+    });
+    String? message;
+    var limited = false;
+    try {
+      if (widget.postingAccessCheck != null) {
+        await widget.postingAccessCheck!();
+      } else {
+        await BillingService().assertEmployerCanPost(userId!);
+      }
+    } on BillingLimitException catch (error) {
+      message = error.message;
+      limited = true;
+    } catch (_) {
+      message = 'Could not check your posting access. Retry the check.';
+    }
+    if (!mounted) return;
+    setState(() {
+      checkingPostingAccess = false;
+      postingAccessMessage = message;
+      postingAccessLimited = limited;
+    });
+  }
+
+  Future<void> dictateInto(
+      String name, TextEditingController controller) async {
+    if (loading) return;
+    final request = widget.dictationLauncher?.call(context, name) ??
+        showEmployerFieldDictation(context, fieldName: name);
+    final spoken = await request;
+    if (!mounted || spoken == null) return;
+    controller.text = appendDictation(controller.text, spoken);
+    controller.selection =
+        TextSelection.collapsed(offset: controller.text.length);
+  }
+
+  Widget dictationField({
+    required String label,
+    required TextEditingController controller,
+    required int maxLines,
+    String? hintText,
+  }) =>
+      TextField(
+        controller: controller,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hintText,
+          suffixIcon: IconButton(
+            tooltip: 'Dictate $label',
+            onPressed: () => dictateInto(label, controller),
+            icon: const Icon(Icons.mic_none),
+          ),
+        ),
+      );
 
   @override
   void dispose() {
@@ -238,8 +322,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
     }
   }
 
-  final AddressLookupService addressLookupService =
-      IdealPostcodesAddressLookupService();
+  late final AddressLookupService addressLookupService;
 
   /// 🔥 CREATE / UPDATE JOB
 
@@ -311,6 +394,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
   Future<void> saveJob() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    if (checkingPostingAccess) return;
+    if (postingAccessMessage != null) {
+      showValidationMessage(postingAccessMessage!);
+      return;
+    }
 
     if (!await ModerationHoldService().ensureCurrentUserNotHeld(context)) {
       return;
@@ -539,6 +627,37 @@ class _PostJobScreenState extends State<PostJobScreen> {
             padding: const EdgeInsets.all(18),
             child: Column(
               children: [
+                if (checkingPostingAccess) const LinearProgressIndicator(),
+                if (postingAccessMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(children: [
+                      Text(postingAccessMessage!),
+                      TextButton(
+                        onPressed: () async {
+                          if (postingAccessLimited) {
+                            final uid = FirebaseAuth.instance.currentUser?.uid;
+                            if (uid == null) return;
+                            await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => EmployerProfileScreen(
+                                    userId: uid,
+                                    initialTab: 4,
+                                    showBackButton: true,
+                                  ),
+                                ));
+                            if (mounted) checkPostingAccess();
+                          } else {
+                            checkPostingAccess();
+                          }
+                        },
+                        child: Text(postingAccessLimited
+                            ? 'Open Billing'
+                            : 'Retry access check'),
+                      ),
+                    ]),
+                  ),
                 if (widget.existingJob == null) ...[
                   SizedBox(
                     width: double.infinity,
@@ -652,27 +771,23 @@ class _PostJobScreenState extends State<PostJobScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                dictationField(
+                  label: 'Description',
                   controller: descriptionController,
                   maxLines: 4,
-                  decoration: const InputDecoration(labelText: "Description"),
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                dictationField(
+                  label: 'Responsibilities',
                   controller: responsibilitiesController,
                   maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: "Responsibilities",
-                  ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                dictationField(
+                  label: 'Candidate requirements',
                   controller: candidateRequirementsController,
                   maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: "Candidate requirements",
-                    hintText: "Experience, skills, right to work, references",
-                  ),
+                  hintText: 'Experience, skills, right to work, references',
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -684,12 +799,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                dictationField(
+                  label: 'Additional information',
                   controller: additionalInformationController,
                   maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: "Additional information",
-                  ),
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
@@ -706,7 +819,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: loading ? null : saveJob,
+                    onPressed: loading ||
+                            checkingPostingAccess ||
+                            postingAccessMessage != null
+                        ? null
+                        : saveJob,
                     child: loading
                         ? const CircularProgressIndicator()
                         : Text(widget.existingJob != null

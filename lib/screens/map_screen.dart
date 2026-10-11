@@ -10,6 +10,7 @@ import 'job_details_screen.dart';
 import '../services/job_repository.dart';
 import '../services/job_taxonomy_service.dart';
 import '../theme/app_theme.dart';
+import '../theme/mobile_control_sizes.dart';
 import '../widgets/app_map_tile_layer.dart';
 import '../widgets/job_card.dart';
 import '../widgets/smart_job_search.dart';
@@ -509,7 +510,7 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
               SmartJobSearchField(
-                compactHeight: 56,
+                compactHeight: isEmployer ? mobileCompactControlHeight : 56,
                 selectedRoles: selectedRoles,
                 query: searchQuery,
                 filters: const JobSearchFilters(),

@@ -2,6 +2,13 @@
 
 const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
 const MAX_DURATION_MS = 30000;
+const MAX_EMPLOYER_DURATION_MS = 60000;
+
+function voiceRoleAllowed(role, mode) {
+  return mode === "employer_dictation" ?
+    ["employer", "company"].includes(role) :
+    mode == null && role === "worker";
+}
 
 function mp4DurationMs(audio) {
   function boxes(start, end) {
@@ -37,9 +44,12 @@ function mp4DurationMs(audio) {
 
 function validateVoiceRequest(auth, data) {
   if (!auth?.uid) return {problem: "unauthenticated"};
+  const maxDuration = data?.mode === "employer_dictation" ?
+    MAX_EMPLOYER_DURATION_MS : MAX_DURATION_MS;
   if (!data || data.mimeType !== "audio/mp4" ||
+      (data.mode != null && data.mode !== "employer_dictation") ||
       !Number.isInteger(data.durationMs) || data.durationMs < 500 ||
-      data.durationMs > MAX_DURATION_MS ||
+      data.durationMs > maxDuration ||
       typeof data.audioBase64 !== "string" ||
       data.audioBase64.length > Math.ceil(MAX_AUDIO_BYTES / 3) * 4 + 4 ||
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data.audioBase64)) {
@@ -51,7 +61,7 @@ function validateVoiceRequest(auth, data) {
   }
   const actualDurationMs = mp4DurationMs(audio);
   if (actualDurationMs === null || actualDurationMs < 500 ||
-      actualDurationMs > MAX_DURATION_MS ||
+      actualDurationMs > maxDuration ||
       Math.abs(actualDurationMs - data.durationMs) > 3000) {
     return {problem: "invalid-argument"};
   }
@@ -77,4 +87,4 @@ async function transcribeWithOpenAI({apiKey, audio, fetcher = fetch}) {
 }
 
 module.exports = {validateVoiceRequest, transcribeWithOpenAI, mp4DurationMs,
-  MAX_AUDIO_BYTES, MAX_DURATION_MS};
+  voiceRoleAllowed, MAX_AUDIO_BYTES, MAX_DURATION_MS, MAX_EMPLOYER_DURATION_MS};

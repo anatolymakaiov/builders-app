@@ -28,6 +28,13 @@ import '../widgets/profile_hamburger_menu.dart';
 import '../widgets/account_switcher.dart';
 import '../services/multi_account_service.dart';
 
+const employerPublicProfileTabs = ['Info', 'Contacts', 'Vacancies', 'Photos'];
+const employerOwnProfileTabs = [
+  ...employerPublicProfileTabs,
+  'Calendar',
+  'Billing',
+];
+
 class EmployerProfileScreen extends StatefulWidget {
   final String userId;
   final int initialTab;
@@ -647,14 +654,9 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
                         : null,
                   ),
                   StroykaTabBar(
-                    labels: [
-                      "Info",
-                      "Contacts",
-                      "Vacancies",
-                      "Photos",
-                      if (showBilling) "Calendar",
-                      if (showBilling) "Billing",
-                    ],
+                    labels: showBilling
+                        ? employerOwnProfileTabs
+                        : employerPublicProfileTabs,
                   ),
                   const SizedBox(height: 10),
                   Expanded(

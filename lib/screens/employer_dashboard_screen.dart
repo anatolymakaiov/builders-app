@@ -13,6 +13,7 @@ import '../services/job_taxonomy_service.dart';
 import '../services/offer_acceptance_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
+import '../theme/mobile_control_sizes.dart';
 import '../widgets/job_pagination.dart';
 import '../widgets/smart_job_search.dart';
 
@@ -731,6 +732,7 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
                     return Column(
                       children: [
                         SmartJobSearchField(
+                          compactHeight: mobileCompactControlHeight,
                           selectedRoles: selectedRoles,
                           query: searchQuery,
                           filters: searchFilters,

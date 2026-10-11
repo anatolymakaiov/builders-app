@@ -40,7 +40,7 @@ const {safeState: safeAskState, safeProfile: safeAskProfile,
   rateLimitExceeded: askRateLimitExceeded, ukDateIso,
   requestLocalDate: askRequestLocalDate} =
   require("./ask_stroyka_intent");
-const {validateVoiceRequest, transcribeWithOpenAI} =
+const {validateVoiceRequest, transcribeWithOpenAI, voiceRoleAllowed} =
   require("./ask_stroyka_voice");
 
 admin.initializeApp();
@@ -48,12 +48,12 @@ admin.initializeApp();
 const askStroykaApiKey = defineSecret("ASK_STROYKA_OPENAI_API_KEY");
 
 exports.transcribeAskStroykaVoice = onCall({secrets: [askStroykaApiKey],
-  timeoutSeconds: 30, memory: "256MiB"}, async (request) => {
+  timeoutSeconds: 60, memory: "256MiB"}, async (request) => {
   const validation = validateVoiceRequest(request.auth, request.data);
   if (validation.problem) {
     throw new HttpsError(validation.problem,
       validation.problem === "unauthenticated" ? "Sign in required." :
-        "Record a short voice request of up to 30 seconds.");
+        "Record a supported voice request.");
   }
   const uid = request.auth.uid;
   const db = admin.firestore();
@@ -61,8 +61,9 @@ exports.transcribeAskStroykaVoice = onCall({secrets: [askStroykaApiKey],
     db.collection("users").doc(uid).get(),
     db.collection("feature_flags").doc("ask_stroyka").get(),
   ]);
-  if (!profile.exists || profile.get("role") !== "worker") {
-    throw new HttpsError("permission-denied", "Worker account required.");
+  if (!profile.exists ||
+      !voiceRoleAllowed(profile.get("role"), request.data?.mode)) {
+    throw new HttpsError("permission-denied", "Account not allowed to transcribe.");
   }
   if (settings.get("enabled") === false || !askStroykaApiKey.value()) {
     throw new HttpsError("unavailable", "Voice search is temporarily unavailable.");
