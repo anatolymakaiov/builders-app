@@ -24,6 +24,19 @@ class ChatService {
     return fallback;
   }
 
+  static String realName(Map<String, dynamic>? data, List<String> keys) {
+    if (data == null) return '';
+    for (final key in keys) {
+      final name = data[key]?.toString().trim() ?? '';
+      if (name.isNotEmpty &&
+          !['company', 'worker', 'employer', 'user']
+              .contains(name.toLowerCase())) {
+        return name;
+      }
+    }
+    return '';
+  }
+
   static String jobTitle(
     Map<String, dynamic> chatData,
     Map<String, dynamic>? jobData,
@@ -91,24 +104,15 @@ class ChatService {
     }
 
     final participantName = currentUserIsWorker
-        ? firstText(
-            participantData,
-            ["companyName", "name", "displayName"],
-            fallback: firstText(
-              chatData,
-              ["companyName", "employerName"],
-              fallback: "Company",
-            ),
-          )
-        : firstText(
-            participantData,
-            ["name", "displayName", "workerName"],
-            fallback: firstText(
-              chatData,
-              ["workerName", "applicantName"],
-              fallback: "Worker",
-            ),
-          );
+        ? [
+            realName(participantData, ['companyName', 'displayName', 'name']),
+            realName(chatData, ['companyName', 'employerName']),
+            realName(jobData, ['companyName', 'employerName']),
+          ].firstWhere((name) => name.isNotEmpty, orElse: () => 'Company')
+        : [
+            realName(participantData, ['displayName', 'name', 'workerName']),
+            realName(chatData, ['workerName', 'applicantName']),
+          ].firstWhere((name) => name.isNotEmpty, orElse: () => 'Worker');
 
     return withVacancy(_safeChatName(
         participantName, currentUserIsWorker ? 'Company' : 'Worker'));
@@ -120,8 +124,11 @@ class ChatService {
     required Map<String, dynamic>? jobData,
   }) {
     final name = _safeChatName(
-        firstText(participantData, ['companyName', 'name', 'displayName'],
-            fallback: 'User'),
+        [
+          realName(participantData, ['companyName', 'displayName', 'name']),
+          realName(chatData, ['companyName', 'workerName', 'employerName']),
+          realName(jobData, ['companyName']),
+        ].firstWhere((value) => value.isNotEmpty, orElse: () => 'User'),
         'User');
     final hasVacancy = _hasVacancy(chatData, jobData);
     return hasVacancy ? '${name}_${jobTitle(chatData, jobData)}' : name;

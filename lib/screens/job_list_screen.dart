@@ -309,7 +309,20 @@ class _JobListScreenState extends State<JobListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Jobs"),
+        flexibleSpace: SafeArea(
+          child: Center(
+            child: Text('Jobs',
+                style: Theme.of(context).appBarTheme.titleTextStyle),
+          ),
+        ),
+        leading: AskStroykaFeature.enabled
+            ? IconButton(
+                key: const Key('ask-stroyka-mobile'),
+                tooltip: 'Ask STROYKA',
+                icon: const Icon(Icons.auto_awesome_outlined),
+                onPressed: _openAskStroyka,
+              )
+            : null,
         actions: [
           IconButton(
             tooltip: "Subscribe to jobs",
@@ -329,13 +342,6 @@ class _JobListScreenState extends State<JobListScreen> {
               });
             },
           ),
-          if (AskStroykaFeature.enabled)
-            IconButton(
-              key: const Key('ask-stroyka-mobile'),
-              tooltip: 'Ask STROYKA',
-              icon: const Icon(Icons.auto_awesome_outlined),
-              onPressed: _openAskStroyka,
-            ),
           const SizedBox(width: 56),
         ],
       ),

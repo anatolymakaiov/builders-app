@@ -31,6 +31,8 @@ void main() {
     expect(ask, findsOneWidget);
     expect(
         find.ancestor(of: ask, matching: find.byType(AppBar)), findsOneWidget);
+    expect(tester.getCenter(find.text('Jobs')).dx, closeTo(195, 0.5));
+    expect(tester.getCenter(ask).dx, lessThan(195));
   });
   testWidgets('refresh keeps Jobs mounted after success, failure and retry',
       (tester) async {

@@ -44,4 +44,29 @@ void main() {
         ),
         'User');
   });
+
+  test('placeholder projection does not hide real legacy chat or job name', () {
+    expect(
+      ChatService.chatDisplayName(
+        chatData: {'jobId': 'job-a', 'jobTitle': 'Dryliner Manchester'},
+        participantData: {'companyName': 'Company'},
+        jobData: {'companyName': 'ABC Drylining Ltd'},
+        currentUserIsWorker: true,
+        isInternalTeamChat: false,
+        showTeamAvatar: false,
+      ),
+      'ABC Drylining Ltd_Dryliner Manchester',
+    );
+    expect(
+      ChatService.chatDisplayName(
+        chatData: {'workerName': 'John S.'},
+        participantData: {'name': 'Worker'},
+        jobData: null,
+        currentUserIsWorker: false,
+        isInternalTeamChat: false,
+        showTeamAvatar: false,
+      ),
+      'John S.',
+    );
+  });
 }

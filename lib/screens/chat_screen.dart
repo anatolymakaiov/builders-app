@@ -2862,7 +2862,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ? chatData["employerId"]
                 : chatData["workerId"] ?? otherParticipantId(chatData, uid));
         final otherProfileId = otherUserId?.toString() ?? "__missing_profile__";
-        final profileCollection = showTeamHeader ? "teams" : "users";
+        final profileCollection = showTeamHeader ? "teams" : "public_profiles";
         final jobId = chatData["jobId"]?.toString();
 
         return StreamBuilder<DocumentSnapshot>(

@@ -217,118 +217,123 @@ class _EmployerApplicationsScreenState
         child: Column(
           children: [
             StroykaSurface(
-              margin: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-              padding: const EdgeInsets.all(10),
-              child: Row(
-                children: [
-                  /// STATUS
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: selectedStatus,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        hintText: "Status",
-                        border: StroykaInputBorder(),
-                        isDense: true,
-                        constraints: BoxConstraints(
-                            minHeight: mobileCompactControlHeight),
-                        contentPadding: EdgeInsets.symmetric(
-                            horizontal: mobileCompactControlHorizontalPadding,
-                            vertical: mobileCompactControlVerticalPadding),
-                        filled: true,
-                        fillColor: Colors.white,
+              margin: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final controlWidth = constraints.maxWidth >= 480
+                      ? (constraints.maxWidth - 16) / 3
+                      : (constraints.maxWidth - 8) / 2;
+                  return Wrap(spacing: 8, runSpacing: 8, children: [
+                    /// STATUS
+                    SizedBox(
+                      width: controlWidth,
+                      child: DropdownButtonFormField<String>(
+                        initialValue: selectedStatus,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          hintText: "Status",
+                          border: StroykaInputBorder(),
+                          isDense: true,
+                          constraints: BoxConstraints(
+                              minHeight: mobileCompactControlHeight),
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: mobileCompactControlHorizontalPadding,
+                              vertical: mobileCompactControlVerticalPadding),
+                          filled: true,
+                          fillColor: Colors.white,
+                        ),
+                        items: [
+                          ApplicationStatusUtils.allFilter,
+                          ApplicationStatusUtils.reviewFilter,
+                          ApplicationStatusUtils.negotiationFilter,
+                          ApplicationStatusUtils.offerFilter,
+                          ApplicationStatusUtils.rejectedFilter,
+                          ApplicationStatusUtils.hiredFilter,
+                          ApplicationStatusUtils.withdrawnFilter,
+                        ]
+                            .map((e) => DropdownMenuItem(
+                                  value: e,
+                                  child: Text(e == "all"
+                                      ? "All"
+                                      : ApplicationStatusUtils
+                                          .getStatusDisplayLabel(
+                                              e, "employer")),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            selectedStatus = value!;
+                          });
+                        },
                       ),
-                      items: [
-                        ApplicationStatusUtils.allFilter,
-                        ApplicationStatusUtils.reviewFilter,
-                        ApplicationStatusUtils.negotiationFilter,
-                        ApplicationStatusUtils.offerFilter,
-                        ApplicationStatusUtils.rejectedFilter,
-                        ApplicationStatusUtils.hiredFilter,
-                        ApplicationStatusUtils.withdrawnFilter,
-                      ]
-                          .map((e) => DropdownMenuItem(
-                                value: e,
-                                child: Text(e == "all"
-                                    ? "All"
-                                    : ApplicationStatusUtils
-                                        .getStatusDisplayLabel(e, "employer")),
-                              ))
-                          .toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          selectedStatus = value!;
-                        });
-                      },
                     ),
-                  ),
 
-                  const SizedBox(width: 8),
-
-                  /// TRADE
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: selectedTrade,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        hintText: "Trade",
-                        border: StroykaInputBorder(),
-                        isDense: true,
-                        constraints: BoxConstraints(
-                            minHeight: mobileCompactControlHeight),
-                        contentPadding: EdgeInsets.symmetric(
-                            horizontal: mobileCompactControlHorizontalPadding,
-                            vertical: mobileCompactControlVerticalPadding),
-                        filled: true,
-                        fillColor: Colors.white,
+                    /// TRADE
+                    SizedBox(
+                      width: controlWidth,
+                      child: DropdownButtonFormField<String>(
+                        initialValue: selectedTrade,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          hintText: "Trade",
+                          border: StroykaInputBorder(),
+                          isDense: true,
+                          constraints: BoxConstraints(
+                              minHeight: mobileCompactControlHeight),
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: mobileCompactControlHorizontalPadding,
+                              vertical: mobileCompactControlVerticalPadding),
+                          filled: true,
+                          fillColor: Colors.white,
+                        ),
+                        items: trades
+                            .map((e) => DropdownMenuItem(
+                                  value: e,
+                                  child: Text(e == "all" ? "All" : e),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            selectedTrade = value!;
+                          });
+                        },
                       ),
-                      items: trades
-                          .map((e) => DropdownMenuItem(
-                                value: e,
-                                child: Text(e == "all" ? "All" : e),
-                              ))
-                          .toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          selectedTrade = value!;
-                        });
-                      },
                     ),
-                  ),
 
-                  const SizedBox(width: 8),
-
-                  /// SITE
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: selectedSite,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        hintText: "Site",
-                        border: StroykaInputBorder(),
-                        isDense: true,
-                        constraints: BoxConstraints(
-                            minHeight: mobileCompactControlHeight),
-                        contentPadding: EdgeInsets.symmetric(
-                            horizontal: mobileCompactControlHorizontalPadding,
-                            vertical: mobileCompactControlVerticalPadding),
-                        filled: true,
-                        fillColor: Colors.white,
+                    /// SITE
+                    SizedBox(
+                      width: controlWidth,
+                      child: DropdownButtonFormField<String>(
+                        initialValue: selectedSite,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          hintText: "Site",
+                          border: StroykaInputBorder(),
+                          isDense: true,
+                          constraints: BoxConstraints(
+                              minHeight: mobileCompactControlHeight),
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: mobileCompactControlHorizontalPadding,
+                              vertical: mobileCompactControlVerticalPadding),
+                          filled: true,
+                          fillColor: Colors.white,
+                        ),
+                        items: sites
+                            .map((e) => DropdownMenuItem(
+                                  value: e,
+                                  child: Text(e == "all" ? "All" : e),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            selectedSite = value!;
+                          });
+                        },
                       ),
-                      items: sites
-                          .map((e) => DropdownMenuItem(
-                                value: e,
-                                child: Text(e == "all" ? "All" : e),
-                              ))
-                          .toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          selectedSite = value!;
-                        });
-                      },
                     ),
-                  ),
-                ],
+                  ]);
+                },
               ),
             ),
             Expanded(

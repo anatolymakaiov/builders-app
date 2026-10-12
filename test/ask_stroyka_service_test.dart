@@ -123,6 +123,43 @@ void main() {
     }
   });
 
+  test('Russian trade and city inflections reach canonical Jobs intent',
+      () async {
+    for (final phrase in ['драйлайнером', 'драйлинером', 'фиксером']) {
+      final session = AiAssistantSession(
+          interpreter: _FakeInterpreter(
+              (_) => result(trade: phrase, city: 'Манчестере')),
+          clock: () => DateTime(2026, 10, 12));
+      final turn =
+          await session.send('Ищу работу $phrase в Манчестере с 14 октября');
+      expect(turn.readyToSearch, isTrue);
+      expect(turn.intent!.tradeId, 'dryliner');
+      expect(turn.intent!.location, 'Manchester');
+      expect(turn.intent!.availableFrom, DateTime(2026, 10, 14));
+    }
+  });
+
+  test('unknown Cyrillic trade does not select an unrelated role', () async {
+    final session = AiAssistantSession(
+        interpreter: _FakeInterpreter((_) => result(
+            trade: 'неизвестнаяпрофессия', city: 'Manchester', date: null)));
+    final turn = await session.send('Ищу работу');
+    expect(turn.readyToSearch, isFalse);
+    expect(turn.tradeChoices, isEmpty);
+  });
+
+  test('explicit Russian transcript recovers missing model trade and city',
+      () async {
+    final session = AiAssistantSession(
+        interpreter: _FakeInterpreter(
+            (_) => result(trade: null, city: null, date: null)),
+        clock: () => DateTime(2026, 10, 12));
+    final turn = await session.send('Мне нужна работа фиксером в Манчестере');
+    expect(turn.readyToSearch, isTrue);
+    expect(turn.intent!.tradeId, 'dryliner');
+    expect(turn.intent!.location, 'Manchester');
+  });
+
   test('natural dates and started-but-open ranking', () {
     final now = DateTime(2026, 10, 10);
     expect(AiDateParser.parse('tomorrow', now: now), DateTime(2026, 10, 11));

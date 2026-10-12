@@ -79,6 +79,18 @@ class FakeInterpreter implements AiIntentInterpreter {
   }
 }
 
+class LocalizedInterpreter implements AiIntentInterpreter {
+  @override
+  Future<Map<String, dynamic>> interpret(
+          String text, Map<String, dynamic> state) async =>
+      {
+        'intent': 'find_job',
+        'tradePhrase': 'драйлайнером',
+        'location': 'Манчестере',
+        'availableFrom': '2026-10-14',
+      };
+}
+
 AskStroykaVoiceController controller(
         FakeCapture capture, FakeSpeech speech, FakeInterpreter interpreter,
         {Duration? maxDuration, Duration? sessionLifetime}) =>
@@ -92,6 +104,28 @@ AskStroykaVoiceController controller(
     );
 
 void main() {
+  test('Russian voice transcript reaches canonical search confirmation',
+      () async {
+    final speech = FakeSpeech()
+      ..text = 'Ищу работу драйлайнером в Манчестере с 14 октября';
+    final voice = AskStroykaVoiceController(
+      capture: FakeCapture(),
+      transcription: speech,
+      session: AiAssistantSession(
+        interpreter: LocalizedInterpreter(),
+        clock: () => DateTime(2026, 10, 12),
+      ),
+    );
+    await voice.press();
+    await voice.release();
+    expect(voice.phase, VoicePhase.confirming);
+    expect(voice.turn!.intent!.tradeId, 'dryliner');
+    expect(voice.turn!.intent!.location, 'Manchester');
+    expect(voice.turn!.intent!.availableFrom, DateTime(2026, 10, 14));
+    expect(voice.confirm()!.tradeId, 'dryliner');
+    voice.dispose();
+  });
+
   test('quick release during permission cannot start a second recording',
       () async {
     final capture = DelayedPermissionCapture();

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/mobile_control_sizes.dart';
+import 'mobile_numeric_time_picker.dart';
 
 import '../services/operational_calendar.dart';
 
@@ -15,6 +16,14 @@ const mobileCalendarAlerts = <int, String>{
   2880: '2 days before',
   10080: '1 week before',
 };
+
+String mobileCalendarEventTimeLabel(CalendarEvent event) {
+  if (event.allDay) return 'All day';
+  String time(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+  final start = time(event.date);
+  return event.end == null ? start : '$start–${time(event.end!)}';
+}
 
 class MobileCalendarDraft {
   const MobileCalendarDraft({
@@ -112,7 +121,7 @@ class _CalendarEditorState extends State<_CalendarEditor> {
       lastDate: DateTime(2100),
     );
     if (date == null || !mounted) return;
-    final time = await showTimePicker(
+    final time = await showMobileNumericTimePicker(
         context: context, initialTime: TimeOfDay.fromDateTime(original));
     if (time == null || !mounted) return;
     final value =
@@ -439,6 +448,7 @@ class _MobileCalendarViewState extends State<MobileCalendarView> {
                       style: const TextStyle(color: light)),
                   subtitle: Text(
                       [
+                        mobileCalendarEventTimeLabel(event),
                         event.type == CalendarEventType.manual
                             ? event.eventType
                             : event.typeLabel,

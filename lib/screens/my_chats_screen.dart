@@ -20,6 +20,8 @@ class MyChatsScreen extends StatefulWidget {
 
 class _MyChatsScreenState extends State<MyChatsScreen> {
   final searchController = TextEditingController();
+  final Map<String, Future<Map<String, dynamic>?>> _profileReads = {};
+  String? _profileOwnerId;
   Timer? searchDebounce;
   bool searchOpen = false;
   bool searching = false;
@@ -629,6 +631,14 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
     return fallback;
   }
 
+  Future<Map<String, dynamic>?> _chatProfile(String collection, String id) {
+    return _profileReads.putIfAbsent('$collection/$id', () async {
+      final snapshot =
+          await FirebaseFirestore.instance.collection(collection).doc(id).get();
+      return snapshot.data();
+    });
+  }
+
   Future<bool> hideChatForCurrentUserById(
     BuildContext context,
     String chatId,
@@ -861,6 +871,10 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
     }
 
     final uid = user.uid;
+    if (_profileOwnerId != uid) {
+      _profileOwnerId = uid;
+      _profileReads.clear();
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -945,7 +959,7 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                                   ? employerId
                                   : workerId ?? otherParticipantId(data, uid));
                           final displayCollection =
-                              showTeamAvatar ? "teams" : "users";
+                              showTeamAvatar ? "teams" : "public_profiles";
                           final displayId =
                               showTeamAvatar ? data["teamId"] : otherUserId;
 
@@ -967,14 +981,11 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                           final lastMessageType =
                               data["lastMessageType"] ?? "text";
 
-                          return StreamBuilder<DocumentSnapshot>(
-                            stream: FirebaseFirestore.instance
-                                .collection(displayCollection)
-                                .doc(displayId)
-                                .snapshots(),
+                          return FutureBuilder<Map<String, dynamic>?>(
+                            future: _chatProfile(
+                                displayCollection, displayId.toString()),
                             builder: (context, displaySnap) {
-                              final displayData = displaySnap.data?.data()
-                                  as Map<String, dynamic>?;
+                              final displayData = displaySnap.data;
 
                               final isOnline = showTeamAvatar
                                   ? false

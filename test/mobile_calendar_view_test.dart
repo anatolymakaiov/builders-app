@@ -4,6 +4,67 @@ import 'package:test_app/services/operational_calendar.dart';
 import 'package:test_app/widgets/mobile_calendar_view.dart';
 
 void main() {
+  test('agenda time labels use local 24-hour times and all-day fallback', () {
+    CalendarEvent event(DateTime start, {DateTime? end, bool allDay = false}) =>
+        CalendarEvent(
+          id: 'event',
+          type: CalendarEventType.manual,
+          date: start,
+          end: end,
+          allDay: allDay,
+          title: 'Site inspection',
+          sourceId: 'event',
+          vacancyId: '',
+          siteId: '',
+          siteName: '',
+          trade: '',
+          status: '',
+        );
+    final start = DateTime(2026, 10, 14, 9);
+    expect(
+        mobileCalendarEventTimeLabel(
+            event(start, end: DateTime(2026, 10, 14, 10, 30))),
+        '09:00–10:30');
+    expect(mobileCalendarEventTimeLabel(event(start)), '09:00');
+    expect(mobileCalendarEventTimeLabel(event(start, allDay: true)), 'All day');
+  });
+
+  testWidgets('selected-day agenda shows event time next to its title',
+      (tester) async {
+    final day = DateTime(2026, 10, 14, 9);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: MobileCalendarView(
+          selected: day,
+          events: Future.value([
+            CalendarEvent(
+              id: 'personal:event',
+              type: CalendarEventType.manual,
+              date: day,
+              end: day.add(const Duration(minutes: 90)),
+              allDay: false,
+              title: 'Site inspection',
+              sourceId: 'event',
+              vacancyId: '',
+              siteId: '',
+              siteName: '',
+              trade: '',
+              status: '',
+              eventType: 'event',
+            ),
+          ]),
+          onSelect: (_) {},
+          onMove: (_) {},
+          onRefresh: () async {},
+          onCreate: (_) async {},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Site inspection'), findsNWidgets(2));
+    expect(find.textContaining('09:00–10:30'), findsOneWidget);
+  });
+
   testWidgets('Monday-first calendar shows selected day and event indicator',
       (tester) async {
     final day = DateTime(2026, 10, 11);

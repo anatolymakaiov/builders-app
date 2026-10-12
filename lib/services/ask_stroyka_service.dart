@@ -90,6 +90,41 @@ class AiAssistantSession {
   final DateTime Function() _clock;
   Map<String, dynamic> _state = {};
 
+  static String _canonicalTradePhrase(String phrase) {
+    final russian = phrase.toLowerCase().trim();
+    if (RegExp(r'^драйлайнер(?:ом|а|у|ы|ов)?$').hasMatch(russian) ||
+        RegExp(r'^драйлинер(?:ом|а|у|ы|ов)?$').hasMatch(russian)) {
+      return 'dryliner';
+    }
+    if (RegExp(r'^фиксер(?:ом|а|у|ы|ов)?$').hasMatch(russian)) {
+      return 'fixer';
+    }
+    return phrase;
+  }
+
+  static String? _explicitTradeIn(String message) {
+    final match = RegExp(
+      r'(?<![а-яё])(драйлайнер(?:ом|а|у|ы|ов)?|драйлинер(?:ом|а|у|ы|ов)?|фиксер(?:ом|а|у|ы|ов)?)(?![а-яё])',
+      caseSensitive: false,
+    ).firstMatch(message);
+    return match == null ? null : _canonicalTradePhrase(match.group(1)!);
+  }
+
+  static String _canonicalLocation(String location) {
+    if (RegExp(r'^манчестер(?:е|а|у|ом)?$', caseSensitive: false)
+        .hasMatch(location.trim())) {
+      return 'Manchester';
+    }
+    return location;
+  }
+
+  static String? _explicitLocationIn(String message) => RegExp(
+        r'(?<![а-яё])манчестер(?:е|а|у|ом)?(?![а-яё])',
+        caseSensitive: false,
+      ).hasMatch(message)
+          ? 'Manchester'
+          : null;
+
   void clear() => _state = {};
 
   Future<AiAssistantTurn> send(String message) async {
@@ -117,11 +152,15 @@ class AiAssistantSession {
       if (value != null) next[key] = value;
     }
     _state = next;
-    final phrase = (next['tradePhrase'] ?? '').toString().trim();
+    final phrase = (next['tradePhrase'] ?? '').toString().trim().isEmpty
+        ? (_explicitTradeIn(message) ?? '')
+        : next['tradePhrase'].toString().trim();
+    if (phrase.isNotEmpty) _state['tradePhrase'] = phrase;
     if (phrase.isEmpty) {
       return const AiAssistantTurn(question: 'What trade are you looking for?');
     }
-    final normalized = JobTaxonomyService.normalise(phrase);
+    final canonicalPhrase = _canonicalTradePhrase(phrase);
+    final normalized = JobTaxonomyService.normalise(canonicalPhrase);
     final exact = JobTaxonomyService.roles
         .where((role) =>
             role.searchableTerms.any(
@@ -135,14 +174,20 @@ class AiAssistantSession {
     }
     final role = exact.singleOrNull;
     if (role == null) {
-      final choices = JobTaxonomyService.suggestions(phrase, limit: 3);
+      final choices = normalized.isEmpty
+          ? <ConstructionRole>[]
+          : JobTaxonomyService.suggestions(canonicalPhrase, limit: 3);
       return AiAssistantTurn(
           question: choices.isEmpty
               ? 'What construction trade do you mean?'
               : 'Which trade do you mean?',
           tradeChoices: choices);
     }
-    final location = (next['location'] ?? '').toString().trim();
+    final location = _canonicalLocation(
+        (next['location'] ?? '').toString().trim().isEmpty
+            ? (_explicitLocationIn(message) ?? '')
+            : next['location'].toString().trim());
+    if (location.isNotEmpty) _state['location'] = location;
     if (location.isEmpty) {
       return const AiAssistantTurn(question: 'Where would you like to work?');
     }
@@ -220,8 +265,8 @@ class AiDateParser {
             r'\bnext week\b|на следующей неделе|наступного тижня|w przyszłym tygodniu')
         .hasMatch(text)) {
       final delta = (DateTime.monday - today.weekday + 7) % 7;
-      return DateTime(today.year, today.month,
-          today.day + (delta == 0 ? 7 : delta));
+      return DateTime(
+          today.year, today.month, today.day + (delta == 0 ? 7 : delta));
     }
     final inWeeks = RegExp(
       r'\bin (\d{1,2}|one|two|three|four) weeks?\b',

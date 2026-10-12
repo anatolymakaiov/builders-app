@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'mobile_numeric_time_picker.dart';
 
 import '../theme/app_theme.dart';
 
@@ -90,7 +91,7 @@ class StroykaDateTimeField extends StatelessWidget {
   }
 
   Future<void> pickTime(BuildContext context) async {
-    final selected = await showTimePicker(
+    final selected = await showMobileNumericTimePicker(
       context: context,
       initialTime: value.time ?? TimeOfDay.now(),
     );
