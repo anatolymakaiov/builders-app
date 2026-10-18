@@ -171,7 +171,7 @@ class WebJobsDataService {
 
   bool _isPublicWebJob(Job job) {
     final status = job.status.trim().toLowerCase();
-    return job.isPubliclyVisible &&
+    return job.isOpenForHiring &&
         !job.isClosed &&
         status != 'pending' &&
         status != 'pending_review' &&

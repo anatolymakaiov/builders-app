@@ -16,7 +16,11 @@ import '../widgets/job_card.dart';
 import '../widgets/smart_job_search.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen(
+      {super.key, this.onOpenOpportunities, this.notificationAction});
+
+  final VoidCallback? onOpenOpportunities;
+  final Widget? notificationAction;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -295,7 +299,7 @@ class _MapScreenState extends State<MapScreen> {
       reason = "status_$status";
     } else if (moderation.isNotEmpty && moderation != "approved") {
       reason = "moderation_$moderation";
-    } else if (!job.isPubliclyVisible) {
+    } else if (!job.isOpenForHiring) {
       reason = "not_publicly_visible";
     }
 
@@ -741,7 +745,18 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Jobs Map")),
+      appBar: AppBar(
+        title: const Text("Jobs Map"),
+        actions: [
+          if (widget.notificationAction != null) widget.notificationAction!,
+          if (widget.onOpenOpportunities != null)
+            IconButton(
+              tooltip: 'Opportunities',
+              icon: const Icon(Icons.local_offer_outlined),
+              onPressed: widget.onOpenOpportunities,
+            ),
+        ],
+      ),
       body: StreamBuilder<List<Job>>(
         stream: publicJobsStream,
         builder: (context, snapshot) {

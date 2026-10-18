@@ -19,6 +19,7 @@ const {
   selectAuthorizedAccountLinkGroup,
 } = require("./account_linking");
 const {report: adminAnalyticsReport} = require("./admin_analytics");
+const {isOpenForHiring} = require("./vacancy_state");
 const {normalized: adminDirectoryNormalized, filterDirectoryRecord,
   broadcastTargetId, matchesBroadcastAudience} =
   require("./admin_directory");
@@ -2262,16 +2263,7 @@ exports.trackAdminVacancyClosure = onDocumentUpdated("jobs/{jobId}", async (even
 });
 
 function isSlotOccupyingJob(job) {
-  const status = cleanText(job.status).toLowerCase();
-  const moderationStatus = cleanText(job.moderationStatus);
-  return moderationStatus === "approved" &&
-    ["active", "published", "open"].includes(status || "active") &&
-    job.deleted !== true &&
-    job.isDeleted !== true &&
-    job.active !== false &&
-    job.billingSuspended !== true &&
-    job.employerDeleted !== true &&
-    job.companyDeleted !== true;
+  return isOpenForHiring(job);
 }
 
 async function countOccupiedVacancySlots(employerId) {

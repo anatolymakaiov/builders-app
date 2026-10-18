@@ -36,8 +36,7 @@ List<SiteTradeReport> siteRecruitmentReport(
       JobTaxonomyService.roleFor(job.canonicalRoleId)?.id ??
       JobTaxonomyService.bestRoleFor(job.trade)?.id ??
       '';
-  final vacancies =
-      jobs.where((job) => job.isPubliclyVisible && job.positions > 0).toList();
+  final vacancies = jobs.where((job) => job.isOpenForHiring).toList();
   tradeIds.addAll(vacancies.map(jobTrade).where((id) => id.isNotEmpty));
   final operating = assignments
       .where((item) => {'scheduled', 'active'}.contains(item.status))

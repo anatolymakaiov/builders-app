@@ -328,12 +328,13 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
         status == "open";
 
     if (!activeStatus || job.isClosed) return false;
-    return job.isPubliclyVisible;
+    return job.isOpenForHiring;
   }
 
   String _companyJobStatusLabel(Job job) {
     if (job.moderationStatus == "pending_review") return "PENDING";
     if (job.moderationStatus == "rejected") return "REJECTED";
+    if (job.isFullyFilled) return "FILLED";
     return job.isClosed ? "INACTIVE" : "ACTIVE";
   }
 
@@ -342,7 +343,9 @@ class _EmployerProfileScreenState extends State<EmployerProfileScreen> {
       return AppColors.blueprintLine;
     }
     if (job.moderationStatus == "rejected") return AppColors.danger;
-    return job.isClosed ? AppColors.warning : AppColors.success;
+    return job.isClosed || job.isFullyFilled
+        ? AppColors.warning
+        : AppColors.success;
   }
 
   Future<void> addCompanyPhoto() async {
@@ -1343,6 +1346,7 @@ class _BillingRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
+            flex: 4,
             child: Text(
               label,
               style: const TextStyle(
@@ -1351,11 +1355,12 @@ class _BillingRow extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          Flexible(
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 5,
             child: Text(
               value,
-              textAlign: TextAlign.right,
+              textAlign: TextAlign.left,
               style: const TextStyle(
                 color: AppColors.ink,
                 fontWeight: FontWeight.w900,

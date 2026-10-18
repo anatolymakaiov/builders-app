@@ -1,5 +1,6 @@
 const {SUCCESSFUL_PAYMENT_STATUSES, PENDING_PAYMENT_STATUSES} =
   require("./gocardless_state");
+const {isOpenForHiring} = require("./vacancy_state");
 
 const londonDay = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit",
@@ -116,10 +117,7 @@ function report({tab, period, now = new Date(), payments = [], users = [], jobs 
       (event) => event.closedAt);
     data.kpis["Created vacancies"] = data.series.Created.reduce((a, b) => a + b, 0);
     data.kpis["Tracked closures"] = data.series.Closed.reduce((a, b) => a + b, 0);
-    data.kpis["Current active vacancies"] = jobs.filter((job) =>
-      job.moderationStatus === "approved" &&
-      ["active", "published", "open"].includes(job.status) &&
-      job.active !== false && job.deleted !== true && job.isDeleted !== true).length;
+    data.kpis["Current active vacancies"] = jobs.filter(isOpenForHiring).length;
     data.notes.push("Closures count approved live vacancies transitioning to closed, inactive or deactivated. Tracking starts with this Admin release; older closures have no reliable timestamp and are not backfilled.");
   } else if (tab === "hires") {
     const accepted = applications.filter((application) =>

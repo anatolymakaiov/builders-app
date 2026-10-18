@@ -356,11 +356,8 @@ class _AdminWebShellState extends State<AdminWebShell> {
                       'Trials',
                       'Direct Debits configured'
                     ]),
-                    _summaryGroup('Plans on account', counts, const [
-                      'Starter plans',
-                      'Growth plans',
-                      'Pro plans'
-                    ]),
+                    _summaryGroup('Plans on account', counts,
+                        const ['Starter plans', 'Growth plans', 'Pro plans']),
                     _summaryGroup('Attention', counts, const [
                       'Pending approval',
                       'Open reports',
@@ -1019,11 +1016,9 @@ class _AdminWebShellState extends State<AdminWebShell> {
                             return const LinearProgressIndicator();
                           }
                           final jobs = snapshot.data!
-                              .where((item) => const [
-                                    'active',
-                                    'published',
-                                    'open'
-                                  ].contains(item.data['status']))
+                              .where((item) =>
+                                  Job.fromFirestore(item.id, item.data)
+                                      .isOpenForHiring)
                               .toList();
                           if (jobs.isEmpty) {
                             return const Text('No active vacancies.');

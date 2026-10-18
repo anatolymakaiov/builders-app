@@ -651,10 +651,22 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return [
-      const JobListScreen(),
-      const MapScreen(),
-      const MyApplicationsScreen(),
-      const MyChatsScreen(),
+      JobListScreen(
+        onOpenOpportunities: openOpportunities,
+        notificationAction: workerNotificationAction(),
+      ),
+      MapScreen(
+        onOpenOpportunities: openOpportunities,
+        notificationAction: workerNotificationAction(),
+      ),
+      MyApplicationsScreen(
+        onOpenOpportunities: openOpportunities,
+        notificationAction: workerNotificationAction(),
+      ),
+      MyChatsScreen(
+        onOpenOpportunities: openOpportunities,
+        notificationAction: workerNotificationAction(),
+      ),
       WorkerProfileScreen(
         userId: userId!,
       ),
@@ -964,6 +976,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void openOpportunities() {
+    final uid = userId;
+    if (uid == null) return;
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WorkerOpportunitiesScreen(workerId: uid),
+        ));
+  }
+
+  Widget workerNotificationAction() => IconButton(
+        tooltip: 'Notifications',
+        onPressed: openNotifications,
+        icon: buildBadgeIcon(
+            Icons.notifications_outlined, _lastNotificationCount),
+      );
+
   /// 📌 MENU
   List<BottomNavigationBarItem> getMenuItems(
     int chatCount,
@@ -1136,29 +1165,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         if (!_showOnboardingTour &&
-                            !(role == "worker" && currentIndex == 4) &&
-                            !(role == "employer" && currentIndex == 4))
+                            role != 'worker' &&
+                            currentIndex != 4)
                           buildTopNotificationBell(notifCount),
-                        if (role == 'worker' &&
-                            currentIndex != 4 &&
-                            !_showOnboardingTour)
-                          Positioned(
-                            top: 0,
-                            right: 8,
-                            child: SafeArea(
-                              child: IconButton(
-                                tooltip: 'Opportunities',
-                                icon: const Icon(Icons.local_offer_outlined,
-                                    color: Colors.white),
-                                onPressed: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (_) =>
-                                            WorkerOpportunitiesScreen(
-                                                workerId: userId!))),
-                              ),
-                            ),
-                          ),
                         if (_showOnboardingTour)
                           _buildTourOverlay(items.length),
                       ],

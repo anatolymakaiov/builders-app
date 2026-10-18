@@ -78,6 +78,18 @@ test("vacancy closures use lifecycle events rather than current updatedAt", () =
   assert.equal(result.kpis["Current active vacancies"], 1);
 });
 
+test("current active KPI excludes a filled vacancy", () => {
+  const result = report({tab: "vacancies", period: "month", now,
+    jobs: [
+      {status: "active", moderationStatus: "approved", positions: 1,
+        filledPositions: 1},
+      {status: "active", moderationStatus: "approved", positions: 5,
+        filledPositions: 3},
+    ],
+  });
+  assert.equal(result.kpis["Current active vacancies"], 1);
+});
+
 test("incomplete users and oversized reports are not presented as complete", () => {
   assert.equal(completeUser({role: "worker", name: "A", profileComplete: false}), false);
   assert.equal(completeUser({role: "employer", companyName: "Co"}), true);

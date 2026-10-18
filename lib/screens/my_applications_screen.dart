@@ -15,7 +15,11 @@ import '../theme/stroyka_background.dart';
 import '../widgets/job_card.dart';
 
 class MyApplicationsScreen extends StatefulWidget {
-  const MyApplicationsScreen({super.key});
+  const MyApplicationsScreen(
+      {super.key, this.onOpenOpportunities, this.notificationAction});
+
+  final VoidCallback? onOpenOpportunities;
+  final Widget? notificationAction;
 
   @override
   State<MyApplicationsScreen> createState() => _MyApplicationsScreenState();
@@ -449,6 +453,16 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
         titleSpacing: 0,
         centerTitle: true,
         title: buildApplicationSectionToggle(context),
+        leading: widget.onOpenOpportunities == null
+            ? null
+            : IconButton(
+                tooltip: 'Opportunities',
+                icon: const Icon(Icons.local_offer_outlined),
+                onPressed: widget.onOpenOpportunities,
+              ),
+        actions: [
+          if (widget.notificationAction != null) widget.notificationAction!
+        ],
       ),
       body: StroykaScreenBody(
         child: Column(
@@ -938,25 +952,72 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
 
   Widget buildFilters() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-      child: Column(
-        children: [
-          filterDropdown(
-            label: "Status",
-            value: statusFilter,
-            items: const [
-              DropdownMenuItem(value: "all", child: Text("All")),
-              DropdownMenuItem(value: "review", child: Text("In review")),
-              DropdownMenuItem(
-                  value: "negotiation", child: Text("Negotiation")),
-              DropdownMenuItem(value: "offer", child: Text("Offer")),
-              DropdownMenuItem(value: "rejected", child: Text("Rejected")),
-              DropdownMenuItem(value: "hired", child: Text("Hired")),
-              DropdownMenuItem(value: "withdrawn", child: Text("Withdrawn")),
-            ],
-            onChanged: (value) => setState(() => statusFilter = value),
-          ),
-        ],
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          onPressed: () async {
+            var pending = statusFilter;
+            await showModalBottomSheet<void>(
+              context: context,
+              builder: (sheetContext) => StatefulBuilder(
+                builder: (sheetContext, updateSheet) => SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('Filter applications',
+                            style: Theme.of(context).textTheme.titleLarge),
+                        const SizedBox(height: 12),
+                        filterDropdown(
+                          label: 'Status',
+                          value: pending,
+                          items: const [
+                            DropdownMenuItem(value: 'all', child: Text('All')),
+                            DropdownMenuItem(
+                                value: 'review', child: Text('In review')),
+                            DropdownMenuItem(
+                                value: 'negotiation',
+                                child: Text('Negotiation')),
+                            DropdownMenuItem(
+                                value: 'offer', child: Text('Offer')),
+                            DropdownMenuItem(
+                                value: 'rejected', child: Text('Rejected')),
+                            DropdownMenuItem(
+                                value: 'hired', child: Text('Hired')),
+                            DropdownMenuItem(
+                                value: 'withdrawn', child: Text('Withdrawn')),
+                          ],
+                          onChanged: (value) =>
+                              updateSheet(() => pending = value),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(children: [
+                          TextButton(
+                            onPressed: () => updateSheet(() => pending = 'all'),
+                            child: const Text('Clear filters'),
+                          ),
+                          const Spacer(),
+                          FilledButton(
+                            onPressed: () {
+                              setState(() => statusFilter = pending);
+                              Navigator.pop(sheetContext);
+                            },
+                            child: const Text('Apply'),
+                          ),
+                        ]),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+          icon: const Icon(Icons.tune),
+          label: Text(statusFilter == 'all' ? 'Filter' : 'Filter (1)'),
+        ),
       ),
     );
   }
@@ -968,10 +1029,12 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     required ValueChanged<String> onChanged,
   }) {
     return DropdownButtonFormField<String>(
+      key: ValueKey('worker-status-$value'),
       initialValue: value,
       items: items,
       isExpanded: true,
       decoration: const InputDecoration(
+        labelText: 'Status',
         border: StroykaInputBorder(),
         contentPadding: EdgeInsets.symmetric(
           horizontal: 10,

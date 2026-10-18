@@ -422,7 +422,7 @@ class _WebSitesPageState extends State<WebSitesPage> {
                       style:
                           TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                   for (final job
-                      in vacancies.where((job) => job.isPubliclyVisible))
+                      in vacancies.where((job) => job.isOpenForHiring))
                     ListTile(
                       dense: true,
                       title: Text(job.displayTitle),

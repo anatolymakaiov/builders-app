@@ -25,6 +25,26 @@ class EmployerDashboardScreen extends StatefulWidget {
       _EmployerDashboardScreenState();
 }
 
+List<Job> mergeEmployerVisibleJobs({
+  required List<Job> publicJobs,
+  required List<Job> ownerJobs,
+}) {
+  final byId = <String, Job>{};
+  for (final job in publicJobs) {
+    byId[job.id] = job;
+  }
+  for (final job in ownerJobs) {
+    if (job.isOpenForHiring) byId[job.id] = job;
+  }
+  final jobs = byId.values.toList();
+  jobs.sort((a, b) {
+    final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    return bDate.compareTo(aDate);
+  });
+  return jobs;
+}
+
 class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
   static const int _jobsPerPage = 10;
 
@@ -601,28 +621,6 @@ class _EmployerDashboardScreenState extends State<EmployerDashboardScreen> {
         ),
       ),
     );
-  }
-
-  List<Job> mergeEmployerVisibleJobs({
-    required List<Job> publicJobs,
-    required List<Job> ownerJobs,
-  }) {
-    final byId = <String, Job>{};
-
-    for (final job in publicJobs) {
-      byId[job.id] = job;
-    }
-    for (final job in ownerJobs) {
-      byId[job.id] = job;
-    }
-
-    final jobs = byId.values.toList();
-    jobs.sort((a, b) {
-      final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      return bDate.compareTo(aDate);
-    });
-    return jobs;
   }
 
   @override

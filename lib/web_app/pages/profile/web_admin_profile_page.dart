@@ -1105,11 +1105,8 @@ class _WebAdminProfilePageState extends State<WebAdminProfilePage> {
     final totals = <String, int>{
       'Workers': count('users', (item) => item.data['role'] == 'worker'),
       'Employers': count('users', (item) => item.data['role'] == 'employer'),
-      'Active vacancies': count(
-          'jobs',
-          (item) =>
-              item.data['status'] == 'active' &&
-              item.data['moderationStatus'] == 'approved'),
+      'Active vacancies': count('jobs',
+          (item) => Job.fromFirestore(item.id, item.data).isOpenForHiring),
       'Pending vacancies': count(
           'jobs', (item) => item.data['moderationStatus'] == 'pending_review'),
       'Applications': count('applications'),

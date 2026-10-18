@@ -9,7 +9,6 @@ import '../services/application_activity_service.dart';
 import '../services/application_status_utils.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
-import '../theme/mobile_control_sizes.dart';
 
 class EmployerApplicationsScreen extends StatefulWidget {
   final String? initialJobId;
@@ -33,7 +32,113 @@ class _EmployerApplicationsScreenState
   Set<String> sites = {"all"};
   String selectedTrade = "all";
   String selectedSite = "all";
+  bool oldestFirst = false;
   int refreshTick = 0;
+
+  Future<void> openFilters() async {
+    var status = selectedStatus;
+    var trade = trades.contains(selectedTrade) ? selectedTrade : "all";
+    var site = sites.contains(selectedSite) ? selectedSite : "all";
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, updateSheet) => SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Filter applications',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  key: ValueKey('status-$status'),
+                  initialValue: status,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Status'),
+                  items: [
+                    ApplicationStatusUtils.allFilter,
+                    ApplicationStatusUtils.reviewFilter,
+                    ApplicationStatusUtils.negotiationFilter,
+                    ApplicationStatusUtils.offerFilter,
+                    ApplicationStatusUtils.rejectedFilter,
+                    ApplicationStatusUtils.hiredFilter,
+                    ApplicationStatusUtils.withdrawnFilter,
+                  ]
+                      .map((value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(value == 'all'
+                                ? 'All'
+                                : ApplicationStatusUtils.getStatusDisplayLabel(
+                                    value, 'employer')),
+                          ))
+                      .toList(),
+                  onChanged: (value) =>
+                      updateSheet(() => status = value ?? 'all'),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  key: ValueKey('site-$site'),
+                  initialValue: site,
+                  isExpanded: true,
+                  decoration:
+                      const InputDecoration(labelText: 'Site / Location'),
+                  items: sites
+                      .map((value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(value == 'all' ? 'All' : value),
+                          ))
+                      .toList(),
+                  onChanged: (value) =>
+                      updateSheet(() => site = value ?? 'all'),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  key: ValueKey('trade-$trade'),
+                  initialValue: trade,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Trade'),
+                  items: trades
+                      .map((value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(value == 'all' ? 'All' : value),
+                          ))
+                      .toList(),
+                  onChanged: (value) =>
+                      updateSheet(() => trade = value ?? 'all'),
+                ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  TextButton(
+                    onPressed: () => updateSheet(() {
+                      status = 'all';
+                      trade = 'all';
+                      site = 'all';
+                    }),
+                    child: const Text('Clear filters'),
+                  ),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        selectedStatus = status;
+                        selectedTrade = trade;
+                        selectedSite = site;
+                      });
+                      Navigator.pop(sheetContext);
+                    },
+                    child: const Text('Apply'),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -210,131 +315,43 @@ class _EmployerApplicationsScreenState
     }
 
     final employerId = user.uid;
+    final activeFilterCount = [selectedStatus, selectedTrade, selectedSite]
+        .where((value) => value != 'all')
+        .length;
 
     return Scaffold(
       appBar: AppBar(title: const Text("Applications")),
       body: StroykaScreenBody(
         child: Column(
           children: [
-            StroykaSurface(
-              margin: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final controlWidth = constraints.maxWidth >= 480
-                      ? (constraints.maxWidth - 16) / 3
-                      : (constraints.maxWidth - 8) / 2;
-                  return Wrap(spacing: 8, runSpacing: 8, children: [
-                    /// STATUS
-                    SizedBox(
-                      width: controlWidth,
-                      child: DropdownButtonFormField<String>(
-                        initialValue: selectedStatus,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          hintText: "Status",
-                          border: StroykaInputBorder(),
-                          isDense: true,
-                          constraints: BoxConstraints(
-                              minHeight: mobileCompactControlHeight),
-                          contentPadding: EdgeInsets.symmetric(
-                              horizontal: mobileCompactControlHorizontalPadding,
-                              vertical: mobileCompactControlVerticalPadding),
-                          filled: true,
-                          fillColor: Colors.white,
-                        ),
-                        items: [
-                          ApplicationStatusUtils.allFilter,
-                          ApplicationStatusUtils.reviewFilter,
-                          ApplicationStatusUtils.negotiationFilter,
-                          ApplicationStatusUtils.offerFilter,
-                          ApplicationStatusUtils.rejectedFilter,
-                          ApplicationStatusUtils.hiredFilter,
-                          ApplicationStatusUtils.withdrawnFilter,
-                        ]
-                            .map((e) => DropdownMenuItem(
-                                  value: e,
-                                  child: Text(e == "all"
-                                      ? "All"
-                                      : ApplicationStatusUtils
-                                          .getStatusDisplayLabel(
-                                              e, "employer")),
-                                ))
-                            .toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            selectedStatus = value!;
-                          });
-                        },
-                      ),
-                    ),
-
-                    /// TRADE
-                    SizedBox(
-                      width: controlWidth,
-                      child: DropdownButtonFormField<String>(
-                        initialValue: selectedTrade,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          hintText: "Trade",
-                          border: StroykaInputBorder(),
-                          isDense: true,
-                          constraints: BoxConstraints(
-                              minHeight: mobileCompactControlHeight),
-                          contentPadding: EdgeInsets.symmetric(
-                              horizontal: mobileCompactControlHorizontalPadding,
-                              vertical: mobileCompactControlVerticalPadding),
-                          filled: true,
-                          fillColor: Colors.white,
-                        ),
-                        items: trades
-                            .map((e) => DropdownMenuItem(
-                                  value: e,
-                                  child: Text(e == "all" ? "All" : e),
-                                ))
-                            .toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            selectedTrade = value!;
-                          });
-                        },
-                      ),
-                    ),
-
-                    /// SITE
-                    SizedBox(
-                      width: controlWidth,
-                      child: DropdownButtonFormField<String>(
-                        initialValue: selectedSite,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          hintText: "Site",
-                          border: StroykaInputBorder(),
-                          isDense: true,
-                          constraints: BoxConstraints(
-                              minHeight: mobileCompactControlHeight),
-                          contentPadding: EdgeInsets.symmetric(
-                              horizontal: mobileCompactControlHorizontalPadding,
-                              vertical: mobileCompactControlVerticalPadding),
-                          filled: true,
-                          fillColor: Colors.white,
-                        ),
-                        items: sites
-                            .map((e) => DropdownMenuItem(
-                                  value: e,
-                                  child: Text(e == "all" ? "All" : e),
-                                ))
-                            .toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            selectedSite = value!;
-                          });
-                        },
-                      ),
-                    ),
-                  ]);
-                },
-              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+              child: Row(children: [
+                OutlinedButton.icon(
+                  onPressed: openFilters,
+                  icon: const Icon(Icons.tune),
+                  label: Text(activeFilterCount == 0
+                      ? 'Filter'
+                      : 'Filter ($activeFilterCount)'),
+                ),
+                const SizedBox(width: 8),
+                PopupMenuButton<bool>(
+                  tooltip: 'Sort applications',
+                  onSelected: (value) => setState(() => oldestFirst = value),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: false, child: Text('Newest first')),
+                    PopupMenuItem(value: true, child: Text('Oldest first')),
+                  ],
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.sort),
+                      SizedBox(width: 6),
+                      Text('Sort'),
+                    ]),
+                  ),
+                ),
+              ]),
             ),
             Expanded(
               child: StreamBuilder<List<QueryDocumentSnapshot>>(
@@ -397,10 +414,11 @@ class _EmployerApplicationsScreenState
                   apps.sort((a, b) {
                     final aData = a.data() as Map<String, dynamic>;
                     final bData = b.data() as Map<String, dynamic>;
-                    return ApplicationStatusUtils.compareNewestFirst(
+                    final newest = ApplicationStatusUtils.compareNewestFirst(
                       aData,
                       bData,
                     );
+                    return oldestFirst ? -newest : newest;
                   });
 
                   if (apps.isEmpty) {

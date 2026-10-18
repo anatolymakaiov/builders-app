@@ -12,7 +12,11 @@ import '../theme/stroyka_background.dart';
 import '../widgets/app_cached_image.dart';
 
 class MyChatsScreen extends StatefulWidget {
-  const MyChatsScreen({super.key});
+  const MyChatsScreen(
+      {super.key, this.onOpenOpportunities, this.notificationAction});
+
+  final VoidCallback? onOpenOpportunities;
+  final Widget? notificationAction;
 
   @override
   State<MyChatsScreen> createState() => _MyChatsScreenState();
@@ -880,6 +884,13 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
       appBar: AppBar(
         title: const Text("My Chats"),
         actions: [
+          if (widget.notificationAction != null) widget.notificationAction!,
+          if (widget.onOpenOpportunities != null)
+            IconButton(
+              tooltip: 'Opportunities',
+              icon: const Icon(Icons.local_offer_outlined),
+              onPressed: widget.onOpenOpportunities,
+            ),
           IconButton(
             tooltip: searchOpen ? "Close search" : "Search chats",
             icon: Icon(searchOpen ? Icons.close : Icons.search),

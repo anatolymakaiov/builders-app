@@ -7,6 +7,47 @@ import 'package:test_app/screens/job_list_screen.dart';
 import 'package:test_app/widgets/smart_job_search.dart';
 
 void main() {
+  for (final width in [360.0, 390.0]) {
+    testWidgets('Jobs shell actions fit without overlap at ${width.toInt()}px',
+        (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = Size(width, 844);
+      addTearDown(() {
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+      });
+      var opportunitiesOpened = false;
+      await tester.pumpWidget(MaterialApp(
+        home: JobListScreen(
+          jobsStream: Stream.value(const <Job>[]),
+          savedJobsStream: Stream.value(<String>{}),
+          appliedJobsStream: Stream.value(<String>{}),
+          userIdProvider: () => 'worker-a',
+          lookupLocation: false,
+          onOpenOpportunities: () => opportunitiesOpened = true,
+          notificationAction: IconButton(
+            tooltip: 'Notifications',
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () {},
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final opportunity = find.byTooltip('Opportunities');
+      final notification = find.byTooltip('Notifications');
+      expect(opportunity, findsOneWidget);
+      expect(notification, findsOneWidget);
+      expect(tester.takeException(), isNull);
+      final titleRect = tester.getRect(find.text('Jobs'));
+      final opportunityRect = tester.getRect(opportunity);
+      final notificationRect = tester.getRect(notification);
+      expect(opportunityRect.right, lessThan(titleRect.left));
+      expect(titleRect.right, lessThan(notificationRect.left));
+      await tester.tap(opportunity);
+      expect(opportunitiesOpened, isTrue);
+    });
+  }
+
   testWidgets('Jobs search is compact and Ask STROYKA is in the app bar',
       (tester) async {
     tester.view.devicePixelRatio = 1;

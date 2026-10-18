@@ -32,6 +32,8 @@ class JobListScreen extends StatefulWidget {
     this.refreshAction,
     this.userIdProvider,
     this.lookupLocation = true,
+    this.onOpenOpportunities,
+    this.notificationAction,
   });
 
   final Stream<List<Job>>? jobsStream;
@@ -40,6 +42,8 @@ class JobListScreen extends StatefulWidget {
   final Future<void> Function()? refreshAction;
   final String? Function()? userIdProvider;
   final bool lookupLocation;
+  final VoidCallback? onOpenOpportunities;
+  final Widget? notificationAction;
 
   @override
   State<JobListScreen> createState() => _JobListScreenState();
@@ -309,20 +313,34 @@ class _JobListScreenState extends State<JobListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        flexibleSpace: SafeArea(
-          child: Center(
-            child: Text('Jobs',
-                style: Theme.of(context).appBarTheme.titleTextStyle),
-          ),
-        ),
-        leading: AskStroykaFeature.enabled
-            ? IconButton(
-                key: const Key('ask-stroyka-mobile'),
-                tooltip: 'Ask STROYKA',
-                icon: const Icon(Icons.auto_awesome_outlined),
-                onPressed: _openAskStroyka,
-              )
-            : null,
+        centerTitle: true,
+        title: const Text('Jobs'),
+        leadingWidth: widget.onOpenOpportunities == null
+            ? null
+            : (AskStroykaFeature.enabled ? 112 : 56),
+        leading: widget.onOpenOpportunities == null
+            ? (AskStroykaFeature.enabled
+                ? IconButton(
+                    key: const Key('ask-stroyka-mobile'),
+                    tooltip: 'Ask STROYKA',
+                    icon: const Icon(Icons.auto_awesome_outlined),
+                    onPressed: _openAskStroyka,
+                  )
+                : null)
+            : Row(children: [
+                IconButton(
+                  tooltip: 'Opportunities',
+                  icon: const Icon(Icons.local_offer_outlined),
+                  onPressed: widget.onOpenOpportunities,
+                ),
+                if (AskStroykaFeature.enabled)
+                  IconButton(
+                    key: const Key('ask-stroyka-mobile'),
+                    tooltip: 'Ask STROYKA',
+                    icon: const Icon(Icons.auto_awesome_outlined),
+                    onPressed: _openAskStroyka,
+                  ),
+              ]),
         actions: [
           IconButton(
             tooltip: "Subscribe to jobs",
@@ -342,7 +360,7 @@ class _JobListScreenState extends State<JobListScreen> {
               });
             },
           ),
-          const SizedBox(width: 56),
+          if (widget.notificationAction != null) widget.notificationAction!,
         ],
       ),
       body: StroykaScreenBody(

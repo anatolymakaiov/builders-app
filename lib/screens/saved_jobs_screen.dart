@@ -27,7 +27,7 @@ class SavedJobsScreen extends StatelessWidget {
         if (data == null) continue;
 
         final job = Job.fromFirestore(doc.id, data);
-        if (!job.isPubliclyVisible) continue;
+        if (!job.isOpenForHiring) continue;
 
         jobs.add(job);
       } on FirebaseException catch (error) {

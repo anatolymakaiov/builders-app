@@ -39,6 +39,17 @@ class OfferAcceptanceService {
     return int.tryParse(value?.toString() ?? "") ?? 0;
   }
 
+  static bool slotAlreadyApplied(
+    Map<String, dynamic> application,
+    Map<String, dynamic> job,
+    String applicationId,
+  ) {
+    final appliedIds = job['slotDecrementApplicationIds'];
+    return application['slotDecrementApplied'] == true ||
+        (appliedIds is List &&
+            appliedIds.map((id) => id.toString()).contains(applicationId));
+  }
+
   static List<String> employerRecipients(Map<String, dynamic> data) {
     final employerId = data["employerId"]?.toString();
     if (employerId == null || employerId.isEmpty) return [];
@@ -101,12 +112,8 @@ class OfferAcceptanceService {
         if (!jobSnap.exists) throw Exception("job_not_found");
 
         final jobData = jobSnap.data() as Map<String, dynamic>;
-        final appliedIdsRaw = jobData["slotDecrementApplicationIds"];
-        final appliedIds = appliedIdsRaw is List
-            ? appliedIdsRaw.map((id) => id.toString()).toSet()
-            : <String>{};
-        final alreadyApplied = appData["slotDecrementApplied"] == true ||
-            appliedIds.contains(applicationId);
+        final alreadyApplied =
+            slotAlreadyApplied(appData, jobData, applicationId);
         if (alreadyApplied) {
           debugPrint(
             "SLOT_DECREMENT_SKIPPED "

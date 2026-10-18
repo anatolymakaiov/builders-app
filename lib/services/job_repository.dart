@@ -102,7 +102,7 @@ class JobRepository {
       }
 
       final job = Job.fromFirestore(doc.id, data);
-      if (requirePublicVisibility && !job.isPubliclyVisible) {
+      if (requirePublicVisibility && !job.isOpenForHiring) {
         filteredDeletedJobsCount += 1;
         continue;
       }

@@ -270,7 +270,7 @@ class WebAccountDataService {
         final data = jobDoc.data();
         if (!jobDoc.exists || data == null) continue;
         final job = Job.fromFirestore(jobDoc.id, data);
-        if (!job.isPubliclyVisible) continue;
+        if (!job.isOpenForHiring) continue;
         jobs.add(job.copyWith(companyLogo: ''));
       } catch (error) {
         debugPrint('WEB SAVED JOB SKIPPED jobId=${saved.id} error=$error');

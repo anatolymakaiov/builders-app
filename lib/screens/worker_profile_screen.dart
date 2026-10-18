@@ -373,7 +373,7 @@ class WorkerProfileScreen extends StatelessWidget {
     if (phone.isNotEmpty) {
       rows.add(
         Padding(
-          padding: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.only(left: 30, bottom: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -400,7 +400,7 @@ class WorkerProfileScreen extends StatelessWidget {
     if (extraPhones.isNotEmpty) {
       rows.add(
         Padding(
-          padding: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.only(left: 30, bottom: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -950,9 +950,9 @@ class WorkerProfileScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (isMyProfile) ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: 7),
               SizedBox(
-                width: double.infinity,
+                width: 210,
                 height: 55,
                 child: OutlinedButton.icon(
                   onPressed: () async {
@@ -966,7 +966,7 @@ class WorkerProfileScreen extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 20),
+            const SizedBox(height: 7),
             const Text(
               "Worker Teams",
               style: TextStyle(

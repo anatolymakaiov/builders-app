@@ -230,6 +230,10 @@ class Job {
   int get remainingPositions =>
       (positions - filledPositions).clamp(0, positions);
 
+  bool get isFullyFilled => remainingPositions == 0;
+
+  bool get isOpenForHiring => isPubliclyVisible && !isFullyFilled;
+
   bool get isClosed {
     final normalizedStatus = status.trim().toLowerCase();
     return normalizedStatus == "completed" ||

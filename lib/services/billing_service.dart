@@ -5,6 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import 'notification_service.dart';
+import '../models/job.dart';
 
 class BillingLimitException implements Exception {
   final String message;
@@ -976,11 +977,8 @@ class BillingService {
 
     return snapshot.docs.where((doc) {
       final data = doc.data();
-      final status = data["status"]?.toString().trim().toLowerCase() ?? "";
-      return status.isEmpty ||
-          status == "active" ||
-          status == "published" ||
-          status == "open";
+      return data['billingSuspended'] != true &&
+          Job.fromFirestore(doc.id, data).isOpenForHiring;
     }).length;
   }
 
@@ -995,11 +993,8 @@ class BillingService {
         .map((snapshot) {
       return snapshot.docs.where((doc) {
         final data = doc.data();
-        final status = data["status"]?.toString().trim().toLowerCase() ?? "";
-        return status.isEmpty ||
-            status == "active" ||
-            status == "published" ||
-            status == "open";
+        return data['billingSuspended'] != true &&
+            Job.fromFirestore(doc.id, data).isOpenForHiring;
       }).length;
     });
   }

@@ -2593,7 +2593,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                                   margin: const EdgeInsets.only(bottom: 10),
                                   padding: const EdgeInsets.all(14),
                                   child: Text(
-                                    "${jobs.length} active ${jobs.length == 1 ? "vacancy" : "vacancies"}",
+                                    "${jobs.where((job) => job.isOpenForHiring).length} active ${jobs.where((job) => job.isOpenForHiring).length == 1 ? "vacancy" : "vacancies"}",
                                     style: const TextStyle(
                                       color: AppColors.ink,
                                       fontWeight: FontWeight.w900,
@@ -2797,12 +2797,13 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         status == "open";
 
     if (!activeStatus || job.isClosed) return false;
-    return job.isPubliclyVisible;
+    return job.isOpenForHiring;
   }
 
   String _companyJobStatusLabel(Job job) {
     if (job.moderationStatus == "pending_review") return "PENDING";
     if (job.moderationStatus == "rejected") return "REJECTED";
+    if (job.isFullyFilled) return "FILLED";
     return job.isClosed ? "INACTIVE" : "ACTIVE";
   }
 
@@ -2811,7 +2812,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       return AppColors.blueprintLine;
     }
     if (job.moderationStatus == "rejected") return AppColors.danger;
-    return job.isClosed ? AppColors.warning : AppColors.success;
+    return job.isClosed || job.isFullyFilled
+        ? AppColors.warning
+        : AppColors.success;
   }
 
   @override
