@@ -26,6 +26,11 @@ class VoiceClip {
   final Duration duration;
 }
 
+bool isUsableVoiceClip(VoiceClip? clip) =>
+    clip != null &&
+    clip.bytes.length >= 128 &&
+    clip.duration >= const Duration(milliseconds: 500);
+
 abstract class VoiceCaptureService {
   Future<VoicePermission> permission({bool request = false});
   Future<void> start();
@@ -52,6 +57,11 @@ class FirebaseSpeechTranscriptionService implements SpeechTranscriptionService {
       'audioBase64': base64Encode(clip.bytes),
       'mimeType': 'audio/mp4',
       'durationMs': clip.duration.inMilliseconds,
+      'platform': defaultTargetPlatform == TargetPlatform.android
+          ? 'android'
+          : defaultTargetPlatform == TargetPlatform.iOS
+              ? 'ios'
+              : 'other',
       if (mode != null) 'mode': mode,
     });
     return ((response.data as Map)['text'] ?? '').toString().trim();
@@ -206,16 +216,14 @@ class AskStroykaVoiceController extends ChangeNotifier {
     try {
       final clip = await capture.stop();
       if (_closed) return;
-      if (clip == null ||
-          clip.bytes.isEmpty ||
-          clip.duration < const Duration(milliseconds: 500)) {
+      if (!isUsableVoiceClip(clip)) {
         phase = VoicePhase.error;
-        error = "I didn't catch that. Hold the button and try again.";
+        error = 'Recording was too short. Hold the microphone and try again.';
         notifyListeners();
         return;
       }
       _turns++;
-      final transcript = (await transcription.transcribe(clip)).trim();
+      final transcript = (await transcription.transcribe(clip!)).trim();
       if (_closed) return;
       if (transcript.isEmpty) {
         phase = VoicePhase.error;

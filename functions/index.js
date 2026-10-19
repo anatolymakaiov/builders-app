@@ -52,6 +52,16 @@ exports.transcribeAskStroykaVoice = onCall({secrets: [askStroykaApiKey],
   timeoutSeconds: 60, memory: "256MiB"}, async (request) => {
   const validation = validateVoiceRequest(request.auth, request.data);
   if (validation.problem) {
+    if (validation.problem === "invalid-argument") {
+      console.warn("ASK_STROYKA_VOICE_REJECTED", {stage: "audio_validation",
+        platform: request.data?.platform === "android" ? "android" :
+          request.data?.platform === "ios" ? "ios" : "unknown",
+        encodedLength: typeof request.data?.audioBase64 === "string" ?
+          request.data.audioBase64.length : 0,
+        mimeType: request.data?.mimeType === "audio/mp4" ? "audio/mp4" : "other",
+        durationMs: Number.isInteger(request.data?.durationMs) ?
+          request.data.durationMs : null});
+    }
     throw new HttpsError(validation.problem,
       validation.problem === "unauthenticated" ? "Sign in required." :
         "Record a supported voice request.");
@@ -94,8 +104,15 @@ exports.transcribeAskStroykaVoice = onCall({secrets: [askStroykaApiKey],
       latencyMs: Date.now() - started, durationMs: validation.durationMs});
     return {text};
   } catch (error) {
+    const reason = askFailureCategory(error);
     console.warn("ASK_STROYKA_VOICE_FAILED", {latencyMs: Date.now() - started,
-      reason: askFailureCategory(error)});
+      reason});
+    if (reason === "provider_http_400") {
+      throw new HttpsError("invalid-argument", "Record a supported voice request.");
+    }
+    if (reason === "provider_http_413" || reason === "provider_http_429") {
+      throw new HttpsError("resource-exhausted", "Please try again later.");
+    }
     throw new HttpsError("unavailable", "Voice search is temporarily unavailable.");
   }
 });

@@ -40,6 +40,26 @@ test("voice request requires auth and valid bounded audio", () => {
   }
 });
 
+test("extended MP4 boxes from a finalized recorder remain valid", () => {
+  const regular = exampleMp4();
+  const extended = Buffer.concat([
+    regular.subarray(0, 16),
+    Buffer.from([0, 0, 0, 1, 0x6d, 0x6f, 0x6f, 0x76,
+      0, 0, 0, 0, 0, 0, 0, 44]),
+    regular.subarray(24, 52),
+    regular.subarray(52),
+  ]);
+  assert.equal(validateVoiceRequest({uid: "worker"},
+    {...data, audioBase64: extended.toString("base64")}).problem, undefined);
+});
+
+test("MP4 duration is authoritative when Android stop adds wall time", () => {
+  const result = validateVoiceRequest({uid: "worker"},
+    {...data, durationMs: 6000});
+  assert.equal(result.problem, undefined);
+  assert.equal(result.durationMs, 2000);
+});
+
 test("employer dictation alone permits a 60-second clip", () => {
   const employerClip = {audioBase64: exampleMp4(59000).toString("base64"),
     mimeType: "audio/mp4", durationMs: 59000, mode: "employer_dictation"};

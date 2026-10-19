@@ -14,15 +14,21 @@ function mp4DurationMs(audio) {
   function boxes(start, end) {
     let offset = start;
     while (offset + 8 <= end) {
-      const size = audio.readUInt32BE(offset);
-      if (size < 8 || offset + size > end) return null;
+      const declaredSize = audio.readUInt32BE(offset);
+      const headerSize = declaredSize === 1 ? 16 : 8;
+      if (offset + headerSize > end) return null;
+      const size = declaredSize === 0 ? end - offset :
+        declaredSize === 1 ? Number(audio.readBigUInt64BE(offset + 8)) :
+          declaredSize;
+      if (!Number.isSafeInteger(size) || size < headerSize ||
+          offset + size > end) return null;
       const type = audio.toString("ascii", offset + 4, offset + 8);
       if (type === "moov") {
-        const duration = boxes(offset + 8, offset + size);
+        const duration = boxes(offset + headerSize, offset + size);
         if (duration !== null) return duration;
       }
       if (type === "mvhd") {
-        const payload = offset + 8;
+        const payload = offset + headerSize;
         const version = audio[payload];
         const scaleAt = payload + (version === 0 ? 12 : 20);
         const durationAt = payload + (version === 0 ? 16 : 24);
@@ -59,13 +65,15 @@ function validateVoiceRequest(auth, data) {
   if (audio.length < 128 || audio.length > MAX_AUDIO_BYTES) {
     return {problem: "invalid-argument"};
   }
-  const actualDurationMs = mp4DurationMs(audio);
-  if (actualDurationMs === null || actualDurationMs < 500 ||
-      actualDurationMs > maxDuration ||
-      Math.abs(actualDurationMs - data.durationMs) > 3000) {
+  if (audio.toString("ascii", 4, 8) !== "ftyp") {
     return {problem: "invalid-argument"};
   }
-  return {audio, durationMs: data.durationMs};
+  const actualDurationMs = mp4DurationMs(audio);
+  if (actualDurationMs === null || actualDurationMs < 500 ||
+      actualDurationMs > maxDuration) {
+    return {problem: "invalid-argument"};
+  }
+  return {audio, durationMs: actualDurationMs};
 }
 
 async function transcribeWithOpenAI({apiKey, audio, fetcher = fetch}) {

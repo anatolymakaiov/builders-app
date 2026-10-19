@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/services/ask_stroyka_service.dart';
 import 'package:test_app/services/ask_stroyka_voice.dart';
+import 'package:test_app/services/native_voice_capture.dart';
 import 'package:test_app/widgets/ask_stroyka_voice_sheet.dart';
 
 class FakeCapture implements VoiceCaptureService {
@@ -104,6 +106,55 @@ AskStroykaVoiceController controller(
     );
 
 void main() {
+  test('finalized audio rejects missing, empty, and invalid files', () async {
+    final directory = await Directory.systemTemp.createTemp('stroyka-voice-');
+    try {
+      final path = '${directory.path}/voice.m4a';
+      expect(await readFinalizedVoiceClip(path, const Duration(seconds: 2)),
+          isNull);
+      await File(path).writeAsBytes([]);
+      expect(await readFinalizedVoiceClip(path, const Duration(seconds: 2)),
+          isNull);
+      await File(path).writeAsBytes(List.filled(512, 0));
+      expect(await readFinalizedVoiceClip(path, const Duration(seconds: 2)),
+          isNull);
+      final validMp4 = Uint8List(512);
+      final header = ByteData.sublistView(validMp4);
+      header.setUint32(0, 16);
+      validMp4.setRange(4, 8, 'ftyp'.codeUnits);
+      header.setUint32(16, 36);
+      validMp4.setRange(20, 24, 'moov'.codeUnits);
+      header.setUint32(24, 28);
+      validMp4.setRange(28, 32, 'mvhd'.codeUnits);
+      header.setUint32(52, 460);
+      validMp4.setRange(56, 60, 'mdat'.codeUnits);
+      await File(path).writeAsBytes(validMp4);
+      expect(
+          await readFinalizedVoiceClip(path, const Duration(milliseconds: 200)),
+          isNull);
+      expect(
+          (await readFinalizedVoiceClip(path, const Duration(seconds: 1)))
+              ?.bytes
+              .length,
+          512);
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('short or empty capture never starts transcription', () async {
+    final capture = FakeCapture()
+      ..clip = VoiceClip(Uint8List(0), const Duration(seconds: 1));
+    final speech = FakeSpeech();
+    final voice = controller(capture, speech, FakeInterpreter());
+    await voice.press();
+    await voice.release();
+    expect(voice.phase, VoicePhase.error);
+    expect(speech.calls, 0);
+    expect(voice.error, contains('too short'));
+    voice.dispose();
+  });
+
   test('voice callable failures identify the stage without provider details',
       () {
     expect(

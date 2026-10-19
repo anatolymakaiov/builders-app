@@ -450,9 +450,7 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 0,
-        centerTitle: true,
-        title: buildApplicationSectionToggle(context),
+        title: const Text('Applications'),
         leading: widget.onOpenOpportunities == null
             ? null
             : IconButton(
@@ -461,13 +459,22 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
                 onPressed: widget.onOpenOpportunities,
               ),
         actions: [
-          if (widget.notificationAction != null) widget.notificationAction!
+          if (widget.notificationAction != null) widget.notificationAction!,
+          IconButton(
+            tooltip: 'Filter applications',
+            onPressed: openFilters,
+            icon: Badge(
+              isLabelVisible: statusFilter != 'all',
+              smallSize: 7,
+              child: const Icon(Icons.filter_list),
+            ),
+          ),
         ],
       ),
       body: StroykaScreenBody(
         child: Column(
           children: [
-            buildFilters(),
+            buildApplicationSectionToggle(context),
 
             /// 🔥 LIST
             Expanded(
@@ -689,14 +696,17 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
       );
     }
 
-    return Center(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          tab(value: "single", label: "Single"),
-          const SizedBox(width: 28),
-          tab(value: "team", label: "Team"),
-        ],
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 4),
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            tab(value: "single", label: "Single"),
+            const SizedBox(width: 28),
+            tab(value: "team", label: "Team"),
+          ],
+        ),
       ),
     );
   }
@@ -950,73 +960,56 @@ class _MyApplicationsScreenState extends State<MyApplicationsScreen> {
     });
   }
 
-  Widget buildFilters() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          onPressed: () async {
-            var pending = statusFilter;
-            await showModalBottomSheet<void>(
-              context: context,
-              builder: (sheetContext) => StatefulBuilder(
-                builder: (sheetContext, updateSheet) => SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text('Filter applications',
-                            style: Theme.of(context).textTheme.titleLarge),
-                        const SizedBox(height: 12),
-                        filterDropdown(
-                          label: 'Status',
-                          value: pending,
-                          items: const [
-                            DropdownMenuItem(value: 'all', child: Text('All')),
-                            DropdownMenuItem(
-                                value: 'review', child: Text('In review')),
-                            DropdownMenuItem(
-                                value: 'negotiation',
-                                child: Text('Negotiation')),
-                            DropdownMenuItem(
-                                value: 'offer', child: Text('Offer')),
-                            DropdownMenuItem(
-                                value: 'rejected', child: Text('Rejected')),
-                            DropdownMenuItem(
-                                value: 'hired', child: Text('Hired')),
-                            DropdownMenuItem(
-                                value: 'withdrawn', child: Text('Withdrawn')),
-                          ],
-                          onChanged: (value) =>
-                              updateSheet(() => pending = value),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(children: [
-                          TextButton(
-                            onPressed: () => updateSheet(() => pending = 'all'),
-                            child: const Text('Clear filters'),
-                          ),
-                          const Spacer(),
-                          FilledButton(
-                            onPressed: () {
-                              setState(() => statusFilter = pending);
-                              Navigator.pop(sheetContext);
-                            },
-                            child: const Text('Apply'),
-                          ),
-                        ]),
-                      ],
-                    ),
-                  ),
+  Future<void> openFilters() async {
+    var pending = statusFilter;
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, updateSheet) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Filter applications',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                filterDropdown(
+                  label: 'Status',
+                  value: pending,
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('All')),
+                    DropdownMenuItem(value: 'review', child: Text('In review')),
+                    DropdownMenuItem(
+                        value: 'negotiation', child: Text('Negotiation')),
+                    DropdownMenuItem(value: 'offer', child: Text('Offer')),
+                    DropdownMenuItem(
+                        value: 'rejected', child: Text('Rejected')),
+                    DropdownMenuItem(value: 'hired', child: Text('Hired')),
+                    DropdownMenuItem(
+                        value: 'withdrawn', child: Text('Withdrawn')),
+                  ],
+                  onChanged: (value) => updateSheet(() => pending = value),
                 ),
-              ),
-            );
-          },
-          icon: const Icon(Icons.tune),
-          label: Text(statusFilter == 'all' ? 'Filter' : 'Filter (1)'),
+                const SizedBox(height: 12),
+                Row(children: [
+                  TextButton(
+                    onPressed: () => updateSheet(() => pending = 'all'),
+                    child: const Text('Clear filters'),
+                  ),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: () {
+                      setState(() => statusFilter = pending);
+                      Navigator.pop(sheetContext);
+                    },
+                    child: const Text('Apply'),
+                  ),
+                ]),
+              ],
+            ),
+          ),
         ),
       ),
     );

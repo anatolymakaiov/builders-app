@@ -320,39 +320,32 @@ class _EmployerApplicationsScreenState
         .length;
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Applications")),
+      appBar: AppBar(
+        title: const Text("Applications"),
+        actions: [
+          IconButton(
+            tooltip: 'Filter applications',
+            onPressed: openFilters,
+            icon: Badge(
+              isLabelVisible: activeFilterCount > 0,
+              smallSize: 7,
+              child: const Icon(Icons.filter_list),
+            ),
+          ),
+          PopupMenuButton<bool>(
+            tooltip: 'Sort applications',
+            icon: const Icon(Icons.sort),
+            onSelected: (value) => setState(() => oldestFirst = value),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: false, child: Text('Newest first')),
+              PopupMenuItem(value: true, child: Text('Oldest first')),
+            ],
+          ),
+        ],
+      ),
       body: StroykaScreenBody(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-              child: Row(children: [
-                OutlinedButton.icon(
-                  onPressed: openFilters,
-                  icon: const Icon(Icons.tune),
-                  label: Text(activeFilterCount == 0
-                      ? 'Filter'
-                      : 'Filter ($activeFilterCount)'),
-                ),
-                const SizedBox(width: 8),
-                PopupMenuButton<bool>(
-                  tooltip: 'Sort applications',
-                  onSelected: (value) => setState(() => oldestFirst = value),
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: false, child: Text('Newest first')),
-                    PopupMenuItem(value: true, child: Text('Oldest first')),
-                  ],
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.sort),
-                      SizedBox(width: 6),
-                      Text('Sort'),
-                    ]),
-                  ),
-                ),
-              ]),
-            ),
             Expanded(
               child: StreamBuilder<List<QueryDocumentSnapshot>>(
                 key: ValueKey("employer-applications-$refreshTick"),
