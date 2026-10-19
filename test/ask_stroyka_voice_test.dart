@@ -104,6 +104,23 @@ AskStroykaVoiceController controller(
     );
 
 void main() {
+  test('voice callable failures identify the stage without provider details',
+      () {
+    expect(
+        voiceCallableFailureMessage(
+            'invalid-argument', VoicePhase.transcribing),
+        contains('recording'));
+    expect(voiceCallableFailureMessage('unavailable', VoicePhase.interpreting),
+        contains('interpretation'));
+    expect(
+        voiceCallableFailureMessage('unauthenticated', VoicePhase.transcribing),
+        contains('Sign in'));
+    expect(
+        voiceCallableFailureMessage(
+            'resource-exhausted', VoicePhase.transcribing),
+        contains('limit'));
+  });
+
   test('Russian voice transcript reaches canonical search confirmation',
       () async {
     final speech = FakeSpeech()

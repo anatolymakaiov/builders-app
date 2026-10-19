@@ -73,7 +73,8 @@ void main() {
 
   test('profile-filled request needs no questionnaire', () async {
     final session = AiAssistantSession(
-        interpreter: _FakeInterpreter((_) => result(trade: 'dryliner')));
+        interpreter: _FakeInterpreter((_) => result(trade: 'dryliner')),
+        clock: () => DateTime(2026, 10, 10));
     final turn = await session.send('Find me work');
     expect(turn.readyToSearch, isTrue);
     expect(turn.question, isNull);
@@ -118,7 +119,8 @@ void main() {
   test('fixer, dry liner and board fixer use existing taxonomy', () async {
     for (final alias in ['fixer', 'dry liner', 'board fixer']) {
       final session = AiAssistantSession(
-          interpreter: _FakeInterpreter((_) => result(trade: alias)));
+          interpreter: _FakeInterpreter((_) => result(trade: alias)),
+          clock: () => DateTime(2026, 10, 10));
       expect((await session.send(alias)).intent!.tradeId, 'dryliner');
     }
   });
@@ -258,7 +260,11 @@ void main() {
               body: Builder(
         builder: (context) => TextButton(
           onPressed: () => showAskStroyka(context,
-              interpreter: _FakeInterpreter((_) => result())),
+              interpreter: _FakeInterpreter((_) => result(
+                  date: DateTime.now()
+                      .add(const Duration(days: 1))
+                      .toIso8601String()
+                      .substring(0, 10)))),
           child: const Text('Open'),
         ),
       ))));

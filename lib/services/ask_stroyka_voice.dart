@@ -58,6 +58,28 @@ class FirebaseSpeechTranscriptionService implements SpeechTranscriptionService {
   }
 }
 
+String voiceCallableFailureMessage(String code, VoicePhase stage) {
+  switch (code) {
+    case 'unauthenticated':
+      return 'Your session has expired. Sign in again to use voice search.';
+    case 'permission-denied':
+      return 'Voice search is not available for this account.';
+    case 'invalid-argument':
+      return stage == VoicePhase.transcribing
+          ? 'That recording could not be processed. Record it again.'
+          : 'I could not understand that search. Try rephrasing it.';
+    case 'resource-exhausted':
+      return 'Voice search limit reached. Try again later.';
+    case 'deadline-exceeded':
+    case 'unavailable':
+      return stage == VoicePhase.transcribing
+          ? 'Voice transcription is temporarily unavailable. Try again later.'
+          : 'Job search interpretation is temporarily unavailable. Try again later.';
+    default:
+      return 'Voice search could not connect. Try again or use normal job search.';
+  }
+}
+
 class AskStroykaVoiceController extends ChangeNotifier {
   AskStroykaVoiceController({
     required this.capture,
@@ -211,11 +233,15 @@ class AskStroykaVoiceController extends ChangeNotifier {
           turn!.readyToSearch ? VoicePhase.confirming : VoicePhase.clarifying;
       _renewExpiry();
       notifyListeners();
-    } catch (_) {
+    } catch (failure) {
       if (_closed) return;
+      final stage = phase;
       phase = VoicePhase.error;
-      error =
-          'Voice search is temporarily unavailable. Try again or use normal job search.';
+      error = failure is FirebaseFunctionsException
+          ? voiceCallableFailureMessage(failure.code, stage)
+          : stage == VoicePhase.interpreting
+              ? 'I could not interpret that search. Try rephrasing it.'
+              : 'Voice search could not connect. Try again or use normal job search.';
       notifyListeners();
     }
   }

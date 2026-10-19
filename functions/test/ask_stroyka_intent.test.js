@@ -71,6 +71,8 @@ test("natural dates use the UK day during British Summer Time", () => {
 test("failure logging categorizes errors without exposing provider details", () => {
   assert.equal(failureCategory(Error("Assistant provider status 400")),
     "provider_http_400");
+  assert.equal(failureCategory(Error("Transcription provider status 429")),
+    "provider_http_429");
   assert.equal(failureCategory(Error("Invalid assistant date")),
     "invalid_structured_output");
   assert.equal(failureCategory(Error("secret text supplied by provider")),

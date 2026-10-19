@@ -147,7 +147,7 @@ function responseText(payload) {
 
 function failureCategory(error) {
   const message = error?.message || "";
-  const status = /^Assistant provider status (\d{3})$/.exec(message);
+  const status = /^(?:Assistant|Transcription) provider status (\d{3})$/.exec(message);
   if (status) return `provider_http_${status[1]}`;
   if (message.startsWith("Invalid assistant") ||
       message === "Unexpected assistant fields") return "invalid_structured_output";
