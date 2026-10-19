@@ -214,7 +214,16 @@ class AskStroykaVoiceController extends ChangeNotifier {
     phase = VoicePhase.transcribing;
     if (!_disposed) notifyListeners();
     try {
-      final clip = await capture.stop();
+      VoiceClip? clip;
+      try {
+        clip = await capture.stop();
+      } catch (_) {
+        if (_closed) return;
+        phase = VoicePhase.error;
+        error = 'That recording could not be processed. Record it again.';
+        notifyListeners();
+        return;
+      }
       if (_closed) return;
       if (!isUsableVoiceClip(clip)) {
         phase = VoicePhase.error;

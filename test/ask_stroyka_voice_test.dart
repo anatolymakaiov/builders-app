@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:record/record.dart';
 import 'package:test_app/services/ask_stroyka_service.dart';
 import 'package:test_app/services/ask_stroyka_voice.dart';
 import 'package:test_app/services/native_voice_capture.dart';
@@ -35,12 +36,39 @@ class FakeCapture implements VoiceCaptureService {
   Future<void> dispose() async => disposed = true;
 }
 
+class FileWritingRecorder implements AudioRecorder {
+  FileWritingRecorder(this.audio);
+
+  final List<int> audio;
+  String? path;
+
+  @override
+  Future<void> start(RecordConfig config, {required String path}) async {
+    this.path = path;
+    await File(path).writeAsBytes(audio);
+  }
+
+  @override
+  Future<String?> stop() async => path;
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 class DelayedPermissionCapture extends FakeCapture {
   final Completer<VoicePermission> permissionResult = Completer();
 
   @override
   Future<VoicePermission> permission({bool request = false}) =>
       permissionResult.future;
+}
+
+class FailingStopCapture extends FakeCapture {
+  @override
+  Future<VoiceClip?> stop() async => throw const FileSystemException();
 }
 
 class FakeSpeech implements SpeechTranscriptionService {
@@ -106,6 +134,36 @@ AskStroykaVoiceController controller(
     );
 
 void main() {
+  test('finalized recording is read before its temporary file is deleted',
+      () async {
+    final directory = await Directory.systemTemp.createTemp('stroyka-voice-');
+    final validMp4 = Uint8List(512);
+    final header = ByteData.sublistView(validMp4);
+    header.setUint32(0, 16);
+    validMp4.setRange(4, 8, 'ftyp'.codeUnits);
+    header.setUint32(16, 36);
+    validMp4.setRange(20, 24, 'moov'.codeUnits);
+    header.setUint32(24, 28);
+    validMp4.setRange(28, 32, 'mvhd'.codeUnits);
+    header.setUint32(52, 460);
+    validMp4.setRange(56, 60, 'mdat'.codeUnits);
+    final recorder = FileWritingRecorder(validMp4);
+    final capture = NativeVoiceCaptureService(
+      recorder: recorder,
+      temporaryDirectory: () async => directory,
+    );
+    try {
+      await capture.start();
+      await Future<void>.delayed(const Duration(milliseconds: 510));
+      final clip = await capture.stop();
+      expect(clip?.bytes, validMp4);
+      expect(await File(recorder.path!).exists(), isFalse);
+    } finally {
+      await capture.dispose();
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('finalized audio rejects missing, empty, and invalid files', () async {
     final directory = await Directory.systemTemp.createTemp('stroyka-voice-');
     try {
@@ -152,6 +210,18 @@ void main() {
     expect(voice.phase, VoicePhase.error);
     expect(speech.calls, 0);
     expect(voice.error, contains('too short'));
+    voice.dispose();
+  });
+
+  test('local recording failure is not reported as a connection failure',
+      () async {
+    final speech = FakeSpeech();
+    final voice = controller(FailingStopCapture(), speech, FakeInterpreter());
+    await voice.press();
+    await voice.release();
+    expect(voice.phase, VoicePhase.error);
+    expect(voice.error, contains('recording could not be processed'));
+    expect(speech.calls, 0);
     voice.dispose();
   });
 

@@ -54,10 +54,14 @@ bool isFinalizedMp4(List<int> bytes) {
 }
 
 class NativeVoiceCaptureService implements VoiceCaptureService {
-  NativeVoiceCaptureService({AudioRecorder? recorder})
-      : _recorder = recorder ?? AudioRecorder();
+  NativeVoiceCaptureService({
+    AudioRecorder? recorder,
+    Future<Directory> Function()? temporaryDirectory,
+  })  : _recorder = recorder ?? AudioRecorder(),
+        _temporaryDirectory = temporaryDirectory ?? getTemporaryDirectory;
 
   final AudioRecorder _recorder;
+  final Future<Directory> Function() _temporaryDirectory;
   String? _path;
   DateTime? _started;
   bool _permissionRequested = false;
@@ -77,7 +81,7 @@ class NativeVoiceCaptureService implements VoiceCaptureService {
   @override
   Future<void> start() async {
     if (_path != null) throw StateError('Recording already active');
-    final directory = await getTemporaryDirectory();
+    final directory = await _temporaryDirectory();
     _path =
         '${directory.path}/ask_stroyka_${DateTime.now().microsecondsSinceEpoch}.m4a';
     try {
@@ -102,7 +106,7 @@ class NativeVoiceCaptureService implements VoiceCaptureService {
           started == null ? Duration.zero : DateTime.now().difference(started);
       final finalizedPath = await _recorder.stop();
       if (path == null || started == null) return null;
-      return readFinalizedVoiceClip(finalizedPath, recordedDuration);
+      return await readFinalizedVoiceClip(finalizedPath, recordedDuration);
     } finally {
       await _deleteFile();
     }
