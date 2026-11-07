@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +8,18 @@ import 'package:test_app/web_app/pages/chats/web_chat_media_widgets.dart';
 import 'package:test_app/web_app/pages/chats/web_chat_timeline.dart';
 import 'package:test_app/web_app/services/web_chat_media_service.dart';
 import 'package:test_app/web_app/services/web_chats_data_service.dart';
+
+Future<Uint8List> _testImage(int width, int height) async {
+  final recorder = ui.PictureRecorder();
+  ui.Canvas(recorder).drawRect(
+    ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    ui.Paint()..color = const ui.Color(0xFF4488AA),
+  );
+  final image = await recorder.endRecording().toImage(width, height);
+  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+  image.dispose();
+  return bytes!.buffer.asUint8List();
+}
 
 void main() {
   testWidgets('Web photos use a thin frame and compact spacing',
@@ -25,10 +40,73 @@ void main() {
         );
     expect(frames, hasLength(2));
     expect(
-      tester.getTopLeft(find.byType(InkWell).at(1)).dy -
-          tester.getBottomLeft(find.byType(InkWell).first).dy,
+      tester.getTopLeft(find.byType(InkWell).at(1)).dx -
+          tester.getTopRight(find.byType(InkWell).first).dx,
       2,
     );
+  });
+
+  testWidgets('Web gallery keeps mixed order and landscape full width',
+      (tester) async {
+    final portrait = (await tester.runAsync(() => _testImage(10, 20)))!;
+    final landscape = (await tester.runAsync(() => _testImage(20, 10)))!;
+    final images = [
+      for (var index = 0; index < 7; index++)
+        WebChatAttachment(
+          type: 'image',
+          url: 'https://example.com/photo-$index.png',
+          fileName: 'photo-$index.png',
+        ),
+    ];
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+            child: WebChatAttachmentsView(
+          attachments: images,
+          isMine: false,
+          imageProviderFor: (url) => MemoryImage(
+            url.contains('photo-2') || url.contains('photo-6')
+                ? landscape
+                : portrait,
+          ),
+          imagePreviewBuilder: (attachment, width, height) => ColoredBox(
+            key: Key(attachment.fileName),
+            color: Colors.blue,
+          ),
+        )),
+      ),
+    ));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pumpAndSettle();
+    final rects = [
+      for (var index = 0; index < 7; index++)
+        tester.getRect(find.byKey(Key('photo-$index.png'))),
+    ];
+    expect(rects[0].top, rects[1].top);
+    expect(rects[2].width, 388);
+    expect(rects[2].top, greaterThan(rects[0].bottom));
+    expect(rects[3].top, greaterThan(rects[2].bottom));
+    expect(rects[3].top, rects[4].top);
+    expect(rects[4].top, rects[5].top);
+    expect(rects[6].width, 388);
+    expect(rects[6].top, greaterThan(rects[5].bottom));
+    expect(tester.takeException(), isNull);
+
+    tester.view.physicalSize = const Size(200, 844);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.byKey(const Key('photo-2.png'))).width, 198);
+    expect(tester.takeException(), isNull);
+
+    tester.view.physicalSize = const Size(768, 844);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.byKey(const Key('photo-2.png'))).width, 418);
+    expect(tester.takeException(), isNull);
   });
 
   test('message timestamps use local time and day headings do not repeat', () {

@@ -4,6 +4,7 @@ import '../../../services/application_activity_service.dart';
 import '../../../services/application_status_utils.dart';
 import '../../../services/job_taxonomy_service.dart';
 import '../../../services/offer_prefill_service.dart';
+import 'web_offer_snapshot.dart';
 import '../../services/web_application_actions_service.dart';
 import '../../services/web_applications_data_service.dart';
 import '../../services/web_data_state.dart';
@@ -1641,30 +1642,7 @@ class _OfferCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final offer = application.offer;
-    final rows = <MapEntry<String, String>>[
-      MapEntry('Trade / role', _firstText(offer, const ['trade'], '')),
-      MapEntry('Work format',
-          _firstText(offer, const ['workFormat', 'jobType'], '')),
-      MapEntry('Rate / price', _firstText(offer, const ['rate'], '')),
-      MapEntry('Work period', _firstText(offer, const ['workPeriod'], '')),
-      MapEntry('Hours per week', _firstText(offer, const ['weeklyHours'], '')),
-      MapEntry('Schedule', _firstText(offer, const ['schedule'], '')),
-      MapEntry('Work starts', _firstText(offer, const ['workStartTime'], '')),
-      MapEntry('Work ends', _firstText(offer, const ['workEndTime'], '')),
-      MapEntry('Start date',
-          _firstText(offer, const ['startDateTime', 'startDate'], '')),
-      MapEntry(
-        'Site address',
-        _firstText(offer, const ['siteAddress', 'fullAddress'], ''),
-      ),
-      MapEntry(
-        'Required on first day',
-        _firstText(offer, const ['firstDayRequirements'], ''),
-      ),
-      MapEntry('Description',
-          _firstText(offer, const ['description', 'message'], '')),
-      MapEntry('Valid until', _firstText(offer, const ['validUntil'], '')),
-    ].where((row) => row.value.trim().isNotEmpty).toList();
+    final rows = webOfferSnapshotRows(offer);
     return _DetailSection(
       title: role == 'worker' ? 'Offer' : 'Offer details',
       children: [

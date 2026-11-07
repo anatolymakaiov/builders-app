@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/job.dart';
+import '../../../services/job_taxonomy_service.dart';
 import '../../../services/vacancy_invitation_service.dart';
 import '../../theme/web_theme.dart';
 import '../../widgets/web_apply_dialog.dart';
@@ -9,30 +10,38 @@ import '../../widgets/web_page_container.dart';
 
 class WebOpportunitiesPage extends StatefulWidget {
   const WebOpportunitiesPage(
-      {super.key, required this.workerId, required this.onOpenJob});
+      {super.key,
+      required this.workerId,
+      required this.onOpenJob,
+      this.invitations,
+      this.respondToInvitation});
   final String workerId;
   final ValueChanged<String> onOpenJob;
+  final Stream<List<VacancyInvitation>>? invitations;
+  final Future<String> Function(VacancyInvitation invitation, String action)?
+      respondToInvitation;
 
   @override
   State<WebOpportunitiesPage> createState() => _WebOpportunitiesPageState();
 }
 
 class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
-  final service = VacancyInvitationService();
+  late final service = VacancyInvitationService();
   late Stream<List<VacancyInvitation>> stream;
   String? busyId;
 
   @override
   void initState() {
     super.initState();
-    stream = service.watchMine(widget.workerId);
+    stream = widget.invitations ?? service.watchMine(widget.workerId);
   }
 
   @override
   void didUpdateWidget(covariant WebOpportunitiesPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.workerId != widget.workerId) {
-      stream = service.watchMine(widget.workerId);
+    if (oldWidget.workerId != widget.workerId ||
+        oldWidget.invitations != widget.invitations) {
+      stream = widget.invitations ?? service.watchMine(widget.workerId);
       busyId = null;
     }
   }
@@ -55,7 +64,9 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
     if (busyId != null) return;
     setState(() => busyId = invitation.id);
     try {
-      final status = await service.respond(invitation.id, 'viewed');
+      final status =
+          await (widget.respondToInvitation?.call(invitation, 'viewed') ??
+              service.respond(invitation.id, 'viewed'));
       if (!mounted) return;
       if (status == 'vacancy_closed' || status == 'vacancy_filled') {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -94,7 +105,8 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
     if (busyId != null) return;
     setState(() => busyId = invitation.id);
     try {
-      await service.respond(invitation.id, 'not_interested');
+      await (widget.respondToInvitation?.call(invitation, 'not_interested') ??
+          service.respond(invitation.id, 'not_interested'));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -116,6 +128,8 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Opportunities',
                 style: Theme.of(context).textTheme.headlineMedium),
+            const SizedBox(height: 4),
+            const Text('Vacancy invitations sent to you.'),
             const SizedBox(height: 16),
             StreamBuilder<List<VacancyInvitation>>(
               stream: stream,
@@ -126,48 +140,80 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
                 if (!snapshot.hasData) return const LinearProgressIndicator();
                 final items = snapshot.data!;
                 if (items.isEmpty) {
-                  return const Text('No vacancy invitations yet.');
-                }
-                return Column(children: [
-                  for (final item in items)
-                    Card(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(item.title,
-                                style: Theme.of(context).textTheme.titleMedium),
-                            Text(item.company),
-                            if (item.generalLocation.isNotEmpty)
-                              Text(item.generalLocation),
-                            const SizedBox(height: 6),
-                            Text(item.statusLabel,
-                                style: const TextStyle(color: WebTheme.accent)),
-                            if (item.actionable)
-                              Wrap(spacing: 8, children: [
-                                OutlinedButton(
-                                    onPressed: busyId == null
-                                        ? () => _open(item, apply: false)
-                                        : null,
-                                    child: const Text('View vacancy')),
-                                FilledButton(
-                                    onPressed: busyId == null
-                                        ? () => _open(item, apply: true)
-                                        : null,
-                                    child: const Text('Apply')),
-                                TextButton(
-                                    onPressed: busyId == null
-                                        ? () => _decline(item)
-                                        : null,
-                                    child: const Text('Not interested')),
-                              ]),
-                          ],
-                        ),
-                      ),
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 48),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.mark_email_unread_outlined, size: 36),
+                        SizedBox(height: 12),
+                        Text('No vacancy invitations yet.'),
+                      ]),
                     ),
-                ]);
+                  );
+                }
+                return ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 760),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                            '${items.length} opportunit${items.length == 1 ? 'y' : 'ies'}',
+                            style: Theme.of(context).textTheme.titleSmall),
+                      ),
+                      const SizedBox(height: 8),
+                      for (final item in items)
+                        Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(item.title,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium),
+                                Text(item.company),
+                                if (JobTaxonomyService.roleFor(item.tradeId) !=
+                                    null)
+                                  Text(JobTaxonomyService.roleFor(item.tradeId)!
+                                      .canonical),
+                                if (item.generalLocation.isNotEmpty)
+                                  Text(item.generalLocation),
+                                if (item.createdAt != null)
+                                  Text(
+                                      'Sent ${MaterialLocalizations.of(context).formatMediumDate(item.createdAt!.toLocal())}'),
+                                const SizedBox(height: 6),
+                                Text(item.statusLabel,
+                                    style: const TextStyle(
+                                        color: WebTheme.accent)),
+                                if (item.actionable)
+                                  Wrap(spacing: 8, children: [
+                                    OutlinedButton(
+                                        onPressed: busyId == null
+                                            ? () => _open(item, apply: false)
+                                            : null,
+                                        child: const Text('View vacancy')),
+                                    FilledButton(
+                                        onPressed: busyId == null
+                                            ? () => _open(item, apply: true)
+                                            : null,
+                                        child: const Text('Apply')),
+                                    TextButton(
+                                        onPressed: busyId == null
+                                            ? () => _decline(item)
+                                            : null,
+                                        child: const Text('Not interested')),
+                                  ]),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
               },
             ),
           ]),

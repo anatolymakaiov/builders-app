@@ -4,7 +4,9 @@ import 'package:cloud_functions/cloud_functions.dart';
 import '../../../services/operational_calendar.dart';
 import '../../../services/calendar_export.dart';
 import '../../../services/worker_assignment_service.dart';
+import '../../../services/worker_personal_calendar_service.dart';
 import '../../../services/site_event_service.dart';
+import 'web_personal_event_dialog.dart';
 import 'web_site_event_dialog.dart';
 import '../../services/web_calendar_download_stub.dart'
     if (dart.library.js_interop) '../../services/web_calendar_download.dart';
@@ -29,7 +31,8 @@ class WebCalendarPage extends StatefulWidget {
       this.loadExport,
       this.loadSingleAssignment,
       this.downloadIcs,
-      this.employerSites});
+      this.employerSites,
+      this.createPersonalEvent});
 
   final String uid;
   final bool employer;
@@ -46,6 +49,7 @@ class WebCalendarPage extends StatefulWidget {
       loadSingleAssignment;
   final void Function(String, String)? downloadIcs;
   final Stream<List<WebSite>>? employerSites;
+  final Future<void> Function(WebPersonalEventDraft)? createPersonalEvent;
 
   @override
   State<WebCalendarPage> createState() => _WebCalendarPageState();
@@ -61,6 +65,7 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
   String? siteId;
   bool exporting = false;
   late final siteEventService = SiteEventService();
+  late final personalEventService = WorkerPersonalCalendarService();
 
   @override
   void initState() {
@@ -235,6 +240,39 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content:
                 Text('Could not save event. Check the site and try again.')));
+      }
+    }
+  }
+
+  Future<void> _createPersonalEvent() async {
+    final draft = await showDialog<WebPersonalEventDraft>(
+      context: context,
+      builder: (_) => WebPersonalEventDialog(initialDate: selectedDay),
+    );
+    if (draft == null || !mounted) return;
+    try {
+      await (widget.createPersonalEvent?.call(draft) ??
+          personalEventService.create(
+            widget.uid,
+            title: draft.title,
+            start: draft.start,
+            end: draft.end,
+            reminder: draft.reminder,
+            reminderOffsetsMinutes:
+                draft.alertMinutes < 0 ? [] : [draft.alertMinutes],
+            description: draft.description,
+          ));
+      if (mounted) {
+        setState(() {
+          selectedDay = draft.start;
+          _load();
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save calendar entry.')),
+        );
       }
     }
   }
@@ -433,14 +471,16 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
                       _changeView(selection.first),
                 ),
               ),
-              if (widget.employer)
-                SizedBox(
-                  height: WebToolbar.controlHeight,
-                  child: FilledButton.icon(
-                      onPressed: () => _editSiteEvent(),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add event')),
+              SizedBox(
+                height: WebToolbar.controlHeight,
+                child: FilledButton.icon(
+                  onPressed: widget.employer
+                      ? () => _editSiteEvent()
+                      : _createPersonalEvent,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add event'),
                 ),
+              ),
               if (widget.employer)
                 SizedBox(
                     width: 230,
@@ -678,24 +718,33 @@ class _WebCalendarPageState extends State<WebCalendarPage> {
           color: selected ? WebTheme.accentSoft : WebTheme.surface,
           border: Border.all(color: WebTheme.border),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${date.day}',
-              style: TextStyle(
-                  fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
-          if (onDay.isNotEmpty)
-            Text('${onDay.length} event${onDay.length == 1 ? '' : 's'}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: WebTheme.accent, fontSize: 11)),
-          if (onDay.isNotEmpty)
-            Text(onDay.first.typeLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11)),
-          if (onDay.length > 1)
-            Text('+${onDay.length - 1} more',
-                style: const TextStyle(fontSize: 11)),
-        ]),
+        child: LayoutBuilder(builder: (context, constraints) {
+          final compact = constraints.maxWidth < 80;
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${date.day}',
+                    style: TextStyle(
+                        fontWeight:
+                            selected ? FontWeight.bold : FontWeight.normal)),
+                if (compact && onDay.isNotEmpty)
+                  const Icon(Icons.circle, size: 7, color: WebTheme.accent),
+                if (!compact && onDay.isNotEmpty)
+                  Text('${onDay.length} event${onDay.length == 1 ? '' : 's'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: WebTheme.accent, fontSize: 11)),
+                if (!compact && onDay.isNotEmpty)
+                  Text(onDay.first.typeLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11)),
+                if (!compact && onDay.length > 1)
+                  Text('+${onDay.length - 1} more',
+                      style: const TextStyle(fontSize: 11)),
+              ]);
+        }),
       ),
     );
   }

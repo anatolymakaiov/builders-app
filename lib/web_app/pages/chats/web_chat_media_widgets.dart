@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../models/chat_image_gallery.dart';
+import '../../../models/chat_media_gallery_layout.dart';
 import '../../../screens/image_gallery_viewer_screen.dart';
 import '../../services/web_chat_media_service.dart';
 import '../../services/web_voice_playback_stub.dart'
@@ -47,39 +48,179 @@ class WebChatAttachMenu extends StatelessWidget {
   }
 }
 
-class WebChatAttachmentsView extends StatelessWidget {
+class WebChatAttachmentsView extends StatefulWidget {
   const WebChatAttachmentsView({
     super.key,
     required this.attachments,
     required this.isMine,
+    this.imageProviderFor,
+    this.imagePreviewBuilder,
   });
 
   final List<WebChatAttachment> attachments;
   final bool isMine;
+  final ImageProvider Function(String url)? imageProviderFor;
+  final Widget Function(
+          WebChatAttachment attachment, double width, double height)?
+      imagePreviewBuilder;
+
+  @override
+  State<WebChatAttachmentsView> createState() => _WebChatAttachmentsViewState();
+}
+
+class _WebChatAttachmentsViewState extends State<WebChatAttachmentsView> {
+  final Map<String, bool> landscape = {};
+  final Map<String, (ImageStream, ImageStreamListener)> listeners = {};
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolveOrientations();
+  }
+
+  @override
+  void didUpdateWidget(covariant WebChatAttachmentsView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final urls = widget.attachments.map((item) => item.url.trim()).toSet();
+    landscape.removeWhere((url, _) => !urls.contains(url));
+    for (final url in listeners.keys.toList()) {
+      if (urls.contains(url)) continue;
+      final (stream, listener) = listeners.remove(url)!;
+      stream.removeListener(listener);
+    }
+    _resolveOrientations();
+  }
+
+  void _resolveOrientations() {
+    for (final item in widget.attachments) {
+      if (!ChatImageGallery.isPreviewableImage(item.toMap())) continue;
+      final url = item.url.trim();
+      if (url.isEmpty ||
+          landscape.containsKey(url) ||
+          listeners.containsKey(url)) {
+        continue;
+      }
+      final provider = widget.imageProviderFor?.call(url) ??
+          NetworkImage(url,
+              webHtmlElementStrategy: WebHtmlElementStrategy.prefer);
+      final stream = provider.resolve(
+        createLocalImageConfiguration(context, size: const Size(280, 190)),
+      );
+      late ImageStreamListener listener;
+      listener = ImageStreamListener(
+        (info, _) {
+          stream.removeListener(listener);
+          listeners.remove(url);
+          final isLandscape = info.image.width > info.image.height;
+          Future.microtask(() {
+            if (!mounted ||
+                !widget.attachments.any((item) => item.url.trim() == url)) {
+              return;
+            }
+            setState(() => landscape[url] = isLandscape);
+          });
+        },
+        onError: (_, __) {
+          stream.removeListener(listener);
+          listeners.remove(url);
+        },
+      );
+      listeners[url] = (stream, listener);
+      stream.addListener(listener);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final (stream, listener) in listeners.values) {
+      stream.removeListener(listener);
+    }
+    listeners.clear();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (attachments.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment:
-          isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      children: [
-        for (var index = 0; index < attachments.length; index++) ...[
-          if (index > 0)
-            SizedBox(
-              height: ChatImageGallery.isPreviewableImage(
-                      attachments[index].toMap())
-                  ? 2
-                  : 8,
-            ),
-          _AttachmentTile(
-            attachment: attachments[index],
-            attachments: attachments,
-            index: index,
-            isMine: isMine,
-          ),
-        ],
-      ],
+    if (widget.attachments.isEmpty) return const SizedBox.shrink();
+    final kinds = [
+      for (final item in widget.attachments)
+        if (!ChatImageGallery.isPreviewableImage(item.toMap()))
+          ChatMediaTileKind.other
+        else if (landscape[item.url.trim()] == true)
+          ChatMediaTileKind.landscape
+        else
+          ChatMediaTileKind.portrait,
+    ];
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 420),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final width =
+            constraints.maxWidth.isFinite ? constraints.maxWidth : 280.0;
+        final columns = width >= 330
+            ? 3
+            : width >= 220
+                ? 2
+                : 1;
+        final rows = <List<int>>[];
+        for (final row in ChatMediaGalleryLayout.rows(kinds)) {
+          if (row.length == 1 ||
+              kinds[row.first] != ChatMediaTileKind.portrait) {
+            rows.add(row);
+          } else {
+            for (var start = 0; start < row.length; start += columns) {
+              rows.add(row.skip(start).take(columns).toList());
+            }
+          }
+        }
+        const gap = 2.0;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment:
+              widget.isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            for (var row = 0; row < rows.length; row++) ...[
+              if (row > 0)
+                SizedBox(
+                    height: kinds[rows[row].first] == ChatMediaTileKind.other
+                        ? 8
+                        : gap),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var cell = 0; cell < rows[row].length; cell++) ...[
+                    if (cell > 0) const SizedBox(width: gap),
+                    _tile(
+                        rows[row][cell],
+                        kinds[rows[row][cell]],
+                        (width - gap * (rows[row].length - 1)) /
+                            rows[row].length),
+                  ],
+                ],
+              ),
+            ],
+          ],
+        );
+      }),
+    );
+  }
+
+  Widget _tile(int index, ChatMediaTileKind kind, double width) {
+    final imageWidth =
+        kind == ChatMediaTileKind.portrait && width > 280 ? 280.0 : width;
+    final height = kind == ChatMediaTileKind.landscape
+        ? imageWidth * 9 / 16
+        : imageWidth * 4 / 3;
+    return SizedBox(
+      width: kind == ChatMediaTileKind.other ? width : imageWidth,
+      child: _AttachmentTile(
+        attachment: widget.attachments[index],
+        attachments: widget.attachments,
+        index: index,
+        isMine: widget.isMine,
+        imageWidth: imageWidth,
+        imageHeight: height,
+        imagePreviewBuilder: widget.imagePreviewBuilder,
+      ),
     );
   }
 }
@@ -128,12 +269,20 @@ class _AttachmentTile extends StatelessWidget {
     required this.attachments,
     required this.index,
     required this.isMine,
+    required this.imageWidth,
+    required this.imageHeight,
+    required this.imagePreviewBuilder,
   });
 
   final WebChatAttachment attachment;
   final List<WebChatAttachment> attachments;
   final int index;
   final bool isMine;
+  final double imageWidth;
+  final double imageHeight;
+  final Widget Function(
+          WebChatAttachment attachment, double width, double height)?
+      imagePreviewBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -143,6 +292,9 @@ class _AttachmentTile extends StatelessWidget {
         attachments: attachments,
         index: index,
         isMine: isMine,
+        width: imageWidth,
+        height: imageHeight,
+        previewBuilder: imagePreviewBuilder,
       );
     }
     switch (attachment.type) {
@@ -162,12 +314,20 @@ class _ImageAttachment extends StatelessWidget {
     required this.attachments,
     required this.index,
     required this.isMine,
+    required this.width,
+    required this.height,
+    required this.previewBuilder,
   });
 
   final WebChatAttachment attachment;
   final List<WebChatAttachment> attachments;
   final int index;
   final bool isMine;
+  final double width;
+  final double height;
+  final Widget Function(
+          WebChatAttachment attachment, double width, double height)?
+      previewBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -185,8 +345,8 @@ class _ImageAttachment extends StatelessWidget {
         );
       },
       child: Container(
-        width: 280,
-        height: 190,
+        width: width,
+        height: height,
         decoration: BoxDecoration(
           border: Border.all(
             color: isMine
@@ -198,10 +358,11 @@ class _ImageAttachment extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(3),
-          child: WebRemoteImage(
-            url: attachment.url,
-            fit: BoxFit.cover,
-          ),
+          child: previewBuilder?.call(attachment, width, height) ??
+              WebRemoteImage(
+                url: attachment.url,
+                fit: BoxFit.cover,
+              ),
         ),
       ),
     );

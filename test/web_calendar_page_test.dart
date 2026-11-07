@@ -5,6 +5,7 @@ import 'package:test_app/services/operational_calendar.dart';
 import 'package:test_app/services/calendar_export.dart';
 import 'package:test_app/services/worker_assignment_service.dart';
 import 'package:test_app/web_app/pages/calendar/web_calendar_page.dart';
+import 'package:test_app/web_app/pages/calendar/web_personal_event_dialog.dart';
 import 'package:test_app/web_app/services/web_sites_service.dart';
 import 'package:test_app/web_app/shell/web_top_navigation.dart';
 import 'package:test_app/web_app/theme/web_theme.dart';
@@ -23,6 +24,62 @@ CalendarEvent event(String id, String siteId, DateTime date) => CalendarEvent(
     );
 
 void main() {
+  testWidgets('worker plus creates event and reminder without unavailability',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final saved = <WebPersonalEventDraft>[];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: WebCalendarPage(
+          uid: 'worker-a',
+          employer: false,
+          loadCurrentNext: () async => [],
+          createPersonalEvent: (draft) async => saved.add(draft),
+          loadEvents: (range) async => [
+            for (final draft in saved)
+              CalendarEvent(
+                id: 'personal:${saved.indexOf(draft)}',
+                type: CalendarEventType.manual,
+                date: draft.start,
+                title: draft.title,
+                sourceId: '${saved.indexOf(draft)}',
+                vacancyId: '',
+                siteId: '',
+                siteName: '',
+                trade: '',
+                status: '',
+                eventType: draft.reminder ? 'reminder' : 'event',
+              ),
+          ],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Add event'), findsOneWidget);
+    await tester.tap(find.text('Add event'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Title'), 'Site visit');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(saved.single.reminder, isFalse);
+    expect(find.textContaining('Site visit'), findsWidgets);
+
+    await tester.tap(find.text('Add event'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reminder'));
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Title'), 'Bring PPE');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(saved.last.reminder, isTrue);
+    expect(find.textContaining('Bring PPE'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   test('desktop navigation exposes Calendar', () {
     expect(WebSection.calendar.label, 'Calendar');
   });
