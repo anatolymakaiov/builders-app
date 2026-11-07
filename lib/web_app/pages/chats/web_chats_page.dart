@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../models/chat_image_gallery.dart';
+import '../../../widgets/chat_list_avatar_target.dart';
 import '../../services/web_chat_media_service.dart';
 import '../../services/web_chat_recipient_search_service.dart';
 import '../../services/web_chats_data_service.dart';
@@ -201,6 +203,13 @@ class _WebChatsPageState extends State<WebChatsPage> {
                         selectedChatId: selectedChatId,
                         userId: widget.userId,
                         onSelected: _selectChat,
+                        onOpenProfile: (chat) {
+                          final target =
+                              service.profileTarget(chat, widget.userId);
+                          if (target != null) {
+                            widget.onOpenProfile?.call(target.id, target.role);
+                          }
+                        },
                         onDelete: _deleteConversation,
                       ),
                     );
@@ -658,6 +667,7 @@ class _ChatList extends StatelessWidget {
     required this.selectedChatId,
     required this.userId,
     required this.onSelected,
+    required this.onOpenProfile,
     required this.onDelete,
   });
 
@@ -666,6 +676,7 @@ class _ChatList extends StatelessWidget {
   final String? selectedChatId;
   final String userId;
   final ValueChanged<String> onSelected;
+  final ValueChanged<WebChatSummary> onOpenProfile;
   final ValueChanged<String> onDelete;
 
   @override
@@ -707,12 +718,16 @@ class _ChatList extends StatelessWidget {
             ),
             child: Row(
               children: [
-                WebCircleImage(
-                  url: chat.avatarFor(userId),
-                  size: 50,
-                  fallbackIcon: chat.data['type'] == 'team'
-                      ? Icons.groups_2_outlined
-                      : Icons.person_outline,
+                ChatListAvatarTarget(
+                  key: Key('chat-avatar-${chat.id}'),
+                  onOpenProfile: () => onOpenProfile(chat),
+                  child: WebCircleImage(
+                    url: chat.avatarFor(userId),
+                    size: 50,
+                    fallbackIcon: chat.data['type'] == 'team'
+                        ? Icons.groups_2_outlined
+                        : Icons.person_outline,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1237,13 +1252,18 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMine = message.data['senderId'] == userId;
     final attachments = message.attachments;
+    final hasImages = attachments.any(
+      (attachment) => ChatImageGallery.isPreviewableImage(attachment.toMap()),
+    );
     final deleted = message.deletedForEveryone;
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 560),
         margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: hasImages
+            ? const EdgeInsets.all(4)
+            : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: isMine ? WebTheme.accent : WebChatMessageColors.incoming,
           borderRadius: BorderRadius.circular(16),
@@ -1297,16 +1317,19 @@ class _MessageBubble extends StatelessWidget {
                     TextStyle(color: isMine ? Colors.white70 : WebTheme.muted),
               )
             else ...[
+              WebChatAttachmentsView(attachments: attachments, isMine: isMine),
               if (message.text.trim().isNotEmpty)
-                Text(
-                  message.text,
-                  style: TextStyle(
-                    color: isMine
-                        ? Colors.white
-                        : WebChatMessageColors.incomingInk,
+                Padding(
+                  padding: EdgeInsets.only(top: hasImages ? 6 : 0),
+                  child: Text(
+                    message.text,
+                    style: TextStyle(
+                      color: isMine
+                          ? Colors.white
+                          : WebChatMessageColors.incomingInk,
+                    ),
                   ),
                 ),
-              WebChatAttachmentsView(attachments: attachments, isMine: isMine),
               if (message.edited)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),

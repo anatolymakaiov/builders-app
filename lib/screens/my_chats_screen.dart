@@ -10,6 +10,7 @@ import '../services/web_chat_data_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/app_cached_image.dart';
+import '../widgets/chat_list_avatar_target.dart';
 
 class MyChatsScreen extends StatefulWidget {
   const MyChatsScreen(
@@ -743,8 +744,8 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                     ),
                     child: Row(
                       children: [
-                        GestureDetector(
-                          onTap: () => openChatProfile(
+                        ChatListAvatarTarget(
+                          onOpenProfile: () => openChatProfile(
                             context,
                             data,
                             uid,
@@ -767,23 +768,15 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                                     MainAxisAlignment.spaceBetween,
                                 children: [
                                   Expanded(
-                                    child: InkWell(
-                                      onTap: () => openChatProfile(
-                                        context,
-                                        data,
-                                        uid,
-                                        preferTeamTarget: showTeamAvatar,
+                                    child: Text(
+                                      chatName,
+                                      style: TextStyle(
+                                        fontWeight: unread > 0
+                                            ? FontWeight.bold
+                                            : FontWeight.w500,
+                                        fontSize: 16,
                                       ),
-                                      child: Text(
-                                        chatName,
-                                        style: TextStyle(
-                                          fontWeight: unread > 0
-                                              ? FontWeight.bold
-                                              : FontWeight.w500,
-                                          fontSize: 16,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                   Text(
@@ -1063,8 +1056,9 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                                               horizontal: 12, vertical: 12),
                                           child: Row(
                                             children: [
-                                              GestureDetector(
-                                                onTap: () => openChatProfile(
+                                              ChatListAvatarTarget(
+                                                onOpenProfile: () =>
+                                                    openChatProfile(
                                                   context,
                                                   data,
                                                   uid,
@@ -1095,30 +1089,20 @@ class _MyChatsScreenState extends State<MyChatsScreen> {
                                                               .spaceBetween,
                                                       children: [
                                                         Expanded(
-                                                          child: InkWell(
-                                                            onTap: () =>
-                                                                openChatProfile(
-                                                              context,
-                                                              data,
-                                                              uid,
-                                                              preferTeamTarget:
-                                                                  showTeamAvatar,
+                                                          child: Text(
+                                                            chatName,
+                                                            style: TextStyle(
+                                                              fontWeight: unread >
+                                                                      0
+                                                                  ? FontWeight
+                                                                      .bold
+                                                                  : FontWeight
+                                                                      .w500,
+                                                              fontSize: 16,
                                                             ),
-                                                            child: Text(
-                                                              chatName,
-                                                              style: TextStyle(
-                                                                fontWeight: unread >
-                                                                        0
-                                                                    ? FontWeight
-                                                                        .bold
-                                                                    : FontWeight
-                                                                        .w500,
-                                                                fontSize: 16,
-                                                              ),
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                            ),
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
                                                           ),
                                                         ),
                                                         Text(

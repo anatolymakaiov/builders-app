@@ -35,6 +35,8 @@ class AppCachedImage extends StatelessWidget {
   final Alignment alignment;
   final Widget? placeholder;
   final Widget? errorWidget;
+  final int? memCacheWidth;
+  final int? memCacheHeight;
 
   const AppCachedImage({
     super.key,
@@ -45,6 +47,8 @@ class AppCachedImage extends StatelessWidget {
     this.alignment = Alignment.center,
     this.placeholder,
     this.errorWidget,
+    this.memCacheWidth,
+    this.memCacheHeight,
   });
 
   @override
@@ -76,6 +80,8 @@ class AppCachedImage extends StatelessWidget {
       fadeInDuration: Duration.zero,
       fadeOutDuration: Duration.zero,
       useOldImageOnUrlChange: true,
+      memCacheWidth: memCacheWidth,
+      memCacheHeight: memCacheHeight,
       placeholder: (context, url) =>
           placeholder ??
           Container(

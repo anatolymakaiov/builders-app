@@ -65,7 +65,13 @@ class WebChatAttachmentsView extends StatelessWidget {
           isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         for (var index = 0; index < attachments.length; index++) ...[
-          const SizedBox(height: 8),
+          if (index > 0)
+            SizedBox(
+              height: ChatImageGallery.isPreviewableImage(
+                      attachments[index].toMap())
+                  ? 2
+                  : 8,
+            ),
           _AttachmentTile(
             attachment: attachments[index],
             attachments: attachments,
@@ -186,12 +192,12 @@ class _ImageAttachment extends StatelessWidget {
             color: isMine
                 ? WebTheme.accentBorder
                 : WebChatMessageColors.incomingAttachment,
-            width: 2,
+            width: 1,
           ),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(4),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(3),
           child: WebRemoteImage(
             url: attachment.url,
             fit: BoxFit.cover,

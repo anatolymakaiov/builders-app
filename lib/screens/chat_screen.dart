@@ -25,6 +25,7 @@ import '../services/web_chat_data_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/stroyka_background.dart';
 import '../widgets/app_cached_image.dart';
+import '../widgets/mobile_chat_media_gallery.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -2002,11 +2003,9 @@ class _ChatScreenState extends State<ChatScreen> {
     return "${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB";
   }
 
-  Widget buildAttachmentPreview(
-    Map<String, dynamic> attachment,
-    List<Map<String, dynamic>> messageAttachments,
-    int attachmentIndex,
-  ) {
+  Widget buildAttachmentPreview(Map<String, dynamic> attachment,
+      List<Map<String, dynamic>> messageAttachments, int attachmentIndex,
+      {double imageWidth = 200, double imageHeight = 150}) {
     final type = attachment["type"]?.toString() ?? "file";
     final url = attachment["url"]?.toString() ?? "";
     final fileName = attachment["fileName"]?.toString() ?? "Attachment";
@@ -2026,15 +2025,17 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         },
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(2),
           child: AppCachedImage(
             imageUrl: url,
-            width: 200,
-            height: 150,
+            width: imageWidth,
+            height: imageHeight,
             fit: BoxFit.cover,
+            memCacheWidth: 512,
+            memCacheHeight: 512,
             errorWidget: Container(
-              width: 200,
-              height: 150,
+              width: imageWidth,
+              height: imageHeight,
               alignment: Alignment.center,
               color: AppColors.surfaceAlt,
               child: const Icon(Icons.broken_image, color: AppColors.muted),
@@ -2098,14 +2099,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget buildMessageAttachments(List<Map<String, dynamic>> attachments) {
     if (attachments.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < attachments.length; i++) ...[
-          if (i > 0) const SizedBox(height: 8),
-          buildAttachmentPreview(attachments[i], attachments, i),
-        ],
-      ],
+    return MobileChatMediaGallery(
+      attachments: attachments,
+      itemBuilder: (index, width, height) => buildAttachmentPreview(
+        attachments[index],
+        attachments,
+        index,
+        imageWidth: width,
+        imageHeight: height,
+      ),
     );
   }
 
@@ -2573,7 +2575,11 @@ class _ChatScreenState extends State<ChatScreen> {
                                         margin: const EdgeInsets.symmetric(
                                           vertical: 4,
                                         ),
-                                        padding: const EdgeInsets.all(12),
+                                        padding: attachments.any(
+                                          ChatImageGallery.isPreviewableImage,
+                                        )
+                                            ? const EdgeInsets.all(4)
+                                            : const EdgeInsets.all(12),
                                         constraints:
                                             const BoxConstraints(maxWidth: 260),
                                         decoration: BoxDecoration(
@@ -2600,23 +2606,22 @@ class _ChatScreenState extends State<ChatScreen> {
                                                 ),
                                               ),
                                             if (!deletedForEveryone &&
-                                                text.trim().isNotEmpty &&
-                                                type != "audio")
-                                              _TextMessageContent(
-                                                text: text,
-                                                normalizeUrl: normalizeUrl,
-                                              ),
-                                            if (!deletedForEveryone &&
-                                                attachments.isNotEmpty)
-                                              Padding(
-                                                padding: EdgeInsets.only(
-                                                  top: text.trim().isNotEmpty
-                                                      ? 8
-                                                      : 0,
-                                                ),
-                                                child: buildMessageAttachments(
-                                                  attachments,
-                                                ),
+                                                (attachments.isNotEmpty ||
+                                                    (text.trim().isNotEmpty &&
+                                                        type != "audio")))
+                                              MobileChatMediaThenText(
+                                                media: attachments.isEmpty
+                                                    ? null
+                                                    : buildMessageAttachments(
+                                                        attachments),
+                                                text: text.trim().isEmpty ||
+                                                        type == "audio"
+                                                    ? null
+                                                    : _TextMessageContent(
+                                                        text: text,
+                                                        normalizeUrl:
+                                                            normalizeUrl,
+                                                      ),
                                               ),
                                             if (!deletedForEveryone &&
                                                 type == "audio" &&
@@ -3060,7 +3065,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                               margin:
                                                   const EdgeInsets.symmetric(
                                                       vertical: 4),
-                                              padding: const EdgeInsets.all(12),
+                                              padding: attachments.any(
+                                                ChatImageGallery
+                                                    .isPreviewableImage,
+                                              )
+                                                  ? const EdgeInsets.all(4)
+                                                  : const EdgeInsets.all(12),
                                               constraints: const BoxConstraints(
                                                   maxWidth: 260),
                                               decoration: BoxDecoration(
@@ -3088,26 +3098,26 @@ class _ChatScreenState extends State<ChatScreen> {
                                                       ),
                                                     ),
                                                   if (!deletedForEveryone &&
-                                                      text.trim().isNotEmpty &&
-                                                      type != "audio")
-                                                    _TextMessageContent(
-                                                      text: text,
-                                                      normalizeUrl:
-                                                          normalizeUrl,
-                                                    ),
-                                                  if (!deletedForEveryone &&
-                                                      attachments.isNotEmpty)
-                                                    Padding(
-                                                      padding: EdgeInsets.only(
-                                                        top: text
-                                                                .trim()
-                                                                .isNotEmpty
-                                                            ? 8
-                                                            : 0,
-                                                      ),
-                                                      child:
-                                                          buildMessageAttachments(
+                                                      (attachments.isNotEmpty ||
+                                                          (text
+                                                                  .trim()
+                                                                  .isNotEmpty &&
+                                                              type != "audio")))
+                                                    MobileChatMediaThenText(
+                                                      media: attachments.isEmpty
+                                                          ? null
+                                                          : buildMessageAttachments(
                                                               attachments),
+                                                      text: text
+                                                                  .trim()
+                                                                  .isEmpty ||
+                                                              type == "audio"
+                                                          ? null
+                                                          : _TextMessageContent(
+                                                              text: text,
+                                                              normalizeUrl:
+                                                                  normalizeUrl,
+                                                            ),
                                                     ),
                                                   if (!deletedForEveryone &&
                                                       type == "audio" &&

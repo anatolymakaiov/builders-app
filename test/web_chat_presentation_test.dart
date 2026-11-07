@@ -7,6 +7,30 @@ import 'package:test_app/web_app/services/web_chat_media_service.dart';
 import 'package:test_app/web_app/services/web_chats_data_service.dart';
 
 void main() {
+  testWidgets('Web photos use a thin frame and compact spacing',
+      (tester) async {
+    const images = [
+      WebChatAttachment(type: 'image', url: '', fileName: 'one.jpg'),
+      WebChatAttachment(type: 'image', url: '', fileName: 'two.jpg'),
+    ];
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: WebChatAttachmentsView(attachments: images, isMine: true),
+      ),
+    ));
+    final frames = tester.widgetList<Container>(find.byType(Container)).where(
+          (widget) =>
+              widget.decoration is BoxDecoration &&
+              (widget.decoration! as BoxDecoration).border?.top.width == 1,
+        );
+    expect(frames, hasLength(2));
+    expect(
+      tester.getTopLeft(find.byType(InkWell).at(1)).dy -
+          tester.getBottomLeft(find.byType(InkWell).first).dy,
+      2,
+    );
+  });
+
   test('message timestamps use local time and day headings do not repeat', () {
     final utc = DateTime.utc(2026, 9, 26, 15, 7);
     final local = webChatLocalTime(Timestamp.fromDate(utc));
