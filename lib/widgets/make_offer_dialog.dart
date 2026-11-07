@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../services/address_lookup_service.dart';
+import '../services/offer_prefill_service.dart';
 import '../theme/app_theme.dart';
+import 'mobile_numeric_time_picker.dart';
 import 'stroyka_date_time_field.dart';
 import 'uk_postal_address_form.dart';
 
 class MakeOfferDialog extends StatefulWidget {
-  final Map<String, String> physicalAddressFields;
+  final OfferPrefill prefill;
+  final AddressLookupService? addressLookupService;
 
   const MakeOfferDialog({
     super.key,
-    required this.physicalAddressFields,
+    required this.prefill,
+    this.addressLookupService,
   });
 
   @override
@@ -17,7 +22,8 @@ class MakeOfferDialog extends StatefulWidget {
 }
 
 class _MakeOfferDialogState extends State<MakeOfferDialog> {
-  String jobType = "hourly";
+  late String jobType;
+  late final TextEditingController tradeController;
   late final TextEditingController rateController;
   late final TextEditingController workPeriodController;
   late final TextEditingController weeklyHoursController;
@@ -33,43 +39,58 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
   late final TextEditingController descriptionController;
   StroykaDateTimeValue startDateTime = const StroykaDateTimeValue();
   StroykaDateTimeValue validUntil = const StroykaDateTimeValue();
+  TimeOfDay? workStart;
+  TimeOfDay? workEnd;
+  String? validationError;
 
   @override
   void initState() {
     super.initState();
-    rateController = TextEditingController();
-    workPeriodController = TextEditingController();
-    weeklyHoursController = TextEditingController();
-    scheduleController = TextEditingController();
+    final prefill = widget.prefill;
+    final address = prefill.address;
+    jobType = prefill.jobType;
+    tradeController = TextEditingController(text: prefill.trade);
+    rateController = TextEditingController(text: prefill.rate);
+    workPeriodController = TextEditingController(text: prefill.workPeriod);
+    weeklyHoursController = TextEditingController(text: prefill.weeklyHours);
+    scheduleController = TextEditingController(text: prefill.schedule);
+    workStart = prefill.workStart;
+    workEnd = prefill.workEnd;
+    startDateTime = StroykaDateTimeValue(
+      date: prefill.startDate,
+      time: prefill.workStart,
+    );
     siteAddressController = TextEditingController(
-      text: widget.physicalAddressFields["siteStreet"] ??
-          widget.physicalAddressFields["siteAddress"] ??
-          "",
+      text: address["siteStreet"] ?? address["siteAddress"] ?? "",
     );
     siteAddressLine2Controller = TextEditingController(
-      text: widget.physicalAddressFields["siteAddressLine2"] ?? "",
+      text: address["siteAddressLine2"] ?? "",
     );
     siteAddressLine3Controller = TextEditingController(
-      text: widget.physicalAddressFields["siteAddressLine3"] ?? "",
+      text: address["siteAddressLine3"] ?? "",
     );
     siteCityController = TextEditingController(
-      text: widget.physicalAddressFields["siteCity"] ?? "",
+      text: address["siteCity"] ?? "",
     );
     siteCountyController = TextEditingController(
-      text: widget.physicalAddressFields["siteCounty"] ?? "",
+      text: address["siteCounty"] ?? "",
     );
     sitePostcodeController = TextEditingController(
-      text: widget.physicalAddressFields["sitePostcode"] ?? "",
+      text: address["sitePostcode"] ?? "",
     );
     siteCountryController = TextEditingController(
-      text: widget.physicalAddressFields["siteCountry"] ?? "United Kingdom",
+      text: address["siteCountry"]?.isNotEmpty == true
+          ? address["siteCountry"]
+          : "United Kingdom",
     );
-    firstDayRequirementsController = TextEditingController();
+    firstDayRequirementsController =
+        TextEditingController(text: prefill.firstDayRequirements);
     descriptionController = TextEditingController();
   }
 
   @override
   void dispose() {
+    tradeController.dispose();
     rateController.dispose();
     workPeriodController.dispose();
     weeklyHoursController.dispose();
@@ -111,6 +132,20 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
         siteAddressController.text.trim().isEmpty ||
         siteCityController.text.trim().isEmpty ||
         siteCountryController.text.trim().isEmpty) {
+      setState(() => validationError =
+          'Add a start date and time and complete the site address.');
+      return;
+    }
+    if (workStart != null &&
+        workEnd != null &&
+        workEnd!.hour * 60 + workEnd!.minute <=
+            workStart!.hour * 60 + workStart!.minute) {
+      setState(() => validationError = 'Work end must be after work start.');
+      return;
+    }
+    if (validUntil.dateTime != null &&
+        !validUntil.dateTime!.isAfter(DateTime.now())) {
+      setState(() => validationError = 'Offer deadline must be in the future.');
       return;
     }
     final siteAddress = UkPostalAddressControllers(
@@ -124,11 +159,16 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
     ).value();
 
     Navigator.of(context).pop({
+      "trade": tradeController.text.trim(),
       "jobType": jobType,
       "rate": rateController.text.trim(),
       "workPeriod": workPeriodController.text.trim(),
       "weeklyHours": weeklyHoursController.text.trim(),
       "schedule": scheduleController.text.trim(),
+      "workStartTime":
+          workStart == null ? "" : StroykaDateTimeFormat.formatTime(workStart!),
+      "workEndTime":
+          workEnd == null ? "" : StroykaDateTimeFormat.formatTime(workEnd!),
       "startDateTime": startDateTime.displayText,
       "startDateTimestamp": startDateTime.dateTime,
       "siteStreet": siteAddress.addressLine1,
@@ -148,6 +188,23 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
     });
   }
 
+  Future<void> pickWorkTime({required bool start}) async {
+    final picked = await showMobileNumericTimePicker(
+      context: context,
+      initialTime:
+          (start ? workStart : workEnd) ?? const TimeOfDay(hour: 7, minute: 0),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (start) {
+        workStart = picked;
+      } else {
+        workEnd = picked;
+      }
+      validationError = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -158,6 +215,9 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              offerTextField(
+                  controller: tradeController, label: 'Trade / role'),
+              const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: jobType,
                 decoration: const InputDecoration(
@@ -212,15 +272,36 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
                 label: "Work schedule",
                 hint: "7:00-17:00, 1 hour break",
               ),
+              ListTile(
+                title: const Text('Work starts'),
+                subtitle: Text(workStart == null
+                    ? 'Select time'
+                    : StroykaDateTimeFormat.formatTime(workStart!)),
+                trailing: const Icon(Icons.schedule_outlined),
+                onTap: () => pickWorkTime(start: true),
+              ),
+              ListTile(
+                title: const Text('Work ends'),
+                subtitle: Text(workEnd == null
+                    ? 'Select time'
+                    : StroykaDateTimeFormat.formatTime(workEnd!)),
+                trailing: const Icon(Icons.schedule_outlined),
+                onTap: () => pickWorkTime(start: false),
+              ),
               const SizedBox(height: 12),
               StroykaDateTimeField(
                 label: "Start date and time",
                 value: startDateTime,
-                firstDate: DateTime.now(),
+                firstDate: prefillStartDateOrNow,
                 onChanged: (value) => setState(() => startDateTime = value),
               ),
+              if (validationError != null)
+                Text(validationError!,
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error)),
               const SizedBox(height: 12),
               UkPostalAddressForm(
+                lookupService: widget.addressLookupService,
                 controllers: UkPostalAddressControllers(
                   postcode: sitePostcodeController,
                   addressLine1: siteAddressController,
@@ -269,5 +350,11 @@ class _MakeOfferDialogState extends State<MakeOfferDialog> {
         ),
       ],
     );
+  }
+
+  DateTime get prefillStartDateOrNow {
+    final now = DateTime.now();
+    final prefilled = widget.prefill.startDate;
+    return prefilled != null && prefilled.isBefore(now) ? prefilled : now;
   }
 }

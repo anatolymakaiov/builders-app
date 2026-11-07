@@ -12,6 +12,7 @@ import '../services/calendar_service.dart';
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../services/offer_acceptance_service.dart';
+import '../services/offer_prefill_service.dart';
 import '../services/profile_communication_service.dart';
 import '../services/safe_profile_service.dart';
 import '../services/stroyka_action_feedback.dart';
@@ -444,13 +445,13 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
     List<String> selectedWorkerIds = const [],
     List<String> selectedWorkerNames = const [],
   }) async {
-    final physicalAddressFields = await loadOfferPhysicalAddressFields(source);
+    final prefill = await OfferPrefillService().load(source);
     if (!context.mounted) return;
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => MakeOfferDialog(
-        physicalAddressFields: physicalAddressFields,
+        prefill: prefill,
       ),
     );
 
@@ -458,12 +459,15 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
 
     try {
       final offer = {
+        "trade": result["trade"],
         "jobType": result["jobType"],
         "workFormat": _jobTypeLabel(result["jobType"]?.toString() ?? "hourly"),
         "rate": result["rate"],
         "workPeriod": result["workPeriod"],
         "weeklyHours": result["weeklyHours"],
         "schedule": result["schedule"],
+        "workStartTime": result["workStartTime"],
+        "workEndTime": result["workEndTime"],
         "startDateTime": result["startDateTime"],
         if (result["startDateTimestamp"] is DateTime)
           "startDateTimestamp":
@@ -659,6 +663,10 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
     }
 
     String physicalAddressFromOffer() {
+      final saved =
+          (offer['siteAddress'] ?? offer['fullAddress'])?.toString().trim() ??
+              '';
+      if (saved.isNotEmpty) return saved;
       final street = offer["siteStreet"]?.toString().trim() ?? "";
       final city = offer["siteCity"]?.toString().trim() ?? "";
       final postcode = offer["sitePostcode"]?.toString().trim() ?? "";
@@ -672,11 +680,14 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
       return (offer["fullAddress"] ?? offer["siteAddress"])?.toString() ?? "";
     }
 
+    addRow("Trade / role", offer["trade"]);
     addRow("Work format", offer["workFormat"]);
     addRow("Rate / price", offer["rate"] == null ? null : "£${offer["rate"]}");
     addRow("Work period", offer["workPeriod"]);
     addRow("Hours per week", offer["weeklyHours"]);
     addRow("Schedule", offer["schedule"]);
+    addRow("Work starts", offer["workStartTime"]);
+    addRow("Work ends", offer["workEndTime"]);
     addRow("Start", offer["startDateTime"] ?? offer["startDate"]);
     addRow("Site address", physicalAddressFromOffer());
     addRow("Required on first day", offer["firstDayRequirements"]);
@@ -2086,7 +2097,8 @@ class _ApplicationDetailsScreenState extends State<ApplicationDetailsScreen> {
                       }
 
                       return StreamBuilder<DocumentSnapshot>(
-                        stream: SafeProfileService().profile(leaderId).snapshots(),
+                        stream:
+                            SafeProfileService().profile(leaderId).snapshots(),
                         builder: (context, leaderSnapshot) {
                           final leader = leaderSnapshot.data?.data()
                               as Map<String, dynamic>?;

@@ -1,92 +1,47 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/widgets/mobile_numeric_time_picker.dart';
 
 void main() {
-  testWidgets('mobile time picker opens numeric 24-hour entry only',
-      (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: Builder(builder: (context) {
-          return TextButton(
-            onPressed: () => showMobileNumericTimePicker(
-              context: context,
-              initialTime: const TimeOfDay(hour: 9, minute: 30),
-            ),
-            child: const Text('Choose time'),
-          );
-        }),
-      ),
-    ));
-    await tester.tap(find.text('Choose time'));
-    await tester.pumpAndSettle();
-    final picker =
-        tester.widget<TimePickerDialog>(find.byType(TimePickerDialog));
-    expect(picker.initialEntryMode, TimePickerEntryMode.inputOnly);
-    expect(
-        MediaQuery.of(tester.element(find.byType(TimePickerDialog)))
-            .alwaysUse24HourFormat,
-        isTrue);
+  test('historical values round only when the wheel is opened', () {
+    expect(nearestWheelTime(const TimeOfDay(hour: 7, minute: 3)),
+        const TimeOfDay(hour: 7, minute: 5));
+    expect(nearestWheelTime(const TimeOfDay(hour: 23, minute: 59)),
+        const TimeOfDay(hour: 23, minute: 55));
   });
 
-  for (final value in ['00:00', '09:30', '23:59']) {
-    testWidgets('numeric picker accepts $value', (tester) async {
-      TimeOfDay? selected;
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: Builder(builder: (context) {
-            return TextButton(
-              onPressed: () async {
-                selected = await showMobileNumericTimePicker(
-                  context: context,
-                  initialTime: const TimeOfDay(hour: 9, minute: 30),
-                );
-              },
-              child: const Text('Choose time'),
-            );
-          }),
-        ),
-      ));
-      await tester.tap(find.text('Choose time'));
-      await tester.pumpAndSettle();
-      final parts = value.split(':');
-      await tester.enterText(find.byType(TextFormField).at(0), parts[0]);
-      await tester.enterText(find.byType(TextFormField).at(1), parts[1]);
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      expect(
-          selected,
-          TimeOfDay(
-            hour: int.parse(parts[0]),
-            minute: int.parse(parts[1]),
-          ));
-    });
-  }
-
-  testWidgets('numeric picker rejects 24:99', (tester) async {
+  testWidgets('wheel has 24 hours and twelve five-minute values',
+      (tester) async {
     TimeOfDay? selected;
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: Builder(builder: (context) {
-          return TextButton(
-            onPressed: () async {
-              selected = await showMobileNumericTimePicker(
-                context: context,
-                initialTime: const TimeOfDay(hour: 9, minute: 30),
-              );
-            },
-            child: const Text('Choose time'),
-          );
-        }),
-      ),
+      home: Builder(builder: (context) {
+        return Scaffold(
+          body: TextButton(
+            onPressed: () async => selected = await showMobileNumericTimePicker(
+              context: context,
+              initialTime: const TimeOfDay(hour: 7, minute: 0),
+            ),
+            child: const Text('Open'),
+          ),
+        );
+      }),
     ));
-    await tester.tap(find.text('Choose time'));
+    await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField).at(0), '24');
-    await tester.enterText(find.byType(TextFormField).at(1), '99');
-    await tester.tap(find.text('OK'));
+    final hour = tester
+        .widget<CupertinoPicker>(find.byKey(const Key('time-wheel-hour')));
+    final minute = tester
+        .widget<CupertinoPicker>(find.byKey(const Key('time-wheel-minute')));
+    expect(hour.scrollController!.selectedItem, 7);
+    expect(minute.scrollController!.selectedItem, 0);
+    hour.scrollController!.jumpToItem(23);
+    minute.scrollController!.jumpToItem(11);
     await tester.pumpAndSettle();
-    expect(find.byType(TimePickerDialog), findsOneWidget);
-    expect(selected, isNull);
+    expect(hour.scrollController!.selectedItem, 23);
+    expect(minute.scrollController!.selectedItem, 11);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(selected, const TimeOfDay(hour: 23, minute: 55));
   });
 }

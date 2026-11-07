@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../services/application_activity_service.dart';
 import '../../../services/application_status_utils.dart';
 import '../../../services/job_taxonomy_service.dart';
+import '../../../services/offer_prefill_service.dart';
 import '../../services/web_application_actions_service.dart';
 import '../../services/web_applications_data_service.dart';
 import '../../services/web_data_state.dart';
@@ -1529,11 +1530,14 @@ class _ApplicationActionsState extends State<_ApplicationActions> {
         : const <String>[];
     if (application.isTeam && (selected == null || selected.isEmpty)) return;
     if (!mounted) return;
+    final prefill = await OfferPrefillService().load(application.data);
+    if (!mounted) return;
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => _WebMakeOfferDialog(
         application: application,
         portrait: portraitEmployer,
+        prefill: prefill,
       ),
     );
     if (result == null) return;
@@ -1638,12 +1642,15 @@ class _OfferCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final offer = application.offer;
     final rows = <MapEntry<String, String>>[
+      MapEntry('Trade / role', _firstText(offer, const ['trade'], '')),
       MapEntry('Work format',
           _firstText(offer, const ['workFormat', 'jobType'], '')),
       MapEntry('Rate / price', _firstText(offer, const ['rate'], '')),
       MapEntry('Work period', _firstText(offer, const ['workPeriod'], '')),
       MapEntry('Hours per week', _firstText(offer, const ['weeklyHours'], '')),
       MapEntry('Schedule', _firstText(offer, const ['schedule'], '')),
+      MapEntry('Work starts', _firstText(offer, const ['workStartTime'], '')),
+      MapEntry('Work ends', _firstText(offer, const ['workEndTime'], '')),
       MapEntry('Start date',
           _firstText(offer, const ['startDateTime', 'startDate'], '')),
       MapEntry(
@@ -1808,10 +1815,12 @@ class _WebMakeOfferDialog extends StatefulWidget {
   const _WebMakeOfferDialog({
     required this.application,
     required this.portrait,
+    required this.prefill,
   });
 
   final WebApplicationSummary application;
   final bool portrait;
+  final OfferPrefill prefill;
 
   @override
   State<_WebMakeOfferDialog> createState() => _WebMakeOfferDialogState();
@@ -1819,10 +1828,13 @@ class _WebMakeOfferDialog extends StatefulWidget {
 
 class _WebMakeOfferDialogState extends State<_WebMakeOfferDialog> {
   String jobType = 'hourly';
+  final trade = TextEditingController();
   final rate = TextEditingController();
   final workPeriod = TextEditingController();
   final weeklyHours = TextEditingController();
   final schedule = TextEditingController();
+  final workStartTime = TextEditingController();
+  final workEndTime = TextEditingController();
   final startDateTime = TextEditingController();
   final siteAddress = TextEditingController();
   final siteLine2 = TextEditingController();
@@ -1838,29 +1850,53 @@ class _WebMakeOfferDialogState extends State<_WebMakeOfferDialog> {
   @override
   void initState() {
     super.initState();
-    final data = widget.application.data;
+    final prefill = widget.prefill;
+    jobType = prefill.jobType;
+    trade.text = prefill.trade;
+    rate.text = prefill.rate;
+    workPeriod.text = prefill.workPeriod;
+    weeklyHours.text = prefill.weeklyHours;
+    schedule.text = prefill.schedule;
+    workStartTime.text = _formatTime(prefill.workStart);
+    workEndTime.text = _formatTime(prefill.workEnd);
+    if (prefill.startDate != null) {
+      final date = prefill.startDate!;
+      startDateTime.text = '${date.day.toString().padLeft(2, '0')}/'
+          '${date.month.toString().padLeft(2, '0')}/${date.year}'
+          '${prefill.workStart == null ? '' : ' ${workStartTime.text}'}';
+    }
+    firstDayRequirements.text = prefill.firstDayRequirements;
+    final address = prefill.address;
     siteAddress.text = _firstText(
-      data,
+      address,
       const ['siteStreet', 'siteAddressLine1', 'siteAddress', 'fullAddress'],
       '',
     );
-    siteLine2.text = _firstText(data, const ['siteAddressLine2'], '');
-    siteLine3.text = _firstText(data, const ['siteAddressLine3'], '');
-    siteCity.text = _firstText(data, const ['siteCity', 'city', 'town'], '');
-    siteCounty.text = _firstText(data, const ['siteCounty', 'county'], '');
+    siteLine2.text = _firstText(address, const ['siteAddressLine2'], '');
+    siteLine3.text = _firstText(address, const ['siteAddressLine3'], '');
+    siteCity.text = _firstText(address, const ['siteCity', 'city', 'town'], '');
+    siteCounty.text = _firstText(address, const ['siteCounty', 'county'], '');
     sitePostcode.text =
-        _firstText(data, const ['sitePostcode', 'postcode'], '');
+        _firstText(address, const ['sitePostcode', 'postcode'], '');
     siteCountry.text =
-        _firstText(data, const ['siteCountry', 'country'], 'United Kingdom');
+        _firstText(address, const ['siteCountry', 'country'], 'United Kingdom');
   }
+
+  String _formatTime(TimeOfDay? value) => value == null
+      ? ''
+      : '${value.hour.toString().padLeft(2, '0')}:'
+          '${value.minute.toString().padLeft(2, '0')}';
 
   @override
   void dispose() {
     for (final controller in [
+      trade,
       rate,
       workPeriod,
       weeklyHours,
       schedule,
+      workStartTime,
+      workEndTime,
       startDateTime,
       siteAddress,
       siteLine2,
@@ -1881,6 +1917,7 @@ class _WebMakeOfferDialogState extends State<_WebMakeOfferDialog> {
   @override
   Widget build(BuildContext context) {
     final fields = <Widget>[
+      _input(trade, 'Trade / role'),
       SizedBox(
         width: _fieldWidth(context, 350),
         child: DropdownButtonFormField<String>(
@@ -1903,6 +1940,8 @@ class _WebMakeOfferDialogState extends State<_WebMakeOfferDialog> {
       _input(workPeriod, 'Work period'),
       _input(weeklyHours, 'Hours per week'),
       _input(schedule, 'Work schedule'),
+      _input(workStartTime, 'Work starts (HH:MM)'),
+      _input(workEndTime, 'Work ends (HH:MM)'),
       _input(startDateTime, 'Start date and time'),
       _input(siteAddress, 'Site Address Line 1'),
       _input(siteLine2, 'Site Address Line 2'),
@@ -1974,6 +2013,16 @@ class _WebMakeOfferDialogState extends State<_WebMakeOfferDialog> {
           .toDouble();
 
   void _submit() {
+    final start = _parseTime(workStartTime.text.trim());
+    final end = _parseTime(workEndTime.text.trim());
+    if ((workStartTime.text.trim().isNotEmpty && start == null) ||
+        (workEndTime.text.trim().isNotEmpty && end == null) ||
+        (start != null && end != null && end <= start)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Enter valid work times; end must be after start.'),
+      ));
+      return;
+    }
     if (startDateTime.text.trim().isEmpty ||
         siteAddress.text.trim().isEmpty ||
         siteCity.text.trim().isEmpty ||
@@ -1996,11 +2045,14 @@ class _WebMakeOfferDialogState extends State<_WebMakeOfferDialog> {
       siteCountry.text.trim(),
     ].where((part) => part.isNotEmpty).join(', ');
     Navigator.of(context).pop({
+      'trade': trade.text.trim(),
       'jobType': jobType,
       'rate': rate.text.trim(),
       'workPeriod': workPeriod.text.trim(),
       'weeklyHours': weeklyHours.text.trim(),
       'schedule': schedule.text.trim(),
+      'workStartTime': workStartTime.text.trim(),
+      'workEndTime': workEndTime.text.trim(),
       'startDateTime': startDateTime.text.trim(),
       'siteStreet': siteAddress.text.trim(),
       'siteAddressLine1': siteAddress.text.trim(),
@@ -2015,6 +2067,13 @@ class _WebMakeOfferDialogState extends State<_WebMakeOfferDialog> {
       'description': description.text.trim(),
       'validUntil': validUntil.text.trim(),
     });
+  }
+
+  int? _parseTime(String value) {
+    final match = RegExp(r'^([01]?\d|2[0-3]):[0-5]\d$').firstMatch(value);
+    if (match == null) return null;
+    final parts = value.split(':');
+    return int.parse(parts[0]) * 60 + int.parse(parts[1]);
   }
 }
 

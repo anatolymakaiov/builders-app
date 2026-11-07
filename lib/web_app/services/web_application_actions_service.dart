@@ -76,12 +76,15 @@ class WebApplicationActionsService {
     List<String> selectedWorkerNames = const <String>[],
   }) {
     final offer = {
+      'trade': result['trade'],
       'jobType': result['jobType'],
       'workFormat': _jobTypeLabel(result['jobType']?.toString() ?? 'hourly'),
       'rate': result['rate'],
       'workPeriod': result['workPeriod'],
       'weeklyHours': result['weeklyHours'],
       'schedule': result['schedule'],
+      'workStartTime': result['workStartTime'],
+      'workEndTime': result['workEndTime'],
       'startDateTime': result['startDateTime'],
       if (result['startDateTimestamp'] is DateTime)
         'startDateTimestamp':

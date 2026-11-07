@@ -12,6 +12,7 @@ import '../services/calendar_service.dart';
 import '../services/chat_service.dart';
 import '../services/moderation_hold_service.dart';
 import '../services/notification_service.dart';
+import '../services/offer_prefill_service.dart';
 import '../services/profile_communication_service.dart';
 import '../services/safe_profile_service.dart';
 import '../services/report_service.dart';
@@ -466,11 +467,14 @@ class WorkerProfileScreen extends StatelessWidget {
       );
     }
 
+    addRow("Trade / role", offer["trade"]);
     addRow("Work format", offer["workFormat"]);
     addRow("Rate / price", offer["rate"] == null ? null : "£${offer["rate"]}");
     addRow("Work period", offer["workPeriod"]);
     addRow("Hours per week", offer["weeklyHours"]);
     addRow("Schedule", offer["schedule"]);
+    addRow("Work starts", offer["workStartTime"]);
+    addRow("Work ends", offer["workEndTime"]);
     addRow("Start", offer["startDateTime"] ?? offer["startDate"]);
     addRow("Site address", offer["siteAddress"]);
     addRow("Required on first day", offer["firstDayRequirements"]);
@@ -497,94 +501,18 @@ class WorkerProfileScreen extends StatelessWidget {
     }
   }
 
-  String _composePhysicalAddress({
-    required String street,
-    required String city,
-    required String postcode,
-  }) {
-    return [
-      street.trim(),
-      city.trim(),
-      postcode.trim(),
-    ].where((part) => part.isNotEmpty).join(", ");
-  }
-
-  Map<String, String> _physicalAddressFieldsFrom(
-    Map<String, dynamic> source,
-  ) {
-    final street =
-        (source["siteStreet"] ?? source["street"] ?? "").toString().trim();
-    final city = (source["siteCity"] ?? source["city"] ?? "").toString().trim();
-    final postcode =
-        (source["sitePostcode"] ?? source["postcode"] ?? "").toString().trim();
-    final county =
-        (source["siteCounty"] ?? source["county"] ?? "").toString().trim();
-    final composedAddress = _composePhysicalAddress(
-      street: street,
-      city: city,
-      postcode: postcode,
-    );
-    final projectNames = {
-      source["jobSite"]?.toString().trim().toLowerCase(),
-      source["site"]?.toString().trim().toLowerCase(),
-    }..removeWhere((value) => value == null || value.isEmpty);
-    final addressCandidates = [
-      source["siteAddress"],
-      source["fullAddress"],
-      source["location"],
-      composedAddress,
-    ];
-    final storedAddress = addressCandidates
-        .map((value) => value?.toString().trim() ?? "")
-        .where((value) => value.isNotEmpty)
-        .firstWhere(
-          (value) => !projectNames.contains(value.toLowerCase()),
-          orElse: () => "",
-        )
-        .trim();
-
-    return {
-      "siteStreet": street,
-      "siteCity": city,
-      "sitePostcode": postcode,
-      "siteCounty": county,
-      "siteAddress": storedAddress.isNotEmpty ? storedAddress : composedAddress,
-      "fullAddress": storedAddress.isNotEmpty ? storedAddress : composedAddress,
-    };
-  }
-
-  Future<Map<String, String>> _loadOfferPhysicalAddressFields(
-    Map<String, dynamic> applicationData,
-  ) async {
-    final fromApplication = _physicalAddressFieldsFrom(applicationData);
-    if ((fromApplication["siteAddress"] ?? "").isNotEmpty) {
-      return fromApplication;
-    }
-
-    final jobId = applicationData["jobId"]?.toString();
-    if (jobId == null || jobId.isEmpty) return fromApplication;
-
-    final jobDoc =
-        await FirebaseFirestore.instance.collection("jobs").doc(jobId).get();
-    final jobData = jobDoc.data();
-    if (jobData == null) return fromApplication;
-
-    return _physicalAddressFieldsFrom(jobData);
-  }
-
   Future<void> openExpandedOfferDialog(
     BuildContext context, {
     required String applicationId,
     required Map<String, dynamic> applicationData,
   }) async {
-    final physicalAddressFields =
-        await _loadOfferPhysicalAddressFields(applicationData);
+    final prefill = await OfferPrefillService().load(applicationData);
     if (!context.mounted) return;
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => MakeOfferDialog(
-        physicalAddressFields: physicalAddressFields,
+        prefill: prefill,
       ),
     );
 
@@ -592,20 +520,27 @@ class WorkerProfileScreen extends StatelessWidget {
 
     try {
       final offer = {
+        "trade": result["trade"],
         "jobType": result["jobType"],
         "workFormat": _jobTypeLabel(result["jobType"]?.toString() ?? "hourly"),
         "rate": result["rate"],
         "workPeriod": result["workPeriod"],
         "weeklyHours": result["weeklyHours"],
         "schedule": result["schedule"],
+        "workStartTime": result["workStartTime"],
+        "workEndTime": result["workEndTime"],
         "startDateTime": result["startDateTime"],
         if (result["startDateTimestamp"] is DateTime)
           "startDateTimestamp":
               Timestamp.fromDate(result["startDateTimestamp"] as DateTime),
-        "siteStreet": physicalAddressFields["siteStreet"],
-        "siteCity": physicalAddressFields["siteCity"],
-        "sitePostcode": physicalAddressFields["sitePostcode"],
-        "siteCounty": physicalAddressFields["siteCounty"],
+        "siteStreet": result["siteStreet"],
+        "siteAddressLine1": result["siteAddressLine1"],
+        "siteAddressLine2": result["siteAddressLine2"],
+        "siteAddressLine3": result["siteAddressLine3"],
+        "siteCity": result["siteCity"],
+        "sitePostcode": result["sitePostcode"],
+        "siteCounty": result["siteCounty"],
+        "siteCountry": result["siteCountry"],
         "siteAddress": result["siteAddress"],
         "fullAddress": result["siteAddress"],
         "firstDayRequirements": result["firstDayRequirements"],
