@@ -44,28 +44,33 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
   String? selectedId;
   bool compactDetailVisible = false;
   Future<Job?>? selectedJob;
-  late Future<String?> workerFirstName;
+  final Map<String, Future<String?>> recipientFirstNames = {};
   final Map<String, Future<Job?>> jobCache = {};
 
   @override
   void initState() {
     super.initState();
     stream = widget.invitations ?? service.watchMine(widget.workerId);
-    workerFirstName = _loadWorkerFirstName();
   }
 
-  Future<String?> _loadWorkerFirstName() async {
+  Future<String?> _loadWorkerFirstName(String workerId) async {
     if (widget.loadWorkerFirstName != null) {
-      return widget.loadWorkerFirstName!(widget.workerId);
+      return widget.loadWorkerFirstName!(workerId);
     }
     try {
-      final profile =
-          await WebProfileDataService().loadProfile(widget.workerId);
-      return profile?.data['firstName']?.toString();
-    } catch (_) {
-      return null;
+      final profile = await WebProfileDataService().loadProfile(workerId);
+      if (profile == null) throw StateError('Recipient profile is unavailable');
+      return profile.firstName;
+    } catch (error) {
+      debugPrint(
+          'WEB OPPORTUNITY RECIPIENT PROFILE LOAD ERROR: ${error.runtimeType}');
+      rethrow;
     }
   }
+
+  Future<String?> _firstNameFor(VacancyInvitation invitation) =>
+      recipientFirstNames.putIfAbsent(
+          invitation.workerId, () => _loadWorkerFirstName(invitation.workerId));
 
   @override
   void didUpdateWidget(covariant WebOpportunitiesPage oldWidget) {
@@ -74,10 +79,7 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
         oldWidget.invitations != widget.invitations ||
         oldWidget.loadWorkerFirstName != widget.loadWorkerFirstName) {
       stream = widget.invitations ?? service.watchMine(widget.workerId);
-      if (oldWidget.workerId != widget.workerId ||
-          oldWidget.loadWorkerFirstName != widget.loadWorkerFirstName) {
-        workerFirstName = _loadWorkerFirstName();
-      }
+      recipientFirstNames.clear();
       busyId = null;
       selectedId = null;
       selectedJob = null;
@@ -242,7 +244,10 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
                             : _OpportunityDetail(
                                 invitation: selected,
                                 job: selectedJob,
-                                workerFirstName: workerFirstName,
+                                recipientFirstName:
+                                    selected.message?.trim().isNotEmpty ?? false
+                                        ? Future.value(null)
+                                        : _firstNameFor(selected),
                                 busy: busyId != null,
                                 onOpen: () => _open(selected, apply: false),
                                 onApply: () => _open(selected, apply: true),
@@ -391,14 +396,14 @@ class _OpportunityDetail extends StatelessWidget {
   const _OpportunityDetail(
       {required this.invitation,
       required this.job,
-      required this.workerFirstName,
+      required this.recipientFirstName,
       required this.busy,
       required this.onOpen,
       required this.onApply,
       required this.onDecline});
   final VacancyInvitation invitation;
   final Future<Job?>? job;
-  final Future<String?> workerFirstName;
+  final Future<String?> recipientFirstName;
   final bool busy;
   final VoidCallback onOpen;
   final VoidCallback onApply;
@@ -417,13 +422,24 @@ class _OpportunityDetail extends StatelessWidget {
           return ListView(children: [
             Text('Invitation', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            FutureBuilder<String?>(
-              future: workerFirstName,
-              builder: (context, name) => Text(webOpportunityInvitationText(
-                invitation,
-                firstName: name.data,
-              )),
-            ),
+            if (invitation.message?.trim().isNotEmpty ?? false)
+              Text(invitation.message!)
+            else
+              FutureBuilder<String?>(
+                future: recipientFirstName,
+                builder: (context, name) {
+                  if (name.hasError) {
+                    return const Text('Could not load recipient name.');
+                  }
+                  if (name.connectionState != ConnectionState.done) {
+                    return const Text('Loading invitation...');
+                  }
+                  return Text(webOpportunityInvitationText(
+                    invitation,
+                    firstName: name.data,
+                  ));
+                },
+              ),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerLeft,

@@ -19,6 +19,12 @@ class WebProfileData {
   final String id;
   final Map<String, dynamic> data;
 
+  String get firstName => _firstText(
+        data,
+        const ['firstName', 'registrationFirstName'],
+        '',
+      );
+
   String get displayName {
     if (role == 'employer' || role == 'company') {
       return _firstText(
@@ -230,9 +236,8 @@ class WebProfileDataService {
 
   Future<WebProfileData?> loadProfile(String uid) async {
     if (uid.trim().isEmpty) return null;
-    final snapshot = await SafeProfileService(firestore: _firestore)
-        .profile(uid)
-        .get();
+    final snapshot =
+        await SafeProfileService(firestore: _firestore).profile(uid).get();
     final data = snapshot.data();
     final profile = data == null ? null : WebProfileData(id: uid, data: data);
     _profileCache[uid] = profile;

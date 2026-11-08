@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/models/job.dart';
@@ -5,6 +7,7 @@ import 'package:test_app/services/vacancy_invitation_service.dart';
 import 'package:test_app/web_app/pages/opportunities/web_opportunities_page.dart';
 import 'package:test_app/web_app/pages/jobs/web_worker_vacancy_card.dart';
 import 'package:test_app/web_app/widgets/web_remote_image.dart';
+import 'package:test_app/web_app/services/web_profile_data_service.dart';
 
 void main() {
   final vacancy = Job(
@@ -222,6 +225,144 @@ void main() {
         "Hi Anthony,\n\nI'd like to invite you to consider this vacancy.");
     expect(webOpportunityInvitationText(invitation),
         "Hi,\n\nI'd like to invite you to consider this vacancy.");
+  });
+
+  test('recipient given name uses explicit profile fields only', () {
+    expect(
+        const WebProfileData(id: 'anthony', data: {
+          'firstName': 'Anthony',
+          'registrationFirstName': 'Other',
+          'name': 'James Sender',
+        }).firstName,
+        'Anthony');
+    expect(
+        const WebProfileData(id: 'john', data: {
+          'registrationFirstName': 'John',
+          'name': 'James Sender',
+        }).firstName,
+        'John');
+    expect(
+        const WebProfileData(id: 'missing', data: {
+          'name': 'James Sender',
+        }).firstName,
+        isEmpty);
+  });
+
+  testWidgets('recipient profile loading does not show neutral greeting',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 900);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final name = Completer<String?>();
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: WebOpportunitiesPage(
+          workerId: 'worker-1',
+          onOpenJob: (_) {},
+          loadWorkerFirstName: (_) => name.future,
+          invitations: Stream.value([invitation]),
+          loadJob: (_) async => vacancy,
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('Loading invitation...'), findsOneWidget);
+    expect(find.textContaining('Hi,'), findsNothing);
+    name.complete('Anthony');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Hi Anthony,'), findsOneWidget);
+    expect(find.textContaining('Hi James,'), findsNothing);
+  });
+
+  testWidgets('profile failure is not mistaken for a missing first name',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 900);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: WebOpportunitiesPage(
+          workerId: 'worker-1',
+          onOpenJob: (_) {},
+          loadWorkerFirstName: (_) async => throw StateError('read failed'),
+          invitations: Stream.value([invitation]),
+          loadJob: (_) async => vacancy,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not load recipient name.'), findsOneWidget);
+    expect(find.textContaining('Hi,'), findsNothing);
+  });
+
+  testWidgets('custom invitation never loads a recipient name', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 900);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    var reads = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: WebOpportunitiesPage(
+          workerId: 'worker-1',
+          onOpenJob: (_) {},
+          loadWorkerFirstName: (_) async {
+            reads++;
+            return 'Anthony';
+          },
+          invitations: Stream.value([customInvitation]),
+          loadJob: (_) async => vacancy,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Please review our site opportunity.'), findsOneWidget);
+    expect(reads, 0);
+  });
+
+  testWidgets('each invitation uses its own recipient and caches profile read',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 900);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final reads = <String>[];
+    const johnInvitation = VacancyInvitation(
+      id: 'invite-john',
+      vacancyId: 'job-2',
+      workerId: 'worker-2',
+      title: 'Electrician vacancy',
+      company: 'Builder Ltd',
+      tradeId: 'electrician',
+      generalLocation: 'Leeds',
+      status: 'pending',
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: WebOpportunitiesPage(
+          workerId: 'worker-1',
+          onOpenJob: (_) {},
+          loadWorkerFirstName: (uid) async {
+            reads.add(uid);
+            return uid == 'worker-1' ? 'Anthony' : 'John';
+          },
+          invitations: Stream.value([invitation, johnInvitation]),
+          loadJob: (_) async => vacancy,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Hi Anthony,'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('opportunity:invite-john')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Hi John,'), findsOneWidget);
+    expect(find.textContaining('Hi Anthony,'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('opportunity:invite-1')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Hi Anthony,'), findsOneWidget);
+    expect(reads, ['worker-1', 'worker-2']);
   });
 
   testWidgets('automatic greeting follows the recipient after account switch',
