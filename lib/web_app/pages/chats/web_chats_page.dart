@@ -1284,9 +1284,8 @@ class WebChatMessageBubble extends StatelessWidget {
             crossAxisAlignment:
                 isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
-              if (!hasImages)
-                _actionsMenu(
-                    isMine: isMine, deleted: deleted, hasImages: false),
+              _actionsMenu(
+                  isMine: isMine, deleted: deleted, hasImages: hasImages),
               if (message.data['forwarded'] == true)
                 const Text('Forwarded',
                     style: TextStyle(fontSize: 11, color: WebTheme.muted)),
@@ -1333,8 +1332,6 @@ class WebChatMessageBubble extends StatelessWidget {
                     ),
                   ),
               ],
-              if (hasImages)
-                _actionsMenu(isMine: isMine, deleted: deleted, hasImages: true),
               if (sentAt != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),

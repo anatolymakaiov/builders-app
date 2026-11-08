@@ -27,6 +27,7 @@ void main() {
   Future<void> showMessage(WidgetTester tester, WebMessageItem message,
       {required bool isMine,
       Size size = const Size(390, 844),
+      bool settle = true,
       ImageProvider Function(String)? imageProviderFor,
       Widget Function(WebChatAttachment, double, double)?
           imagePreviewBuilder}) async {
@@ -46,7 +47,11 @@ void main() {
         ),
       ),
     ));
-    await tester.pumpAndSettle();
+    if (settle) {
+      await tester.pumpAndSettle();
+    } else {
+      await tester.pump();
+    }
   }
 
   testWidgets('short outgoing and incoming text only color the compact text',
@@ -138,10 +143,51 @@ void main() {
         tester.getRect(find.byKey(const ValueKey('chat-text-bubble:mixed')));
     final menu = tester.getRect(find.byTooltip('Message actions'));
     final time = tester.getRect(find.text('08:26'));
+    expect(menu.bottom, lessThanOrEqualTo(photo.top));
     expect(photo.bottom, lessThanOrEqualTo(bubble.top));
-    expect(bubble.bottom, lessThanOrEqualTo(menu.top));
-    expect(menu.bottom, lessThanOrEqualTo(time.top));
+    expect(bubble.bottom, lessThanOrEqualTo(time.top));
+    expect(find.byTooltip('Message actions'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('photo-only, audio and file share menu-content-time order',
+      (tester) async {
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final bytes = (await tester.runAsync(() => _testImage(16, 24)))!;
+    for (final type in ['image', 'audio', 'file']) {
+      final fileName = type == 'image' ? 'photo.jpg' : 'report.$type';
+      await showMessage(
+        tester,
+        WebMessageItem(id: 'attachment-$type', data: {
+          'senderId': 'sender',
+          'attachments': [
+            {
+              'type': type,
+              'url': 'https://example.com/$fileName',
+              'fileName': fileName,
+            },
+          ],
+        }),
+        isMine: true,
+        size: const Size(390, 1000),
+        settle: false,
+        imageProviderFor: (_) => MemoryImage(bytes),
+        imagePreviewBuilder: (attachment, _, __) =>
+            ColoredBox(key: ValueKey(attachment.fileName), color: Colors.blue),
+      );
+      final menu = tester.getRect(find.byTooltip('Message actions'));
+      final content = tester.getRect(type == 'image'
+          ? find.byKey(const ValueKey('photo.jpg'))
+          : find.text(fileName));
+      final time = tester.getRect(find.text('08:26'));
+      expect(menu.bottom, lessThanOrEqualTo(content.top));
+      expect(content.bottom, lessThanOrEqualTo(time.top));
+      expect(find.byTooltip('Message actions'), findsOneWidget);
+      expect(find.byKey(ValueKey('chat-text-bubble:attachment-$type')),
+          findsNothing);
+      expect(tester.takeException(), isNull);
+    }
   });
 
   test('message keys follow stable IDs when older messages are appended', () {

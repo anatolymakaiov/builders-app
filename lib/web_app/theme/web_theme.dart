@@ -69,8 +69,11 @@ class WebTheme {
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: WebSpacing.md,
-          vertical: 14,
+          vertical: 9,
         ),
+        constraints: const BoxConstraints(minHeight: WebToolbar.controlHeight),
+        prefixIconConstraints: WebToolbar.iconConstraints,
+        suffixIconConstraints: WebToolbar.iconConstraints,
         labelStyle: WebTypography.label.copyWith(color: muted),
         hintStyle: WebTypography.body.copyWith(color: subtleText),
         helperStyle: WebTypography.caption.copyWith(color: muted),
@@ -94,11 +97,12 @@ class WebTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: accent,
-          foregroundColor: Colors.white,
-          overlayColor: accentHover,
-          minimumSize: const Size(44, 44),
-          padding: const EdgeInsets.symmetric(horizontal: WebSpacing.lg),
+          backgroundColor: accentSoft,
+          foregroundColor: accentHover,
+          overlayColor: accentBorder,
+          minimumSize: const Size(44, WebToolbar.controlHeight),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: WebToolbar.actionPadding,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(WebRadii.button),
           ),
@@ -109,9 +113,10 @@ class WebTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: accent,
           overlayColor: accentSoft,
-          minimumSize: const Size(44, 44),
-          padding: const EdgeInsets.symmetric(horizontal: WebSpacing.lg),
-          side: const BorderSide(color: accentBorder),
+          minimumSize: const Size(44, WebToolbar.controlHeight),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: WebToolbar.actionPadding,
+          side: WebToolbar.actionBorder,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(WebRadii.button),
           ),
@@ -121,7 +126,8 @@ class WebTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: accent,
-          minimumSize: const Size(40, 40),
+          minimumSize: const Size(40, WebToolbar.controlHeight),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           padding: const EdgeInsets.symmetric(horizontal: WebSpacing.md),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(WebRadii.button),
@@ -248,6 +254,8 @@ class WebSpacing {
 
 class WebToolbar {
   static const controlHeight = 42.0;
+  static const actionPadding = EdgeInsets.symmetric(horizontal: WebSpacing.lg);
+  static const actionBorder = BorderSide(color: WebTheme.accentBorder);
   static const segmentLabelHeight = controlHeight - 16.0;
   static const fieldPadding =
       EdgeInsets.symmetric(horizontal: WebSpacing.sm, vertical: WebSpacing.xs);
