@@ -53,12 +53,14 @@ class WebChatAttachmentsView extends StatefulWidget {
     super.key,
     required this.attachments,
     required this.isMine,
+    this.messageId,
     this.imageProviderFor,
     this.imagePreviewBuilder,
   });
 
   final List<WebChatAttachment> attachments;
   final bool isMine;
+  final String? messageId;
   final ImageProvider Function(String url)? imageProviderFor;
   final Widget Function(
           WebChatAttachment attachment, double width, double height)?
@@ -102,7 +104,7 @@ class _WebChatAttachmentsViewState extends State<WebChatAttachmentsView> {
       }
       final provider = widget.imageProviderFor?.call(url) ??
           NetworkImage(url,
-              webHtmlElementStrategy: WebHtmlElementStrategy.fallback);
+              webHtmlElementStrategy: WebHtmlElementStrategy.prefer);
       final stream = provider.resolve(
         createLocalImageConfiguration(context, size: const Size(280, 190)),
       );
@@ -123,6 +125,12 @@ class _WebChatAttachmentsViewState extends State<WebChatAttachmentsView> {
         onError: (_, __) {
           stream.removeListener(listener);
           listeners.remove(url);
+          Future.microtask(() {
+            if (mounted &&
+                widget.attachments.any((item) => item.url.trim() == url)) {
+              setState(() => landscape[url] = false);
+            }
+          });
         },
       );
       listeners[url] = (stream, listener);
@@ -213,6 +221,8 @@ class _WebChatAttachmentsViewState extends State<WebChatAttachmentsView> {
     return SizedBox(
       width: kind == ChatMediaTileKind.other ? width : imageWidth,
       child: _AttachmentTile(
+        key: ValueKey('chat-media:${widget.messageId ?? ''}:'
+            '${widget.attachments[index].storagePath ?? widget.attachments[index].url}:$index'),
         attachment: widget.attachments[index],
         attachments: widget.attachments,
         index: index,
@@ -265,6 +275,7 @@ class WebPendingAttachmentsPreview extends StatelessWidget {
 
 class _AttachmentTile extends StatelessWidget {
   const _AttachmentTile({
+    super.key,
     required this.attachment,
     required this.attachments,
     required this.index,
@@ -349,11 +360,12 @@ class _ImageAttachment extends StatelessWidget {
         height: height,
         child: previewBuilder?.call(attachment, width, height) ??
             WebRemoteImage(
-              key: ValueKey('chat-image:${attachment.url}'),
+              key: ValueKey(
+                  'chat-image:${attachment.storagePath ?? attachment.url}'),
               url: attachment.url,
               storagePath: attachment.storagePath,
               fit: BoxFit.cover,
-              webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+              webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
               errorLabel: 'Image unavailable',
             ),
       ),

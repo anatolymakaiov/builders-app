@@ -14,6 +14,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
     super.key,
     required this.job,
     this.matchLabel,
+    this.titleOverride,
     required this.selected,
     required this.saved,
     required this.onTap,
@@ -29,6 +30,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
 
   final Job job;
   final String? matchLabel;
+  final String? titleOverride;
   final bool selected;
   final bool saved;
   final VoidCallback onTap;
@@ -80,7 +82,7 @@ class WebWorkerVacancyCard extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              job.displayTitle,
+                              titleOverride ?? job.displayTitle,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(

@@ -22,6 +22,12 @@ import '../../widgets/web_toolbar_field.dart';
 import 'web_chat_media_widgets.dart';
 import 'web_chat_timeline.dart';
 
+int? webChatMessageIndexForKey(List<WebMessageItem> messages, Key key) {
+  if (key is! ValueKey<String>) return null;
+  final index = messages.indexWhere((message) => message.id == key.value);
+  return index < 0 ? null : index;
+}
+
 class WebChatsPage extends StatefulWidget {
   const WebChatsPage({
     super.key,
@@ -1069,6 +1075,8 @@ class _ThreadStreamView extends StatelessWidget {
               child: ListView.builder(
                 controller: controller,
                 reverse: true,
+                findChildIndexCallback: (key) =>
+                    webChatMessageIndexForKey(thread.messages, key),
                 padding: const EdgeInsets.all(18),
                 itemCount: thread.messages.length,
                 itemBuilder: (context, index) {
@@ -1332,11 +1340,15 @@ class _MessageBubble extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: WebChatAttachmentsView(
-                      attachments: attachments, isMine: isMine),
+                      messageId: message.id,
+                      attachments: attachments,
+                      isMine: isMine),
                 )
               else
                 WebChatAttachmentsView(
-                    attachments: attachments, isMine: isMine),
+                    messageId: message.id,
+                    attachments: attachments,
+                    isMine: isMine),
               if (message.text.trim().isNotEmpty)
                 Container(
                   padding: hasImages

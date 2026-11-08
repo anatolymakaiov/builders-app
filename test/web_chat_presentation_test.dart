@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/web_app/pages/chats/web_chat_media_widgets.dart';
+import 'package:test_app/web_app/pages/chats/web_chats_page.dart';
 import 'package:test_app/web_app/pages/chats/web_chat_timeline.dart';
 import 'package:test_app/web_app/services/web_chat_media_service.dart';
 import 'package:test_app/web_app/services/web_chats_data_service.dart';
@@ -22,6 +23,82 @@ Future<Uint8List> _testImage(int width, int height) async {
 }
 
 void main() {
+  test('message keys follow stable IDs when older messages are appended', () {
+    const current = WebMessageItem(id: 'current', data: {});
+    const previous = WebMessageItem(id: 'previous', data: {});
+    const older = WebMessageItem(id: 'older', data: {});
+    expect(
+        webChatMessageIndexForKey(
+            [current, previous], const ValueKey<String>('previous')),
+        1);
+    expect(
+        webChatMessageIndexForKey(
+            [older, current, previous], const ValueKey<String>('previous')),
+        2);
+    expect(
+        webChatMessageIndexForKey(
+            [older, current, previous], const ValueKey<String>('missing')),
+        isNull);
+  });
+
+  testWidgets('loaded image stays with its message after older page arrives',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final bytes = (await tester.runAsync(() => _testImage(16, 24)))!;
+    final current = [
+      const WebMessageItem(id: 'new', data: {}),
+      const WebMessageItem(id: 'existing', data: {}),
+    ];
+
+    Widget timeline(List<WebMessageItem> messages) => MaterialApp(
+          home: Scaffold(
+            body: ListView.builder(
+              itemCount: messages.length,
+              findChildIndexCallback: (key) =>
+                  webChatMessageIndexForKey(messages, key),
+              itemBuilder: (context, index) {
+                final message = messages[index];
+                return SizedBox(
+                  key: ValueKey<String>(message.id),
+                  height: 400,
+                  child: WebChatAttachmentsView(
+                    messageId: message.id,
+                    attachments: [
+                      WebChatAttachment(
+                        type: 'image',
+                        url: 'https://example.com/${message.id}.png',
+                        fileName: '${message.id}.png',
+                      ),
+                    ],
+                    isMine: false,
+                    imageProviderFor: (_) => MemoryImage(bytes),
+                    imagePreviewBuilder: (item, _, __) => Image.memory(
+                      bytes,
+                      key: ValueKey<String>(item.fileName),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(timeline(current));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('existing.png')), findsOneWidget);
+    await tester.pumpWidget(timeline([
+      const WebMessageItem(id: 'older', data: {}),
+      ...current,
+    ]));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('existing.png')), findsOneWidget);
+    expect(find.byKey(const ValueKey('older.png')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Web photos have no individual frame and one-pixel spacing',
       (tester) async {
     const images = [

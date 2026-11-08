@@ -5,6 +5,9 @@ import '../../../models/job.dart';
 import '../../../services/job_taxonomy_service.dart';
 import '../../../services/vacancy_invitation_service.dart';
 import '../jobs/web_job_display.dart';
+import '../jobs/web_worker_vacancy_card.dart';
+import '../../services/web_jobs_data_service.dart';
+import '../../services/web_company_branding.dart';
 import '../../theme/web_theme.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../widgets/web_apply_dialog.dart';
@@ -40,6 +43,7 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
   String? selectedId;
   bool compactDetailVisible = false;
   Future<Job?>? selectedJob;
+  final Map<String, Future<Job?>> jobCache = {};
 
   @override
   void initState() {
@@ -56,6 +60,7 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
       busyId = null;
       selectedId = null;
       selectedJob = null;
+      jobCache.clear();
       compactDetailVisible = false;
     }
   }
@@ -68,16 +73,24 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
           .doc(invitation.vacancyId)
           .get();
       if (!snapshot.exists) return null;
-      return Job.fromFirestore(snapshot.id, snapshot.data()!);
+      final jobs = [
+        Job.fromFirestore(
+            snapshot.id, webJobWithoutSnapshotBranding(snapshot.data()!))
+      ];
+      await WebJobsDataService().enrichCompanyIdentity(jobs);
+      return jobs.single;
     } catch (_) {
       return null;
     }
   }
 
+  Future<Job?> _jobFor(VacancyInvitation invitation) => jobCache.putIfAbsent(
+      invitation.vacancyId.isEmpty ? invitation.id : invitation.vacancyId,
+      () => _loadJob(invitation));
+
   void _select(VacancyInvitation invitation) {
     if (selectedId != invitation.id) {
-      selectedJob =
-          invitation.closed ? Future.value(null) : _loadJob(invitation);
+      selectedJob = _jobFor(invitation);
     }
     setState(() {
       selectedId = invitation.id;
@@ -92,7 +105,7 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
     try {
       final job = selectedId == invitation.id && selectedJob != null
           ? await selectedJob
-          : await _loadJob(invitation);
+          : await _jobFor(invitation);
       if (!mounted) return;
       if (job == null || invitation.closed || invitation.vacancyId.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -163,8 +176,7 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
               (selectedId == null ||
                   items.every((item) => item.id != selectedId))) {
             selectedId = items.first.id;
-            selectedJob =
-                items.first.closed ? Future.value(null) : _loadJob(items.first);
+            selectedJob = _jobFor(items.first);
             compactDetailVisible = false;
           }
           final selected =
@@ -195,6 +207,7 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
                             final item = items[index];
                             return _OpportunityRow(
                               invitation: item,
+                              job: _jobFor(item),
                               selected: item.id == selectedId,
                               onTap: () => _select(item),
                             );
@@ -247,8 +260,12 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
 
 class _OpportunityRow extends StatelessWidget {
   const _OpportunityRow(
-      {required this.invitation, required this.selected, required this.onTap});
+      {required this.invitation,
+      required this.job,
+      required this.selected,
+      required this.onTap});
   final VacancyInvitation invitation;
+  final Future<Job?> job;
   final bool selected;
   final VoidCallback onTap;
 
@@ -258,64 +275,79 @@ class _OpportunityRow extends StatelessWidget {
         invitation.tradeId;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-      child: InkWell(
-        key: ValueKey('opportunity:${invitation.id}'),
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(WebRadii.card),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: selected ? WebTheme.accentSoft : WebTheme.surface,
-            borderRadius: BorderRadius.circular(WebRadii.card),
-            border: Border.all(
-              color: selected ? WebTheme.accent : WebTheme.border,
-              width: selected ? 1.5 : 1,
+      child: FutureBuilder<Job?>(
+        future: job,
+        builder: (context, snapshot) {
+          final vacancy = snapshot.data;
+          if (vacancy != null) {
+            final trade =
+                JobTaxonomyService.roleFor(invitation.tradeId)?.canonical ??
+                    vacancy.trade;
+            return WebWorkerVacancyCard(
+              key: ValueKey('opportunity:${invitation.id}'),
+              job: vacancy,
+              titleOverride:
+                  trade.trim().isEmpty ? vacancy.displayTitle : trade,
+              selected: selected,
+              saved: false,
+              compact: true,
+              showApplicationStatus: false,
+              onTap: onTap,
+            );
+          }
+          return InkWell(
+            key: ValueKey('opportunity:${invitation.id}'),
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: selected ? WebTheme.accentSoft : WebTheme.surface,
+                borderRadius: BorderRadius.circular(WebRadii.card),
+                border: Border.all(
+                  color: selected ? WebTheme.accent : WebTheme.border,
+                  width: selected ? 1.5 : 1,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(trade.trim().isEmpty ? invitation.title : trade,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: WebTheme.ink,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 3),
+                  Text(invitation.company,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: WebTheme.muted)),
+                  if (invitation.generalLocation.trim().isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(invitation.generalLocation,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: WebTheme.muted)),
+                  ],
+                  const SizedBox(height: 7),
+                  Wrap(spacing: 8, runSpacing: 4, children: [
+                    Text(invitation.statusLabel,
+                        style: const TextStyle(
+                            color: WebTheme.accent,
+                            fontWeight: FontWeight.w700)),
+                    if (invitation.createdAt != null)
+                      Text(
+                        'Received ${MaterialLocalizations.of(context).formatMediumDate(invitation.createdAt!.toLocal())}',
+                        style: const TextStyle(
+                            color: WebTheme.subtleText, fontSize: 12),
+                      ),
+                  ]),
+                ],
+              ),
             ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(invitation.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      color: WebTheme.ink,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900)),
-              const SizedBox(height: 3),
-              Text(invitation.company,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: WebTheme.muted)),
-              if (trade.trim().isNotEmpty) ...[
-                const SizedBox(height: 5),
-                Text(trade,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: WebTheme.muted)),
-              ],
-              if (invitation.generalLocation.trim().isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(invitation.generalLocation,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: WebTheme.muted)),
-              ],
-              const SizedBox(height: 7),
-              Wrap(spacing: 8, runSpacing: 4, children: [
-                Text(invitation.statusLabel,
-                    style: const TextStyle(
-                        color: WebTheme.accent, fontWeight: FontWeight.w700)),
-                if (invitation.createdAt != null)
-                  Text(
-                    'Received ${MaterialLocalizations.of(context).formatMediumDate(invitation.createdAt!.toLocal())}',
-                    style: const TextStyle(
-                        color: WebTheme.subtleText, fontSize: 12),
-                  ),
-              ]),
-            ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -397,16 +429,17 @@ class _OpportunityDetail extends StatelessWidget {
               _detail(
                   context,
                   'Received',
-                  MaterialLocalizations.of(context)
-                      .formatMediumDate(invitation.createdAt!.toLocal())),
-            _detail(context, 'Employer', invitation.company),
-            _detail(context, 'Vacancy', invitation.title),
+                  '${MaterialLocalizations.of(context).formatMediumDate(invitation.createdAt!.toLocal())}, '
+                      '${TimeOfDay.fromDateTime(invitation.createdAt!.toLocal()).format(context)}'),
+            _detail(
+                context, 'Company', vacancy?.companyName ?? invitation.company),
             _detail(
                 context,
                 'Trade',
                 JobTaxonomyService.roleFor(invitation.tradeId)?.canonical ??
                     invitation.tradeId),
-            _detail(context, 'Location', invitation.generalLocation),
+            _detail(context, 'Address',
+                vacancy?.fullAddress ?? invitation.generalLocation),
             if (vacancy != null) ...[
               _detail(context, 'Pay', webJobRate(vacancy) ?? ''),
               if (vacancy.startDate != null)
@@ -415,10 +448,13 @@ class _OpportunityDetail extends StatelessWidget {
                     'Start',
                     MaterialLocalizations.of(context)
                         .formatMediumDate(vacancy.startDate!.toLocal())),
-              _detail(context, 'Working hours', vacancy.weeklyHours),
-              _detail(context, 'Site', vacancy.site),
+              _detail(
+                  context,
+                  'Working hours',
+                  vacancy.weeklyHours.trim().isEmpty
+                      ? ''
+                      : '${vacancy.weeklyHours} hours/week'),
               _detail(context, 'Duration', vacancy.duration),
-              _detail(context, 'Engagement', vacancy.employmentType),
             ],
             _detail(context, 'Status', invitation.statusLabel),
             if (invitation.actionable) ...[

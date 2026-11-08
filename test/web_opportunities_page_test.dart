@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/models/job.dart';
 import 'package:test_app/services/vacancy_invitation_service.dart';
 import 'package:test_app/web_app/pages/opportunities/web_opportunities_page.dart';
+import 'package:test_app/web_app/pages/jobs/web_worker_vacancy_card.dart';
+import 'package:test_app/web_app/widgets/web_remote_image.dart';
 
 void main() {
   final vacancy = Job(
@@ -11,7 +13,7 @@ void main() {
     trade: 'Dryliner',
     site: 'Manchester site',
     location: 'Manchester M1',
-    street: '',
+    street: '12 Example Road',
     city: 'Manchester',
     postcode: 'M1',
     rate: 25,
@@ -76,9 +78,12 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('Dryliner vacancy'), findsOneWidget);
+    expect(find.text('Dryliner'), findsOneWidget);
+    expect(find.byType(WebWorkerVacancyCard), findsOneWidget);
+    expect(find.byType(WebCircleImage), findsOneWidget);
+    expect(find.text('12 Example Road, Manchester, M1'), findsOneWidget);
     expect(find.text('Builder Ltd'), findsOneWidget);
-    await tester.tap(find.text('Dryliner vacancy'));
+    await tester.tap(find.text('Dryliner'));
     await tester.pumpAndSettle();
     expect(find.text('Opportunity Summary'), findsOneWidget);
     expect(find.textContaining('Received'), findsWidgets);
@@ -86,7 +91,7 @@ void main() {
     expect(find.text('CSCS card required'), findsNothing);
     expect(find.text('Bring PPE'), findsNothing);
     expect(find.text('Open Vacancy'), findsOneWidget);
-    expect(find.text('40'), findsOneWidget);
+    expect(find.text('40 hours/week'), findsOneWidget);
     expect(find.text('£25/hour'), findsOneWidget);
     await tester.tap(find.text('Open Vacancy'));
     expect(actions, ['viewed']);
@@ -95,7 +100,7 @@ void main() {
     for (final width in [768.0, 1440.0]) {
       tester.view.physicalSize = Size(width, 900);
       await tester.pumpAndSettle();
-      expect(find.text('Dryliner vacancy'), findsWidgets);
+      expect(find.text('Dryliner'), findsWidgets);
       expect(tester.takeException(), isNull);
     }
   });
@@ -115,7 +120,23 @@ void main() {
       loadJob: (_) async => vacancy,
     ))));
     await tester.pumpAndSettle();
-    expect(find.text('Dryliner vacancy'), findsNWidgets(2));
+    expect(find.text('Dryliner'), findsNWidgets(2));
+    expect(find.text('Dryliner vacancy'), findsNothing);
+    expect(find.text('Manchester site'), findsNothing);
+    expect(find.text('Engagement'), findsNothing);
+    for (final label in [
+      'Received',
+      'Company',
+      'Trade',
+      'Address',
+      'Pay',
+      'Start',
+      'Working hours',
+      'Duration',
+      'Status'
+    ]) {
+      expect(find.text(label), findsOneWidget);
+    }
     expect(find.text('Opportunity Summary'), findsOneWidget);
     expect(tester.getTopLeft(find.text('Invitation')).dy,
         lessThan(tester.getTopLeft(find.text('Open Vacancy')).dy));

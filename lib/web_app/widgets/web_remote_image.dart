@@ -135,17 +135,29 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
   }
 
   Widget _retryOrFallback(String failedUrl) {
-    final path = widget.storagePath?.trim() ?? '';
+    final path = widget.storagePath?.trim().isNotEmpty == true
+        ? widget.storagePath!.trim()
+        : WebImageService.storagePathFromUrl(failedUrl) ?? '';
     if (path.isEmpty || !path.startsWith('chat_attachments/')) {
       return _Fallback(icon: widget.fallbackIcon, label: widget.errorLabel);
     }
     retryUrl ??= FirebaseStorage.instance.ref(path).getDownloadURL().then(
-          (url) => url == failedUrl ? null : url,
-          onError: (_) => null,
-        );
+      (url) async {
+        if (url == failedUrl) {
+          await NetworkImage(failedUrl,
+                  webHtmlElementStrategy: widget.webHtmlElementStrategy)
+              .evict();
+        }
+        return url;
+      },
+      onError: (_) => null,
+    );
     return FutureBuilder<String?>(
       future: retryUrl,
       builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return _LoadingPlaceholder(icon: widget.fallbackIcon);
+        }
         final url = snapshot.data;
         if (url == null) {
           return _Fallback(icon: widget.fallbackIcon, label: widget.errorLabel);
