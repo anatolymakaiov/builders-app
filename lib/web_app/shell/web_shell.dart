@@ -245,6 +245,7 @@ class _WebShellState extends State<WebShell> {
           ? WebOpportunitiesPage(
               key: ValueKey('web-opportunities:${widget.user.uid}'),
               workerId: widget.user.uid,
+              workerName: widget.user.displayName,
               onOpenJob: _openJob,
             )
           : const SizedBox.shrink(),

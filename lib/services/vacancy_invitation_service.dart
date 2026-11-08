@@ -12,6 +12,7 @@ class VacancyInvitation {
     required this.generalLocation,
     required this.status,
     this.createdAt,
+    this.message,
   });
 
   final String id;
@@ -23,6 +24,7 @@ class VacancyInvitation {
   final String generalLocation;
   final String status;
   final DateTime? createdAt;
+  final String? message;
 
   bool get actionable => status == 'pending' || status == 'viewed';
   bool get closed => status == 'vacancy_closed' || status == 'vacancy_filled';
@@ -50,6 +52,9 @@ class VacancyInvitation {
       generalLocation: (data['generalLocation'] as String?) ?? '',
       status: (data['status'] as String?) ?? 'pending',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+      message: (data['invitationMessage'] ?? data['message']) is String
+          ? (data['invitationMessage'] ?? data['message']) as String
+          : null,
     );
   }
 }
