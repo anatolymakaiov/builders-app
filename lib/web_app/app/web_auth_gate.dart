@@ -271,6 +271,7 @@ class _WebLoginPageState extends State<WebLoginPage> {
                           ],
                           const SizedBox(height: 22),
                           FilledButton(
+                            style: WebToolbar.primaryActionStyle,
                             onPressed: loading ? null : signIn,
                             child: loading
                                 ? const SizedBox(

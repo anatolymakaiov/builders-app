@@ -88,6 +88,10 @@ void main() {
           .resolve({}),
       WebTheme.accentSoft,
     );
+    expect(WebToolbar.primaryActionStyle.backgroundColor!.resolve({}),
+        WebTheme.accent);
+    expect(WebToolbar.primaryActionStyle.minimumSize!.resolve({})!.height,
+        WebToolbar.controlHeight);
     expect(tester.takeException(), isNull);
   });
 

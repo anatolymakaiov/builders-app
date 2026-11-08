@@ -256,6 +256,17 @@ class WebToolbar {
   static const controlHeight = 42.0;
   static const actionPadding = EdgeInsets.symmetric(horizontal: WebSpacing.lg);
   static const actionBorder = BorderSide(color: WebTheme.accentBorder);
+  static final ButtonStyle primaryActionStyle = FilledButton.styleFrom(
+    backgroundColor: WebTheme.accent,
+    foregroundColor: Colors.white,
+    overlayColor: WebTheme.accentHover,
+    minimumSize: const Size(44, controlHeight),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    padding: actionPadding,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(WebRadii.button),
+    ),
+  );
   static const segmentLabelHeight = controlHeight - 16.0;
   static const fieldPadding =
       EdgeInsets.symmetric(horizontal: WebSpacing.sm, vertical: WebSpacing.xs);

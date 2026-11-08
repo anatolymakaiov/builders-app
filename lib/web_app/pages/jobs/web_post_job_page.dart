@@ -563,6 +563,7 @@ class _WebPostJobPageState extends State<WebPostJobPage> {
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
+            style: WebToolbar.primaryActionStyle,
             onPressed: saving || uploading || importingVacancy ? null : _submit,
             icon: saving
                 ? const SizedBox(
