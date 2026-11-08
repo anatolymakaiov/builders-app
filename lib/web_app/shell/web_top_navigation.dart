@@ -160,7 +160,7 @@ class WebTopNavigation extends StatelessWidget {
                             if (showLabels)
                               FilledButton.icon(
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFFEAF5FC),
+                                  backgroundColor: WebTheme.actionFill,
                                   foregroundColor: WebTheme.deep,
                                   overlayColor: const Color(0xFFD4EBF8),
                                 ),

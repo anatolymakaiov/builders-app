@@ -9,6 +9,7 @@ class WebTheme {
   static const accentHover = Color(0xFF2D709B);
   static const accentSoft = Color(0xFFEAF5FC);
   static const accentBorder = Color(0xFFA9D3EC);
+  static const actionFill = Color(0xFFDCEFFA);
   static const blueprint = Color(0xFF4B82A1);
   static const border = Color(0xFFDDE4E8);
   static const borderStrong = Color(0xFFC3CDD3);
@@ -97,12 +98,13 @@ class WebTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: accentSoft,
+          backgroundColor: actionFill,
           foregroundColor: accentHover,
-          overlayColor: accentBorder,
+          overlayColor: accent.withValues(alpha: 0.10),
           minimumSize: const Size(44, WebToolbar.controlHeight),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           padding: WebToolbar.actionPadding,
+          side: WebToolbar.actionBorder,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(WebRadii.button),
           ),
@@ -111,8 +113,9 @@ class WebTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
+          backgroundColor: actionFill,
           foregroundColor: accent,
-          overlayColor: accentSoft,
+          overlayColor: accent.withValues(alpha: 0.10),
           minimumSize: const Size(44, WebToolbar.controlHeight),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           padding: WebToolbar.actionPadding,
@@ -260,6 +263,7 @@ class WebToolbar {
     backgroundColor: WebTheme.accent,
     foregroundColor: Colors.white,
     overlayColor: WebTheme.accentHover,
+    side: const BorderSide(color: WebTheme.accent),
     minimumSize: const Size(44, controlHeight),
     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     padding: actionPadding,

@@ -86,8 +86,20 @@ void main() {
           .style!
           .backgroundColor!
           .resolve({}),
-      WebTheme.accentSoft,
+      WebTheme.actionFill,
     );
+    final theme = Theme.of(tester.element(find.byType(FilledButton)));
+    for (final style in [
+      theme.filledButtonTheme.style!,
+      theme.outlinedButtonTheme.style!,
+    ]) {
+      expect(style.backgroundColor!.resolve({}), WebTheme.actionFill);
+      expect(style.side!.resolve({}), WebToolbar.actionBorder);
+      expect(style.minimumSize!.resolve({})!.height,
+          WebToolbar.controlHeight);
+    }
+    expect(WebToolbar.primaryActionStyle.side!.resolve({})!.color,
+        WebTheme.accent);
     expect(WebToolbar.primaryActionStyle.backgroundColor!.resolve({}),
         WebTheme.accent);
     expect(WebToolbar.primaryActionStyle.minimumSize!.resolve({})!.height,

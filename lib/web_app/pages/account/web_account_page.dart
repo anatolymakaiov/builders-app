@@ -568,6 +568,7 @@ class _BillingViewState extends State<_BillingView> {
                   icon: const Icon(Icons.cancel_outlined),
                   label: const Text('Cancel Direct Debit'),
                   style: OutlinedButton.styleFrom(
+                    backgroundColor: WebTheme.dangerSoft,
                     foregroundColor: WebTheme.danger,
                     side: const BorderSide(color: WebTheme.danger),
                   ),
@@ -1559,7 +1560,10 @@ class _DeleteAccountViewState extends State<_DeleteAccountView> {
         ),
         const SizedBox(height: 14),
         FilledButton.icon(
-          style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          style: FilledButton.styleFrom(
+            backgroundColor: Colors.red,
+            side: const BorderSide(color: Colors.red),
+          ),
           onPressed: deleting ? null : _delete,
           icon: const Icon(Icons.delete_forever_outlined),
           label: const Text('Delete Account'),

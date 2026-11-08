@@ -375,6 +375,7 @@ class _WebTeamPageState extends State<WebTeamPage> {
             ),
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
+                backgroundColor: WebTheme.dangerSoft,
                 foregroundColor: WebTheme.danger,
                 side: const BorderSide(color: WebTheme.danger),
               ),

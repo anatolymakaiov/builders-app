@@ -666,7 +666,11 @@ class _OwnerActions extends StatelessWidget {
                 onPressed: managing ? null : onDelete,
                 icon: const Icon(Icons.delete_outline),
                 label: const Text('Delete'),
-                style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: WebTheme.dangerSoft,
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: WebTheme.danger),
+                ),
               ),
             ],
           ),

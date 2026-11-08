@@ -1493,7 +1493,11 @@ class _ApplicationActionsState extends State<_ApplicationActions> {
         onPressed: onPressed,
         icon: content,
         label: Text(label),
-        style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: WebTheme.dangerSoft,
+          foregroundColor: Colors.red,
+          side: const BorderSide(color: WebTheme.danger),
+        ),
       );
     }
     return FilledButton.icon(
