@@ -22,7 +22,7 @@ Future<Uint8List> _testImage(int width, int height) async {
 }
 
 void main() {
-  testWidgets('Web photos use a thin frame and compact spacing',
+  testWidgets('Web photos have no individual frame and one-pixel spacing',
       (tester) async {
     const images = [
       WebChatAttachment(type: 'image', url: '', fileName: 'one.jpg'),
@@ -38,11 +38,11 @@ void main() {
               widget.decoration is BoxDecoration &&
               (widget.decoration! as BoxDecoration).border?.top.width == 1,
         );
-    expect(frames, hasLength(2));
+    expect(frames, isEmpty);
     expect(
       tester.getTopLeft(find.byType(InkWell).at(1)).dx -
           tester.getTopRight(find.byType(InkWell).first).dx,
-      2,
+      1,
     );
   });
 
@@ -89,23 +89,75 @@ void main() {
         tester.getRect(find.byKey(Key('photo-$index.png'))),
     ];
     expect(rects[0].top, rects[1].top);
-    expect(rects[2].width, 388);
+    expect(rects[2].width, 390);
     expect(rects[2].top, greaterThan(rects[0].bottom));
     expect(rects[3].top, greaterThan(rects[2].bottom));
     expect(rects[3].top, rects[4].top);
     expect(rects[4].top, rects[5].top);
-    expect(rects[6].width, 388);
+    expect(rects[6].width, 390);
     expect(rects[6].top, greaterThan(rects[5].bottom));
     expect(tester.takeException(), isNull);
 
     tester.view.physicalSize = const Size(200, 844);
     await tester.pumpAndSettle();
-    expect(tester.getRect(find.byKey(const Key('photo-2.png'))).width, 198);
+    expect(tester.getRect(find.byKey(const Key('photo-2.png'))).width, 200);
     expect(tester.takeException(), isNull);
 
     tester.view.physicalSize = const Size(768, 844);
     await tester.pumpAndSettle();
-    expect(tester.getRect(find.byKey(const Key('photo-2.png'))).width, 418);
+    expect(tester.getRect(find.byKey(const Key('photo-2.png'))).width, 420);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('image tiles survive rebuild, resize and conversation switch',
+      (tester) async {
+    final bytes = (await tester.runAsync(() => _testImage(16, 24)))!;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    Widget gallery(String chatId) => MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: WebChatAttachmentsView(
+                key: ValueKey(chatId),
+                isMine: true,
+                attachments: [
+                  WebChatAttachment(
+                    type: 'image',
+                    url: 'https://example.com/$chatId.png',
+                    fileName: '$chatId.png',
+                  ),
+                ],
+                imageProviderFor: (_) => MemoryImage(bytes),
+                imagePreviewBuilder: (item, width, height) => Image.memory(
+                  bytes,
+                  key: ValueKey(item.fileName),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(gallery('chat-a'));
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chat-a.png')), findsOneWidget);
+    await tester.pumpWidget(gallery('chat-a'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chat-a.png')), findsOneWidget);
+    tester.view.physicalSize = const Size(768, 900);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chat-a.png')), findsOneWidget);
+    await tester.pumpWidget(gallery('chat-b'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chat-b.png')), findsOneWidget);
+    await tester.pumpWidget(gallery('chat-a'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chat-a.png')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

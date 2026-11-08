@@ -102,7 +102,7 @@ class _WebChatAttachmentsViewState extends State<WebChatAttachmentsView> {
       }
       final provider = widget.imageProviderFor?.call(url) ??
           NetworkImage(url,
-              webHtmlElementStrategy: WebHtmlElementStrategy.prefer);
+              webHtmlElementStrategy: WebHtmlElementStrategy.fallback);
       final stream = provider.resolve(
         createLocalImageConfiguration(context, size: const Size(280, 190)),
       );
@@ -172,7 +172,7 @@ class _WebChatAttachmentsViewState extends State<WebChatAttachmentsView> {
             }
           }
         }
-        const gap = 2.0;
+        const gap = 1.0;
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment:
@@ -344,26 +344,17 @@ class _ImageAttachment extends StatelessWidget {
           initialIndex: gallery.initialIndex,
         );
       },
-      child: Container(
+      child: SizedBox(
         width: width,
         height: height,
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: isMine
-                ? WebTheme.accentBorder
-                : WebChatMessageColors.incomingAttachment,
-            width: 1,
-          ),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(3),
-          child: previewBuilder?.call(attachment, width, height) ??
-              WebRemoteImage(
-                url: attachment.url,
-                fit: BoxFit.cover,
-              ),
-        ),
+        child: previewBuilder?.call(attachment, width, height) ??
+            WebRemoteImage(
+              key: ValueKey('chat-image:${attachment.url}'),
+              url: attachment.url,
+              fit: BoxFit.cover,
+              webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+              errorLabel: 'Image unavailable',
+            ),
       ),
     );
   }

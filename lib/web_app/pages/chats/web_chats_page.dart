@@ -1252,18 +1252,21 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMine = message.data['senderId'] == userId;
     final attachments = message.attachments;
-    final hasImages = attachments.any(
-      (attachment) => ChatImageGallery.isPreviewableImage(attachment.toMap()),
-    );
     final deleted = message.deletedForEveryone;
+    final hasImages = !deleted &&
+        attachments.any(
+          (attachment) =>
+              ChatImageGallery.isPreviewableImage(attachment.toMap()),
+        );
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 560),
         margin: const EdgeInsets.only(bottom: 10),
         padding: hasImages
-            ? const EdgeInsets.all(4)
+            ? EdgeInsets.zero
             : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        clipBehavior: hasImages ? Clip.antiAlias : Clip.none,
         decoration: BoxDecoration(
           color: isMine ? WebTheme.accent : WebChatMessageColors.incoming,
           borderRadius: BorderRadius.circular(16),
@@ -1272,32 +1275,36 @@ class _MessageBubble extends StatelessWidget {
           crossAxisAlignment:
               isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            PopupMenuButton<String>(
-                tooltip: 'Message actions',
-                icon: Icon(
-                  Icons.more_horiz,
-                  color:
-                      isMine ? Colors.white : WebChatMessageColors.incomingInk,
-                ),
-                onSelected: onAction,
-                itemBuilder: (_) => [
-                      if (!deleted)
+            if (!hasImages)
+              PopupMenuButton<String>(
+                  tooltip: 'Message actions',
+                  icon: Icon(
+                    Icons.more_horiz,
+                    color: isMine
+                        ? Colors.white
+                        : WebChatMessageColors.incomingInk,
+                  ),
+                  onSelected: onAction,
+                  itemBuilder: (_) => [
+                        if (!deleted)
+                          const PopupMenuItem(
+                              value: 'reply', child: Text('Reply')),
+                        if (!deleted && message.text.isNotEmpty)
+                          const PopupMenuItem(
+                              value: 'copy', child: Text('Copy')),
+                        if (!deleted)
+                          const PopupMenuItem(
+                              value: 'forward', child: Text('Forward')),
+                        if (isMine && !deleted && message.type == 'text')
+                          const PopupMenuItem(
+                              value: 'edit', child: Text('Edit')),
                         const PopupMenuItem(
-                            value: 'reply', child: Text('Reply')),
-                      if (!deleted && message.text.isNotEmpty)
-                        const PopupMenuItem(value: 'copy', child: Text('Copy')),
-                      if (!deleted)
-                        const PopupMenuItem(
-                            value: 'forward', child: Text('Forward')),
-                      if (isMine && !deleted && message.type == 'text')
-                        const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                      const PopupMenuItem(
-                          value: 'hide', child: Text('Delete for me')),
-                      if (isMine && !deleted)
-                        const PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete for everyone')),
-                    ]),
+                            value: 'hide', child: Text('Delete for me')),
+                        if (isMine && !deleted)
+                          const PopupMenuItem(
+                              value: 'delete',
+                              child: Text('Delete for everyone')),
+                      ]),
             if (message.data['forwarded'] == true)
               Text(
                 'Forwarded',
@@ -1318,9 +1325,44 @@ class _MessageBubble extends StatelessWidget {
               )
             else ...[
               WebChatAttachmentsView(attachments: attachments, isMine: isMine),
+              if (hasImages)
+                Align(
+                  alignment:
+                      isMine ? Alignment.centerRight : Alignment.centerLeft,
+                  child: PopupMenuButton<String>(
+                    tooltip: 'Message actions',
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(36, 36),
+                      padding: EdgeInsets.zero,
+                    ),
+                    icon: Icon(Icons.more_horiz,
+                        color: isMine
+                            ? Colors.white
+                            : WebChatMessageColors.incomingInk),
+                    onSelected: onAction,
+                    itemBuilder: (_) => [
+                      if (!deleted)
+                        const PopupMenuItem(
+                            value: 'reply', child: Text('Reply')),
+                      if (!deleted && message.text.isNotEmpty)
+                        const PopupMenuItem(value: 'copy', child: Text('Copy')),
+                      if (!deleted)
+                        const PopupMenuItem(
+                            value: 'forward', child: Text('Forward')),
+                      const PopupMenuItem(
+                          value: 'hide', child: Text('Delete for me')),
+                      if (isMine && !deleted)
+                        const PopupMenuItem(
+                            value: 'delete',
+                            child: Text('Delete for everyone')),
+                    ],
+                  ),
+                ),
               if (message.text.trim().isNotEmpty)
                 Padding(
-                  padding: EdgeInsets.only(top: hasImages ? 6 : 0),
+                  padding: hasImages
+                      ? const EdgeInsets.fromLTRB(10, 0, 10, 6)
+                      : EdgeInsets.zero,
                   child: Text(
                     message.text,
                     style: TextStyle(
@@ -1346,7 +1388,9 @@ class _MessageBubble extends StatelessWidget {
             ],
             if (sentAt != null)
               Padding(
-                padding: const EdgeInsets.only(top: 6),
+                padding: hasImages
+                    ? const EdgeInsets.fromLTRB(10, 4, 10, 8)
+                    : const EdgeInsets.only(top: 6),
                 child: Text(
                   webChatTimeLabel(sentAt!),
                   style: TextStyle(

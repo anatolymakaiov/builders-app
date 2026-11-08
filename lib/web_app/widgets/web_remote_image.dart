@@ -13,6 +13,8 @@ class WebRemoteImage extends StatefulWidget {
     this.fit = BoxFit.cover,
     this.borderRadius = 0,
     this.fallbackIcon = Icons.image_outlined,
+    this.webHtmlElementStrategy = WebHtmlElementStrategy.prefer,
+    this.errorLabel,
   });
 
   final String? url;
@@ -21,6 +23,8 @@ class WebRemoteImage extends StatefulWidget {
   final BoxFit fit;
   final double borderRadius;
   final IconData fallbackIcon;
+  final WebHtmlElementStrategy webHtmlElementStrategy;
+  final String? errorLabel;
 
   @override
   State<WebRemoteImage> createState() => _WebRemoteImageState();
@@ -29,6 +33,7 @@ class WebRemoteImage extends StatefulWidget {
 class _WebRemoteImageState extends State<WebRemoteImage> {
   Future<WebImageResolution>? resolution;
   WebImageResolution? displayedResolution;
+  final Set<String> displayedFrames = {};
 
   @override
   void initState() {
@@ -39,7 +44,10 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
   @override
   void didUpdateWidget(covariant WebRemoteImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.url?.trim() != widget.url?.trim()) _resolve();
+    if (oldWidget.url?.trim() != widget.url?.trim()) {
+      displayedResolution = null;
+      _resolve();
+    }
   }
 
   void _resolve() {
@@ -59,7 +67,7 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
       displayedResolution = cached;
     }
     final child = clean == null || clean.isEmpty
-        ? _Fallback(icon: widget.fallbackIcon)
+        ? _Fallback(icon: widget.fallbackIcon, label: widget.errorLabel)
         : cached != null
             ? (cached.unsupported
                 ? _originalFallback(clean)
@@ -69,7 +77,8 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     WebImageService.logFailure(clean, snapshot.error!);
-                    return _Fallback(icon: widget.fallbackIcon);
+                    return _Fallback(
+                        icon: widget.fallbackIcon, label: widget.errorLabel);
                   }
                   final resolved = snapshot.data;
                   if (resolved == null) {
@@ -101,16 +110,20 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
       height: widget.height,
       fit: widget.fit,
       gaplessPlayback: true,
-      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-      loadingBuilder: (context, child, loadingProgress) =>
-          loadingProgress == null
-              ? child
-              : _LoadingPlaceholder(icon: widget.fallbackIcon),
+      webHtmlElementStrategy: widget.webHtmlElementStrategy,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (frame != null || wasSynchronouslyLoaded) {
+          displayedFrames.add(resolved.url);
+        }
+        return displayedFrames.contains(resolved.url)
+            ? child
+            : _LoadingPlaceholder(icon: widget.fallbackIcon);
+      },
       errorBuilder: (_, error, __) {
         WebImageService.logFailure(resolved.url, error);
         return resolved.usedDerivative
             ? _originalFallback(resolved.originalUrl)
-            : _Fallback(icon: widget.fallbackIcon);
+            : _Fallback(icon: widget.fallbackIcon, label: widget.errorLabel);
       },
     );
   }
@@ -123,7 +136,7 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
           Uri.parse(url),
           mode: LaunchMode.externalApplication,
         ),
-        child: _Fallback(icon: widget.fallbackIcon),
+        child: _Fallback(icon: widget.fallbackIcon, label: widget.errorLabel),
       ),
     );
   }
@@ -178,17 +191,26 @@ class _LoadingPlaceholder extends StatelessWidget {
 }
 
 class _Fallback extends StatelessWidget {
-  const _Fallback({required this.icon});
+  const _Fallback({required this.icon, this.label});
 
   final IconData icon;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
       color: WebTheme.accentSoft,
       child: Center(
-        child: Icon(icon, color: WebTheme.accent),
-      ),
+          child: label == null
+              ? Icon(icon, color: WebTheme.accent)
+              : Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(icon, color: WebTheme.accent),
+                  const SizedBox(height: 4),
+                  Text(label!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 11, color: WebTheme.accent)),
+                ])),
     );
   }
 }
