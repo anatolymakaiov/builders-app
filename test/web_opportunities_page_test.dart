@@ -67,6 +67,7 @@ void main() {
       home: Scaffold(
         body: WebOpportunitiesPage(
           workerId: 'worker-1',
+          loadWorkerFirstName: (_) async => 'Anthony',
           onOpenJob: opened.add,
           invitations: Stream.value([invitation]),
           respondToInvitation: (item, action) async {
@@ -115,6 +116,7 @@ void main() {
         home: Scaffold(
             body: WebOpportunitiesPage(
       workerId: 'worker-1',
+      loadWorkerFirstName: (_) async => 'Anthony',
       onOpenJob: (_) {},
       invitations: Stream.value([invitation]),
       loadJob: (_) async => vacancy,
@@ -158,7 +160,7 @@ void main() {
       home: Scaffold(
         body: WebOpportunitiesPage(
           workerId: 'worker-1',
-          workerName: 'John Smith',
+          loadWorkerFirstName: (_) async => 'John',
           onOpenJob: opened.add,
           invitations: Stream.value([invitation, customInvitation]),
           loadJob: (item) async => item.id == invitation.id ? vacancy : null,
@@ -198,16 +200,71 @@ void main() {
   });
 
   test('saved invitation text takes priority over generated greeting', () {
-    expect(
-        webOpportunityInvitationText(customInvitation,
-            workerName: 'John Smith'),
+    expect(webOpportunityInvitationText(customInvitation, firstName: 'Anthony'),
         'Please review our site opportunity.');
-    expect(webOpportunityInvitationText(invitation, workerName: 'John Smith'),
+    expect(webOpportunityInvitationText(invitation, firstName: 'Anthony'),
+        "Hi Anthony,\n\nI'd like to invite you to consider this vacancy.");
+    expect(webOpportunityInvitationText(invitation, firstName: 'John'),
         "Hi John,\n\nI'd like to invite you to consider this vacancy.");
-    expect(webOpportunityInvitationText(invitation, workerName: 'Worker'),
-        "I'd like to invite you to consider this vacancy.");
+    for (final missing in <String?>[
+      null,
+      '',
+      '   ',
+      'Worker',
+      'User',
+      'null',
+      'undefined'
+    ]) {
+      expect(webOpportunityInvitationText(invitation, firstName: missing),
+          "Hi,\n\nI'd like to invite you to consider this vacancy.");
+    }
+    expect(webOpportunityInvitationText(invitation, firstName: '  Anthony  '),
+        "Hi Anthony,\n\nI'd like to invite you to consider this vacancy.");
     expect(webOpportunityInvitationText(invitation),
-        "I'd like to invite you to consider this vacancy.");
+        "Hi,\n\nI'd like to invite you to consider this vacancy.");
+  });
+
+  testWidgets('automatic greeting follows the recipient after account switch',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 900);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    Future<String?> firstName(String uid) async =>
+        uid == 'worker-1' ? 'Anthony' : 'John';
+    final secondInvitation = VacancyInvitation(
+      id: 'invite-worker-2',
+      vacancyId: invitation.vacancyId,
+      workerId: 'worker-2',
+      title: invitation.title,
+      company: invitation.company,
+      tradeId: invitation.tradeId,
+      generalLocation: invitation.generalLocation,
+      status: 'pending',
+    );
+    Widget page(String workerId) => MaterialApp(
+          home: Scaffold(
+            body: WebOpportunitiesPage(
+              workerId: workerId,
+              onOpenJob: (_) {},
+              loadWorkerFirstName: firstName,
+              invitations: Stream.value([
+                workerId == 'worker-1' ? invitation : secondInvitation,
+              ]),
+              loadJob: (_) async => vacancy,
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(page('worker-1'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Hi Anthony,'), findsOneWidget);
+    expect(find.textContaining('Hi James,'), findsNothing);
+    await tester.pumpWidget(page('worker-2'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Hi John,'), findsOneWidget);
+    expect(find.textContaining('Hi Anthony,'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('empty invitations show a real empty state', (tester) async {
@@ -215,6 +272,7 @@ void main() {
       home: Scaffold(
         body: WebOpportunitiesPage(
           workerId: 'worker-1',
+          loadWorkerFirstName: (_) async => null,
           onOpenJob: (_) {},
           invitations: Stream.value(const []),
         ),

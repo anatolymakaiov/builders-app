@@ -8,6 +8,7 @@ import '../jobs/web_job_display.dart';
 import '../jobs/web_worker_vacancy_card.dart';
 import '../../services/web_jobs_data_service.dart';
 import '../../services/web_company_branding.dart';
+import '../../services/web_profile_data_service.dart';
 import '../../theme/web_theme.dart';
 import '../../theme/web_breakpoints.dart';
 import '../../widgets/web_apply_dialog.dart';
@@ -20,13 +21,13 @@ class WebOpportunitiesPage extends StatefulWidget {
       {super.key,
       required this.workerId,
       required this.onOpenJob,
-      this.workerName,
+      this.loadWorkerFirstName,
       this.invitations,
       this.respondToInvitation,
       this.loadJob});
   final String workerId;
   final ValueChanged<String> onOpenJob;
-  final String? workerName;
+  final Future<String?> Function(String workerId)? loadWorkerFirstName;
   final Stream<List<VacancyInvitation>>? invitations;
   final Future<String> Function(VacancyInvitation invitation, String action)?
       respondToInvitation;
@@ -43,20 +44,40 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
   String? selectedId;
   bool compactDetailVisible = false;
   Future<Job?>? selectedJob;
+  late Future<String?> workerFirstName;
   final Map<String, Future<Job?>> jobCache = {};
 
   @override
   void initState() {
     super.initState();
     stream = widget.invitations ?? service.watchMine(widget.workerId);
+    workerFirstName = _loadWorkerFirstName();
+  }
+
+  Future<String?> _loadWorkerFirstName() async {
+    if (widget.loadWorkerFirstName != null) {
+      return widget.loadWorkerFirstName!(widget.workerId);
+    }
+    try {
+      final profile =
+          await WebProfileDataService().loadProfile(widget.workerId);
+      return profile?.data['firstName']?.toString();
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
   void didUpdateWidget(covariant WebOpportunitiesPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.workerId != widget.workerId ||
-        oldWidget.invitations != widget.invitations) {
+        oldWidget.invitations != widget.invitations ||
+        oldWidget.loadWorkerFirstName != widget.loadWorkerFirstName) {
       stream = widget.invitations ?? service.watchMine(widget.workerId);
+      if (oldWidget.workerId != widget.workerId ||
+          oldWidget.loadWorkerFirstName != widget.loadWorkerFirstName) {
+        workerFirstName = _loadWorkerFirstName();
+      }
       busyId = null;
       selectedId = null;
       selectedJob = null;
@@ -221,7 +242,7 @@ class _WebOpportunitiesPageState extends State<WebOpportunitiesPage> {
                             : _OpportunityDetail(
                                 invitation: selected,
                                 job: selectedJob,
-                                workerName: widget.workerName,
+                                workerFirstName: workerFirstName,
                                 busy: busyId != null,
                                 onOpen: () => _open(selected, apply: false),
                                 onApply: () => _open(selected, apply: true),
@@ -354,14 +375,14 @@ class _OpportunityRow extends StatelessWidget {
 }
 
 String webOpportunityInvitationText(VacancyInvitation invitation,
-    {String? workerName}) {
+    {String? firstName}) {
   final saved = invitation.message;
   if (saved != null && saved.trim().isNotEmpty) return saved;
-  final first = workerName?.trim().split(RegExp(r'\s+')).first ?? '';
+  final first = firstName?.trim() ?? '';
   if (first.isEmpty ||
-      const {'worker', 'unknown', 'null', 'undefined'}
+      const {'worker', 'user', 'unknown', 'null', 'undefined'}
           .contains(first.toLowerCase())) {
-    return "I'd like to invite you to consider this vacancy.";
+    return "Hi,\n\nI'd like to invite you to consider this vacancy.";
   }
   return "Hi $first,\n\nI'd like to invite you to consider this vacancy.";
 }
@@ -370,14 +391,14 @@ class _OpportunityDetail extends StatelessWidget {
   const _OpportunityDetail(
       {required this.invitation,
       required this.job,
-      required this.workerName,
+      required this.workerFirstName,
       required this.busy,
       required this.onOpen,
       required this.onApply,
       required this.onDecline});
   final VacancyInvitation invitation;
   final Future<Job?>? job;
-  final String? workerName;
+  final Future<String?> workerFirstName;
   final bool busy;
   final VoidCallback onOpen;
   final VoidCallback onApply;
@@ -396,8 +417,13 @@ class _OpportunityDetail extends StatelessWidget {
           return ListView(children: [
             Text('Invitation', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            Text(webOpportunityInvitationText(invitation,
-                workerName: workerName)),
+            FutureBuilder<String?>(
+              future: workerFirstName,
+              builder: (context, name) => Text(webOpportunityInvitationText(
+                invitation,
+                firstName: name.data,
+              )),
+            ),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerLeft,

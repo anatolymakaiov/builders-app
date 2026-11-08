@@ -363,7 +363,6 @@ class _PortraitWebShellState extends State<PortraitWebShell> {
             ? WebOpportunitiesPage(
                 key: ValueKey('portrait-opportunities:${widget.user.uid}'),
                 workerId: widget.user.uid,
-                workerName: widget.user.displayName,
                 onOpenJob: _openJob,
               )
             : const SizedBox.shrink(),

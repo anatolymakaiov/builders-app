@@ -9,6 +9,7 @@ import 'package:test_app/web_app/pages/chats/web_chats_page.dart';
 import 'package:test_app/web_app/pages/chats/web_chat_timeline.dart';
 import 'package:test_app/web_app/services/web_chat_media_service.dart';
 import 'package:test_app/web_app/services/web_chats_data_service.dart';
+import 'package:test_app/web_app/theme/web_theme.dart';
 
 Future<Uint8List> _testImage(int width, int height) async {
   final recorder = ui.PictureRecorder();
@@ -23,6 +24,126 @@ Future<Uint8List> _testImage(int width, int height) async {
 }
 
 void main() {
+  Future<void> showMessage(WidgetTester tester, WebMessageItem message,
+      {required bool isMine,
+      Size size = const Size(390, 844),
+      ImageProvider Function(String)? imageProviderFor,
+      Widget Function(WebChatAttachment, double, double)?
+          imagePreviewBuilder}) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = size;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: WebChatMessageBubble(
+            message: message,
+            userId: isMine ? 'sender' : 'other',
+            sentAt: DateTime(2026, 11, 8, 8, 26),
+            onAction: (_) {},
+            imageProviderFor: imageProviderFor,
+            imagePreviewBuilder: imagePreviewBuilder,
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('short outgoing and incoming text only color the compact text',
+      (tester) async {
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    for (final isMine in [true, false]) {
+      await showMessage(
+          tester,
+          const WebMessageItem(id: 'short', data: {
+            'senderId': 'sender',
+            'text': 'fort',
+            'type': 'text',
+          }),
+          isMine: isMine);
+      final bubble =
+          tester.getRect(find.byKey(const ValueKey('chat-text-bubble:short')));
+      final menu = tester.getRect(find.byTooltip('Message actions'));
+      final time = tester.getRect(find.text('08:26'));
+      expect(bubble.width, lessThan(100));
+      expect(menu.bottom, lessThanOrEqualTo(bubble.top));
+      expect(time.top, greaterThanOrEqualTo(bubble.bottom));
+      expect(bubble.right, isMine ? closeTo(390, 1) : lessThan(100));
+      final colored = tester.widget<Container>(
+          find.byKey(const ValueKey('chat-text-bubble:short')));
+      expect((colored.decoration! as BoxDecoration).color,
+          isMine ? WebTheme.accent : WebChatMessageColors.incoming);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets('long text wraps with bounded width at Web breakpoints',
+      (tester) async {
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    const message = WebMessageItem(id: 'long', data: {
+      'senderId': 'sender',
+      'text':
+          'Dryliner in Manchester. Please send the details for this vacancy, including the location and working hours. Thank you very much.',
+      'type': 'text',
+    });
+    for (final width in [390.0, 430.0, 768.0, 1440.0]) {
+      await showMessage(tester, message, isMine: true, size: Size(width, 900));
+      final bubble =
+          tester.getRect(find.byKey(const ValueKey('chat-text-bubble:long')));
+      expect(bubble.width, lessThanOrEqualTo(420));
+      expect(bubble.height, greaterThan(35));
+      expect(tester.getRect(find.text('08:26')).top,
+          greaterThanOrEqualTo(bubble.bottom));
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets('media-only has no text bubble, photo and text remain separate',
+      (tester) async {
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    const image = {'type': 'image', 'url': 'https://example.com/photo.png'};
+    final bytes = (await tester.runAsync(() => _testImage(16, 24)))!;
+    Widget preview(WebChatAttachment _, double __, double ___) =>
+        const ColoredBox(key: ValueKey('photo-preview'), color: Colors.blue);
+    await showMessage(
+        tester,
+        const WebMessageItem(id: 'media', data: {
+          'senderId': 'sender',
+          'attachments': [image],
+        }),
+        isMine: true,
+        size: const Size(390, 1000),
+        imageProviderFor: (_) => MemoryImage(bytes),
+        imagePreviewBuilder: preview);
+    expect(find.byKey(const ValueKey('chat-text-bubble:media')), findsNothing);
+    expect(find.byTooltip('Message actions'), findsOneWidget);
+    expect(find.text('08:26'), findsOneWidget);
+
+    await showMessage(
+        tester,
+        const WebMessageItem(id: 'mixed', data: {
+          'senderId': 'sender',
+          'attachments': [image],
+          'text': 'Site photo',
+        }),
+        isMine: true,
+        size: const Size(390, 1000),
+        imageProviderFor: (_) => MemoryImage(bytes),
+        imagePreviewBuilder: preview);
+    final photo = tester.getRect(find.byKey(const ValueKey('photo-preview')));
+    final bubble =
+        tester.getRect(find.byKey(const ValueKey('chat-text-bubble:mixed')));
+    final menu = tester.getRect(find.byTooltip('Message actions'));
+    final time = tester.getRect(find.text('08:26'));
+    expect(photo.bottom, lessThanOrEqualTo(bubble.top));
+    expect(bubble.bottom, lessThanOrEqualTo(menu.top));
+    expect(menu.bottom, lessThanOrEqualTo(time.top));
+    expect(tester.takeException(), isNull);
+  });
+
   test('message keys follow stable IDs when older messages are appended', () {
     const current = WebMessageItem(id: 'current', data: {});
     const previous = WebMessageItem(id: 'previous', data: {});

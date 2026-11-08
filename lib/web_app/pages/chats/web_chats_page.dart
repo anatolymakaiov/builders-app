@@ -1096,7 +1096,7 @@ class _ThreadStreamView extends StatelessWidget {
                             ),
                           ),
                         ),
-                      _MessageBubble(
+                      WebChatMessageBubble(
                         message: message,
                         userId: userId,
                         sentAt: date,
@@ -1243,18 +1243,25 @@ class _ThreadHeader extends StatelessWidget {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({
+class WebChatMessageBubble extends StatelessWidget {
+  const WebChatMessageBubble({
+    super.key,
     required this.message,
     required this.userId,
     required this.sentAt,
     required this.onAction,
+    this.imageProviderFor,
+    this.imagePreviewBuilder,
   });
 
   final WebMessageItem message;
   final String userId;
   final DateTime? sentAt;
   final ValueChanged<String> onAction;
+  final ImageProvider Function(String url)? imageProviderFor;
+  final Widget Function(
+          WebChatAttachment attachment, double width, double height)?
+      imagePreviewBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -1268,178 +1275,108 @@ class _MessageBubble extends StatelessWidget {
         );
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 560),
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: hasImages
-            ? EdgeInsets.zero
-            : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        clipBehavior: Clip.none,
-        decoration: BoxDecoration(
-          color: hasImages
-              ? null
-              : isMine
-                  ? WebTheme.accent
-                  : WebChatMessageColors.incoming,
-          borderRadius: hasImages ? null : BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment:
-              isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            if (!hasImages)
-              PopupMenuButton<String>(
-                  tooltip: 'Message actions',
-                  icon: Icon(
-                    Icons.more_horiz,
-                    color: isMine
-                        ? Colors.white
-                        : WebChatMessageColors.incomingInk,
-                  ),
-                  onSelected: onAction,
-                  itemBuilder: (_) => [
-                        if (!deleted)
-                          const PopupMenuItem(
-                              value: 'reply', child: Text('Reply')),
-                        if (!deleted && message.text.isNotEmpty)
-                          const PopupMenuItem(
-                              value: 'copy', child: Text('Copy')),
-                        if (!deleted)
-                          const PopupMenuItem(
-                              value: 'forward', child: Text('Forward')),
-                        if (isMine && !deleted && message.type == 'text')
-                          const PopupMenuItem(
-                              value: 'edit', child: Text('Edit')),
-                        const PopupMenuItem(
-                            value: 'hide', child: Text('Delete for me')),
-                        if (isMine && !deleted)
-                          const PopupMenuItem(
-                              value: 'delete',
-                              child: Text('Delete for everyone')),
-                      ]),
-            if (message.data['forwarded'] == true)
-              Text(
-                'Forwarded',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isMine
-                      ? Colors.white70
-                      : WebChatMessageColors.incomingInk,
-                ),
-              ),
-            if (_hasReply(message.data))
-              _ReplyPreview(data: message.data, isMine: isMine),
-            if (deleted)
-              Text(
-                'Message deleted',
-                style:
-                    TextStyle(color: isMine ? Colors.white70 : WebTheme.muted),
-              )
-            else ...[
-              if (hasImages)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: WebChatAttachmentsView(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment:
+                isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              if (!hasImages)
+                _actionsMenu(
+                    isMine: isMine, deleted: deleted, hasImages: false),
+              if (message.data['forwarded'] == true)
+                const Text('Forwarded',
+                    style: TextStyle(fontSize: 11, color: WebTheme.muted)),
+              if (_hasReply(message.data))
+                _ReplyPreview(data: message.data, isMine: isMine),
+              if (deleted)
+                const Text('Message deleted',
+                    style: TextStyle(color: WebTheme.muted))
+              else ...[
+                if (attachments.isNotEmpty)
+                  WebChatAttachmentsView(
                       messageId: message.id,
                       attachments: attachments,
-                      isMine: isMine),
-                )
-              else
-                WebChatAttachmentsView(
-                    messageId: message.id,
-                    attachments: attachments,
-                    isMine: isMine),
-              if (message.text.trim().isNotEmpty)
-                Container(
-                  padding: hasImages
-                      ? const EdgeInsets.symmetric(horizontal: 10, vertical: 6)
-                      : EdgeInsets.zero,
-                  decoration: hasImages
-                      ? BoxDecoration(
-                          color: isMine
-                              ? WebTheme.accent
-                              : WebChatMessageColors.incoming,
-                          borderRadius: BorderRadius.circular(8),
-                        )
-                      : null,
-                  child: Text(
-                    message.text,
-                    style: TextStyle(
+                      isMine: isMine,
+                      imageProviderFor: imageProviderFor,
+                      imagePreviewBuilder: imagePreviewBuilder),
+                if (message.text.trim().isNotEmpty)
+                  Container(
+                    key: ValueKey('chat-text-bubble:${message.id}'),
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
                       color: isMine
-                          ? Colors.white
-                          : WebChatMessageColors.incomingInk,
+                          ? WebTheme.accent
+                          : WebChatMessageColors.incoming,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      message.text,
+                      style: TextStyle(
+                        color: isMine
+                            ? Colors.white
+                            : WebChatMessageColors.incomingInk,
+                      ),
                     ),
                   ),
-                ),
-              if (message.edited)
+                if (message.edited)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text(
+                      'edited',
+                      style: TextStyle(fontSize: 11, color: WebTheme.muted),
+                    ),
+                  ),
+              ],
+              if (hasImages)
+                _actionsMenu(isMine: isMine, deleted: deleted, hasImages: true),
+              if (sentAt != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    'edited',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: isMine
-                          ? Colors.white70
-                          : WebChatMessageColors.incomingInk,
-                    ),
+                    webChatTimeLabel(sentAt!),
+                    style: const TextStyle(fontSize: 11, color: WebTheme.muted),
                   ),
                 ),
             ],
-            if (hasImages)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  PopupMenuButton<String>(
-                    tooltip: 'Message actions',
-                    style: IconButton.styleFrom(
-                      minimumSize: const Size(36, 36),
-                      padding: EdgeInsets.zero,
-                    ),
-                    icon: const Icon(Icons.more_horiz, color: WebTheme.ink),
-                    onSelected: onAction,
-                    itemBuilder: (_) => [
-                      if (!deleted)
-                        const PopupMenuItem(
-                            value: 'reply', child: Text('Reply')),
-                      if (!deleted && message.text.isNotEmpty)
-                        const PopupMenuItem(value: 'copy', child: Text('Copy')),
-                      if (!deleted)
-                        const PopupMenuItem(
-                            value: 'forward', child: Text('Forward')),
-                      const PopupMenuItem(
-                          value: 'hide', child: Text('Delete for me')),
-                      if (isMine && !deleted)
-                        const PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete for everyone')),
-                    ],
-                  ),
-                  if (sentAt != null) ...[
-                    const SizedBox(width: 6),
-                    Text(webChatTimeLabel(sentAt!),
-                        style: const TextStyle(
-                            fontSize: 11, color: WebTheme.muted)),
-                  ],
-                ],
-              ),
-            if (!hasImages && sentAt != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  webChatTimeLabel(sentAt!),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isMine
-                        ? Colors.white70
-                        : WebChatMessageColors.incomingInk,
-                  ),
-                ),
-              ),
-          ],
+          ),
         ),
       ),
     );
   }
+
+  Widget _actionsMenu(
+          {required bool isMine,
+          required bool deleted,
+          required bool hasImages}) =>
+      PopupMenuButton<String>(
+        tooltip: 'Message actions',
+        style: IconButton.styleFrom(
+          minimumSize: const Size(36, 36),
+          padding: EdgeInsets.zero,
+        ),
+        icon: const Icon(Icons.more_horiz, color: WebTheme.ink),
+        onSelected: onAction,
+        itemBuilder: (_) => [
+          if (!deleted)
+            const PopupMenuItem(value: 'reply', child: Text('Reply')),
+          if (!deleted && message.text.isNotEmpty)
+            const PopupMenuItem(value: 'copy', child: Text('Copy')),
+          if (!deleted)
+            const PopupMenuItem(value: 'forward', child: Text('Forward')),
+          if (isMine && !deleted && !hasImages && message.type == 'text')
+            const PopupMenuItem(value: 'edit', child: Text('Edit')),
+          const PopupMenuItem(value: 'hide', child: Text('Delete for me')),
+          if (isMine && !deleted)
+            const PopupMenuItem(
+                value: 'delete', child: Text('Delete for everyone')),
+        ],
+      );
 
   bool _hasReply(Map<String, dynamic> data) {
     return (data['replyToTextPreview']?.toString().trim().isNotEmpty ??
@@ -1472,10 +1409,7 @@ class _ReplyPreview extends StatelessWidget {
         [sender, text].where((part) => part.isNotEmpty).join(': '),
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 12,
-          color: isMine ? Colors.white : WebChatMessageColors.incomingInk,
-        ),
+        style: const TextStyle(fontSize: 12, color: WebTheme.ink),
       ),
     );
   }
