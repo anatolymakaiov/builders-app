@@ -351,6 +351,7 @@ class _ImageAttachment extends StatelessWidget {
             WebRemoteImage(
               key: ValueKey('chat-image:${attachment.url}'),
               url: attachment.url,
+              storagePath: attachment.storagePath,
               fit: BoxFit.cover,
               webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
               errorLabel: 'Image unavailable',

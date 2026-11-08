@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/web_image_service.dart';
@@ -15,6 +16,7 @@ class WebRemoteImage extends StatefulWidget {
     this.fallbackIcon = Icons.image_outlined,
     this.webHtmlElementStrategy = WebHtmlElementStrategy.prefer,
     this.errorLabel,
+    this.storagePath,
   });
 
   final String? url;
@@ -25,6 +27,7 @@ class WebRemoteImage extends StatefulWidget {
   final IconData fallbackIcon;
   final WebHtmlElementStrategy webHtmlElementStrategy;
   final String? errorLabel;
+  final String? storagePath;
 
   @override
   State<WebRemoteImage> createState() => _WebRemoteImageState();
@@ -34,6 +37,7 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
   Future<WebImageResolution>? resolution;
   WebImageResolution? displayedResolution;
   final Set<String> displayedFrames = {};
+  Future<String?>? retryUrl;
 
   @override
   void initState() {
@@ -44,8 +48,10 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
   @override
   void didUpdateWidget(covariant WebRemoteImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.url?.trim() != widget.url?.trim()) {
+    if (oldWidget.url?.trim() != widget.url?.trim() ||
+        oldWidget.storagePath != widget.storagePath) {
       displayedResolution = null;
+      retryUrl = null;
       _resolve();
     }
   }
@@ -123,7 +129,36 @@ class _WebRemoteImageState extends State<WebRemoteImage> {
         WebImageService.logFailure(resolved.url, error);
         return resolved.usedDerivative
             ? _originalFallback(resolved.originalUrl)
-            : _Fallback(icon: widget.fallbackIcon, label: widget.errorLabel);
+            : _retryOrFallback(resolved.url);
+      },
+    );
+  }
+
+  Widget _retryOrFallback(String failedUrl) {
+    final path = widget.storagePath?.trim() ?? '';
+    if (path.isEmpty || !path.startsWith('chat_attachments/')) {
+      return _Fallback(icon: widget.fallbackIcon, label: widget.errorLabel);
+    }
+    retryUrl ??= FirebaseStorage.instance.ref(path).getDownloadURL().then(
+          (url) => url == failedUrl ? null : url,
+          onError: (_) => null,
+        );
+    return FutureBuilder<String?>(
+      future: retryUrl,
+      builder: (context, snapshot) {
+        final url = snapshot.data;
+        if (url == null) {
+          return _Fallback(icon: widget.fallbackIcon, label: widget.errorLabel);
+        }
+        return Image.network(
+          url,
+          width: widget.width,
+          height: widget.height,
+          fit: widget.fit,
+          webHtmlElementStrategy: widget.webHtmlElementStrategy,
+          errorBuilder: (_, __, ___) =>
+              _Fallback(icon: widget.fallbackIcon, label: widget.errorLabel),
+        );
       },
     );
   }
@@ -198,18 +233,19 @@ class _Fallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final failed = label != null;
     return ColoredBox(
-      color: WebTheme.accentSoft,
+      color: failed ? WebTheme.surfaceAlt : WebTheme.accentSoft,
       child: Center(
           child: label == null
               ? Icon(icon, color: WebTheme.accent)
               : Column(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(icon, color: WebTheme.accent),
+                  Icon(icon, color: WebTheme.muted),
                   const SizedBox(height: 4),
                   Text(label!,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          fontSize: 11, color: WebTheme.accent)),
+                      style:
+                          const TextStyle(fontSize: 11, color: WebTheme.muted)),
                 ])),
     );
   }

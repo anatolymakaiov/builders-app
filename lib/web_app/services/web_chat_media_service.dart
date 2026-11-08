@@ -2,6 +2,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../models/chat_attachment_data.dart';
 import 'web_media_pipeline.dart';
 
 class WebChatAttachment {
@@ -214,60 +215,16 @@ class WebChatMediaService {
 List<WebChatAttachment> normalizeWebChatAttachments(
   Map<String, dynamic> data,
 ) {
-  final attachments = <WebChatAttachment>[];
-  final raw = data['attachments'];
-  if (raw is List) {
-    for (final item in raw.whereType<Map>()) {
-      final map = Map<String, dynamic>.from(item);
-      final url = map['url']?.toString().trim() ?? '';
-      if (url.isEmpty) continue;
-      final mimeType = map['mimeType']?.toString();
-      attachments.add(
-        WebChatAttachment(
-          type: _normalizedType(
-            map['type']?.toString(),
-            mimeType,
-            map['fileName']?.toString(),
-          ),
-          url: url,
-          fileName: map['fileName']?.toString() ?? 'Attachment',
-          mimeType: mimeType,
-          sizeBytes: _readInt(map['sizeBytes'] ?? map['size']),
-          storagePath: map['storagePath']?.toString(),
-        ),
-      );
-    }
-  }
-
-  final type = data['type']?.toString();
-  final url = (data['audioUrl'] ??
-          data['mediaUrl'] ??
-          data['imageUrl'] ??
-          data['videoUrl'])
-      ?.toString()
-      .trim();
-  if (url == null || url.isEmpty) return attachments;
-  if (attachments.any((item) => item.url == url)) return attachments;
-
-  final mimeType = data['mimeType']?.toString();
-  attachments.add(
-    WebChatAttachment(
-      type: _normalizedType(type, mimeType, data['fileName']?.toString()),
-      url: url,
-      fileName: data['fileName']?.toString() ??
-          (type == 'audio'
-              ? 'Voice message'
-              : type == 'video'
-                  ? 'Video'
-                  : type == 'image'
-                      ? 'Photo'
-                      : 'Attachment'),
-      mimeType: mimeType,
-      sizeBytes: _readInt(data['sizeBytes'] ?? data['size']),
-    ),
-  );
-
-  return attachments;
+  return chatAttachmentsFromMessage(data).map((map) {
+    return WebChatAttachment(
+      type: map['type'].toString(),
+      url: map['url'].toString(),
+      fileName: map['fileName'].toString(),
+      mimeType: map['mimeType']?.toString(),
+      sizeBytes: _readInt(map['sizeBytes'] ?? map['size']),
+      storagePath: map['storagePath']?.toString(),
+    );
+  }).toList(growable: false);
 }
 
 String webChatAttachmentPreview(List<WebChatAttachment> attachments) {
@@ -283,32 +240,6 @@ String webChatAttachmentPreview(List<WebChatAttachment> attachments) {
     default:
       return attachments.first.fileName;
   }
-}
-
-String _normalizedType(String? rawType, String? mimeType, String? fileName) {
-  final type = rawType?.toLowerCase().trim();
-  if (type == 'image' || type == 'video' || type == 'audio' || type == 'file') {
-    return type!;
-  }
-  final mime = mimeType?.toLowerCase() ?? '';
-  if (mime.startsWith('image/')) return 'image';
-  if (mime.startsWith('video/')) return 'video';
-  if (mime.startsWith('audio/')) return 'audio';
-  final lower = fileName?.toLowerCase() ?? '';
-  if (lower.endsWith('.jpg') ||
-      lower.endsWith('.jpeg') ||
-      lower.endsWith('.png') ||
-      lower.endsWith('.gif') ||
-      lower.endsWith('.webp')) {
-    return 'image';
-  }
-  if (lower.endsWith('.mp4') || lower.endsWith('.mov')) return 'video';
-  if (lower.endsWith('.m4a') ||
-      lower.endsWith('.mp3') ||
-      lower.endsWith('.wav')) {
-    return 'audio';
-  }
-  return 'file';
 }
 
 int? _readInt(dynamic value) {

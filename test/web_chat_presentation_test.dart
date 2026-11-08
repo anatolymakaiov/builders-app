@@ -324,6 +324,48 @@ void main() {
     expect(attachments.single.url, 'https://example.com/voice.m4a');
   });
 
+  test('Web accepts current and legacy photo attachment URLs in order', () {
+    final attachments = normalizeWebChatAttachments({
+      'attachments': [
+        {
+          'type': 'image',
+          'url': 'https://example.com/new.jpg',
+          'storagePath': 'chat_attachments/c/m/u/new.jpg',
+        },
+        {
+          'contentType': 'image/jpeg',
+          'downloadUrl': 'https://example.com/old.jpg',
+          'storagePath': 'chat_attachments/c/m/u/old.jpg',
+        },
+        {
+          'type': 'image',
+          'fileUrl': 'https://example.com/older.png',
+        },
+      ],
+    });
+    expect(attachments.map((item) => item.url), [
+      'https://example.com/new.jpg',
+      'https://example.com/old.jpg',
+      'https://example.com/older.png',
+    ]);
+    expect(attachments.map((item) => item.type), everyElement('image'));
+    expect(attachments[1].storagePath, 'chat_attachments/c/m/u/old.jpg');
+  });
+
+  test('older and current messages normalize through the same read model', () {
+    const older = WebMessageItem(id: 'older', data: {
+      'type': 'image',
+      'mediaUrl': 'https://example.com/historical.jpg',
+    });
+    const current = WebMessageItem(id: 'current', data: {
+      'attachments': [
+        {'type': 'image', 'url': 'https://example.com/current.jpg'},
+      ],
+    });
+    expect(older.attachments.single.url, 'https://example.com/historical.jpg');
+    expect(current.attachments.single.url, 'https://example.com/current.jpg');
+  });
+
   test('conversation deletion changes only the current user visibility', () {
     final update = webChatHideUpdate('worker-1');
     expect(
